@@ -13,7 +13,14 @@ type Policy struct {
 	BlockEnabled        bool     `json:"blockEnabled"`
 	BlockedDomains      []string `json:"blockedDomains"`
 	SyncIntervalMinutes int      `json:"syncIntervalMinutes"`
-	UpdatedAt           string   `json:"updatedAt"`
+	// Collection of raw AI session files. Off by default: the code ships
+	// before the feature is enabled, and the agent's write-only permission on
+	// data_collect is added only when an administrator turns this on. See
+	// OSS布局.md §6.
+	CollectEnabled      bool   `json:"collectEnabled"`
+	CollectQuietSeconds int    `json:"collectQuietSeconds,omitempty"` // debounce; 0 -> default 60
+	CollectSince        string `json:"collectSince,omitempty"`        // YYYY-MM-DD UTC; empty -> all history
+	UpdatedAt           string `json:"updatedAt"`
 }
 
 // Sync interval bounds. The interval can lock a machine out of reach if set
@@ -79,6 +86,8 @@ type Status struct {
 	SyncIntervalMinutes int      `json:"syncIntervalMinutes"`
 	CredsApplied        bool     `json:"credsApplied"`
 	AppLockerMode       string   `json:"appLockerMode"`
+	CollectEnabled      bool     `json:"collectEnabled"`
+	CollectUploaded     int      `json:"collectUploaded"`
 	Errors              []string `json:"errors"`
 }
 

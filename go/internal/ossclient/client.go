@@ -135,6 +135,19 @@ func DataCollectPrefix(user string) string {
 	return UserPrefix(user) + DataCollectDir
 }
 
+// DataCollectKey builds the object key for one collected session file inside
+// an employee's data_collect directory. rel is the file's path relative to the
+// employee profile (for example ".claude/projects/p/a.jsonl").
+//
+// rel is rooted and cleaned so a crafted "../" cannot climb out of the
+// employee's directory; agents have write-only access here, and this keeps a
+// bad relative path from landing an object anywhere else in the bucket.
+func DataCollectKey(user, rel string) string {
+	rel = strings.ReplaceAll(rel, `\`, "/")
+	clean := strings.TrimPrefix(path.Clean("/"+rel), "/")
+	return DataCollectPrefix(user) + clean
+}
+
 // AdminKey builds a key under the admin-only directory, which sits outside
 // Root entirely. Agent credentials are not authorised for it, which keeps the
 // roster out of their reach.
