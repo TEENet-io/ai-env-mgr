@@ -827,6 +827,33 @@ func TestRunOnceRunsCollectorWhenEnabled(t *testing.T) {
 	}
 }
 
+// The collector must not run on an unbound machine even when collection is
+// enabled: there is no employee to attribute the session files to, and
+// nothing under Root belongs to "nobody". This locks the `bound` conjunct of
+// the guard, separately from the `enabled` conjunct covered above.
+func TestRunOnceSkipsCollectorWhenUnbound(t *testing.T) {
+	store := newFakeStore()
+	app := &fakeApplier{}
+	s := newSyncer(t, store, app)
+	pol := model.DefaultPolicy()
+	pol.CollectEnabled = true
+	store.set(ossclient.PolicyKey(), policyBytes(t, pol), "petag")
+	// Deliberately no binding.
+	col := &fakeCollector{uploaded: 3}
+	s.Collector = col
+
+	st, err := s.RunOnce()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(col.calls) != 0 {
+		t.Fatalf("collector should not run when unbound; calls=%v", col.calls)
+	}
+	if st.CollectUploaded != 0 {
+		t.Fatalf("CollectUploaded = %d, want 0 when unbound", st.CollectUploaded)
+	}
+}
+
 func TestRunOnceSkipsCollectorWhenDisabled(t *testing.T) {
 	store := newFakeStore()
 	app := &fakeApplier{}

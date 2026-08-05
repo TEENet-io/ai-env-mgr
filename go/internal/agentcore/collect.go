@@ -87,19 +87,22 @@ func (c *Collector) loadState() map[string]sig {
 	return state
 }
 
-func (c *Collector) saveState(state map[string]sig) {
+func (c *Collector) saveState(state map[string]sig) error {
 	if err := os.MkdirAll(c.StateDir, 0o700); err != nil {
-		return
+		return fmt.Errorf("collect: save state: %w", err)
 	}
 	data, err := json.Marshal(state)
 	if err != nil {
-		return
+		return fmt.Errorf("collect: save state: %w", err)
 	}
 	tmp := c.statePath() + ".tmp"
 	if err := os.WriteFile(tmp, data, 0o600); err != nil {
-		return
+		return fmt.Errorf("collect: save state: %w", err)
 	}
-	_ = os.Rename(tmp, c.statePath())
+	if err := os.Rename(tmp, c.statePath()); err != nil {
+		return fmt.Errorf("collect: save state: %w", err)
+	}
+	return nil
 }
 
 // CollectOnce runs one pass for a single employee. Mirrors run_once() in
@@ -165,6 +168,8 @@ func (c *Collector) CollectOnce(user string, quietSeconds int, since string) Col
 			delete(state, p)
 		}
 	}
-	c.saveState(state)
+	if err := c.saveState(state); err != nil {
+		res.Errors = append(res.Errors, err.Error())
+	}
 	return res
 }

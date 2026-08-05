@@ -125,9 +125,10 @@ func UserKey(user, name string) string {
 	return UserPrefix(user) + name
 }
 
-// DataCollectDir is where the future conversation-collection feature will
-// write, inside each employee's own directory rather than in one shared
-// place. Nothing writes here yet -- see OSS布局.md §6.
+// DataCollectDir is where the agent's session collector writes, inside each
+// employee's own directory rather than in one shared place. Access is
+// write-only (see Putter) and the feature is off by default, gated by
+// policy.collectEnabled -- see OSS布局.md §6.
 const DataCollectDir = "data_collect/"
 
 // DataCollectPrefix is one employee's collected-data directory.

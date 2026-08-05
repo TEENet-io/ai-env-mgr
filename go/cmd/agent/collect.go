@@ -12,8 +12,10 @@ import (
 // localFileSource finds and reads the bound employee's AI session files.
 //
 // It mirrors the two globs in collect_to_oss.py:
-//   <profile>/.claude/projects/**/*.jsonl
-//   <profile>/.codex/sessions/**/rollout-*.jsonl
+//
+//	<profile>/.claude/projects/**/*.jsonl
+//	<profile>/.codex/sessions/**/rollout-*.jsonl
+//
 // A missing .claude or .codex directory is normal (the employee may use only
 // one tool) and is not an error.
 type localFileSource struct{}

@@ -20,8 +20,8 @@ func TestLocalFileSourceFindsSessions(t *testing.T) {
 	}
 	mk(".claude/projects/proj/a.jsonl", "1\n")
 	mk(".codex/sessions/2026/08/rollout-abc.jsonl", "2\n")
-	mk(".codex/sessions/2026/08/notes.txt", "ignore\n")        // wrong extension
-	mk(".codex/sessions/2026/08/other.jsonl", "ignore\n")      // not rollout-*
+	mk(".codex/sessions/2026/08/notes.txt", "ignore\n")   // wrong extension
+	mk(".codex/sessions/2026/08/other.jsonl", "ignore\n") // not rollout-*
 	mk(".claude/projects/proj/sub/b.jsonl", "3\n")
 
 	files, err := localFileSource{}.Sessions(profile)

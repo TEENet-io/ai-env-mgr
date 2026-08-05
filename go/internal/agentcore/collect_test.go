@@ -2,6 +2,7 @@ package agentcore
 
 import (
 	"io"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -163,6 +164,47 @@ func TestCollectPrunesDeletedSourceKeepsOSSCopy(t *testing.T) {
 	src.add(".claude/projects/p/a.jsonl", "x\n", old)
 	if r := c.CollectOnce("work1", 60, ""); r.Uploaded != 1 {
 		t.Fatalf("uploaded=%d want 1 after source reappears", r.Uploaded)
+	}
+}
+
+// If the state file cannot be persisted (e.g. the state directory is
+// unwritable), the pass must still upload -- uploads already succeeded -- but
+// the failure must be surfaced in res.Errors so it isn't silently retried
+// forever with no signal.
+func TestCollectSaveStateFailureSurfaces(t *testing.T) {
+	now := time.Date(2026, 8, 5, 12, 0, 0, 0, time.UTC)
+	old := now.Add(-time.Hour)
+	src := &fakeSource{}
+	src.add(".claude/projects/p/a.jsonl", "x\n", old)
+	store := newFakeStore()
+
+	// A regular file where a directory is expected: os.MkdirAll on a path
+	// under it fails because a parent path component is not a directory.
+	blocker := filepath.Join(t.TempDir(), "blocker")
+	if err := os.WriteFile(blocker, []byte("not a dir"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	c := &Collector{
+		Store:    store,
+		Source:   src,
+		Machine:  &fakeMachine{name: "DESKTOP-A", localUsers: []string{"work1"}, profileDir: "/profiles"},
+		StateDir: filepath.Join(blocker, "sub"),
+		Now:      func() time.Time { return now },
+	}
+
+	res := c.CollectOnce("work1", 60, "")
+	if res.Uploaded != 1 {
+		t.Fatalf("uploaded=%d want 1 (upload should still happen)", res.Uploaded)
+	}
+	found := false
+	for _, e := range res.Errors {
+		if strings.Contains(e, "save state") {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("expected a save state error, got errors=%v", res.Errors)
 	}
 }
 
