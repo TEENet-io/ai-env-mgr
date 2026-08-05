@@ -57,8 +57,8 @@ func TestCollectFirstRunUploadsAllWithCorrectKeys(t *testing.T) {
 	if res.Uploaded != 2 {
 		t.Fatalf("uploaded=%d errors=%v want 2", res.Uploaded, res.Errors)
 	}
-	if _, ok := store.puts["agent_workdir/work1/data_collect/.claude/projects/p/a.jsonl"]; !ok {
-		t.Errorf("claude key missing; puts=%v", keysOf(store.puts))
+	if got := store.puts["agent_workdir/work1/data_collect/.claude/projects/p/a.jsonl"]; string(got) != "line1\n" {
+		t.Errorf("uploaded content = %q want %q", got, "line1\n")
 	}
 	if _, ok := store.puts["agent_workdir/work1/data_collect/.codex/sessions/2026/rollout-x.jsonl"]; !ok {
 		t.Errorf("codex key missing; puts=%v", keysOf(store.puts))
@@ -103,6 +103,14 @@ func TestCollectReuploadsModified(t *testing.T) {
 	src.files[0].ModTime = now.Add(-2 * time.Minute)
 	if r := c.CollectOnce("work1", 60, ""); r.Uploaded != 1 {
 		t.Fatalf("uploaded=%d want 1 after modification", r.Uploaded)
+	}
+
+	// changing ONLY size, with mtime untouched (still older than the quiet
+	// window), must also be recognised as a change: a sig comparison that
+	// dropped the size field would wrongly treat this as unchanged.
+	src.files[0].Size = 12345
+	if r := c.CollectOnce("work1", 60, ""); r.Uploaded != 1 {
+		t.Fatalf("uploaded=%d want 1 after size-only change", r.Uploaded)
 	}
 }
 
@@ -163,13 +171,41 @@ func TestCollectSinceSkipsHistory(t *testing.T) {
 	src := &fakeSource{}
 	src.add(".claude/projects/p/old.jsonl", "x\n", time.Date(2026, 7, 1, 0, 0, 0, 0, time.UTC))
 	src.add(".claude/projects/p/new.jsonl", "y\n", time.Date(2026, 8, 4, 0, 0, 0, 0, time.UTC))
+	// exactly on the cutoff date: the comparison is `< since`, so an equal
+	// date must be kept, not skipped.
+	src.add(".claude/projects/p/boundary.jsonl", "z\n", time.Date(2026, 8, 1, 0, 0, 0, 0, time.UTC))
 	store := newFakeStore()
 
 	r := newCollector(t, store, src, now).CollectOnce("work1", 60, "2026-08-01")
-	if r.Uploaded != 1 {
-		t.Fatalf("uploaded=%d want 1 (only files on/after 2026-08-01)", r.Uploaded)
+	if r.Uploaded != 2 {
+		t.Fatalf("uploaded=%d want 2 (only files on/after 2026-08-01)", r.Uploaded)
 	}
 	if _, ok := store.puts["agent_workdir/work1/data_collect/.claude/projects/p/new.jsonl"]; !ok {
 		t.Error("the newer file should have been uploaded")
+	}
+	if _, ok := store.puts["agent_workdir/work1/data_collect/.claude/projects/p/boundary.jsonl"]; !ok {
+		t.Error("a file dated exactly on the since cutoff should have been uploaded")
+	}
+}
+
+// Every other test passes quietSeconds explicitly, so a regression in the
+// `quietSeconds <= 0 -> defaultQuietSeconds` fallback (collect.go) would slip
+// through the rest of the suite unnoticed. This exercises that path directly.
+func TestCollectDefaultQuietWhenZero(t *testing.T) {
+	now := time.Date(2026, 8, 5, 12, 0, 0, 0, time.UTC)
+	src := &fakeSource{}
+	src.add(".claude/projects/p/fresh.jsonl", "a\n", now.Add(-30*time.Second))   // inside default 60s -> skip
+	src.add(".claude/projects/p/settled.jsonl", "b\n", now.Add(-90*time.Second)) // outside default 60s -> upload
+	store := newFakeStore()
+
+	r := newCollector(t, store, src, now).CollectOnce("work1", 0, "")
+	if r.Uploaded != 1 {
+		t.Fatalf("uploaded=%d errors=%v want 1 (default 60s quiet window)", r.Uploaded, r.Errors)
+	}
+	if _, ok := store.puts["agent_workdir/work1/data_collect/.claude/projects/p/settled.jsonl"]; !ok {
+		t.Error("the file older than the default 60s quiet window should have been uploaded")
+	}
+	if _, ok := store.puts["agent_workdir/work1/data_collect/.claude/projects/p/fresh.jsonl"]; ok {
+		t.Error("the file within the default 60s quiet window should not have been uploaded")
 	}
 }
