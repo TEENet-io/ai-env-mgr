@@ -179,6 +179,18 @@ func bind(t *testing.T, store *fakeStore, machine, user string) {
 	store.set(ossclient.BindingKey(machine), out, "b1")
 }
 
+// fakeCollector stands in for a real Collector so RunOnce's wiring can be
+// tested without touching the filesystem.
+type fakeCollector struct {
+	calls    []string // users it was called for
+	uploaded int
+}
+
+func (f *fakeCollector) CollectOnce(user string, quietSeconds int, since string) CollectResult {
+	f.calls = append(f.calls, user)
+	return CollectResult{Uploaded: f.uploaded}
+}
+
 func policyBytes(t *testing.T, p model.Policy) []byte {
 	t.Helper()
 	out, err := json.Marshal(p)
@@ -788,5 +800,51 @@ func TestRunOnceDoesNotRedownloadUnchangedCredentials(t *testing.T) {
 	}
 	if len(app.deployed) != 2 {
 		t.Errorf("a changed archive should be redelivered, got %d deploys", len(app.deployed))
+	}
+}
+
+func TestRunOnceRunsCollectorWhenEnabled(t *testing.T) {
+	store := newFakeStore()
+	app := &fakeApplier{}
+	s := newSyncer(t, store, app)
+	// bound to work1, which is a local user in newSyncer's fakeMachine
+	bind(t, store, "DESKTOP-A", "work1")
+	pol := model.DefaultPolicy()
+	pol.CollectEnabled = true
+	store.set(ossclient.PolicyKey(), policyBytes(t, pol), "petag")
+	col := &fakeCollector{uploaded: 3}
+	s.Collector = col
+
+	st, err := s.RunOnce()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(col.calls) != 1 || col.calls[0] != "work1" {
+		t.Fatalf("collector calls=%v want [work1]", col.calls)
+	}
+	if !st.CollectEnabled || st.CollectUploaded != 3 {
+		t.Fatalf("status collectEnabled=%v uploaded=%d want true/3", st.CollectEnabled, st.CollectUploaded)
+	}
+}
+
+func TestRunOnceSkipsCollectorWhenDisabled(t *testing.T) {
+	store := newFakeStore()
+	app := &fakeApplier{}
+	s := newSyncer(t, store, app)
+	bind(t, store, "DESKTOP-A", "work1")
+	// DefaultPolicy has CollectEnabled == false
+	store.set(ossclient.PolicyKey(), policyBytes(t, model.DefaultPolicy()), "petag")
+	col := &fakeCollector{uploaded: 3}
+	s.Collector = col
+
+	st, err := s.RunOnce()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(col.calls) != 0 {
+		t.Fatalf("collector should not run when disabled; calls=%v", col.calls)
+	}
+	if st.CollectEnabled || st.CollectUploaded != 0 {
+		t.Fatalf("status collectEnabled=%v uploaded=%d want false/0", st.CollectEnabled, st.CollectUploaded)
 	}
 }
