@@ -26,3 +26,6 @@ vendor/
 Thumbs.db
 .idea/
 .vscode/
+
+# SDD scratch
+.superpowers/
