@@ -1,0 +1,28 @@
+# Build output. Both binaries carry OSS credentials compiled in, so a built
+# artefact is as sensitive as the key itself -- never commit one.
+bin/
+dist/*.exe
+dist/agent
+dist/admin
+# Stray local builds: `go build` with no -o drops the binary beside the source.
+go/agent
+go/admin
+go/sealkey
+
+# Filled-in configuration. The checked-in credentials.go files are templates
+# with empty strings; if you keep your real values in a copy, keep it here.
+*.local.go
+*.local.json
+agent.config.json
+admin.config.json
+
+# Go
+*.test
+*.out
+vendor/
+
+# Editors / OS
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/

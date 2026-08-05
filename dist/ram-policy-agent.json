@@ -1,0 +1,25 @@
+{
+  "Version": "1",
+  "Statement": [
+    {
+      "Effect": "Allow",
+      "Action": [
+        "oss:GetObject"
+      ],
+      "Resource": [
+        "acs:oss:*:*:your-bucket-name/agent_workdir/policy.json",
+        "acs:oss:*:*:your-bucket-name/agent_workdir/_bindings/*",
+        "acs:oss:*:*:your-bucket-name/agent_workdir/*/credentials.zip"
+      ]
+    },
+    {
+      "Effect": "Allow",
+      "Action": [
+        "oss:PutObject"
+      ],
+      "Resource": [
+        "acs:oss:*:*:your-bucket-name/agent_workdir/_status/*"
+      ]
+    }
+  ]
+}
