@@ -31,6 +31,8 @@ type Report struct {
 	CredsETag       string
 	Interval        int
 	CredsApplied    bool
+	CollectEnabled  bool
+	CollectUploaded int
 	Errors          []string
 }
 
@@ -59,6 +61,8 @@ func Build(r Report) model.Status {
 		SyncIntervalMinutes: r.Interval,
 		CredsApplied:        r.CredsApplied,
 		AppLockerMode:       AppLockerMode(),
+		CollectEnabled:      r.CollectEnabled,
+		CollectUploaded:     r.CollectUploaded,
 		Errors:              errs,
 	}
 }

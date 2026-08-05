@@ -70,6 +70,10 @@ type Syncer struct {
 
 	// FallbackInterval is used when the policy does not specify one.
 	FallbackInterval int
+
+	// Collector uploads raw session files when policy.CollectEnabled is set.
+	// Optional: nil means collection is not wired in (tests, older builds).
+	Collector CollectRunner
 }
 
 func (s *Syncer) readMarker(name string) string {
@@ -235,6 +239,17 @@ func (s *Syncer) RunOnce() (model.Status, error) {
 		}
 	}
 
+	// ---- collection ----
+	// Only when enabled by policy, only for a bound employee whose profile is
+	// present: there is nothing to scan otherwise, and the object key needs the
+	// employee's directory.
+	collectUploaded := 0
+	if pol.CollectEnabled && s.Collector != nil && bound && boundUserExists {
+		cr := s.Collector.CollectOnce(binding.User, pol.CollectQuietSeconds, pol.CollectSince)
+		collectUploaded = cr.Uploaded
+		errs = append(errs, cr.Errors...)
+	}
+
 	// ---- status ----
 	interval := model.ClampInterval(pol.SyncIntervalMinutes, s.FallbackInterval)
 	st := status.Build(status.Report{
@@ -248,6 +263,8 @@ func (s *Syncer) RunOnce() (model.Status, error) {
 		CredsETag:       credsETag,
 		Interval:        interval,
 		CredsApplied:    credsApplied,
+		CollectEnabled:  pol.CollectEnabled,
+		CollectUploaded: collectUploaded,
 		Errors:          errs,
 	})
 

@@ -117,6 +117,7 @@ func printStatus(st model.Status, verbose bool) {
 	fmt.Printf("local users: %s\n", strings.Join(st.LocalUsers, ", "))
 	fmt.Printf("block=%v domains=%d interval=%dm creds=%v applocker=%s\n",
 		st.BlockEnabled, st.BlockedDomains, st.SyncIntervalMinutes, st.CredsApplied, st.AppLockerMode)
+	fmt.Printf("collect=%v uploaded=%d\n", st.CollectEnabled, st.CollectUploaded)
 	if verbose {
 		fmt.Printf("policyEtag=%s credsEtag=%s\n", orDash(st.PolicyETag), orDash(st.CredsETag))
 	}
@@ -156,6 +157,12 @@ func newSyncer() (*agentcore.Syncer, error) {
 		Version:          version,
 		StateDir:         stateDir(),
 		FallbackInterval: cfg.IntervalMinutes,
+		Collector: &agentcore.Collector{
+			Store:    store,
+			Source:   localFileSource{},
+			Machine:  machine,
+			StateDir: stateDir(),
+		},
 	}, nil
 }
 

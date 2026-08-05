@@ -71,8 +71,8 @@ your-bucket/
     │
     ├── work1/                           按【员工】分目录
     │   ├── credentials.zip              该员工的 AI 工具凭据（agent 只读）
-    │   └── data_collect/                【预留】该员工与 AI 的交互数据
-    │       └── ...                      结构待定，见 §6
+    │   └── data_collect/                该员工的原始会话（已实现，默认关闭）
+    │       └── ...                      结构见 §6
     ├── work2/
     │   ├── credentials.zip
     │   └── data_collect/
@@ -112,7 +112,7 @@ agent 以 SYSTEM 身份运行，`os.UserHomeDir()` 会返回 system profile 而�
 | 封禁策略 | `agent_workdir/policy.json` | `PolicyKey()` | admin | agent |
 | AI 凭据 | `agent_workdir/{员工}/credentials.zip` | `UserKey(user, "credentials.zip")` | admin | agent |
 | 员工目录 | `agent_workdir/{员工}/` | `UserPrefix(user)` | — | — |
-| 采集数据【预留】 | `agent_workdir/{员工}/data_collect/` | `DataCollectPrefix(user)` | agent | admin |
+| 采集数据 | `agent_workdir/{员工}/data_collect/` | `DataCollectPrefix(user)` | agent | admin |
 
 **路径消毒**：`{员工}` 和 `{主机名}` 都来自机器本地，是不可信输入。helper 会把它们压成单个路径元素——`../other`、`a/b/c`、`..\evil` 之类的构造都逃不出自己的前缀，测试有覆盖。
 
@@ -162,6 +162,7 @@ agent 每轮同步后写入。字段见 `go/internal/model/model.go` 的 `Status
 | `blockEnabled` / `blockedDomains` | 封禁开关、封禁域名条数 |
 | `syncIntervalMinutes` | 当前生效的同步间隔 |
 | `credsApplied` / `appLockerMode` | 凭据是否已投递、AppLocker 处于什么模式 |
+| `collectEnabled` / `collectUploaded` | 本机会话采集是否开启、本轮上传了多少个文件（见 §6） |
 | `errors` | 本轮出的错，逐条文本 |
 
 **agent 只写不读**。管理员用 `admin.exe status` 汇总所有机器。
@@ -173,6 +174,9 @@ agent 每轮同步后写入。字段见 `go/internal/model/model.go` 的 `Status
   "blockEnabled": true,
   "blockedDomains": ["openai.com", "chatgpt.com", "claude.ai", "anthropic.com"],
   "syncIntervalMinutes": 30,
+  "collectEnabled": false,
+  "collectQuietSeconds": 60,
+  "collectSince": "",
   "updatedAt": "2026-08-04T10:00:00Z"
 }
 ```
@@ -182,6 +186,8 @@ agent 每轮同步后写入。字段见 `go/internal/model/model.go` 的 `Status
 agent **无条件读它、无条件应用**，不看有没有绑定。所以一台刚从镜像开出来、还没分配给任何人的机器，第一次同步就会被封住。
 
 `syncIntervalMinutes` 会被钳制在 **1–1440** 分钟。字段缺失或为 0 时，用 agent 自带配置里的值；再没有就用内置默认 30 分钟。钳制是为了防止误设一个极端值导致机器再也拉不到新配置而失联。
+
+`collectEnabled` / `collectQuietSeconds` / `collectSince` 控制会话采集（§6），三者都是可选字段，缺省即为关闭；`collectEnabled` 默认 `false`，`collectQuietSeconds` 缺省或为 0 时按 60 秒处理，`collectSince` 缺省即采全部历史。
 
 ### 4.5 `agent_workdir/{员工}/credentials.zip`
 
@@ -262,7 +268,7 @@ zip 内的路径固定，agent 按下表映射到员工 profile：
 | `agent_workdir/_status/` | 读写 | **只写** |
 | `agent_workdir/policy.json` | 读写 | 只读 |
 | `agent_workdir/{员工}/credentials.zip` | 读写 | 只读 |
-| `agent_workdir/{员工}/data_collect/` | 读写 | 暂无（见 §6） |
+| `agent_workdir/{员工}/data_collect/` | 读写 | 只写，且**默认关闭**（见 §6） |
 | Bucket 内其他路径 | 无 | 无 |
 
 agent **明确不能做的**：读员工名单、写任何策略或凭据、删除任何对象、列举 Bucket、访问 `agent_workdir/` 以外的任何内容。
@@ -273,13 +279,46 @@ agent **明确不能做的**：读员工名单、写任何策略或凭据、删�
 
 ---
 
-## 6. `{员工}/data_collect/`（预留，本版不实现）
+## 6. `{员工}/data_collect/`（本版已实现，默认关闭）
 
-用于后续采集员工与 Codex / Claude 的交互数据。**当前版本不写任何代码，也不给 agent 任何权限**，只在结构上把位置留出来。
+用于采集**绑定员工**与 Codex / Claude 的原始会话数据，供离线分析。采集端本版**已实现**，代码在 `go/internal/agentcore/collect.go`，但**默认关闭**——`policy.json` 里的 `collectEnabled` 默认为 `false`，且 agent 的 RAM 授权默认不含 `data_collect` 的写权限。两者任一没打开都不会有对象写进来。
+
+**采什么**：只采**绑定员工**本人的 profile 下：
+
+- `.claude/projects/**/*.jsonl`
+- `.codex/sessions/**/rollout-*.jsonl`
+
+原文照传，**不做任何脱敏或解析**。
+
+**键结构**：与源目录一致，前缀是 `agent_workdir/{员工}/data_collect/`：
 
 ```
-agent_workdir/work1/data_collect/
+agent_workdir/work1/data_collect/.claude/projects/{project}/{session}.jsonl
+agent_workdir/work1/data_collect/.codex/sessions/{y}/{m}/{d}/rollout-....jsonl
 ```
+
+即 `DataCollectKey(user, rel)` = `DataCollectPrefix(user)` + 该文件相对 profile 目录的路径（`.claude/...` 或 `.codex/...`），大小写与目录层级原样保留。
+
+**开关字段**（`policy.json`，见 §4.4）：
+
+| 字段 | 类型 | 默认 | 含义 |
+|---|---|---|---|
+| `collectEnabled` | bool | `false` | 总开关 |
+| `collectQuietSeconds` | int，可选 | `60` | 去抖：文件最近一次修改要满这么久才采，避免正在写的会话被采半截 |
+| `collectSince` | string，可选，`YYYY-MM-DD` | 空 | 只采这天（按 **UTC** 日期比较）及之后修改的文件；空 = 采全部历史 |
+
+**启用步骤**（顺序不能反）：
+
+1. 先给 agent 的 RAM 策略加 §6 下面那条 `PutObject` 权限（`dist/ram-policy-agent.json` + 已部署的 RAM 策略都要加）
+2. 再把 `policy.json` 的 `collectEnabled` 置 `true`
+
+关闭就是反过来：先把 `collectEnabled` 置回 `false`，权限可以留着也可以之后再收回。
+
+**权限边界**：agent 对 `data_collect/` **只写不读**（拿不到 `oss:GetObject`/`oss:ListObjects`），符合 §5 的最小权限原则——机器密钥泄露也读不回任何人的对话记录。去重靠**本地 state 文件**（agent 状态目录下的 `collect-state.json`，记录每个源文件的 mtime+size），不依赖读 OSS 反查；本地源文件被删除后，该文件会从 state 里移除，但已上传的 OSS 副本不会被跟着删除。
+
+**何时跑**：作为 `agent.exe` 同步周期里的一步，只在 `collectEnabled=true` 且机器已绑定且绑定员工在本机有 profile 时才跑；节奏跟着同步间隔走，不单独计时。
+
+**验证**：跑一次 `agent.exe sync`，输出会有一行 `collect=<true/false> uploaded=<N>`；机器写回的 `agent_workdir/_status/{主机名}.json`（即 `admin.exe status` 读取的那个对象）里也带 `collectEnabled` / `collectUploaded` 两个字段，只是当前的汇总表格没有为它们单开列；到 OSS 控制台确认对象确实出现在 `agent_workdir/{员工}/data_collect/` 下。
 
 **为什么在每个员工目录里，而不是一个共享的 `data_collect/`**：
 
@@ -290,10 +329,8 @@ agent_workdir/work1/data_collect/
 
 **为什么在 `agent_workdir/` 内而不是和它平级**：这些数据是 **agent 写的**，属于 agent 的活动范围。`admin/` 那边只放管理员自己维护、agent 永远碰不到的东西。
 
-落地前必须先定的事项、以及对权限的影响，见 `实施计划.md` §13。这里只强调一条：
+代码已实现，权限授权仍是手工的一步。**启用要给 agent 加一条**（`dist/ram-policy-agent.json` 默认不含它，见 `dist/部署说明.md`）：
 
-> 采集要落地就得给 agent 加一条：
->
 > ```json
 > {
 >   "Effect": "Allow",
@@ -304,7 +341,7 @@ agent_workdir/work1/data_collect/
 >
 > **只给写，绝不给读**——一台机器的密钥泄露就等于所有员工的对话记录泄露，这个的敏感度比配置和凭据高一个量级。
 >
-> 这条权限在功能落地前不要提前加。
+> 这条权限在功能启用前不要提前加。
 
 ---
 

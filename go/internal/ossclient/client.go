@@ -125,14 +125,28 @@ func UserKey(user, name string) string {
 	return UserPrefix(user) + name
 }
 
-// DataCollectDir is where the future conversation-collection feature will
-// write, inside each employee's own directory rather than in one shared
-// place. Nothing writes here yet -- see OSS布局.md §6.
+// DataCollectDir is where the agent's session collector writes, inside each
+// employee's own directory rather than in one shared place. Access is
+// write-only (see Putter) and the feature is off by default, gated by
+// policy.collectEnabled -- see OSS布局.md §6.
 const DataCollectDir = "data_collect/"
 
 // DataCollectPrefix is one employee's collected-data directory.
 func DataCollectPrefix(user string) string {
 	return UserPrefix(user) + DataCollectDir
+}
+
+// DataCollectKey builds the object key for one collected session file inside
+// an employee's data_collect directory. rel is the file's path relative to the
+// employee profile (for example ".claude/projects/p/a.jsonl").
+//
+// rel is rooted and cleaned so a crafted "../" cannot climb out of the
+// employee's directory; agents have write-only access here, and this keeps a
+// bad relative path from landing an object anywhere else in the bucket.
+func DataCollectKey(user, rel string) string {
+	rel = strings.ReplaceAll(rel, `\`, "/")
+	clean := strings.TrimPrefix(path.Clean("/"+rel), "/")
+	return DataCollectPrefix(user) + clean
 }
 
 // AdminKey builds a key under the admin-only directory, which sits outside
