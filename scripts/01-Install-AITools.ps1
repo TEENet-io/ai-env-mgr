@@ -105,20 +105,48 @@ if (-not $SkipCli) {
         } catch { Write-Host "  [err] Codex CLI install failed: $_" -ForegroundColor Red }
     }
 
-    # Claude Code -- skip if already in ToolsDir (use -Force to reinstall)
+    # Claude Code -- native installer (no winget / no Node). Skip if already staged.
+    # The winget path is unreliable on WuYing / Windows Server images that ship
+    # without App Installer, so the official native installer is primary and
+    # winget is only a fallback when it happens to be present.
     $claudeDst = Join-Path $ToolsDir "claude.exe"
     if ((Test-Path $claudeDst) -and (-not $Force)) {
         Write-Host "  [skip] claude.exe already in $ToolsDir (use -Force to reinstall)" -ForegroundColor DarkYellow
     } else {
-        Write-Host "  Installing Claude Code (winget)..." -ForegroundColor White
-        try {
-            winget install --id Anthropic.ClaudeCode --accept-source-agreements --accept-package-agreements --silent
-            $cands = @("$env:USERPROFILE\.local\bin\claude.exe", "$env:LOCALAPPDATA\Programs\claude\claude.exe")
-            $found = $cands | Where-Object { Test-Path $_ } | Select-Object -First 1
-            if (-not $found) { $c = Get-Command claude -ErrorAction SilentlyContinue; if ($c) { $found = $c.Source } }
-            if ($found) { Copy-Item $found $claudeDst -Force; Write-Host "  [ok] claude.exe -> $ToolsDir" -ForegroundColor Green }
-            else { Write-Host "  [warn] Claude installed but exe not located; on PATH after re-login." -ForegroundColor Yellow }
-        } catch { Write-Host "  [err] Claude Code install failed: $_ (fallback: Node + 'npm i -g @anthropic-ai/claude-code')" -ForegroundColor Red }
+        # Where the installers drop claude.exe. Prefer the real versioned native
+        # binary under .local\share\...\versions (self-contained, so it still runs
+        # when copied to C:\Tools for OTHER users) over the .local\bin launcher,
+        # which may just point back into the installing user's profile.
+        $findClaude = {
+            $c = $null
+            $v = Get-ChildItem "$env:USERPROFILE\.local\share\claude\versions" -Filter "claude*.exe" -Recurse -ErrorAction SilentlyContinue |
+                Sort-Object LastWriteTime -Descending | Select-Object -First 1
+            if ($v) { $c = $v.FullName }
+            if (-not $c) {
+                $c = @("$env:USERPROFILE\.local\bin\claude.exe", "$env:LOCALAPPDATA\Programs\claude\claude.exe") |
+                    Where-Object { Test-Path $_ } | Select-Object -First 1
+            }
+            if (-not $c) { $g = Get-Command claude -ErrorAction SilentlyContinue; if ($g) { $c = $g.Source } }
+            $c
+        }
+
+        Write-Host "  Installing Claude Code (official native installer)..." -ForegroundColor White
+        try { Invoke-Expression (Invoke-RestMethod -Uri 'https://claude.ai/install.ps1') }
+        catch { Write-Host "  [warn] native installer failed: $_" -ForegroundColor Yellow }
+
+        $found = & $findClaude
+        if (-not $found -and (Get-Command winget -ErrorAction SilentlyContinue)) {
+            Write-Host "  native installer did not place claude.exe; trying winget..." -ForegroundColor White
+            try { winget install --id Anthropic.ClaudeCode --accept-source-agreements --accept-package-agreements --silent } catch {}
+            $found = & $findClaude
+        }
+
+        if ($found) {
+            Copy-Item $found $claudeDst -Force
+            Write-Host "  [ok] claude.exe -> $ToolsDir  (from $found)" -ForegroundColor Green
+        } else {
+            Write-Host "  [err] Claude installed but claude.exe not located. Last resort: install Node.js 22+, then 'npm i -g @anthropic-ai/claude-code'." -ForegroundColor Red
+        }
     }
 
     $p = [Environment]::GetEnvironmentVariable('Path','Machine')
