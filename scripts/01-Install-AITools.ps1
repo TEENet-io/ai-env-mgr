@@ -155,6 +155,25 @@ if (-not $SkipCli) {
     else { Write-Host "  [skip] $ToolsDir already in machine PATH" -ForegroundColor DarkYellow }
     [Environment]::SetEnvironmentVariable('DISABLE_AUTOUPDATER','1','Machine')
     Write-Host "  [ok] DISABLE_AUTOUPDATER=1 (machine)" -ForegroundColor Green
+
+    # Desktop shortcut for Claude Code, on the PUBLIC desktop so it shows on
+    # EVERY user's desktop (current and future) without a per-user step. codex
+    # and ChatGPT are reachable from the ChatGPT app, so only Claude Code needs
+    # one. It is a CLI, so the icon opens a terminal that launches `claude` in
+    # the user's own home directory (%USERPROFILE% expands per user at launch).
+    try {
+        $lnkPath = Join-Path (Join-Path $env:PUBLIC "Desktop") "Claude Code.lnk"
+        $ps = "$env:SystemRoot\System32\WindowsPowerShell\v1.0\powershell.exe"
+        $ws = New-Object -ComObject WScript.Shell
+        $sc = $ws.CreateShortcut($lnkPath)
+        $sc.TargetPath       = $ps
+        $sc.Arguments        = "-NoExit -Command claude"
+        $sc.WorkingDirectory = "%USERPROFILE%"
+        $sc.IconLocation     = "$ps,0"
+        $sc.Description       = "Claude Code (opens a terminal running claude)"
+        $sc.Save()
+        Write-Host "  [ok] desktop shortcut -> $lnkPath (all users)" -ForegroundColor Green
+    } catch { Write-Host "  [warn] could not create Claude Code desktop shortcut: $_" -ForegroundColor Yellow }
 }
 
 # ============ Resolve ChatGPT App package (reuse local, or auto-download) ============
