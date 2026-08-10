@@ -183,6 +183,17 @@ if ($needGui) {
             Write-Host "  [ok] downloaded $arch package + license -> $ToolsDir" -ForegroundColor Green
         } catch { Write-Host "  [err] download failed: $_" -ForegroundColor Red; $sharedMsix = $null }
     }
+    # A reused local msix does not guarantee its license is next to it. Fetch the
+    # license when it is missing, so the all-user provision below is not silently
+    # skipped (Add-AppxProvisionedPackage requires -LicensePath).
+    if ($sharedMsix -and (Test-Path $sharedMsix) -and $sharedLic -and (-not (Test-Path $sharedLic))) {
+        Write-Host "  ChatGPT-License.xml missing; downloading it..." -ForegroundColor White
+        try {
+            Invoke-WebRequest "https://persistent.oaistatic.com/codex-app-prod/ChatGPT-License.xml" -OutFile $sharedLic -UseBasicParsing -Headers @{ "User-Agent" = "Mozilla/5.0" }
+            Write-Host "  [ok] license downloaded -> $sharedLic" -ForegroundColor Green
+        } catch { Write-Host "  [warn] license download failed: $_ (all-user provision needs it; current-user install still works)" -ForegroundColor Yellow }
+    }
+
     if ($sharedMsix -and (Test-Path $sharedMsix)) { icacls "$sharedMsix" /grant "*S-1-5-32-545:(RX)" /C | Out-Null }  # Users: read/execute
 }
 
