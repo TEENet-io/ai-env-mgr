@@ -28,6 +28,9 @@ type Store interface {
 	Get(key string) ([]byte, string, error)
 	Put(key string, data []byte) error
 	List(prefix string) ([]string, error)
+	// ListInfo is List with per-object size and modification time, used to
+	// summarise collected session data without downloading it.
+	ListInfo(prefix string) ([]ossclient.ObjectInfo, error)
 	Delete(key string) error
 	// SignedURL grants temporary read access to one object without the
 	// holder needing credentials -- how a staged file reaches a machine.

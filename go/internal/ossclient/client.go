@@ -268,6 +268,36 @@ func (c *Client) List(prefix string) ([]string, error) {
 	}
 }
 
+// ObjectInfo is one object's listing metadata: enough to count and age
+// collected files without downloading any of them.
+type ObjectInfo struct {
+	Key          string
+	Size         int64
+	LastModified time.Time
+}
+
+// ListInfo is List with each object's size and modification time, following
+// pagination the same way. The admin uses it to report collection activity
+// (how many session files landed, and when the latest arrived) without ever
+// reading the conversations themselves.
+func (c *Client) ListInfo(prefix string) ([]ObjectInfo, error) {
+	var out []ObjectInfo
+	marker := ""
+	for {
+		res, err := c.bucket.ListObjects(oss.Prefix(prefix), oss.Marker(marker))
+		if err != nil {
+			return nil, fmt.Errorf("list %q: %w", prefix, err)
+		}
+		for _, o := range res.Objects {
+			out = append(out, ObjectInfo{Key: o.Key, Size: o.Size, LastModified: o.LastModified})
+		}
+		if !res.IsTruncated {
+			return out, nil
+		}
+		marker = res.NextMarker
+	}
+}
+
 // ErrNotFound means the object definitively does not exist -- the service
 // answered, and answered 404.
 //
