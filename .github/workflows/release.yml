@@ -1,0 +1,49 @@
+name: Release
+
+# On a version tag (e.g. v1.2.0), build the Windows binaries and attach them
+# to a GitHub Release so they can be downloaded directly.
+#
+# NOTE: the repo's credentials.go files are blank templates, so these binaries
+# carry NO OSS keys -- they are credential-less templates (see RELEASE_NOTES.md).
+# Nothing sensitive is published. Production binaries are built locally after
+# filling in the keys.
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write # required to create the release
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go/go.mod
+          cache-dependency-path: go/go.sum
+
+      - name: Verify (make check)
+        working-directory: go
+        run: make check
+
+      # $GITHUB_REF_NAME is the tag name, set by the runner. Strip a leading
+      # "v" for the embedded version string. Not interpolated via ${{ }}, so
+      # there is no shell-injection surface.
+      - name: Build Windows binaries
+        working-directory: go
+        run: make all VERSION="${GITHUB_REF_NAME#v}"
+
+      - name: Checksums
+        working-directory: dist
+        run: sha256sum agent.exe admin.exe | tee SHA256SUMS.txt
+
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: >
+          gh release create "$GITHUB_REF_NAME"
+          dist/agent.exe dist/admin.exe dist/SHA256SUMS.txt
+          --title "$GITHUB_REF_NAME"
+          --notes-file .github/RELEASE_NOTES.md
