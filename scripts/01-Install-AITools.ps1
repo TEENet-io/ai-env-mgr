@@ -260,6 +260,30 @@ if ($EnsureGuiForUsers.Count -gt 0) {
     }
 }
 
+# ============ Desktop shortcut for ChatGPT (all users, public desktop) ============
+# ChatGPT is an MSIX app, so the shortcut launches it by its AppUserModelID via
+# explorer.exe. The AUMID is identical for every user, so one public-desktop
+# shortcut works for all -- but it only LAUNCHES for a user who actually has the
+# app installed. If new users don't get the app, that's a provisioning problem
+# to fix separately (Active Setup), not something a shortcut alone solves.
+try {
+    $pkg = Get-AppxPackage -Name "OpenAI.Codex" -ErrorAction SilentlyContinue
+    if ($pkg) {
+        $appId = @((Get-AppxPackageManifest $pkg).Package.Applications.Application)[0].Id
+        $aumid = "$($pkg.PackageFamilyName)!$appId"
+        $lnk = Join-Path (Join-Path $env:PUBLIC "Desktop") "ChatGPT.lnk"
+        $ws = New-Object -ComObject WScript.Shell
+        $sc = $ws.CreateShortcut($lnk)
+        $sc.TargetPath  = "$env:SystemRoot\explorer.exe"
+        $sc.Arguments   = "shell:AppsFolder\$aumid"
+        $sc.Description  = "ChatGPT (includes Codex)"
+        $sc.Save()
+        Write-Host "  [ok] ChatGPT desktop shortcut -> $lnk (all users)" -ForegroundColor Green
+    } else {
+        Write-Host "  [warn] ChatGPT not installed for the current user; desktop shortcut skipped" -ForegroundColor Yellow
+    }
+} catch { Write-Host "  [warn] could not create ChatGPT desktop shortcut: $_" -ForegroundColor Yellow }
+
 Write-Host ""
 Write-Host "All done." -ForegroundColor Green
 Write-Host "NOTE: machine PATH change needs a NEW login/session for the CLI." -ForegroundColor Yellow
