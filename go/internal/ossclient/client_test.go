@@ -1,9 +1,39 @@
 package ossclient
 
 import (
+	"errors"
+	"fmt"
 	"strings"
 	"testing"
+
+	"github.com/aliyun/aliyun-oss-go-sdk/oss"
 )
+
+func TestClassifyVerify(t *testing.T) {
+	cases := []struct {
+		name string
+		in   error
+		want error // sentinel expected via errors.Is; nil means "passed through"
+	}{
+		{"wrong key id", oss.ServiceError{Code: "InvalidAccessKeyId"}, ErrBadCredentials},
+		{"bad signature", oss.ServiceError{Code: "SignatureDoesNotMatch"}, ErrBadCredentials},
+		{"access denied", oss.ServiceError{Code: "AccessDenied"}, ErrAccessDenied},
+		{"other service error", oss.ServiceError{Code: "NoSuchBucket"}, nil},
+		{"plain error", fmt.Errorf("dial tcp: timeout"), nil},
+	}
+	for _, c := range cases {
+		got := classifyVerify(c.in)
+		if c.want != nil {
+			if !errors.Is(got, c.want) {
+				t.Errorf("%s: classifyVerify=%v, want errors.Is %v", c.name, got, c.want)
+			}
+		} else {
+			if errors.Is(got, ErrBadCredentials) || errors.Is(got, ErrAccessDenied) {
+				t.Errorf("%s: classifyVerify=%v should have passed through unchanged", c.name, got)
+			}
+		}
+	}
+}
 
 func TestUserKey(t *testing.T) {
 	cases := []struct{ user, name, want string }{

@@ -1,0 +1,86 @@
+name: Release
+
+# On a version tag (e.g. v1.2.0), build the binaries and attach them to a
+# GitHub Release so they can be downloaded directly.
+#
+#   agent.exe            windows -- RESTRICTED agent OSS key injected from repo
+#                        secrets at link time (-ldflags -X), ready to run.
+#   admin-<os>-<arch>    linux/windows/macos, NO key -- the admin enters OSS
+#                        credentials interactively at runtime (nothing saved to
+#                        disk). The full read-write key must never be baked into
+#                        a published artifact.
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write # required to create the release
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go/go.mod
+          cache-dependency-path: go/go.sum
+
+      - name: Verify (make check)
+        working-directory: go
+        run: make check
+
+      # agent.exe only: the RESTRICTED agent key is injected via -ldflags -X on
+      # the string vars in cmd/agent/credentials.go, so nothing is written to
+      # disk. Secrets arrive via env (never interpolated into the script) and
+      # GitHub masks them in logs. OSS bucket/endpoint/keys contain no spaces,
+      # which is what keeps the space-split ldflags safe.
+      - name: Build agent.exe (windows, injected key)
+        working-directory: go
+        env:
+          AGENT_OSS_BUCKET: ${{ secrets.AGENT_OSS_BUCKET }}
+          AGENT_OSS_ENDPOINT: ${{ secrets.AGENT_OSS_ENDPOINT }}
+          AGENT_OSS_ACCESS_KEY_ID: ${{ secrets.AGENT_OSS_ACCESS_KEY_ID }}
+          AGENT_OSS_ACCESS_KEY_SECRET: ${{ secrets.AGENT_OSS_ACCESS_KEY_SECRET }}
+        run: |
+          set -euo pipefail
+          VER="${GITHUB_REF_NAME#v}"
+          LD="-s -w -X main.version=${VER}"
+          if [ -n "${AGENT_OSS_ACCESS_KEY_ID}" ]; then
+            LD="${LD} -X main.ossBucket=${AGENT_OSS_BUCKET} -X main.ossAccessKeyID=${AGENT_OSS_ACCESS_KEY_ID} -X main.ossAccessKeySecret=${AGENT_OSS_ACCESS_KEY_SECRET}"
+            if [ -n "${AGENT_OSS_ENDPOINT}" ]; then
+              LD="${LD} -X main.ossEndpoint=${AGENT_OSS_ENDPOINT}"
+            fi
+            echo "agent.exe: restricted OSS credentials injected (config=built-in)"
+          else
+            echo "::warning::AGENT_OSS_ACCESS_KEY_ID secret is not set; building a credential-less template agent.exe"
+          fi
+          GOOS=windows GOARCH=amd64 go build -trimpath -ldflags "${LD}" -o ../dist/agent.exe ./cmd/agent
+
+      # admin: no key, ever. The administrator enters credentials at runtime.
+      # Built for the three platforms an administrator is likely to run on.
+      - name: Build admin (linux/windows/macos, no key)
+        working-directory: go
+        run: |
+          set -euo pipefail
+          VER="${GITHUB_REF_NAME#v}"
+          LD="-s -w -X main.version=${VER}"
+          build() { GOOS="$1" GOARCH="$2" go build -trimpath -ldflags "${LD}" -o "../dist/$3" ./cmd/admin; }
+          build linux   amd64 admin-linux-amd64
+          build windows amd64 admin-windows-amd64.exe
+          build darwin  arm64 admin-darwin-arm64
+
+      - name: Checksums
+        working-directory: dist
+        run: sha256sum agent.exe admin-linux-amd64 admin-windows-amd64.exe admin-darwin-arm64 | tee SHA256SUMS.txt
+
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: >
+          gh release create "$GITHUB_REF_NAME"
+          dist/agent.exe
+          dist/admin-linux-amd64 dist/admin-windows-amd64.exe dist/admin-darwin-arm64
+          dist/SHA256SUMS.txt
+          --title "$GITHUB_REF_NAME"
+          --notes-file .github/RELEASE_NOTES.md

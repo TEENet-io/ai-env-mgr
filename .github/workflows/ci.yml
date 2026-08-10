@@ -1,0 +1,21 @@
+name: CI
+
+# Runs the same gate as `make check`: gofmt, vet (both platforms), tests, and
+# a Windows build -- the only target that actually ships.
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go/go.mod
+          cache-dependency-path: go/go.sum
+      - name: make check
+        working-directory: go
+        run: make check

@@ -9,14 +9,13 @@ import (
 	"os"
 
 	"github.com/TEENet-io/ai-env-mgr/internal/admincore"
-	"github.com/TEENet-io/ai-env-mgr/internal/config"
 	"github.com/TEENet-io/ai-env-mgr/internal/ossclient"
 )
 
 var version = "dev"
 
 func newManager() (*admincore.Manager, error) {
-	cfg, _, err := config.Resolve(builtIn(), config.DefaultAdminPath())
+	cfg, _, err := resolveAdminCreds()
 	if err != nil {
 		return nil, err
 	}

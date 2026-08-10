@@ -298,6 +298,41 @@ func (c *Client) ListInfo(prefix string) ([]ObjectInfo, error) {
 	}
 }
 
+// Sentinel errors from Verify, so a caller (the admin's interactive prompt)
+// can tell a wrong key from a valid key whose RAM policy is too narrow: the
+// first is fixed by re-typing, the second by widening the policy.
+var (
+	ErrBadCredentials = errors.New("access key id or secret is wrong")
+	ErrAccessDenied   = errors.New("credentials are valid but lack permission")
+)
+
+// Verify makes one minimal authenticated request to confirm the credentials
+// actually work: it lists a single object at the bucket root, the smallest
+// call that still exercises the signature. A nil return means the key can
+// reach the bucket; ErrBadCredentials and ErrAccessDenied classify the two
+// failures the caller reacts to differently.
+func (c *Client) Verify() error {
+	if _, err := c.bucket.ListObjects(oss.MaxKeys(1)); err != nil {
+		return classifyVerify(err)
+	}
+	return nil
+}
+
+// classifyVerify maps the OSS auth failures onto the sentinels above. Anything
+// else (a bad bucket, a network error) is passed through unchanged.
+func classifyVerify(err error) error {
+	var svc oss.ServiceError
+	if errors.As(err, &svc) {
+		switch svc.Code {
+		case "InvalidAccessKeyId", "SignatureDoesNotMatch":
+			return fmt.Errorf("%w (%s)", ErrBadCredentials, svc.Code)
+		case "AccessDenied":
+			return fmt.Errorf("%w (%s)", ErrAccessDenied, svc.Code)
+		}
+	}
+	return err
+}
+
 // ErrNotFound means the object definitively does not exist -- the service
 // answered, and answered 404.
 //
