@@ -2,7 +2,8 @@
 <#
 .SYNOPSIS
   One-shot AI toolchain init for a shared Windows machine (single file, all init steps):
-    Part 1 (CLI, shared):        Codex CLI + Claude Code native single-exe -> C:\Tools + machine PATH.
+    Part 1 (CLI, shared):        Codex CLI single-exe -> C:\Tools; Claude Code via npm (auto-installs
+                                 Node LTS if missing) -> C:\Tools\npm-global; both on machine PATH (all users).
     Part 2 (GUI, provisioned):   ChatGPT desktop App (Chat/Work/Codex GUI). Auto-downloads the official
                                  offline package (or use -ChatGptMsix), provisions for ALL future users,
                                  and installs for the current user.
@@ -105,47 +106,47 @@ if (-not $SkipCli) {
         } catch { Write-Host "  [err] Codex CLI install failed: $_" -ForegroundColor Red }
     }
 
-    # Claude Code -- native installer (no winget / no Node). Skip if already staged.
-    # The winget path is unreliable on WuYing / Windows Server images that ship
-    # without App Installer, so the official native installer is primary and
-    # winget is only a fallback when it happens to be present.
-    $claudeDst = Join-Path $ToolsDir "claude.exe"
-    if ((Test-Path $claudeDst) -and (-not $Force)) {
-        Write-Host "  [skip] claude.exe already in $ToolsDir (use -Force to reinstall)" -ForegroundColor DarkYellow
+    # Claude Code -- via npm. This image has no winget, and the claude.ai native
+    # installer gets Cloudflare-challenged from some networks (Alibaba/WuYing
+    # egress), so npm off the public registry is the reliable path. npm needs
+    # Node, so install Node LTS (machine-wide MSI) first if it is missing, then
+    # install Claude Code into a MACHINE location so every user gets `claude`,
+    # not just the admin running this.
+    $npmGlobal  = Join-Path $ToolsDir "npm-global"
+    $claudeShim = Join-Path $npmGlobal "claude.cmd"
+    if ((Test-Path $claudeShim) -and (-not $Force)) {
+        Write-Host "  [skip] claude already installed (use -Force to reinstall)" -ForegroundColor DarkYellow
     } else {
-        # Where the installers drop claude.exe. Prefer the real versioned native
-        # binary under .local\share\...\versions (self-contained, so it still runs
-        # when copied to C:\Tools for OTHER users) over the .local\bin launcher,
-        # which may just point back into the installing user's profile.
-        $findClaude = {
-            $c = $null
-            $v = Get-ChildItem "$env:USERPROFILE\.local\share\claude\versions" -Filter "claude*.exe" -Recurse -ErrorAction SilentlyContinue |
-                Sort-Object LastWriteTime -Descending | Select-Object -First 1
-            if ($v) { $c = $v.FullName }
-            if (-not $c) {
-                $c = @("$env:USERPROFILE\.local\bin\claude.exe", "$env:LOCALAPPDATA\Programs\claude\claude.exe") |
-                    Where-Object { Test-Path $_ } | Select-Object -First 1
-            }
-            if (-not $c) { $g = Get-Command claude -ErrorAction SilentlyContinue; if ($g) { $c = $g.Source } }
-            $c
+        # 1) ensure Node + npm
+        if (-not (Get-Command npm -ErrorAction SilentlyContinue)) {
+            Write-Host "  Node.js/npm not found -- installing Node LTS (machine-wide)..." -ForegroundColor White
+            try {
+                $nodeMsi = Join-Path $env:TEMP "node-lts-x64.msi"
+                Invoke-WebRequest "https://nodejs.org/dist/v22.12.0/node-v22.12.0-x64.msi" -OutFile $nodeMsi -UseBasicParsing
+                Start-Process msiexec.exe -Wait -ArgumentList "/i `"$nodeMsi`" /qn /norestart"
+                # refresh PATH in this session so npm is callable right away
+                $env:Path = [Environment]::GetEnvironmentVariable('Path','Machine') + ';' + [Environment]::GetEnvironmentVariable('Path','User')
+                Write-Host "  [ok] Node installed" -ForegroundColor Green
+            } catch { Write-Host "  [err] Node install failed: $_" -ForegroundColor Red }
         }
 
-        Write-Host "  Installing Claude Code (official native installer)..." -ForegroundColor White
-        try { Invoke-Expression (Invoke-RestMethod -Uri 'https://claude.ai/install.ps1') }
-        catch { Write-Host "  [warn] native installer failed: $_" -ForegroundColor Yellow }
-
-        $found = & $findClaude
-        if (-not $found -and (Get-Command winget -ErrorAction SilentlyContinue)) {
-            Write-Host "  native installer did not place claude.exe; trying winget..." -ForegroundColor White
-            try { winget install --id Anthropic.ClaudeCode --accept-source-agreements --accept-package-agreements --silent } catch {}
-            $found = & $findClaude
-        }
-
-        if ($found) {
-            Copy-Item $found $claudeDst -Force
-            Write-Host "  [ok] claude.exe -> $ToolsDir  (from $found)" -ForegroundColor Green
+        # 2) install Claude Code globally into $npmGlobal (a machine path)
+        if (Get-Command npm -ErrorAction SilentlyContinue) {
+            New-Item -ItemType Directory -Force -Path $npmGlobal | Out-Null
+            $env:npm_config_prefix = $npmGlobal
+            Write-Host "  Installing Claude Code (npm -> $npmGlobal)..." -ForegroundColor White
+            try {
+                cmd /c "npm install -g @anthropic-ai/claude-code"
+                if (Test-Path $claudeShim) {
+                    $p = [Environment]::GetEnvironmentVariable('Path','Machine')
+                    if ($p -notlike "*$npmGlobal*") { [Environment]::SetEnvironmentVariable('Path', ($p.TrimEnd(';') + ";$npmGlobal"), 'Machine') }
+                    Write-Host "  [ok] claude -> $npmGlobal (added to machine PATH, all users)" -ForegroundColor Green
+                } else {
+                    Write-Host "  [warn] npm finished but claude.cmd not found in $npmGlobal" -ForegroundColor Yellow
+                }
+            } catch { Write-Host "  [err] npm install failed: $_ (slow/blocked in CN? try: npm config set registry https://registry.npmmirror.com)" -ForegroundColor Red }
         } else {
-            Write-Host "  [err] Claude installed but claude.exe not located. Last resort: install Node.js 22+, then 'npm i -g @anthropic-ai/claude-code'." -ForegroundColor Red
+            Write-Host "  [err] npm still unavailable; open a NEW admin PowerShell and run 'npm i -g @anthropic-ai/claude-code'." -ForegroundColor Red
         }
     }
 
@@ -154,6 +155,31 @@ if (-not $SkipCli) {
     else { Write-Host "  [skip] $ToolsDir already in machine PATH" -ForegroundColor DarkYellow }
     [Environment]::SetEnvironmentVariable('DISABLE_AUTOUPDATER','1','Machine')
     Write-Host "  [ok] DISABLE_AUTOUPDATER=1 (machine)" -ForegroundColor Green
+
+    # Desktop shortcut for Claude Code, on the PUBLIC desktop so it shows on
+    # EVERY user's desktop (current and future) without a per-user step. codex
+    # and ChatGPT are reachable from the ChatGPT app, so only Claude Code needs
+    # one. Prefer the real native claude.exe (so the shortcut carries Claude's
+    # own icon and runs it directly); fall back to a PowerShell wrapper only if
+    # the native binary can't be located.
+    try {
+        $lnkPath = Join-Path (Join-Path $env:PUBLIC "Desktop") "Claude Code.lnk"
+        # Launch via PowerShell (reliably gives an interactive console), but take
+        # the icon from the native claude.exe so the shortcut shows Claude's own
+        # icon rather than PowerShell's.
+        $ps = "$env:SystemRoot\System32\WindowsPowerShell\v1.0\powershell.exe"
+        $claudeExe = Get-ChildItem "$npmGlobal\node_modules" -Filter "claude.exe" -Recurse -ErrorAction SilentlyContinue |
+            Select-Object -First 1
+        $ws = New-Object -ComObject WScript.Shell
+        $sc = $ws.CreateShortcut($lnkPath)
+        $sc.TargetPath       = $ps
+        $sc.Arguments        = "-NoExit -Command claude"
+        $sc.IconLocation     = if ($claudeExe) { "$($claudeExe.FullName),0" } else { "$ps,0" }
+        $sc.WorkingDirectory = "%USERPROFILE%"
+        $sc.Description       = "Claude Code"
+        $sc.Save()
+        Write-Host "  [ok] desktop shortcut -> $lnkPath (all users)" -ForegroundColor Green
+    } catch { Write-Host "  [warn] could not create Claude Code desktop shortcut: $_" -ForegroundColor Yellow }
 }
 
 # ============ Resolve ChatGPT App package (reuse local, or auto-download) ============
@@ -182,6 +208,17 @@ if ($needGui) {
             Write-Host "  [ok] downloaded $arch package + license -> $ToolsDir" -ForegroundColor Green
         } catch { Write-Host "  [err] download failed: $_" -ForegroundColor Red; $sharedMsix = $null }
     }
+    # A reused local msix does not guarantee its license is next to it. Fetch the
+    # license when it is missing, so the all-user provision below is not silently
+    # skipped (Add-AppxProvisionedPackage requires -LicensePath).
+    if ($sharedMsix -and (Test-Path $sharedMsix) -and $sharedLic -and (-not (Test-Path $sharedLic))) {
+        Write-Host "  ChatGPT-License.xml missing; downloading it..." -ForegroundColor White
+        try {
+            Invoke-WebRequest "https://persistent.oaistatic.com/codex-app-prod/ChatGPT-License.xml" -OutFile $sharedLic -UseBasicParsing -Headers @{ "User-Agent" = "Mozilla/5.0" }
+            Write-Host "  [ok] license downloaded -> $sharedLic" -ForegroundColor Green
+        } catch { Write-Host "  [warn] license download failed: $_ (all-user provision needs it; current-user install still works)" -ForegroundColor Yellow }
+    }
+
     if ($sharedMsix -and (Test-Path $sharedMsix)) { icacls "$sharedMsix" /grant "*S-1-5-32-545:(RX)" /C | Out-Null }  # Users: read/execute
 }
 
@@ -228,6 +265,35 @@ if ($EnsureGuiForUsers.Count -gt 0) {
         }
     }
 }
+
+# ============ Desktop shortcut for ChatGPT (all users, public desktop) ============
+# ChatGPT is an MSIX app, so the shortcut launches it by its AppUserModelID via
+# explorer.exe. The AUMID is identical for every user, so one public-desktop
+# shortcut works for all -- but it only LAUNCHES for a user who actually has the
+# app installed. If new users don't get the app, that's a provisioning problem
+# to fix separately (Active Setup), not something a shortcut alone solves.
+try {
+    $pkg = Get-AppxPackage -Name "OpenAI.Codex" -ErrorAction SilentlyContinue
+    if ($pkg) {
+        $app   = @((Get-AppxPackageManifest $pkg).Package.Applications.Application)[0]
+        $aumid = "$($pkg.PackageFamilyName)!$($app.Id)"
+        $lnk = Join-Path (Join-Path $env:PUBLIC "Desktop") "ChatGPT.lnk"
+        $ws = New-Object -ComObject WScript.Shell
+        $sc = $ws.CreateShortcut($lnk)
+        $sc.TargetPath  = "$env:SystemRoot\explorer.exe"
+        $sc.Arguments   = "shell:AppsFolder\$aumid"
+        # ChatGPT's own icon: its executable inside the package install location.
+        if ($app.Executable) {
+            $exePath = Join-Path $pkg.InstallLocation $app.Executable
+            if (Test-Path $exePath) { $sc.IconLocation = "$exePath,0" }
+        }
+        $sc.Description  = "ChatGPT (includes Codex)"
+        $sc.Save()
+        Write-Host "  [ok] ChatGPT desktop shortcut -> $lnk (all users)" -ForegroundColor Green
+    } else {
+        Write-Host "  [warn] ChatGPT not installed for the current user; desktop shortcut skipped" -ForegroundColor Yellow
+    }
+} catch { Write-Host "  [warn] could not create ChatGPT desktop shortcut: $_" -ForegroundColor Yellow }
 
 Write-Host ""
 Write-Host "All done." -ForegroundColor Green

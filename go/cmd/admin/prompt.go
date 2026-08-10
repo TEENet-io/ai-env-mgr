@@ -33,17 +33,31 @@ type readSecret func(prompt string) (string, error)
 //
 // Nothing here is written to disk: the returned Config lives only in memory
 // for this one run.
-func promptCredentials(out io.Writer, line readLine, secret readSecret, verify func(config.Config) error) (config.Config, error) {
-	fmt.Fprintln(out, "No OSS credentials found. Enter them to continue.")
-	fmt.Fprintln(out, "(Nothing is saved to disk -- you will be asked again next run.)")
-
-	bucket, err := line("OSS bucket: ")
-	if err != nil {
-		return config.Config{}, err
+func promptCredentials(out io.Writer, line readLine, secret readSecret, verify func(config.Config) error, presetBucket, presetEndpoint string) (config.Config, error) {
+	// bucket and endpoint may be compiled into the binary; when they are, only
+	// the AccessKey is asked for, so the operator does not retype the fixed
+	// parts every run. Whatever is not preset is prompted.
+	bucket, endpoint := presetBucket, presetEndpoint
+	if bucket != "" && endpoint != "" {
+		fmt.Fprintf(out, "OSS: %s @ %s\n", bucket, endpoint)
+		fmt.Fprintln(out, "Enter your AccessKey to continue (nothing is saved to disk).")
+	} else {
+		fmt.Fprintln(out, "No OSS credentials found. Enter them to continue.")
+		fmt.Fprintln(out, "(Nothing is saved to disk -- you will be asked again next run.)")
 	}
-	endpoint, err := line("OSS endpoint (e.g. oss-cn-hangzhou.aliyuncs.com): ")
-	if err != nil {
-		return config.Config{}, err
+	if bucket == "" {
+		b, err := line("OSS bucket: ")
+		if err != nil {
+			return config.Config{}, err
+		}
+		bucket = b
+	}
+	if endpoint == "" {
+		e, err := line("OSS endpoint (e.g. oss-cn-hangzhou.aliyuncs.com): ")
+		if err != nil {
+			return config.Config{}, err
+		}
+		endpoint = e
 	}
 
 	for attempt := 1; ; attempt++ {
@@ -114,7 +128,10 @@ func resolveAdminCreds() (*config.Config, string, error) {
 		return cl.Verify()
 	}
 
-	cfg, err := promptCredentials(os.Stderr, line, secret, verify)
+	// Pass any bucket/endpoint compiled into the binary so only the AccessKey
+	// is prompted; both are empty in the blank template and get prompted too.
+	bi := builtIn()
+	cfg, err := promptCredentials(os.Stderr, line, secret, verify, bi.Bucket, bi.Endpoint)
 	if err != nil {
 		return nil, "", err
 	}

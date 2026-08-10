@@ -29,7 +29,7 @@ func TestPromptCredentialsSucceedsFirstTry(t *testing.T) {
 	secret := func(string) (string, error) { return "secretgood", nil }
 	verify := func(c config.Config) error { return nil }
 
-	cfg, err := promptCredentials(io.Discard, line, secret, verify)
+	cfg, err := promptCredentials(io.Discard, line, secret, verify, "", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -39,6 +39,29 @@ func TestPromptCredentialsSucceedsFirstTry(t *testing.T) {
 	}
 	if cfg.IntervalMinutes != config.DefaultIntervalMinutes {
 		t.Fatalf("interval = %d, want default", cfg.IntervalMinutes)
+	}
+}
+
+func TestPromptCredentialsUsesPresetBucketEndpoint(t *testing.T) {
+	// With bucket+endpoint preset (compiled in), only the AccessKey is asked
+	// for: the line reader supplies just the key id, not bucket/endpoint.
+	line := scriptedLines("LTAIgood")
+	secret := func(string) (string, error) { return "secretgood", nil }
+	var seen config.Config
+	verify := func(c config.Config) error { seen = c; return nil }
+
+	cfg, err := promptCredentials(io.Discard, line, secret, verify, "ai-collect-sg", "oss-ap-southeast-1.aliyuncs.com")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.Bucket != "ai-collect-sg" || cfg.Endpoint != "oss-ap-southeast-1.aliyuncs.com" {
+		t.Fatalf("preset bucket/endpoint not used: %+v", cfg)
+	}
+	if cfg.AccessKeyID != "LTAIgood" || cfg.AccessKeySecret != "secretgood" {
+		t.Fatalf("AccessKey not collected: %+v", cfg)
+	}
+	if seen.Bucket != "ai-collect-sg" {
+		t.Fatalf("verify saw bucket %q, want the preset", seen.Bucket)
 	}
 }
 
@@ -57,7 +80,7 @@ func TestPromptCredentialsRetriesWrongKeyThenSucceeds(t *testing.T) {
 		return fmt.Errorf("%w (InvalidAccessKeyId)", ossclient.ErrBadCredentials)
 	}
 
-	cfg, err := promptCredentials(io.Discard, line, secret, verify)
+	cfg, err := promptCredentials(io.Discard, line, secret, verify, "", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -78,7 +101,7 @@ func TestPromptCredentialsAccessDeniedDoesNotRetry(t *testing.T) {
 		return fmt.Errorf("%w (AccessDenied)", ossclient.ErrAccessDenied)
 	}
 
-	_, err := promptCredentials(io.Discard, line, secret, verify)
+	_, err := promptCredentials(io.Discard, line, secret, verify, "", "")
 	if err == nil {
 		t.Fatal("expected an error for access denied")
 	}
@@ -105,7 +128,7 @@ func TestPromptCredentialsGivesUpAfterMaxAttempts(t *testing.T) {
 		return fmt.Errorf("%w (InvalidAccessKeyId)", ossclient.ErrBadCredentials)
 	}
 
-	_, err := promptCredentials(io.Discard, line, secret, verify)
+	_, err := promptCredentials(io.Discard, line, secret, verify, "", "")
 	if err == nil {
 		t.Fatal("expected failure after exhausting attempts")
 	}

@@ -20,7 +20,15 @@ type Policy struct {
 	CollectEnabled      bool   `json:"collectEnabled"`
 	CollectQuietSeconds int    `json:"collectQuietSeconds,omitempty"` // debounce; 0 -> default 60
 	CollectSince        string `json:"collectSince,omitempty"`        // YYYY-MM-DD UTC; empty -> all history
-	UpdatedAt           string `json:"updatedAt"`
+
+	// Agent self-update. Empty version means "do not update". When set, an
+	// agent whose own version differs downloads the binary at
+	// ossclient.AgentBinaryKey(), checks its SHA-256 against AgentUpdateSHA256,
+	// and only then replaces itself and restarts. Clearing the version is the
+	// remote kill switch. See OSS布局.md §7.
+	AgentUpdateVersion string `json:"agentUpdateVersion,omitempty"`
+	AgentUpdateSHA256  string `json:"agentUpdateSHA256,omitempty"` // hex sha256 of the target binary
+	UpdatedAt          string `json:"updatedAt"`
 }
 
 // Sync interval bounds. The interval can lock a machine out of reach if set

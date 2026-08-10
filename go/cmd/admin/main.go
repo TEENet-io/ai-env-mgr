@@ -8,16 +8,28 @@ import (
 	"fmt"
 	"os"
 
+	"golang.org/x/term"
+
 	"github.com/TEENet-io/ai-env-mgr/internal/admincore"
+	"github.com/TEENet-io/ai-env-mgr/internal/config"
 	"github.com/TEENet-io/ai-env-mgr/internal/ossclient"
 )
 
 var version = "dev"
 
+// cachedCreds holds the OSS settings resolved once, so the TUI (and any run
+// that issues several commands) prompts for the AccessKey a single time and
+// reuses it instead of asking again for every action.
+var cachedCreds *config.Config
+
 func newManager() (*admincore.Manager, error) {
-	cfg, _, err := resolveAdminCreds()
-	if err != nil {
-		return nil, err
+	cfg := cachedCreds
+	if cfg == nil {
+		c, _, err := resolveAdminCreds()
+		if err != nil {
+			return nil, err
+		}
+		cfg = c
 	}
 	store, err := ossclient.New(cfg.Endpoint, cfg.Bucket, cfg.AccessKeyID, cfg.AccessKeySecret)
 	if err != nil {
@@ -28,12 +40,24 @@ func newManager() (*admincore.Manager, error) {
 
 func main() {
 	if len(os.Args) < 2 {
+		// No command on a terminal: drop into the menu-driven TUI. Piped/
+		// non-interactive runs still get the usage text instead of a menu that
+		// could never be answered.
+		if term.IsTerminal(int(os.Stdin.Fd())) {
+			if err := runTUI(); err != nil {
+				fmt.Fprintln(os.Stderr, "error:", err)
+				os.Exit(1)
+			}
+			return
+		}
 		usage()
 		return
 	}
 
 	var err error
 	switch os.Args[1] {
+	case "tui":
+		err = runTUI()
 	case "login":
 		err = cmdLogin(os.Args[2:])
 	case "user":
@@ -56,6 +80,8 @@ func main() {
 		err = cmdSetInterval(os.Args[2:])
 	case "collect":
 		err = cmdCollect(os.Args[2:])
+	case "agent":
+		err = cmdAgent(os.Args[2:])
 	case "status":
 		err = cmdStatus()
 	case "version":
@@ -103,6 +129,9 @@ Website blocking
 Agents
   set-interval <minutes>      change how often agents sync
   status                      show every machine's state
+  agent publish <path> --version <v>   roll a new agent.exe to the fleet
+  agent cancel                         clear the update target (kill switch)
+  agent status                         show the current update target
 
 Session collection (off by default)
   collect enable [--since <YYYY-MM-DD>] [--quiet <seconds>]   turn collection on
@@ -110,6 +139,8 @@ Session collection (off by default)
   collect stat                                                per-employee upload counts
 
 Other
+  tui                         interactive menu (also the default when run with
+                              no command on a terminal)
   version
 `)
 }

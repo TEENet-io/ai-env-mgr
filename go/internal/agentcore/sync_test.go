@@ -1,6 +1,8 @@
 package agentcore
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -14,6 +16,97 @@ import (
 	"github.com/TEENet-io/ai-env-mgr/internal/model"
 	"github.com/TEENet-io/ai-env-mgr/internal/ossclient"
 )
+
+// fakeUpdater records the binaries it was asked to apply.
+type fakeUpdater struct {
+	applied [][]byte
+	err     error
+}
+
+func (u *fakeUpdater) ApplyUpdate(b []byte) error {
+	u.applied = append(u.applied, b)
+	return u.err
+}
+
+// setupUpdate seeds the store with an agent binary and a policy targeting the
+// given version, and returns the syncer wired with a fake updater.
+func setupUpdate(t *testing.T, targetVersion, sha string, bin []byte) (*Syncer, *fakeStore, *fakeUpdater) {
+	t.Helper()
+	store := newFakeStore()
+	s := newSyncer(t, store, &fakeApplier{}) // Version == "test"
+	up := &fakeUpdater{}
+	s.Updater = up
+	bind(t, store, "DESKTOP-A", "work1")
+	store.set(ossclient.AgentBinaryKey(), bin, "binetag")
+	pol := model.DefaultPolicy()
+	pol.AgentUpdateVersion = targetVersion
+	pol.AgentUpdateSHA256 = sha
+	store.set(ossclient.PolicyKey(), policyBytes(t, pol), "petag")
+	return s, store, up
+}
+
+func TestRunOnceAppliesUpdateWhenTargetDiffers(t *testing.T) {
+	bin := []byte("new agent binary v1.2.0")
+	sum := sha256.Sum256(bin)
+	s, _, up := setupUpdate(t, "1.2.0", hex.EncodeToString(sum[:]), bin)
+
+	if _, err := s.RunOnce(); err != nil {
+		t.Fatal(err)
+	}
+	if len(up.applied) != 1 || string(up.applied[0]) != string(bin) {
+		t.Fatalf("update not applied as expected: %d call(s)", len(up.applied))
+	}
+}
+
+func TestRunOnceSkipsUpdateWhenSameVersion(t *testing.T) {
+	bin := []byte("binary")
+	sum := sha256.Sum256(bin)
+	// target == the syncer's own version ("test"): nothing to do.
+	s, _, up := setupUpdate(t, "test", hex.EncodeToString(sum[:]), bin)
+	if _, err := s.RunOnce(); err != nil {
+		t.Fatal(err)
+	}
+	if len(up.applied) != 0 {
+		t.Fatalf("should not update when already on target; got %d call(s)", len(up.applied))
+	}
+}
+
+func TestRunOnceSkipsUpdateOnChecksumMismatch(t *testing.T) {
+	bin := []byte("real binary")
+	s, _, up := setupUpdate(t, "1.2.0", "not-the-real-sha", bin)
+	st, err := s.RunOnce()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(up.applied) != 0 {
+		t.Fatal("must not apply a binary whose checksum does not match")
+	}
+	found := false
+	for _, e := range st.Errors {
+		if strings.Contains(e, "checksum mismatch") {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("expected a checksum-mismatch error in status, got %v", st.Errors)
+	}
+}
+
+func TestRunOnceSkipsUpdateAlreadyAttempted(t *testing.T) {
+	bin := []byte("binary v1.2.0")
+	sum := sha256.Sum256(bin)
+	s, _, up := setupUpdate(t, "1.2.0", hex.EncodeToString(sum[:]), bin)
+	// Pretend this exact target was already tried: it must not loop.
+	if err := os.WriteFile(filepath.Join(s.StateDir, updateMarkerFile), []byte("1.2.0"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.RunOnce(); err != nil {
+		t.Fatal(err)
+	}
+	if len(up.applied) != 0 {
+		t.Fatalf("must not re-attempt an already-tried target; got %d call(s)", len(up.applied))
+	}
+}
 
 // The fake must model the real store's contract: a missing object reports
 // ossclient.ErrNotFound, which is what tells the agent a revocation happened
