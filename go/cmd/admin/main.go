@@ -80,6 +80,8 @@ func main() {
 		err = cmdSetInterval(os.Args[2:])
 	case "collect":
 		err = cmdCollect(os.Args[2:])
+	case "agent":
+		err = cmdAgent(os.Args[2:])
 	case "status":
 		err = cmdStatus()
 	case "version":
@@ -127,6 +129,9 @@ Website blocking
 Agents
   set-interval <minutes>      change how often agents sync
   status                      show every machine's state
+  agent publish <path> --version <v>   roll a new agent.exe to the fleet
+  agent cancel                         clear the update target (kill switch)
+  agent status                         show the current update target
 
 Session collection (off by default)
   collect enable [--since <YYYY-MM-DD>] [--quiet <seconds>]   turn collection on

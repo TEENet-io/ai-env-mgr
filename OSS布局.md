@@ -69,6 +69,9 @@ your-bucket/
     │   ├── iZt4n2up5vmbxv0bvvnp1oZ.json
     │   └── ...                          一台机器一个文件，按主机名命名
     │
+    ├── _agent/                          agent 自更新用（agent 只读，见 §7）
+    │   └── agent.exe                    管理员发布的新版二进制
+    │
     ├── work1/                           按【员工】分目录
     │   ├── credentials.zip              该员工的 AI 工具凭据（agent 只读）
     │   └── data_collect/                该员工的原始会话（已实现，默认关闭）
@@ -345,7 +348,24 @@ agent_workdir/work1/data_collect/.codex/sessions/{y}/{m}/{d}/rollout-....jsonl
 
 ---
 
-## 7. 改布局时的检查清单
+## 7. `_agent/`：agent 自更新（默认关闭）
+
+管理员发布新版 agent 时,把二进制放到 `agent_workdir/_agent/agent.exe`,并在 `policy.json` 里记下目标版本和该文件的 SHA-256:
+
+| 字段(policy.json) | 含义 |
+|---|---|
+| `agentUpdateVersion` | 目标版本。**空 = 不更新**(默认)。设了值,自身版本不同的 agent 才会更新 |
+| `agentUpdateSHA256` | `_agent/agent.exe` 的十六进制 SHA-256,agent 换之前必须比对一致 |
+
+**agent 侧流程**:每个 sync 周期,若 `agentUpdateVersion` 非空且 ≠ 自身版本 → 下载 `_agent/agent.exe` → **校验 SHA-256**(不一致就不换,并在 status 报错)→ 换文件(旧的存 `agent.exe.old`)→ 重启服务。**同一目标只尝试一次**(本地打标记),坏包不会反复重启。
+
+**权限**:agent 对 `_agent/*` 只需 **GetObject**(读)。`dist/ram-policy-agent.json` 已含这条。**只给读,绝不给写**——给了写就等于任何一台机器都能往这里塞一个所有机器都会执行的二进制。
+
+**风险与边界**(见 `操作手册`):`policy.json` 全局 → **所有机器一起更新**,无灰度;**无自动回滚**。所以:**新 agent 先在一台机器上手动验证能跑,再 `admin agent publish`**;出事用 `admin agent cancel` 急停,并手动把 `agent.exe.old` 换回。
+
+---
+
+## 8. 改布局时的检查清单
 
 布局是 agent 和 admin 之间的契约，两边任一侧单独改都会导致"写进去了但没人读"。改动时：
 

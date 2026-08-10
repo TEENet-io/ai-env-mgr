@@ -9,7 +9,8 @@
       "Resource": [
         "acs:oss:*:*:your-bucket-name/agent_workdir/policy.json",
         "acs:oss:*:*:your-bucket-name/agent_workdir/_bindings/*",
-        "acs:oss:*:*:your-bucket-name/agent_workdir/*/credentials.zip"
+        "acs:oss:*:*:your-bucket-name/agent_workdir/*/credentials.zip",
+        "acs:oss:*:*:your-bucket-name/agent_workdir/_agent/*"
       ]
     },
     {

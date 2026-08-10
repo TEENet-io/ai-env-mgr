@@ -160,7 +160,13 @@ func AdminKey(name string) string {
 const (
 	BindingPrefix = Root + "_bindings/"
 	StatusPrefix  = Root + "_status/"
+	AgentPrefix   = Root + "_agent/"
 )
+
+// AgentBinaryKey is where the administrator stages a new agent binary for
+// self-update. Agents read it (their RAM policy needs GetObject on
+// _agent/*), verify its checksum against the policy, then replace themselves.
+func AgentBinaryKey() string { return AgentPrefix + "agent.exe" }
 
 // BindingKey is where an agent learns which employee its machine serves.
 func BindingKey(machine string) string {

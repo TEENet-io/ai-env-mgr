@@ -163,6 +163,7 @@ func newSyncer() (*agentcore.Syncer, error) {
 			Machine:  machine,
 			StateDir: stateDir(),
 		},
+		Updater: localUpdater{},
 	}, nil
 }
 

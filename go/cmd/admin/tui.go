@@ -44,6 +44,7 @@ func runTUI() error {
 		fmt.Println("  5) 封禁策略")
 		fmt.Println("  6) 会话采集")
 		fmt.Println("  7) 文件传输")
+		fmt.Println("  8) agent 更新")
 		fmt.Println("  q) 退出")
 		switch ask("选择: ") {
 		case "1":
@@ -77,6 +78,8 @@ func runTUI() error {
 			tuiCollect(ask, run)
 		case "7":
 			tuiFile(ask, run)
+		case "8":
+			tuiAgent(ask, run)
 		case "q", "Q", "":
 			fmt.Println("bye")
 			return nil
@@ -155,6 +158,22 @@ func tuiCollect(ask func(string) string, run func(error)) {
 		run(cmdCollect(args))
 	case "3":
 		run(cmdCollect([]string{"disable"}))
+	}
+}
+
+func tuiAgent(ask func(string) string, run func(error)) {
+	fmt.Println("  agent更新:  1)当前目标  2)发布新版  3)取消(急停)")
+	switch ask("  选择: ") {
+	case "1":
+		run(cmdAgent([]string{"status"}))
+	case "2":
+		p := ask("  新 agent.exe 路径: ")
+		v := ask("  版本号 (如 1.2.0): ")
+		if p != "" && v != "" {
+			run(cmdAgent([]string{"publish", p, "--version", v}))
+		}
+	case "3":
+		run(cmdAgent([]string{"cancel"}))
 	}
 }
 

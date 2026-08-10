@@ -6,6 +6,8 @@
 package agentcore
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -57,7 +59,15 @@ const (
 	policyMarkerFile   = "policy.etag"
 	credsMarkerFile    = "credentials.etag"
 	lastSyncMarkerFile = "last-sync"
+	updateMarkerFile   = "update-target" // the last self-update version attempted
 )
+
+// Updater replaces the running agent binary with a newer one and restarts the
+// service. It is a platform-specific side effect (Windows renames the exe and
+// restarts the service), injected so the sync logic stays testable.
+type Updater interface {
+	ApplyUpdate(newBinary []byte) error
+}
 
 // Syncer runs one sync cycle.
 type Syncer struct {
@@ -74,6 +84,10 @@ type Syncer struct {
 	// Collector uploads raw session files when policy.CollectEnabled is set.
 	// Optional: nil means collection is not wired in (tests, older builds).
 	Collector CollectRunner
+
+	// Updater applies an agent self-update when the policy targets a version
+	// other than this binary's. Optional: nil disables self-update.
+	Updater Updater
 }
 
 func (s *Syncer) readMarker(name string) string {
@@ -250,6 +264,12 @@ func (s *Syncer) RunOnce() (model.Status, error) {
 		errs = append(errs, cr.Errors...)
 	}
 
+	// ---- self-update: download + verify ----
+	// The binary is fetched and checksummed now so any problem surfaces in this
+	// cycle's status, but it is applied only after status is uploaded (below),
+	// so the machine's pre-update state is recorded before the restart.
+	pendingUpdate := s.prepareUpdate(pol, &errs)
+
 	// ---- status ----
 	interval := model.ClampInterval(pol.SyncIntervalMinutes, s.FallbackInterval)
 	st := status.Build(status.Report{
@@ -277,7 +297,45 @@ func (s *Syncer) RunOnce() (model.Status, error) {
 	// Record the wall-clock time so a later wake-up can tell how stale we are.
 	s.writeMarker(lastSyncMarkerFile, time.Now().UTC().Format(time.RFC3339))
 
+	// ---- self-update: apply last ----
+	// Applied after status is uploaded so the pre-update report is sent first.
+	// The target is marked before applying so a binary that fails to take does
+	// not loop: the admin must publish a new version (or clear it) to retry.
+	if pendingUpdate != nil {
+		s.writeMarker(updateMarkerFile, pol.AgentUpdateVersion)
+		if err := s.Updater.ApplyUpdate(pendingUpdate); err != nil {
+			return st, fmt.Errorf("apply update to %s: %w", pol.AgentUpdateVersion, err)
+		}
+		// On success the process is being replaced and restarted; the next
+		// cycle runs from the new binary and reports the new version.
+	}
+
 	return st, nil
+}
+
+// prepareUpdate downloads and verifies the targeted agent binary, returning the
+// bytes to apply or nil. It applies nothing itself. A checksum mismatch or a
+// fetch failure is appended to errs so it shows up in this cycle's status, and
+// a target already attempted is skipped so a bad binary cannot crash-loop the
+// machine.
+func (s *Syncer) prepareUpdate(pol model.Policy, errs *[]string) []byte {
+	if pol.AgentUpdateVersion == "" || pol.AgentUpdateVersion == s.Version || s.Updater == nil {
+		return nil
+	}
+	if s.readMarker(updateMarkerFile) == pol.AgentUpdateVersion {
+		return nil
+	}
+	data, _, err := s.Store.Get(ossclient.AgentBinaryKey())
+	if err != nil {
+		*errs = append(*errs, fmt.Sprintf("update: fetch binary: %v", err))
+		return nil
+	}
+	sum := sha256.Sum256(data)
+	if got := hex.EncodeToString(sum[:]); !strings.EqualFold(got, pol.AgentUpdateSHA256) {
+		*errs = append(*errs, fmt.Sprintf("update: checksum mismatch (got %s, want %s); not applying", got, pol.AgentUpdateSHA256))
+		return nil
+	}
+	return data
 }
 
 // NextInterval reports how long to wait before the next cycle, based on the
