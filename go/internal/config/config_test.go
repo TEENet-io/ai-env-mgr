@@ -19,7 +19,7 @@ func writeConfig(t *testing.T, dir, name, content string) string {
 func TestLoadValidConfig(t *testing.T) {
 	dir := t.TempDir()
 	path := writeConfig(t, dir, "agent.config.json", `{
-		"bucket": "ai-sandbox-bucket",
+		"bucket": "ai-env-mgr-bucket",
 		"endpoint": "oss-cn-hangzhou.aliyuncs.com",
 		"accessKeyId": "LTAI-example-id",
 		"accessKeySecret": "example-secret",
@@ -30,8 +30,8 @@ func TestLoadValidConfig(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Load() error = %v, want nil", err)
 	}
-	if cfg.Bucket != "ai-sandbox-bucket" {
-		t.Errorf("Bucket = %q, want %q", cfg.Bucket, "ai-sandbox-bucket")
+	if cfg.Bucket != "ai-env-mgr-bucket" {
+		t.Errorf("Bucket = %q, want %q", cfg.Bucket, "ai-env-mgr-bucket")
 	}
 	if cfg.Endpoint != "oss-cn-hangzhou.aliyuncs.com" {
 		t.Errorf("Endpoint = %q, want %q", cfg.Endpoint, "oss-cn-hangzhou.aliyuncs.com")
@@ -50,7 +50,7 @@ func TestLoadValidConfig(t *testing.T) {
 func TestLoadMissingIntervalDefaultsTo30(t *testing.T) {
 	dir := t.TempDir()
 	path := writeConfig(t, dir, "admin.config.json", `{
-		"bucket": "ai-sandbox-bucket",
+		"bucket": "ai-env-mgr-bucket",
 		"endpoint": "oss-cn-hangzhou.aliyuncs.com",
 		"accessKeyId": "LTAI-example-id",
 		"accessKeySecret": "example-secret"
@@ -116,7 +116,7 @@ func TestLoadMissingBucketReturnsError(t *testing.T) {
 func TestLoadMissingEndpointReturnsError(t *testing.T) {
 	dir := t.TempDir()
 	path := writeConfig(t, dir, "agent.config.json", `{
-		"bucket": "ai-sandbox-bucket",
+		"bucket": "ai-env-mgr-bucket",
 		"accessKeyId": "id",
 		"accessKeySecret": "secret"
 	}`)
@@ -136,7 +136,7 @@ func TestLoadMissingEndpointReturnsError(t *testing.T) {
 func TestLoadMissingAccessKeyIDReturnsError(t *testing.T) {
 	dir := t.TempDir()
 	path := writeConfig(t, dir, "agent.config.json", `{
-		"bucket": "ai-sandbox-bucket",
+		"bucket": "ai-env-mgr-bucket",
 		"endpoint": "oss-cn-hangzhou.aliyuncs.com",
 		"accessKeySecret": "secret"
 	}`)
@@ -156,7 +156,7 @@ func TestLoadMissingAccessKeyIDReturnsError(t *testing.T) {
 func TestLoadMissingAccessKeySecretReturnsError(t *testing.T) {
 	dir := t.TempDir()
 	path := writeConfig(t, dir, "agent.config.json", `{
-		"bucket": "ai-sandbox-bucket",
+		"bucket": "ai-env-mgr-bucket",
 		"endpoint": "oss-cn-hangzhou.aliyuncs.com",
 		"accessKeyId": "id"
 	}`)

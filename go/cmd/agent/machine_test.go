@@ -26,7 +26,7 @@ func fakeUsersRoot(t *testing.T, names ...string) string {
 			t.Fatal(err)
 		}
 	}
-	t.Setenv("AISANDBOX_USERS_ROOT", root)
+	t.Setenv("AIENVMGR_USERS_ROOT", root)
 	return root
 }
 
@@ -73,7 +73,7 @@ func TestLocalUsersSkipsFilesAndHiddenEntries(t *testing.T) {
 }
 
 func TestLocalUsersHandlesMissingRoot(t *testing.T) {
-	t.Setenv("AISANDBOX_USERS_ROOT", filepath.Join(t.TempDir(), "does-not-exist"))
+	t.Setenv("AIENVMGR_USERS_ROOT", filepath.Join(t.TempDir(), "does-not-exist"))
 
 	m := &localMachine{name: "TEST"}
 	if got := m.LocalUsers(); len(got) != 0 {
@@ -120,7 +120,7 @@ func TestLocalUsersSkipsToolingProfiles(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	t.Setenv("AISANDBOX_USERS_ROOT", root)
+	t.Setenv("AIENVMGR_USERS_ROOT", root)
 
 	m := &localMachine{name: "TEST"}
 	got := m.LocalUsers()

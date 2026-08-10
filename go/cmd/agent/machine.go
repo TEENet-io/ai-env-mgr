@@ -113,7 +113,7 @@ func (m *localMachine) ProfileDir(user string) string {
 
 // usersRoot is where Windows keeps profile directories.
 func usersRoot() string {
-	if v := os.Getenv("AISANDBOX_USERS_ROOT"); v != "" {
+	if v := os.Getenv("AIENVMGR_USERS_ROOT"); v != "" {
 		return v // test hook
 	}
 	if v := os.Getenv("SystemDrive"); v != "" {
