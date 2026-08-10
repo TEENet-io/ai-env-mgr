@@ -3,10 +3,10 @@ name: Release
 # On a version tag (e.g. v1.2.0), build the Windows binaries and attach them
 # to a GitHub Release so they can be downloaded directly.
 #
-# NOTE: the repo's credentials.go files are blank templates, so these binaries
-# carry NO OSS keys -- they are credential-less templates (see RELEASE_NOTES.md).
-# Nothing sensitive is published. Production binaries are built locally after
-# filling in the keys.
+# agent.exe gets the RESTRICTED agent OSS key injected from repo secrets at
+# link time (-ldflags -X), so it is ready to run. admin.exe is built WITHOUT
+# any key -- the administrator's full read-write key must never be baked into a
+# published artifact -- so it stays a credential-less template.
 on:
   push:
     tags: ['v*']
@@ -28,12 +28,38 @@ jobs:
         working-directory: go
         run: make check
 
-      # $GITHUB_REF_NAME is the tag name, set by the runner. Strip a leading
-      # "v" for the embedded version string. Not interpolated via ${{ }}, so
-      # there is no shell-injection surface.
+      # Secrets arrive via env (never interpolated into the script), and GitHub
+      # masks their values in logs. The agent restricted key is injected into
+      # agent.exe only; admin.exe is built with no key at all.
+      #
+      # Injection is via -ldflags -X on the string vars in cmd/agent/
+      # credentials.go, so nothing is written to disk. OSS bucket/endpoint/keys
+      # contain no spaces, which is what keeps the space-split ldflags safe.
       - name: Build Windows binaries
         working-directory: go
-        run: make all VERSION="${GITHUB_REF_NAME#v}"
+        env:
+          AGENT_OSS_BUCKET: ${{ secrets.AGENT_OSS_BUCKET }}
+          AGENT_OSS_ENDPOINT: ${{ secrets.AGENT_OSS_ENDPOINT }}
+          AGENT_OSS_ACCESS_KEY_ID: ${{ secrets.AGENT_OSS_ACCESS_KEY_ID }}
+          AGENT_OSS_ACCESS_KEY_SECRET: ${{ secrets.AGENT_OSS_ACCESS_KEY_SECRET }}
+        run: |
+          set -euo pipefail
+          VER="${GITHUB_REF_NAME#v}"
+
+          AGENT_LDFLAGS="-s -w -X main.version=${VER}"
+          if [ -n "${AGENT_OSS_ACCESS_KEY_ID}" ]; then
+            AGENT_LDFLAGS="${AGENT_LDFLAGS} -X main.ossBucket=${AGENT_OSS_BUCKET} -X main.ossAccessKeyID=${AGENT_OSS_ACCESS_KEY_ID} -X main.ossAccessKeySecret=${AGENT_OSS_ACCESS_KEY_SECRET}"
+            if [ -n "${AGENT_OSS_ENDPOINT}" ]; then
+              AGENT_LDFLAGS="${AGENT_LDFLAGS} -X main.ossEndpoint=${AGENT_OSS_ENDPOINT}"
+            fi
+            echo "agent.exe: restricted OSS credentials injected (config=built-in)"
+          else
+            echo "::warning::AGENT_OSS_ACCESS_KEY_ID secret is not set; building a credential-less template agent.exe"
+          fi
+
+          GOOS=windows GOARCH=amd64 go build -trimpath -ldflags "${AGENT_LDFLAGS}" -o ../dist/agent.exe ./cmd/agent
+          # admin.exe: no key, ever -- credential-less template.
+          make admin VERSION="${VER}"
 
       - name: Checksums
         working-directory: dist
