@@ -164,19 +164,17 @@ if (-not $SkipCli) {
     # the native binary can't be located.
     try {
         $lnkPath = Join-Path (Join-Path $env:PUBLIC "Desktop") "Claude Code.lnk"
+        # Launch via PowerShell (reliably gives an interactive console), but take
+        # the icon from the native claude.exe so the shortcut shows Claude's own
+        # icon rather than PowerShell's.
+        $ps = "$env:SystemRoot\System32\WindowsPowerShell\v1.0\powershell.exe"
         $claudeExe = Get-ChildItem "$npmGlobal\node_modules" -Filter "claude.exe" -Recurse -ErrorAction SilentlyContinue |
             Select-Object -First 1
         $ws = New-Object -ComObject WScript.Shell
         $sc = $ws.CreateShortcut($lnkPath)
-        if ($claudeExe) {
-            $sc.TargetPath   = $claudeExe.FullName          # native binary -> its own icon
-            $sc.IconLocation = "$($claudeExe.FullName),0"
-        } else {
-            $ps = "$env:SystemRoot\System32\WindowsPowerShell\v1.0\powershell.exe"
-            $sc.TargetPath   = $ps
-            $sc.Arguments    = "-NoExit -Command claude"
-            $sc.IconLocation = "$ps,0"
-        }
+        $sc.TargetPath       = $ps
+        $sc.Arguments        = "-NoExit -Command claude"
+        $sc.IconLocation     = if ($claudeExe) { "$($claudeExe.FullName),0" } else { "$ps,0" }
         $sc.WorkingDirectory = "%USERPROFILE%"
         $sc.Description       = "Claude Code"
         $sc.Save()
