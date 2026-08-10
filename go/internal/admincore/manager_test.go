@@ -19,13 +19,14 @@ var errNotFound = errors.New("object not found")
 type fakeStore struct {
 	objects map[string][]byte
 	etags   map[string]string
+	mtimes  map[string]time.Time // optional per-key modification time for ListInfo
 	putErr  error
 	signed  []signRequest
 	signErr error
 }
 
 func newFakeStore() *fakeStore {
-	return &fakeStore{objects: map[string][]byte{}, etags: map[string]string{}}
+	return &fakeStore{objects: map[string][]byte{}, etags: map[string]string{}, mtimes: map[string]time.Time{}}
 }
 
 func (f *fakeStore) Get(key string) ([]byte, string, error) {
@@ -55,6 +56,20 @@ func (f *fakeStore) List(prefix string) ([]string, error) {
 	}
 	sort.Strings(keys)
 	return keys, nil
+}
+
+// ListInfo mirrors ossclient.Client.ListInfo: every object under the prefix
+// with its size (from the stored bytes) and its modification time (from the
+// optional mtimes map; zero when unset), sorted for deterministic output.
+func (f *fakeStore) ListInfo(prefix string) ([]ossclient.ObjectInfo, error) {
+	var out []ossclient.ObjectInfo
+	for k, d := range f.objects {
+		if strings.HasPrefix(k, prefix) {
+			out = append(out, ossclient.ObjectInfo{Key: k, Size: int64(len(d)), LastModified: f.mtimes[k]})
+		}
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].Key < out[j].Key })
+	return out, nil
 }
 
 // Delete removes an object. Deleting a key that is not present is a no-op,

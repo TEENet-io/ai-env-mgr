@@ -55,6 +55,8 @@ func main() {
 		err = cmdSetBlock(false)
 	case "set-interval":
 		err = cmdSetInterval(os.Args[2:])
+	case "collect":
+		err = cmdCollect(os.Args[2:])
 	case "status":
 		err = cmdStatus()
 	case "version":
@@ -102,6 +104,11 @@ Website blocking
 Agents
   set-interval <minutes>      change how often agents sync
   status                      show every machine's state
+
+Session collection (off by default)
+  collect enable [--since <YYYY-MM-DD>] [--quiet <seconds>]   turn collection on
+  collect disable                                             turn collection off
+  collect stat                                                per-employee upload counts
 
 Other
   version
