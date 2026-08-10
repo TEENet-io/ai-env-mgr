@@ -6,7 +6,8 @@
     Part 2 (GUI, provisioned):   ChatGPT desktop App (Chat/Work/Codex GUI). Auto-downloads the official
                                  offline package (or use -ChatGptMsix), provisions for ALL future users,
                                  and installs for the current user.
-    Part 3 (GUI, existing users): for named existing users, if the GUI is missing, schedule an auto-install
+    Part 3 (GUI, existing users): for existing users -- named (-EnsureGuiForUsers) or all of them
+                                 (-AllExistingUsers) -- if the GUI is missing, schedule an auto-install
                                  from the local msix on their next logon (MSIX is per-user; cannot register
                                  for another user immediately).
   Credentials stay per-profile: each user logs in once.
@@ -15,12 +16,19 @@
 .PARAMETER ChatGptMsix        Optional: path to an already-downloaded ChatGPT-*.msix. If omitted, auto-download.
 .PARAMETER ChatGptLicense     Optional: path to ChatGPT-License.xml (pairs with -ChatGptMsix).
 .PARAMETER EnsureGuiForUsers  Existing usernames to ensure the GUI for (Part 3) -- installs from the local msix.
+.PARAMETER AllExistingUsers   Ensure the GUI for EVERY real user already under C:\Users (Part 3), no naming
+                              needed. Use this when installing on a machine that already has employee profiles.
 .PARAMETER SkipCli            Skip Part 1.
 .PARAMETER SkipGui            Skip Part 2 (all-user provision + current-user install). Part 3 still runs if requested.
 
 .EXAMPLE
   # Fully automatic: install CLI, auto-download + provision GUI, and cover two existing users
   .\Setup-AICli.ps1 -EnsureGuiForUsers work1,work2
+
+.EXAMPLE
+  # Install everything for ALL users -- CLI (machine-wide), GUI provisioned for future users,
+  # and the GUI scheduled for every profile already on the machine (no naming needed)
+  .\Setup-AICli.ps1 -AllExistingUsers
 
 .EXAMPLE
   # CLI only
@@ -42,12 +50,37 @@ param(
     [string]$ChatGptMsix = "",
     [string]$ChatGptLicense = "",
     [string[]]$EnsureGuiForUsers = @(),
+    [switch]$AllExistingUsers,
     [switch]$SkipCli,
     [switch]$SkipGui,
     [switch]$Force
 )
 
 [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+
+# ---- -AllExistingUsers: cover every real profile already on the machine ----
+# The CLI tools are machine-wide already; this is only about the ChatGPT GUI,
+# which is per-user (MSIX). Provisioning covers all FUTURE users, but profiles
+# that already exist need Part 3. -AllExistingUsers fills EnsureGuiForUsers with
+# every real user under C:\Users so the admin need not name them one by one.
+function Get-RealUserProfiles {
+    # Profiles that belong to a person, not to Windows or to tooling. Mirrors
+    # the agent's own profile filter (isSystemProfile) so the two agree on who
+    # counts as a real user.
+    $skip = @('public', 'default', 'default user', 'all users', 'wdagutilityaccount',
+        'defaultapppool', 'systemprofile', 'localservice', 'networkservice')
+    $usersRoot = Join-Path $env:SystemDrive 'Users'
+    Get-ChildItem $usersRoot -Directory -ErrorAction SilentlyContinue | Where-Object {
+        $n = $_.Name.ToLower()
+        ($skip -notcontains $n) -and (-not $n.StartsWith('codexsandbox')) -and (-not $n.StartsWith('.'))
+    } | Select-Object -ExpandProperty Name
+}
+
+if ($AllExistingUsers) {
+    $found = @(Get-RealUserProfiles)
+    Write-Host "  [info] -AllExistingUsers: $($found.Count) existing profile(s): $($found -join ', ')" -ForegroundColor DarkCyan
+    $EnsureGuiForUsers = @($EnsureGuiForUsers + $found | Select-Object -Unique)
+}
 
 # ============================ Part 1: shared CLI binaries ============================
 if (-not $SkipCli) {

@@ -16,7 +16,7 @@ AI Env Mgr（AI 环境管理器）：员工的 AI 工具环境——登录、策
 |---|---|---|
 | `dist/agent.exe` | 每台云电脑（进镜像） | Windows 服务，定时从 OSS 拉取策略与凭据并应用到本机 |
 | `dist/admin.exe` | 管理员工作机 | 代员工登录 AI 工具、下发封禁策略、查看全局状态 |
-| `scripts/01-Install-AITools.ps1` | 模板机 | 安装 Codex CLI / Claude Code / ChatGPT 应用 |
+| `scripts/01-Install-AITools.ps1` | 模板机 | 安装 Codex CLI / Claude Code / ChatGPT（CLI 机器级全用户；GUI 预置全用户，`-AllExistingUsers` 覆盖已有用户） |
 | `scripts/02-Manage-AIAccess.ps1` | 模板机 | 配置 AppLocker |
 
 前两者是 Go 编译的单文件二进制，无运行时依赖。后两者只在制作镜像时执行一次。
