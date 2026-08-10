@@ -159,18 +159,26 @@ if (-not $SkipCli) {
     # Desktop shortcut for Claude Code, on the PUBLIC desktop so it shows on
     # EVERY user's desktop (current and future) without a per-user step. codex
     # and ChatGPT are reachable from the ChatGPT app, so only Claude Code needs
-    # one. It is a CLI, so the icon opens a terminal that launches `claude` in
-    # the user's own home directory (%USERPROFILE% expands per user at launch).
+    # one. Prefer the real native claude.exe (so the shortcut carries Claude's
+    # own icon and runs it directly); fall back to a PowerShell wrapper only if
+    # the native binary can't be located.
     try {
         $lnkPath = Join-Path (Join-Path $env:PUBLIC "Desktop") "Claude Code.lnk"
-        $ps = "$env:SystemRoot\System32\WindowsPowerShell\v1.0\powershell.exe"
+        $claudeExe = Get-ChildItem "$npmGlobal\node_modules" -Filter "claude.exe" -Recurse -ErrorAction SilentlyContinue |
+            Select-Object -First 1
         $ws = New-Object -ComObject WScript.Shell
         $sc = $ws.CreateShortcut($lnkPath)
-        $sc.TargetPath       = $ps
-        $sc.Arguments        = "-NoExit -Command claude"
+        if ($claudeExe) {
+            $sc.TargetPath   = $claudeExe.FullName          # native binary -> its own icon
+            $sc.IconLocation = "$($claudeExe.FullName),0"
+        } else {
+            $ps = "$env:SystemRoot\System32\WindowsPowerShell\v1.0\powershell.exe"
+            $sc.TargetPath   = $ps
+            $sc.Arguments    = "-NoExit -Command claude"
+            $sc.IconLocation = "$ps,0"
+        }
         $sc.WorkingDirectory = "%USERPROFILE%"
-        $sc.IconLocation     = "$ps,0"
-        $sc.Description       = "Claude Code (opens a terminal running claude)"
+        $sc.Description       = "Claude Code"
         $sc.Save()
         Write-Host "  [ok] desktop shortcut -> $lnkPath (all users)" -ForegroundColor Green
     } catch { Write-Host "  [warn] could not create Claude Code desktop shortcut: $_" -ForegroundColor Yellow }
@@ -269,13 +277,18 @@ if ($EnsureGuiForUsers.Count -gt 0) {
 try {
     $pkg = Get-AppxPackage -Name "OpenAI.Codex" -ErrorAction SilentlyContinue
     if ($pkg) {
-        $appId = @((Get-AppxPackageManifest $pkg).Package.Applications.Application)[0].Id
-        $aumid = "$($pkg.PackageFamilyName)!$appId"
+        $app   = @((Get-AppxPackageManifest $pkg).Package.Applications.Application)[0]
+        $aumid = "$($pkg.PackageFamilyName)!$($app.Id)"
         $lnk = Join-Path (Join-Path $env:PUBLIC "Desktop") "ChatGPT.lnk"
         $ws = New-Object -ComObject WScript.Shell
         $sc = $ws.CreateShortcut($lnk)
         $sc.TargetPath  = "$env:SystemRoot\explorer.exe"
         $sc.Arguments   = "shell:AppsFolder\$aumid"
+        # ChatGPT's own icon: its executable inside the package install location.
+        if ($app.Executable) {
+            $exePath = Join-Path $pkg.InstallLocation $app.Executable
+            if (Test-Path $exePath) { $sc.IconLocation = "$exePath,0" }
+        }
         $sc.Description  = "ChatGPT (includes Codex)"
         $sc.Save()
         Write-Host "  [ok] ChatGPT desktop shortcut -> $lnk (all users)" -ForegroundColor Green
