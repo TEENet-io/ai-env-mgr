@@ -5,7 +5,7 @@ import (
 	"sort"
 	"time"
 
-	"github.com/TEENet-io/airlock/internal/ossclient"
+	"github.com/TEENet-io/ai-env-mgr/internal/ossclient"
 )
 
 // DefaultLinkTTL is how long a download link stays valid unless the caller

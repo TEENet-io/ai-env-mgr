@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/TEENet-io/airlock/internal/ossclient"
+	"github.com/TEENet-io/ai-env-mgr/internal/ossclient"
 )
 
 func TestPutFileStagesAndLinks(t *testing.T) {

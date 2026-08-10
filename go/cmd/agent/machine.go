@@ -7,10 +7,10 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/TEENet-io/airlock/internal/creds"
-	"github.com/TEENet-io/airlock/internal/model"
-	"github.com/TEENet-io/airlock/internal/policy"
-	"github.com/TEENet-io/airlock/internal/status"
+	"github.com/TEENet-io/ai-env-mgr/internal/creds"
+	"github.com/TEENet-io/ai-env-mgr/internal/model"
+	"github.com/TEENet-io/ai-env-mgr/internal/policy"
+	"github.com/TEENet-io/ai-env-mgr/internal/status"
 )
 
 // systemProfilePrefixes match profile directories created by tooling rather

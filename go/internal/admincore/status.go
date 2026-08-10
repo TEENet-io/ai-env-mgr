@@ -6,9 +6,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/TEENet-io/airlock/internal/model"
-	"github.com/TEENet-io/airlock/internal/ossclient"
-	"github.com/TEENet-io/airlock/internal/status"
+	"github.com/TEENet-io/ai-env-mgr/internal/model"
+	"github.com/TEENet-io/ai-env-mgr/internal/ossclient"
+	"github.com/TEENet-io/ai-env-mgr/internal/status"
 )
 
 // administratorAccount is the one local account every Windows machine has

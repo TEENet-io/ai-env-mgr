@@ -8,7 +8,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/TEENet-io/airlock/internal/model"
+	"github.com/TEENet-io/ai-env-mgr/internal/model"
 )
 
 // profileTargets maps zip-internal paths (model.PathXxx) to their location

@@ -1,6 +1,6 @@
 package main
 
-import "github.com/TEENet-io/airlock/internal/config"
+import "github.com/TEENet-io/ai-env-mgr/internal/config"
 
 // This file is a TEMPLATE and is committed with empty values on purpose.
 //

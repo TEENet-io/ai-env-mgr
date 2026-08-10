@@ -9,8 +9,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/TEENet-io/airlock/internal/model"
-	"github.com/TEENet-io/airlock/internal/ossclient"
+	"github.com/TEENet-io/ai-env-mgr/internal/model"
+	"github.com/TEENet-io/ai-env-mgr/internal/ossclient"
 )
 
 var errNotFound = errors.New("object not found")

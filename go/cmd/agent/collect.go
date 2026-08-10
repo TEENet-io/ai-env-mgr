@@ -6,7 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/TEENet-io/airlock/internal/agentcore"
+	"github.com/TEENet-io/ai-env-mgr/internal/agentcore"
 )
 
 // localFileSource finds and reads the bound employee's AI session files.

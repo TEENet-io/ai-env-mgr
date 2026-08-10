@@ -5,7 +5,7 @@ package policy
 import (
 	"errors"
 
-	"github.com/TEENet-io/airlock/internal/model"
+	"github.com/TEENet-io/ai-env-mgr/internal/model"
 )
 
 // Apply is a non-Windows stand-in for the real HKLM-writing implementation

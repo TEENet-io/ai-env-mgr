@@ -9,9 +9,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/TEENet-io/airlock/internal/admincore"
-	"github.com/TEENet-io/airlock/internal/authflow"
-	"github.com/TEENet-io/airlock/internal/model"
+	"github.com/TEENet-io/ai-env-mgr/internal/admincore"
+	"github.com/TEENet-io/ai-env-mgr/internal/authflow"
+	"github.com/TEENet-io/ai-env-mgr/internal/model"
 )
 
 // loginTimeout bounds the whole sign-in, including the time the
