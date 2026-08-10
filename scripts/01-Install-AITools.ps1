@@ -2,7 +2,8 @@
 <#
 .SYNOPSIS
   One-shot AI toolchain init for a shared Windows machine (single file, all init steps):
-    Part 1 (CLI, shared):        Codex CLI + Claude Code native single-exe -> C:\Tools + machine PATH.
+    Part 1 (CLI, shared):        Codex CLI single-exe -> C:\Tools; Claude Code via npm (auto-installs
+                                 Node LTS if missing) -> C:\Tools\npm-global; both on machine PATH (all users).
     Part 2 (GUI, provisioned):   ChatGPT desktop App (Chat/Work/Codex GUI). Auto-downloads the official
                                  offline package (or use -ChatGptMsix), provisions for ALL future users,
                                  and installs for the current user.
@@ -105,47 +106,47 @@ if (-not $SkipCli) {
         } catch { Write-Host "  [err] Codex CLI install failed: $_" -ForegroundColor Red }
     }
 
-    # Claude Code -- native installer (no winget / no Node). Skip if already staged.
-    # The winget path is unreliable on WuYing / Windows Server images that ship
-    # without App Installer, so the official native installer is primary and
-    # winget is only a fallback when it happens to be present.
-    $claudeDst = Join-Path $ToolsDir "claude.exe"
-    if ((Test-Path $claudeDst) -and (-not $Force)) {
-        Write-Host "  [skip] claude.exe already in $ToolsDir (use -Force to reinstall)" -ForegroundColor DarkYellow
+    # Claude Code -- via npm. This image has no winget, and the claude.ai native
+    # installer gets Cloudflare-challenged from some networks (Alibaba/WuYing
+    # egress), so npm off the public registry is the reliable path. npm needs
+    # Node, so install Node LTS (machine-wide MSI) first if it is missing, then
+    # install Claude Code into a MACHINE location so every user gets `claude`,
+    # not just the admin running this.
+    $npmGlobal  = Join-Path $ToolsDir "npm-global"
+    $claudeShim = Join-Path $npmGlobal "claude.cmd"
+    if ((Test-Path $claudeShim) -and (-not $Force)) {
+        Write-Host "  [skip] claude already installed (use -Force to reinstall)" -ForegroundColor DarkYellow
     } else {
-        # Where the installers drop claude.exe. Prefer the real versioned native
-        # binary under .local\share\...\versions (self-contained, so it still runs
-        # when copied to C:\Tools for OTHER users) over the .local\bin launcher,
-        # which may just point back into the installing user's profile.
-        $findClaude = {
-            $c = $null
-            $v = Get-ChildItem "$env:USERPROFILE\.local\share\claude\versions" -Filter "claude*.exe" -Recurse -ErrorAction SilentlyContinue |
-                Sort-Object LastWriteTime -Descending | Select-Object -First 1
-            if ($v) { $c = $v.FullName }
-            if (-not $c) {
-                $c = @("$env:USERPROFILE\.local\bin\claude.exe", "$env:LOCALAPPDATA\Programs\claude\claude.exe") |
-                    Where-Object { Test-Path $_ } | Select-Object -First 1
-            }
-            if (-not $c) { $g = Get-Command claude -ErrorAction SilentlyContinue; if ($g) { $c = $g.Source } }
-            $c
+        # 1) ensure Node + npm
+        if (-not (Get-Command npm -ErrorAction SilentlyContinue)) {
+            Write-Host "  Node.js/npm not found -- installing Node LTS (machine-wide)..." -ForegroundColor White
+            try {
+                $nodeMsi = Join-Path $env:TEMP "node-lts-x64.msi"
+                Invoke-WebRequest "https://nodejs.org/dist/v22.12.0/node-v22.12.0-x64.msi" -OutFile $nodeMsi -UseBasicParsing
+                Start-Process msiexec.exe -Wait -ArgumentList "/i `"$nodeMsi`" /qn /norestart"
+                # refresh PATH in this session so npm is callable right away
+                $env:Path = [Environment]::GetEnvironmentVariable('Path','Machine') + ';' + [Environment]::GetEnvironmentVariable('Path','User')
+                Write-Host "  [ok] Node installed" -ForegroundColor Green
+            } catch { Write-Host "  [err] Node install failed: $_" -ForegroundColor Red }
         }
 
-        Write-Host "  Installing Claude Code (official native installer)..." -ForegroundColor White
-        try { Invoke-Expression (Invoke-RestMethod -Uri 'https://claude.ai/install.ps1') }
-        catch { Write-Host "  [warn] native installer failed: $_" -ForegroundColor Yellow }
-
-        $found = & $findClaude
-        if (-not $found -and (Get-Command winget -ErrorAction SilentlyContinue)) {
-            Write-Host "  native installer did not place claude.exe; trying winget..." -ForegroundColor White
-            try { winget install --id Anthropic.ClaudeCode --accept-source-agreements --accept-package-agreements --silent } catch {}
-            $found = & $findClaude
-        }
-
-        if ($found) {
-            Copy-Item $found $claudeDst -Force
-            Write-Host "  [ok] claude.exe -> $ToolsDir  (from $found)" -ForegroundColor Green
+        # 2) install Claude Code globally into $npmGlobal (a machine path)
+        if (Get-Command npm -ErrorAction SilentlyContinue) {
+            New-Item -ItemType Directory -Force -Path $npmGlobal | Out-Null
+            $env:npm_config_prefix = $npmGlobal
+            Write-Host "  Installing Claude Code (npm -> $npmGlobal)..." -ForegroundColor White
+            try {
+                cmd /c "npm install -g @anthropic-ai/claude-code"
+                if (Test-Path $claudeShim) {
+                    $p = [Environment]::GetEnvironmentVariable('Path','Machine')
+                    if ($p -notlike "*$npmGlobal*") { [Environment]::SetEnvironmentVariable('Path', ($p.TrimEnd(';') + ";$npmGlobal"), 'Machine') }
+                    Write-Host "  [ok] claude -> $npmGlobal (added to machine PATH, all users)" -ForegroundColor Green
+                } else {
+                    Write-Host "  [warn] npm finished but claude.cmd not found in $npmGlobal" -ForegroundColor Yellow
+                }
+            } catch { Write-Host "  [err] npm install failed: $_ (slow/blocked in CN? try: npm config set registry https://registry.npmmirror.com)" -ForegroundColor Red }
         } else {
-            Write-Host "  [err] Claude installed but claude.exe not located. Last resort: install Node.js 22+, then 'npm i -g @anthropic-ai/claude-code'." -ForegroundColor Red
+            Write-Host "  [err] npm still unavailable; open a NEW admin PowerShell and run 'npm i -g @anthropic-ai/claude-code'." -ForegroundColor Red
         }
     }
 
