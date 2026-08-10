@@ -10,9 +10,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/TEENet-io/airlock/internal/creds"
-	"github.com/TEENet-io/airlock/internal/model"
-	"github.com/TEENet-io/airlock/internal/ossclient"
+	"github.com/TEENet-io/ai-env-mgr/internal/creds"
+	"github.com/TEENet-io/ai-env-mgr/internal/model"
+	"github.com/TEENet-io/ai-env-mgr/internal/ossclient"
 )
 
 // The fake must model the real store's contract: a missing object reports

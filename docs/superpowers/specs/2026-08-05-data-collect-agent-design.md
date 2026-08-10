@@ -2,7 +2,7 @@
 
 > 状态：设计待 review · 日期 2026-08-05 · 范围：仅采集端，不含分析端
 >
-> 参照实现：`/root/sun_home/ai-usage-analysis/scripts/collect_to_oss.py`。本设计的核心增量逻辑与该脚本**保持一致**，只把两处换成 airlock 的做法：归属靠 binding 的员工目录、去重只靠本地 state。
+> 参照实现：`/root/sun_home/ai-usage-analysis/scripts/collect_to_oss.py`。本设计的核心增量逻辑与该脚本**保持一致**，只把两处换成 ai-env-mgr 的做法：归属靠 binding 的员工目录、去重只靠本地 state。
 
 ---
 
@@ -38,7 +38,7 @@
 
 **硬约束**：agent 对 `data_collect/` 只有 `PutObject`，不能 LIST/GET。所以去重不能查 OSS，只能靠本地 state。这与 `collect_to_oss.py` 一致，且本身是安全特性：一台机器的密钥泄露也读不回任何人的对话。
 
-- **state 文件**：`<StateDir>/collect-state.json`，`StateDir` = `C:\ProgramData\Airlock`。
+- **state 文件**：`<StateDir>/collect-state.json`，`StateDir` = `C:\ProgramData\AIEnvMgr`。
 - **格式**：`{ "源绝对路径": [mtime, size] }`。与脚本一致——追加写一定改变 size，`(mtime,size)` 足以判变化。
 - **每周期**：`stat` 每个匹配文件；`(mtime,size)` 与 state 不同才传；传成功才写回 state；**传失败不写 state → 下周期自动重试**。
 - **去抖**：文件在最近 `quiet` 秒（默认 60）内还在变，判定"会话还在写"，本周期跳过，等静默后整份传——避免正在增长的文件每周期重传半截。

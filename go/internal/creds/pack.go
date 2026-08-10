@@ -11,7 +11,7 @@ import (
 	"io"
 	"sort"
 
-	"github.com/TEENet-io/airlock/internal/model"
+	"github.com/TEENet-io/ai-env-mgr/internal/model"
 )
 
 // maxEntrySize bounds how much a single archive entry may expand to. The

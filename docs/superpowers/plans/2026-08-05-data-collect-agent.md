@@ -10,7 +10,7 @@
 
 ## Global Constraints
 
-- 模块路径 `github.com/TEENet-io/airlock`；所有 OSS 键必须经 `internal/ossclient` 的 helper 生成，不手工拼接。
+- 模块路径 `github.com/TEENet-io/ai-env-mgr`；所有 OSS 键必须经 `internal/ossclient` 的 helper 生成，不手工拼接。
 - agent 对 `data_collect/` **只写不读**：Collector 只用 `Put`，绝不 `Get`/`List`/`Head` 该前缀。
 - **原文照传**，不解析、不脱敏。
 - 采集功能**默认关闭**（`collectEnabled` 默认 `false`）；代码合入不等于启用，权限与开关由管理员在功能落地时再开（见 `OSS布局.md` §6）。
@@ -237,7 +237,7 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/TEENet-io/airlock/internal/ossclient"
+	"github.com/TEENet-io/ai-env-mgr/internal/ossclient"
 )
 
 // Putter is the write-only slice of the store the collector uses. It is
@@ -779,7 +779,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/TEENet-io/airlock/internal/agentcore"
+	"github.com/TEENet-io/ai-env-mgr/internal/agentcore"
 )
 
 // localFileSource finds and reads the bound employee's AI session files.

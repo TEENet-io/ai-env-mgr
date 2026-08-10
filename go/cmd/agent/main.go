@@ -11,19 +11,19 @@ import (
 	"strings"
 	"time"
 
-	"github.com/TEENet-io/airlock/internal/agentcore"
-	"github.com/TEENet-io/airlock/internal/config"
-	"github.com/TEENet-io/airlock/internal/model"
-	"github.com/TEENet-io/airlock/internal/ossclient"
-	"github.com/TEENet-io/airlock/internal/winsvc"
+	"github.com/TEENet-io/ai-env-mgr/internal/agentcore"
+	"github.com/TEENet-io/ai-env-mgr/internal/config"
+	"github.com/TEENet-io/ai-env-mgr/internal/model"
+	"github.com/TEENet-io/ai-env-mgr/internal/ossclient"
+	"github.com/TEENet-io/ai-env-mgr/internal/winsvc"
 )
 
 var version = "dev"
 
 const (
-	serviceName = "AirlockAgent"
-	serviceDisp = "Airlock Agent"
-	serviceDesc = "Applies Airlock policy and AI tool credentials from the configuration store."
+	serviceName = "AIEnvMgrAgent"
+	serviceDisp = "AI Env Mgr Agent"
+	serviceDesc = "Applies AI Env Mgr policy and AI tool credentials from the configuration store."
 
 	// minSyncGap debounces the three triggers (startup, wake-up, overdue check)
 	// so a machine that resumes right after booting does not sync twice.
@@ -32,9 +32,9 @@ const (
 
 func stateDir() string {
 	if v := os.Getenv("ProgramData"); v != "" {
-		return filepath.Join(v, "Airlock")
+		return filepath.Join(v, "AIEnvMgr")
 	}
-	return filepath.FromSlash("/var/lib/airlock")
+	return filepath.FromSlash("/var/lib/ai-env-mgr")
 }
 
 func main() {
@@ -75,7 +75,7 @@ func main() {
 }
 
 func usage() {
-	fmt.Println(`agent.exe -- Airlock agent
+	fmt.Println(`agent.exe -- AI Env Mgr agent
 
   setup       do everything at once: copy into place, lock down permissions,
               register and start the service, then verify. Run this once on

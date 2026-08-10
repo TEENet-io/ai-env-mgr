@@ -3,8 +3,8 @@ package admincore
 import (
 	"fmt"
 
-	"github.com/TEENet-io/airlock/internal/creds"
-	"github.com/TEENet-io/airlock/internal/model"
+	"github.com/TEENet-io/ai-env-mgr/internal/creds"
+	"github.com/TEENet-io/ai-env-mgr/internal/model"
 )
 
 // PublishCredentials merges set into the user's existing credential archive

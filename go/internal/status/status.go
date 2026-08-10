@@ -9,7 +9,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/TEENet-io/airlock/internal/model"
+	"github.com/TEENet-io/ai-env-mgr/internal/model"
 )
 
 // unreachableAge is returned for reports whose timestamp cannot be parsed.

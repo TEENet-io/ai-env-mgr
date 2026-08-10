@@ -7,7 +7,7 @@ import (
 	"text/tabwriter"
 	"time"
 
-	"github.com/TEENet-io/airlock/internal/admincore"
+	"github.com/TEENet-io/ai-env-mgr/internal/admincore"
 )
 
 func cmdFile(args []string) error {

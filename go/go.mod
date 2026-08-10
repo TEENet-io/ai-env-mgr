@@ -1,4 +1,4 @@
-module github.com/TEENet-io/airlock
+module github.com/TEENet-io/ai-env-mgr
 
 go 1.25.0
 

@@ -10,13 +10,13 @@ import (
 	"strings"
 	"time"
 
-	"github.com/TEENet-io/airlock/internal/winsvc"
+	"github.com/TEENet-io/ai-env-mgr/internal/winsvc"
 )
 
 // installRoot is where the agent lives once installed. Under Program Files
 // because a standard user cannot write there, so an employee cannot swap the
 // binary for one pointing at a bucket of their choosing.
-const installRoot = `C:\Program Files\Airlock`
+const installRoot = `C:\Program Files\AIEnvMgr`
 
 // cmdSetup does everything needed to turn a freshly downloaded agent.exe into
 // a running service, in one step.

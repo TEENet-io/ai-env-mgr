@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/TEENet-io/airlock/internal/model"
+	"github.com/TEENet-io/ai-env-mgr/internal/model"
 )
 
 func TestBuildPopulatesFields(t *testing.T) {

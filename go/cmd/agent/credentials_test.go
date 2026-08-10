@@ -65,7 +65,7 @@ func buildWithKey(t *testing.T, dir, pkg, key string) string {
 	out := filepath.Join(dir, pkg+".bin")
 	cmd := exec.Command("go", "build", "-trimpath",
 		"-ldflags", "-s -w -X main.ossAccessKeySecret="+key,
-		"-o", out, "github.com/TEENet-io/airlock/cmd/"+pkg)
+		"-o", out, "github.com/TEENet-io/ai-env-mgr/cmd/"+pkg)
 	if msg, err := cmd.CombinedOutput(); err != nil {
 		t.Fatalf("building %s failed: %v\n%s", pkg, err, msg)
 	}

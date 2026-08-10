@@ -8,7 +8,7 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/TEENet-io/airlock/internal/ossclient"
+	"github.com/TEENet-io/ai-env-mgr/internal/ossclient"
 )
 
 // Putter is the write-only slice of the store the collector uses. It is

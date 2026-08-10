@@ -4,9 +4,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/TEENet-io/airlock/internal/model"
-	"github.com/TEENet-io/airlock/internal/ossclient"
-	"github.com/TEENet-io/airlock/internal/status"
+	"github.com/TEENet-io/ai-env-mgr/internal/model"
+	"github.com/TEENet-io/ai-env-mgr/internal/ossclient"
+	"github.com/TEENet-io/ai-env-mgr/internal/status"
 )
 
 func statusBytes(t *testing.T, s model.Status) []byte {

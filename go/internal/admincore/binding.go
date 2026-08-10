@@ -6,8 +6,8 @@ import (
 	"sort"
 	"time"
 
-	"github.com/TEENet-io/airlock/internal/model"
-	"github.com/TEENet-io/airlock/internal/ossclient"
+	"github.com/TEENet-io/ai-env-mgr/internal/model"
+	"github.com/TEENet-io/ai-env-mgr/internal/ossclient"
 )
 
 // BindMachine assigns a machine (identified by hostname, the only identity

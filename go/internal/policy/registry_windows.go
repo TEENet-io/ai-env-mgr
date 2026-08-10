@@ -10,7 +10,7 @@ import (
 
 	"golang.org/x/sys/windows/registry"
 
-	"github.com/TEENet-io/airlock/internal/model"
+	"github.com/TEENet-io/ai-env-mgr/internal/model"
 )
 
 // target pairs one browser's registry key with the values it should hold.

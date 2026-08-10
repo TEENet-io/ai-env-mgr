@@ -8,9 +8,9 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/TEENet-io/airlock/internal/admincore"
-	"github.com/TEENet-io/airlock/internal/config"
-	"github.com/TEENet-io/airlock/internal/ossclient"
+	"github.com/TEENet-io/ai-env-mgr/internal/admincore"
+	"github.com/TEENet-io/ai-env-mgr/internal/config"
+	"github.com/TEENet-io/ai-env-mgr/internal/ossclient"
 )
 
 var version = "dev"
@@ -71,7 +71,7 @@ func main() {
 }
 
 func usage() {
-	fmt.Print(`admin.exe -- Airlock administration
+	fmt.Print(`admin.exe -- AI Env Mgr administration
 
 Accounts
   login --user <name> --tool <codex|claude|all>   sign in on a user's behalf

@@ -7,8 +7,8 @@ import (
 	"text/tabwriter"
 	"time"
 
-	"github.com/TEENet-io/airlock/internal/admincore"
-	"github.com/TEENet-io/airlock/internal/status"
+	"github.com/TEENet-io/ai-env-mgr/internal/admincore"
+	"github.com/TEENet-io/ai-env-mgr/internal/status"
 )
 
 // staleAfter is how long a machine may go without reporting before the admin

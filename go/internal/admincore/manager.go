@@ -14,8 +14,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/TEENet-io/airlock/internal/model"
-	"github.com/TEENet-io/airlock/internal/ossclient"
+	"github.com/TEENet-io/ai-env-mgr/internal/model"
+	"github.com/TEENet-io/ai-env-mgr/internal/ossclient"
 )
 
 // Store is the subset of the object store the admin needs.

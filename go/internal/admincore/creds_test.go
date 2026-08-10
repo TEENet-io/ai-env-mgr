@@ -4,9 +4,9 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/TEENet-io/airlock/internal/creds"
-	"github.com/TEENet-io/airlock/internal/model"
-	"github.com/TEENet-io/airlock/internal/ossclient"
+	"github.com/TEENet-io/ai-env-mgr/internal/creds"
+	"github.com/TEENet-io/ai-env-mgr/internal/model"
+	"github.com/TEENet-io/ai-env-mgr/internal/ossclient"
 )
 
 func TestPublishCredentialsRoundTrips(t *testing.T) {
