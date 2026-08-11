@@ -72,6 +72,9 @@ your-bucket/
     ├── _agent/                          agent 自更新用（agent 只读，见 §7）
     │   └── agent.exe                    管理员发布的新版二进制
     │
+    ├── _logs/                           机器日志上报（agent 只写,admin 读）
+    │   └── {主机名}.log                 每台机器最近的 agent 日志尾部
+    │
     ├── work1/                           按【员工】分目录
     │   ├── credentials.zip              该员工的 AI 工具凭据（agent 只读）
     │   └── data_collect/                该员工的原始会话（已实现，默认关闭）

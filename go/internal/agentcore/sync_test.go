@@ -108,6 +108,53 @@ func TestRunOnceSkipsUpdateAlreadyAttempted(t *testing.T) {
 	}
 }
 
+func TestUploadLogWritesToLogKey(t *testing.T) {
+	store := newFakeStore()
+	s := newSyncer(t, store, &fakeApplier{})
+	if err := s.UploadLog([]byte("scheduled sync ok\n")); err != nil {
+		t.Fatal(err)
+	}
+	if string(store.puts[ossclient.LogKey("DESKTOP-A")]) != "scheduled sync ok\n" {
+		t.Fatalf("log not uploaded to LogKey; puts=%v", store.puts)
+	}
+}
+
+func TestHeartbeatBeforeSyncWritesNothing(t *testing.T) {
+	store := newFakeStore()
+	s := newSyncer(t, store, &fakeApplier{})
+	if err := s.Heartbeat(); err != nil {
+		t.Fatal(err)
+	}
+	if len(store.puts) != 0 {
+		t.Fatalf("heartbeat before the first sync should write nothing, wrote %d", len(store.puts))
+	}
+}
+
+func TestHeartbeatRefreshesStatusAfterSync(t *testing.T) {
+	store := newFakeStore()
+	s := newSyncer(t, store, &fakeApplier{})
+	bind(t, store, "DESKTOP-A", "work1")
+	store.set(ossclient.PolicyKey(), policyBytes(t, model.DefaultPolicy()), "p")
+	if _, err := s.RunOnce(); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := s.Heartbeat(); err != nil {
+		t.Fatal(err)
+	}
+	out := store.puts[ossclient.StatusKey("DESKTOP-A")]
+	if out == nil {
+		t.Fatal("heartbeat did not write the status object")
+	}
+	var st model.Status
+	if err := json.Unmarshal(out, &st); err != nil {
+		t.Fatal(err)
+	}
+	if st.Machine != "DESKTOP-A" || st.LastSync == "" {
+		t.Fatalf("heartbeat status = %+v; want machine set and a fresh LastSync", st)
+	}
+}
+
 // The fake must model the real store's contract: a missing object reports
 // ossclient.ErrNotFound, which is what tells the agent a revocation happened
 // rather than a network failure.

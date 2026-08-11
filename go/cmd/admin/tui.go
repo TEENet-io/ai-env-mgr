@@ -40,7 +40,7 @@ func runTUI() error {
 		fmt.Println("  1) 机器状态")
 		fmt.Println("  2) 员工管理")
 		fmt.Println("  3) 代员工登录")
-		fmt.Println("  4) 绑定机器")
+		fmt.Println("  4) 机器管理")
 		fmt.Println("  5) 封禁策略")
 		fmt.Println("  6) 会话采集")
 		fmt.Println("  7) 文件传输")
@@ -61,17 +61,7 @@ func runTUI() error {
 				run(cmdLogin([]string{"--user", u, "--tool", tool}))
 			}
 		case "4":
-			h := ask("主机名: ")
-			u := ask("员工名: ")
-			note := ask("备注(可空): ")
-			if h == "" || u == "" {
-				continue
-			}
-			args := []string{"bind", h, "--user", u}
-			if note != "" {
-				args = append(args, "--note", note)
-			}
-			run(cmdMachine(args))
+			tuiMachine(ask, run)
 		case "5":
 			tuiPolicy(ask, run)
 		case "6":
@@ -114,6 +104,37 @@ func tuiUser(ask func(string) string, run func(error)) {
 	case "4":
 		if name := ask("  员工名: "); name != "" {
 			run(cmdUser([]string{"enable", name}))
+		}
+	}
+}
+
+func tuiMachine(ask func(string) string, run func(error)) {
+	fmt.Println("  机器:  1)列表  2)绑定  3)解绑  4)删除(下线机器)  5)看日志")
+	switch ask("  选择: ") {
+	case "1":
+		run(cmdMachine([]string{"list"}))
+	case "5":
+		if h := ask("  主机名: "); h != "" {
+			run(cmdLog([]string{h}))
+		}
+	case "2":
+		h := ask("  主机名: ")
+		u := ask("  员工名: ")
+		if h == "" || u == "" {
+			return
+		}
+		args := []string{"bind", h, "--user", u}
+		if note := ask("  备注(可空): "); note != "" {
+			args = append(args, "--note", note)
+		}
+		run(cmdMachine(args))
+	case "3":
+		if h := ask("  主机名: "); h != "" {
+			run(cmdMachine([]string{"unbind", h}))
+		}
+	case "4":
+		if h := ask("  主机名: "); h != "" {
+			run(cmdMachine([]string{"forget", h}))
 		}
 	}
 }

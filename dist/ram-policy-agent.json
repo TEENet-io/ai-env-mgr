@@ -19,7 +19,8 @@
         "oss:PutObject"
       ],
       "Resource": [
-        "acs:oss:*:*:your-bucket-name/agent_workdir/_status/*"
+        "acs:oss:*:*:your-bucket-name/agent_workdir/_status/*",
+        "acs:oss:*:*:your-bucket-name/agent_workdir/_logs/*"
       ]
     }
   ]

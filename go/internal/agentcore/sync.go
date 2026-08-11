@@ -88,6 +88,10 @@ type Syncer struct {
 	// Updater applies an agent self-update when the policy targets a version
 	// other than this binary's. Optional: nil disables self-update.
 	Updater Updater
+
+	// lastStatus is the most recent full status, reused by Heartbeat to refresh
+	// the machine's "last seen" time between full syncs.
+	lastStatus model.Status
 }
 
 func (s *Syncer) readMarker(name string) string {
@@ -294,6 +298,10 @@ func (s *Syncer) RunOnce() (model.Status, error) {
 		st.Errors = append(st.Errors, fmt.Sprintf("status upload: %v", err))
 	}
 
+	// Remember this status so Heartbeat can refresh "last seen" cheaply between
+	// full syncs, without re-pulling policy or touching the employee's tools.
+	s.lastStatus = st
+
 	// Record the wall-clock time so a later wake-up can tell how stale we are.
 	s.writeMarker(lastSyncMarkerFile, time.Now().UTC().Format(time.RFC3339))
 
@@ -336,6 +344,38 @@ func (s *Syncer) prepareUpdate(pol model.Policy, errs *[]string) []byte {
 		return nil
 	}
 	return data
+}
+
+// UploadLog stores the recent agent log for this machine so the admin can read
+// it remotely (see `admin log <machine>`). Best effort: the caller logs and
+// ignores failures rather than failing the sync over a log upload.
+func (s *Syncer) UploadLog(tail []byte) error {
+	return s.Store.Put(ossclient.LogKey(s.Machine.Name()), tail)
+}
+
+// Heartbeat re-uploads the machine's last status with a fresh timestamp, so
+// the admin sees it as alive between full syncs.
+//
+// It is deliberately lightweight: it pulls no policy, delivers no credentials
+// and never touches the employee's running tools. It only refreshes "last
+// seen", which is what lets the sync interval stay long (cheap, infrequent
+// config pulls) while liveness stays fresh. A no-op before the first full sync,
+// since there is no status to refresh yet.
+func (s *Syncer) Heartbeat() error {
+	if s.lastStatus.Machine == "" {
+		return nil
+	}
+	st := s.lastStatus
+	st.LastSync = time.Now().UTC().Format(time.RFC3339)
+	out, err := status.Marshal(st)
+	if err != nil {
+		return fmt.Errorf("heartbeat encode: %w", err)
+	}
+	if err := s.Store.Put(ossclient.StatusKey(st.Machine), out); err != nil {
+		return fmt.Errorf("heartbeat upload: %w", err)
+	}
+	s.lastStatus = st
+	return nil
 }
 
 // NextInterval reports how long to wait before the next cycle, based on the

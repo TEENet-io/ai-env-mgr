@@ -84,6 +84,8 @@ func main() {
 		err = cmdAgent(os.Args[2:])
 	case "status":
 		err = cmdStatus()
+	case "log":
+		err = cmdLog(os.Args[2:])
 	case "version":
 		fmt.Println(version)
 	default:
@@ -110,7 +112,9 @@ Accounts
 Machines
   machine bind <hostname> --user <name> [--note <text>]
   machine unbind <hostname>
+  machine forget <hostname>   remove a decommissioned machine (binding + status)
   machine list
+  log <hostname>              print the agent log a machine uploaded
 
 File transfer
   file put <path> [--as <name>] [--expires <hours>]   stage a file and print
