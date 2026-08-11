@@ -11,17 +11,23 @@ import (
 	"github.com/TEENet-io/ai-env-mgr/internal/status"
 )
 
-// Liveness thresholds. A live agent refreshes its status roughly every minute
-// (the heartbeat), so silence is a strong signal -- but cloud desktops sleep
-// and get shut down overnight and on weekends, and that silence is expected.
-// The two thresholds separate "away, normal" from "quiet too long, look into
-// it", so a machine that hibernates every night is not reported as a problem.
+// Liveness thresholds. A live agent re-writes its status roughly every minute
+// -- the loop ticks every minute and, when a full sync is not due, sends a
+// heartbeat that refreshes "last seen" regardless of the (possibly long) sync
+// interval. So a running machine's report is never more than a minute or two
+// old, which makes silence a strong, fast signal.
 const (
 	// freshAfter: reported within this window -> the agent is alive (OK).
-	freshAfter = 2 * time.Hour
+	// Ten minutes is ten missed heartbeats -- comfortably past any single
+	// network blip, but far tighter than a sync interval, so a machine that is
+	// actually stopped or shut down shows OFFLINE within minutes instead of
+	// looking healthy for hours. (A positive suspend/stop marker still flips it
+	// to SLEEPING/STOPPED instantly when it uploads; this is the fallback for
+	// when it cannot -- a hard power-off leaves no marker.)
+	freshAfter = 10 * time.Minute
 	// investigateAfter: quiet longer than this and it is no longer just an
-	// overnight sleep -- a hibernating machine wakes within a day or two, a
-	// dead agent never does. This is the line where silence becomes STALE.
+	// overnight sleep or a weekend off -- a hibernating machine wakes within a
+	// day or two, a dead agent never does. This is where silence becomes STALE.
 	investigateAfter = 3 * 24 * time.Hour
 )
 
