@@ -133,9 +133,12 @@ Website blocking
 Agents
   set-interval <minutes>      change how often agents sync
   status                      show every machine's state
-  agent publish <path> --version <v>   roll a new agent.exe to the fleet
-  agent cancel                         clear the update target (kill switch)
-  agent status                         show the current update target
+  agent publish <path>|--url <url> --version <v> [--token <pat>]
+                              roll a new agent.exe to the fleet (from a local
+                              file, or downloaded from a URL; --token/GITHUB_TOKEN
+                              for a private GitHub release)
+  agent cancel                clear the update target (kill switch)
+  agent status                show the current update target
 
 Session collection (off by default)
   collect enable [--since <YYYY-MM-DD>] [--quiet <seconds>]   turn collection on
