@@ -229,23 +229,33 @@ func runService() {
 		defer f.Close()
 	}
 
-	worker := func(stop <-chan struct{}, wake <-chan struct{}) {
-		s, err := newSyncer()
-		if err != nil {
-			log.Printf("startup failed: %v", err)
-			return
-		}
-		loop(s, stop, wake)
+	// Build the syncer once and share it between the worker loop and the
+	// power/stop event handler: OnEvent must report on the very same status the
+	// loop maintains, so they cannot each own a private copy.
+	s, err := newSyncer()
+	if err != nil {
+		log.Printf("startup failed: %v", err)
+		return
+	}
+
+	hooks := winsvc.Hooks{
+		Run: func(stop <-chan struct{}, wake <-chan struct{}) { loop(s, stop, wake) },
+		OnEvent: func(evt winsvc.Event) {
+			// Report the transition so the admin sees "sleeping"/"stopped"
+			// instead of an unexplained silence. Bounded inside ReportEvent.
+			log.Printf("lifecycle event: %s -- reporting before going quiet", evt)
+			s.ReportEvent(evt.String())
+		},
 	}
 
 	if winsvc.IsWindowsService() {
-		if err := winsvc.Run(serviceName, winsvc.Hooks{Run: worker}); err != nil {
+		if err := winsvc.Run(serviceName, hooks); err != nil {
 			log.Printf("service exited: %v", err)
 		}
 		return
 	}
 	log.Printf("running in the foreground (not started by the service manager)")
-	worker(make(chan struct{}), make(chan struct{}))
+	hooks.Run(make(chan struct{}), make(chan struct{}))
 }
 
 // loop drives the sync cycle from three independent triggers.

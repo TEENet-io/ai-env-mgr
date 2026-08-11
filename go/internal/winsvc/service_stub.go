@@ -10,7 +10,8 @@ import "fmt"
 
 // Hooks carries the callbacks the service body needs.
 type Hooks struct {
-	Run func(stop <-chan struct{}, wake <-chan struct{})
+	Run     func(stop <-chan struct{}, wake <-chan struct{})
+	OnEvent func(evt Event)
 }
 
 var errWindowsOnly = fmt.Errorf("service control is only supported on Windows")

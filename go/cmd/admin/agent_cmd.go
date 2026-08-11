@@ -2,12 +2,15 @@ package main
 
 import (
 	"fmt"
+	"io"
+	"net/http"
 	"os"
+	"strings"
 )
 
 func cmdAgent(args []string) error {
 	if len(args) == 0 {
-		return fmt.Errorf("usage: admin agent <publish <path> --version <v> | cancel | status>")
+		return fmt.Errorf("usage: admin agent <publish <path>|--url <url> --version <v> | cancel | status>")
 	}
 	switch args[0] {
 	case "publish":
@@ -22,7 +25,8 @@ func cmdAgent(args []string) error {
 }
 
 func cmdAgentPublish(args []string) error {
-	path, version := "", ""
+	path, url, version := "", "", ""
+	token := os.Getenv("GITHUB_TOKEN")
 	for i := 0; i < len(args); i++ {
 		switch args[i] {
 		case "--version":
@@ -31,6 +35,18 @@ func cmdAgentPublish(args []string) error {
 			}
 			version = args[i+1]
 			i++
+		case "--url":
+			if i+1 >= len(args) {
+				return fmt.Errorf("--url needs a value")
+			}
+			url = args[i+1]
+			i++
+		case "--token":
+			if i+1 >= len(args) {
+				return fmt.Errorf("--token needs a value")
+			}
+			token = args[i+1]
+			i++
 		default:
 			if path != "" {
 				return fmt.Errorf("unexpected argument %q", args[i])
@@ -38,13 +54,24 @@ func cmdAgentPublish(args []string) error {
 			path = args[i]
 		}
 	}
-	if path == "" || version == "" {
-		return fmt.Errorf("usage: admin agent publish <path-to-agent.exe> --version <v>")
+	if version == "" || (path == "" && url == "") {
+		return fmt.Errorf("usage: admin agent publish <path> | --url <url> --version <v> [--token <github-pat>]")
 	}
-	data, err := os.ReadFile(path)
-	if err != nil {
+	if path != "" && url != "" {
+		return fmt.Errorf("give a local path OR --url, not both")
+	}
+
+	var data []byte
+	var err error
+	if url != "" {
+		fmt.Printf("downloading %s ...\n", url)
+		if data, err = downloadBinary(url, token); err != nil {
+			return err
+		}
+	} else if data, err = os.ReadFile(path); err != nil {
 		return fmt.Errorf("read %s: %w", path, err)
 	}
+
 	mgr, err := newManager()
 	if err != nil {
 		return err
@@ -58,6 +85,41 @@ func cmdAgentPublish(args []string) error {
 	fmt.Println("(the policy is global) -- validate on one machine first; there is no auto-rollback.")
 	fmt.Println("kill switch: admin agent cancel")
 	return nil
+}
+
+// downloadBinary fetches the agent binary from an http(s) URL. For a PRIVATE
+// GitHub release asset, pass a token (repo scope) via --token or GITHUB_TOKEN:
+// without it GitHub returns 404 (it hides private repos) or an HTML login page.
+// A cross-host redirect to the signed asset URL is followed by the default
+// client, which strips the Authorization header on the way (as it should).
+func downloadBinary(url, token string) ([]byte, error) {
+	if !strings.HasPrefix(url, "http://") && !strings.HasPrefix(url, "https://") {
+		return nil, fmt.Errorf("--url must be an http(s) URL, got %q", url)
+	}
+	req, err := http.NewRequest(http.MethodGet, url, nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Accept", "application/octet-stream")
+	if token != "" {
+		req.Header.Set("Authorization", "Bearer "+token)
+	}
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("download: %w", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		hint := ""
+		if (resp.StatusCode == http.StatusNotFound || resp.StatusCode == http.StatusUnauthorized) && token == "" {
+			hint = " (private release? pass a GitHub token via --token or GITHUB_TOKEN, repo scope)"
+		}
+		return nil, fmt.Errorf("download %s: HTTP %d%s", url, resp.StatusCode, hint)
+	}
+	if ct := resp.Header.Get("Content-Type"); strings.HasPrefix(ct, "text/html") {
+		return nil, fmt.Errorf("download returned HTML, not a binary (Content-Type %q) -- likely an auth wall; pass a token", ct)
+	}
+	return io.ReadAll(resp.Body)
 }
 
 func cmdAgentCancel() error {

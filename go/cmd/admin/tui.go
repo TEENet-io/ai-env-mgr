@@ -188,11 +188,21 @@ func tuiAgent(ask func(string) string, run func(error)) {
 	case "1":
 		run(cmdAgent([]string{"status"}))
 	case "2":
-		p := ask("  新 agent.exe 路径: ")
+		p := ask("  新 agent.exe 路径或 http(s) URL: ")
 		v := ask("  版本号 (如 1.2.0): ")
-		if p != "" && v != "" {
-			run(cmdAgent([]string{"publish", p, "--version", v}))
+		if p == "" || v == "" {
+			return
 		}
+		args := []string{"publish", "--version", v}
+		if strings.HasPrefix(p, "http://") || strings.HasPrefix(p, "https://") {
+			args = append(args, "--url", p)
+			if tok := ask("  GitHub token (私有 release 才需要,可空): "); tok != "" {
+				args = append(args, "--token", tok)
+			}
+		} else {
+			args = append(args, p)
+		}
+		run(cmdAgent(args))
 	case "3":
 		run(cmdAgent([]string{"cancel"}))
 	}

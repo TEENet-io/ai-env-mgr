@@ -97,6 +97,17 @@ type Status struct {
 	CollectEnabled      bool     `json:"collectEnabled"`
 	CollectUploaded     int      `json:"collectUploaded"`
 	Errors              []string `json:"errors"`
+
+	// LastEvent records the agent's most recent lifecycle transition that it
+	// managed to report BEFORE going quiet: "suspend" (the machine is about to
+	// sleep) or "stopped" (the service was stopped or the machine is shutting
+	// down). It is empty during normal operation and, crucially, stays empty
+	// when an agent crashes -- a crash sends no warning, so "quiet with no
+	// event" is what lets the admin tell a dead agent apart from one that only
+	// went to sleep. A normal sync or heartbeat clears it again. LastEventAt is
+	// when the event was reported (RFC3339).
+	LastEvent   string `json:"lastEvent,omitempty"`
+	LastEventAt string `json:"lastEventAt,omitempty"`
 }
 
 // HasLocalUser reports whether a given account has a profile on the machine.
