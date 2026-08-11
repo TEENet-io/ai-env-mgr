@@ -31,7 +31,7 @@ func cmdStatus() error {
 	}
 
 	w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
-	fmt.Fprintln(w, "MACHINE\tUSER\tLOCAL USERS\tLAST SYNC\tPOLICY\tBLOCK\tAPPLOCKER\tSTATE")
+	fmt.Fprintln(w, "MACHINE\tUSER\tLOCAL USERS\tAGENT\tLAST SYNC\tPOLICY\tBLOCK\tAPPLOCKER\tSTATE")
 
 	problems := 0
 	for _, m := range machines {
@@ -48,8 +48,10 @@ func cmdStatus() error {
 		}
 
 		last := "never"
+		agent := "-"
 		if !m.Missing {
 			last = humanAge(status.Age(st))
+			agent = dashIfEmpty(st.AgentVersion)
 		}
 
 		block, applocker := "-", "-"
@@ -66,8 +68,8 @@ func cmdStatus() error {
 			problems++
 		}
 
-		fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n",
-			m.Machine, user, locals, last,
+		fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n",
+			m.Machine, user, locals, agent, last,
 			dashIfEmpty(shorten(st.PolicyETag)), block, applocker, state)
 	}
 	if err := w.Flush(); err != nil {
