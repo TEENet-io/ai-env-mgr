@@ -69,6 +69,7 @@ admin.exe login --user work1 --tool all # 凭据过期重新登录
 | `docs/OSS布局.md` | **OSS 结构、对象格式、RAM 权限的唯一权威来源** |
 | `docs/架构说明.md` | 架构决策与取舍 |
 | `docs/操作手册.md` | 员工入职离职流程 |
+| `docs/企业微信集成.md` | 企业微信告警接入 + admin 机器人可行性调研 |
 
 ## 从源码构建
 
