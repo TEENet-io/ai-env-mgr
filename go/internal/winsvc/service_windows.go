@@ -130,7 +130,14 @@ type handler struct {
 
 func (h *handler) Execute(args []string, r <-chan svc.ChangeRequest, changes chan<- svc.Status) (bool, uint32) {
 	// Accepting POWEREVENT is what makes resume notifications arrive at all.
-	const accepted = svc.AcceptStop | svc.AcceptShutdown | svc.AcceptPowerEvent
+	// PRESHUTDOWN is what makes the stop report survive a real machine
+	// shutdown: a plain SHUTDOWN control arrives so late that the network is
+	// already being torn down (the SCM even reports "shutdown in progress"),
+	// leaving no window to reach OSS. PRESHUTDOWN fires BEFORE that sequence,
+	// with a generous default timeout (~180s), so the agent has time to report
+	// "stopped" before anything goes away. A service accepting preshutdown is
+	// sent PRESHUTDOWN in place of SHUTDOWN, so both are handled the same.
+	const accepted = svc.AcceptStop | svc.AcceptShutdown | svc.AcceptPreShutdown | svc.AcceptPowerEvent
 
 	changes <- svc.Status{State: svc.StartPending}
 
@@ -165,12 +172,14 @@ func (h *handler) Execute(args []string, r <-chan svc.ChangeRequest, changes cha
 				}
 			}
 
-		case svc.Stop, svc.Shutdown:
+		case svc.Stop, svc.Shutdown, svc.PreShutdown:
 			// Tell the SCM we heard it before doing any work, so a slow report
 			// cannot make the service look hung.
 			changes <- svc.Status{State: svc.StopPending}
-			// Report the orderly stop before the worker tears down; the network
-			// is still up here, so unlike suspend this reliably reaches OSS.
+			// Report the orderly stop before the worker tears down. For a plain
+			// service stop the network is plainly up; for a machine shutdown the
+			// PRESHUTDOWN control (see above) is what gets us here early enough
+			// for the report to still reach OSS.
 			if h.hooks.OnEvent != nil {
 				h.hooks.OnEvent(EventStop)
 			}

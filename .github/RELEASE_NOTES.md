@@ -1,9 +1,13 @@
 自动构建的二进制。
 
-## 本版更新（v1.2.x，相对 v1.1.0 新增）
+## 本版更新（v1.2.3，相对 v1.1.0 新增）
 
 **agent 侧**
+- **休眠/停止上报（区分休眠与崩溃）**：云电脑休眠时会像 agent 崩溃一样静默。现在 agent 在**休眠前**上报 `suspend`、在**被停止/关机**时上报 `stopped`；**崩溃收不到通知、留不下标记**——这正是区分点。对应 `admin status` 的 STATE 分级：`SLEEPING` / `STOPPED` / `OFFLINE`（几小时内，预期）/ `STALE`（>3 天，或说要睡却没醒 → 要排查）。每晚休眠的机器不再被误报为故障。
+- **关机可靠上报（PreShutdown）**：普通 `SHUTDOWN` 通知来得太晚（网络已在拆，SCM 报 "shutdown in progress"），关机时 `stopped` 常常发不出去。改为注册 **PreShutdown**，在系统拆服务/断网**之前**就收到通知（窗口约 180 秒），关机/重启也能大概率留下标记。各场景可靠性：停服务=可靠；关机/重启=大概率；真·休眠挂起=尽力而为；强制断电=无从上报（靠 OFFLINE/STALE 兜底）。
 - **自更新**：`admin agent publish <exe> --version <v>` 一键滚动全体；agent 每周期比对版本 → 下载 `_agent/agent.exe` → **校验 SHA-256** → 换文件（旧的留 `agent.exe.old`）→ 重启服务。校验不过不换;同一目标只试一次不会反复重启;`admin agent cancel` 是急停。
+- `admin agent publish` 支持 **`--url <github-release-url>`**：admin 直接从 release 下载 agent.exe 再推到 OSS（私有仓库用 `--token`/`GITHUB_TOKEN`）。
+- **AGENT 版本列**：`admin status` 增加 AGENT 列，升级/自更新后能看谁还停在旧版。
 - **心跳**：每 1 分钟刷新一次"最近露面",`admin status` 的 `LAST SYNC` 变成实时,配置同步间隔照旧。
 - **日志上报 OSS**：每个完整同步周期把日志尾部（约 64KB）推到 `_logs/{主机名}.log`,管理员用 `admin log <主机名>` 远程看,不用上机器。
 
@@ -12,6 +16,7 @@
 - **固化 bucket/endpoint**：可在编译时把 bucket/endpoint 打进去,运行时只问 AK/SK（release 版仍完全通用,四项都问）。
 - **`machine forget <主机名>`**：彻底删除已下线机器（绑定 + 状态上报一起删,从 `admin status` 消失）。
 - **`admin log <主机名>`**：读机器上传的日志。
+- **`machine list` 增加 STATE 列**：绑定名册里直接显示每台机器的存活状态（OK / STOPPED / SLEEPING / OFFLINE / STALE / NO REPORT），关机上报后这里也能看到 STOPPED，不用切到 `admin status`。
 
 **安装脚本（`scripts/01-Install-AITools.ps1`）**
 - Claude Code 改走 **npm**（镜像无 winget / claude.ai 被 Cloudflare 挡时也能装;没 Node 会自动装 Node LTS）。
