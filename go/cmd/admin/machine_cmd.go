@@ -3,8 +3,9 @@ package main
 import (
 	"fmt"
 	"os"
-	"sort"
 	"text/tabwriter"
+
+	"github.com/TEENet-io/ai-env-mgr/internal/admincore"
 )
 
 func cmdMachine(args []string) error {
@@ -73,25 +74,32 @@ func cmdMachine(args []string) error {
 		return nil
 
 	case "list":
-		bindings, err := mgr.ListBindings()
+		// Roster of assigned machines, each with its current liveness. The
+		// state is the same verdict `admin status` shows (OK / STOPPED /
+		// SLEEPING / OFFLINE / STALE / NO REPORT ...), so a machine that has
+		// reported a shutdown reads as STOPPED here too. CollectMachines also
+		// surfaces unbound reporters; this view stays bound-only so it remains
+		// the binding roster and not a second copy of `admin status`.
+		machines, err := mgr.CollectMachines(freshAfter)
 		if err != nil {
 			return err
 		}
-		if len(bindings) == 0 {
+		bound := make([]admincore.MachineState, 0, len(machines))
+		for _, m := range machines {
+			if m.Bound {
+				bound = append(bound, m)
+			}
+		}
+		if len(bound) == 0 {
 			fmt.Println("no machines bound yet -- run 'admin status' to see which ones have reported in")
 			return nil
 		}
-		names := make([]string, 0, len(bindings))
-		for name := range bindings {
-			names = append(names, name)
-		}
-		sort.Strings(names)
 
 		w := tabwriter.NewWriter(os.Stdout, 0, 0, 3, ' ', 0)
-		fmt.Fprintln(w, "MACHINE\tUSER\tBOUND AT\tNOTE")
-		for _, name := range names {
-			b := bindings[name]
-			fmt.Fprintf(w, "%s\t%s\t%s\t%s\n", name, b.User, b.BoundAt, dashIfEmpty(b.Note))
+		fmt.Fprintln(w, "MACHINE\tUSER\tBOUND AT\tNOTE\tSTATE")
+		for _, m := range bound {
+			fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\n",
+				m.Machine, m.Binding.User, m.Binding.BoundAt, dashIfEmpty(m.Binding.Note), describeState(m))
 		}
 		return w.Flush()
 
