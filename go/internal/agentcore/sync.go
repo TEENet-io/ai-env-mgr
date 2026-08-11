@@ -13,6 +13,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/TEENet-io/ai-env-mgr/internal/creds"
@@ -89,10 +90,20 @@ type Syncer struct {
 	// other than this binary's. Optional: nil disables self-update.
 	Updater Updater
 
+	// mu guards lastStatus. ReportEvent runs on the service control handler's
+	// goroutine, which can overlap the worker goroutine's RunOnce/Heartbeat, so
+	// the shared last status must be locked.
+	mu sync.Mutex
 	// lastStatus is the most recent full status, reused by Heartbeat to refresh
-	// the machine's "last seen" time between full syncs.
+	// the machine's "last seen" time between full syncs, and by ReportEvent to
+	// stamp a lifecycle transition onto the same report.
 	lastStatus model.Status
 }
+
+// eventReportTimeout bounds how long ReportEvent waits for the store. On
+// suspend the OS is waiting for the service handler to return, so the report
+// must not block sleep indefinitely if the network is already tearing down.
+const eventReportTimeout = 3 * time.Second
 
 func (s *Syncer) readMarker(name string) string {
 	data, err := os.ReadFile(filepath.Join(s.StateDir, name))
@@ -300,7 +311,12 @@ func (s *Syncer) RunOnce() (model.Status, error) {
 
 	// Remember this status so Heartbeat can refresh "last seen" cheaply between
 	// full syncs, without re-pulling policy or touching the employee's tools.
+	// A completed sync means the agent is running normally, so any earlier
+	// lifecycle event (a suspend that never actually slept, say) is now stale:
+	// Build already leaves LastEvent empty, which clears it.
+	s.mu.Lock()
 	s.lastStatus = st
+	s.mu.Unlock()
 
 	// Record the wall-clock time so a later wake-up can tell how stale we are.
 	s.writeMarker(lastSyncMarkerFile, time.Now().UTC().Format(time.RFC3339))
@@ -362,11 +378,20 @@ func (s *Syncer) UploadLog(tail []byte) error {
 // config pulls) while liveness stays fresh. A no-op before the first full sync,
 // since there is no status to refresh yet.
 func (s *Syncer) Heartbeat() error {
+	s.mu.Lock()
 	if s.lastStatus.Machine == "" {
+		s.mu.Unlock()
 		return nil
 	}
 	st := s.lastStatus
+	s.mu.Unlock()
+
 	st.LastSync = time.Now().UTC().Format(time.RFC3339)
+	// A heartbeat is proof the agent is alive and running, so it clears any
+	// lifecycle event: a "suspend" the machine reported but then did not act on
+	// must not linger and make a running machine look asleep.
+	st.LastEvent = ""
+	st.LastEventAt = ""
 	out, err := status.Marshal(st)
 	if err != nil {
 		return fmt.Errorf("heartbeat encode: %w", err)
@@ -374,8 +399,51 @@ func (s *Syncer) Heartbeat() error {
 	if err := s.Store.Put(ossclient.StatusKey(st.Machine), out); err != nil {
 		return fmt.Errorf("heartbeat upload: %w", err)
 	}
+	s.mu.Lock()
 	s.lastStatus = st
+	s.mu.Unlock()
 	return nil
+}
+
+// ReportEvent stamps a lifecycle transition (the machine is about to suspend,
+// or the service is stopping) onto the machine's last status and re-uploads it,
+// so the admin can tell an orderly departure apart from a crash. It is a no-op
+// before the first full sync, since there is no status to stamp yet.
+//
+// It is best effort and bounded: on suspend the OS is waiting for the service
+// handler to return, so a store that has already lost the network must not hold
+// sleep open. A failed or timed-out upload simply means the admin falls back to
+// the graduated-staleness view instead of the positive marker.
+func (s *Syncer) ReportEvent(event string) {
+	s.mu.Lock()
+	if s.lastStatus.Machine == "" {
+		s.mu.Unlock()
+		return
+	}
+	st := s.lastStatus
+	s.mu.Unlock()
+
+	now := time.Now().UTC().Format(time.RFC3339)
+	st.LastSync = now
+	st.LastEvent = event
+	st.LastEventAt = now
+	out, err := status.Marshal(st)
+	if err != nil {
+		return
+	}
+
+	// Bound the upload: run it off the calling goroutine and give up after
+	// eventReportTimeout so a dying network cannot delay suspend or stop.
+	done := make(chan error, 1)
+	go func() { done <- s.Store.Put(ossclient.StatusKey(st.Machine), out) }()
+	select {
+	case <-done:
+	case <-time.After(eventReportTimeout):
+	}
+
+	s.mu.Lock()
+	s.lastStatus = st
+	s.mu.Unlock()
 }
 
 // NextInterval reports how long to wait before the next cycle, based on the

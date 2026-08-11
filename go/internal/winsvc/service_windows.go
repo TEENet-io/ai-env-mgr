@@ -114,6 +114,14 @@ type Hooks struct {
 	// Run is the worker. It should return when stop is closed.
 	// Wake receives a signal every time the machine resumes from sleep.
 	Run func(stop <-chan struct{}, wake <-chan struct{})
+
+	// OnEvent, if set, is called synchronously by the service control handler
+	// when the machine is about to suspend (EventSuspend) or the service is
+	// stopping (EventStop), BEFORE the worker is told to stop. It must return
+	// quickly -- the OS and the service control manager are both waiting on it
+	// -- so the implementation is expected to bound its own work. It exists so
+	// the agent can report an orderly transition before it loses the network.
+	OnEvent func(evt Event)
 }
 
 type handler struct {
@@ -149,12 +157,24 @@ func (h *handler) Execute(args []string, r <-chan svc.ChangeRequest, changes cha
 				default:
 				}
 			case pbtAPMSuspend:
-				// Nothing to do; the worker notices the gap on the next wake.
+				// About to sleep: report the transition while the network is
+				// (briefly) still up, so the admin sees "sleeping" rather than
+				// an unexplained silence. Best effort and bounded by OnEvent.
+				if h.hooks.OnEvent != nil {
+					h.hooks.OnEvent(EventSuspend)
+				}
 			}
 
 		case svc.Stop, svc.Shutdown:
-			close(stop)
+			// Tell the SCM we heard it before doing any work, so a slow report
+			// cannot make the service look hung.
 			changes <- svc.Status{State: svc.StopPending}
+			// Report the orderly stop before the worker tears down; the network
+			// is still up here, so unlike suspend this reliably reaches OSS.
+			if h.hooks.OnEvent != nil {
+				h.hooks.OnEvent(EventStop)
+			}
+			close(stop)
 			return false, 0
 		}
 	}

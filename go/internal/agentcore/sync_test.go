@@ -1015,3 +1015,74 @@ func TestRunOnceSkipsCollectorWhenDisabled(t *testing.T) {
 		t.Fatalf("status collectEnabled=%v uploaded=%d want false/0", st.CollectEnabled, st.CollectUploaded)
 	}
 }
+
+// primeStatus runs one full sync so the syncer has a lastStatus to stamp,
+// returning the wired syncer and its store.
+func primeStatus(t *testing.T) (*Syncer, *fakeStore) {
+	t.Helper()
+	store := newFakeStore()
+	s := newSyncer(t, store, &fakeApplier{})
+	bind(t, store, "DESKTOP-A", "work1")
+	store.set(ossclient.PolicyKey(), policyBytes(t, model.DefaultPolicy()), "p")
+	if _, err := s.RunOnce(); err != nil {
+		t.Fatal(err)
+	}
+	return s, store
+}
+
+func TestReportEventStampsLifecycleEvent(t *testing.T) {
+	s, store := primeStatus(t)
+
+	s.ReportEvent("suspend")
+
+	var st model.Status
+	if err := json.Unmarshal(store.puts[ossclient.StatusKey("DESKTOP-A")], &st); err != nil {
+		t.Fatal(err)
+	}
+	if st.LastEvent != "suspend" {
+		t.Fatalf("LastEvent = %q, want suspend", st.LastEvent)
+	}
+	if st.LastEventAt == "" {
+		t.Fatal("LastEventAt should be set")
+	}
+}
+
+func TestReportEventBeforeSyncWritesNothing(t *testing.T) {
+	store := newFakeStore()
+	s := newSyncer(t, store, &fakeApplier{})
+	s.ReportEvent("suspend")
+	if len(store.puts) != 0 {
+		t.Fatalf("reporting an event before the first sync should write nothing, wrote %d", len(store.puts))
+	}
+}
+
+func TestHeartbeatClearsLifecycleEvent(t *testing.T) {
+	s, store := primeStatus(t)
+
+	// A suspend was reported, then the machine did not actually sleep and the
+	// next heartbeat fires: it must clear the stale event so the machine does
+	// not keep looking asleep while it is plainly alive.
+	s.ReportEvent("suspend")
+	if err := s.Heartbeat(); err != nil {
+		t.Fatal(err)
+	}
+
+	var st model.Status
+	if err := json.Unmarshal(store.puts[ossclient.StatusKey("DESKTOP-A")], &st); err != nil {
+		t.Fatal(err)
+	}
+	if st.LastEvent != "" || st.LastEventAt != "" {
+		t.Fatalf("heartbeat left LastEvent=%q LastEventAt=%q, want both cleared", st.LastEvent, st.LastEventAt)
+	}
+}
+
+func TestRunOnceReportsNoLifecycleEvent(t *testing.T) {
+	_, store := primeStatus(t)
+	var st model.Status
+	if err := json.Unmarshal(store.puts[ossclient.StatusKey("DESKTOP-A")], &st); err != nil {
+		t.Fatal(err)
+	}
+	if st.LastEvent != "" {
+		t.Fatalf("a normal sync should carry no lifecycle event, got %q", st.LastEvent)
+	}
+}
