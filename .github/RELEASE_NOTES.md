@@ -1,9 +1,12 @@
 自动构建的二进制。
 
-## 本版更新（v1.2.x，相对 v1.1.0 新增）
+## 本版更新（v1.2.2，相对 v1.1.0 新增）
 
 **agent 侧**
+- **休眠/停止上报（区分休眠与崩溃）**：云电脑休眠时会像 agent 崩溃一样静默。现在 agent 在**休眠前**上报 `suspend`（尽力而为，挂起瞬间网络可能已断）、在**被停止/关机**时上报 `stopped`（网络还在，可靠送达）；**崩溃收不到通知、留不下标记**——这正是区分点。对应 `admin status` 的 STATE 分级：`SLEEPING` / `STOPPED` / `OFFLINE`（几小时内，预期）/ `STALE`（>3 天，或说要睡却没醒 → 要排查）。每晚休眠的机器不再被误报为故障。
 - **自更新**：`admin agent publish <exe> --version <v>` 一键滚动全体；agent 每周期比对版本 → 下载 `_agent/agent.exe` → **校验 SHA-256** → 换文件（旧的留 `agent.exe.old`）→ 重启服务。校验不过不换;同一目标只试一次不会反复重启;`admin agent cancel` 是急停。
+- `admin agent publish` 支持 **`--url <github-release-url>`**：admin 直接从 release 下载 agent.exe 再推到 OSS（私有仓库用 `--token`/`GITHUB_TOKEN`）。
+- **AGENT 版本列**：`admin status` 增加 AGENT 列，升级/自更新后能看谁还停在旧版。
 - **心跳**：每 1 分钟刷新一次"最近露面",`admin status` 的 `LAST SYNC` 变成实时,配置同步间隔照旧。
 - **日志上报 OSS**：每个完整同步周期把日志尾部（约 64KB）推到 `_logs/{主机名}.log`,管理员用 `admin log <主机名>` 远程看,不用上机器。
 
