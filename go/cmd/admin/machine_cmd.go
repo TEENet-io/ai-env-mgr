@@ -9,7 +9,7 @@ import (
 
 func cmdMachine(args []string) error {
 	if len(args) == 0 {
-		return fmt.Errorf("usage: admin machine <bind|unbind|list> ...")
+		return fmt.Errorf("usage: admin machine <bind|unbind|forget|list> ...")
 	}
 	mgr, err := newManager()
 	if err != nil {
@@ -59,6 +59,17 @@ func cmdMachine(args []string) error {
 			return err
 		}
 		fmt.Printf("machine %q unbound\n", args[1])
+		return nil
+
+	case "forget":
+		if len(args) < 2 {
+			return fmt.Errorf("usage: admin machine forget <hostname>")
+		}
+		if err := mgr.ForgetMachine(args[1]); err != nil {
+			return err
+		}
+		fmt.Printf("machine %q forgotten (binding + status removed)\n", args[1])
+		fmt.Println("if it is still switched on it will reappear on its next sync; forget it after it is decommissioned")
 		return nil
 
 	case "list":

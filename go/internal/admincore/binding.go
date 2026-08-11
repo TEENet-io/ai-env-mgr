@@ -53,6 +53,22 @@ func (m *Manager) UnbindMachine(machine string) error {
 	return nil
 }
 
+// ForgetMachine removes a decommissioned machine entirely: both its binding
+// and its status report, so it disappears from `admin status`.
+//
+// Deleting is idempotent (a missing object is not an error), so this is safe
+// whether or not the machine was bound or had ever reported. Note that a
+// machine that is still switched on will simply re-create its status object on
+// its next sync -- forget is for machines that are actually gone.
+func (m *Manager) ForgetMachine(machine string) error {
+	for _, key := range []string{ossclient.BindingKey(machine), ossclient.StatusKey(machine)} {
+		if err := m.Store.Delete(key); err != nil {
+			return fmt.Errorf("forget machine %q: delete %s: %w", machine, key, err)
+		}
+	}
+	return nil
+}
+
 // LoadBinding reads a single machine's binding. A missing object means the
 // machine has never been bound, which is a normal state (a new machine
 // waiting for assignment) rather than an error.

@@ -110,6 +110,7 @@ Accounts
 Machines
   machine bind <hostname> --user <name> [--note <text>]
   machine unbind <hostname>
+  machine forget <hostname>   remove a decommissioned machine (binding + status)
   machine list
 
 File transfer
