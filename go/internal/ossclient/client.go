@@ -168,6 +168,14 @@ const (
 // _agent/*), verify its checksum against the policy, then replace themselves.
 func AgentBinaryKey() string { return AgentPrefix + "agent.exe" }
 
+// LogPrefix holds each machine's recent agent log, so the admin can read it
+// without reaching the machine. Agents write here (RAM policy needs PutObject
+// on _logs/*); the admin reads it.
+const LogPrefix = Root + "_logs/"
+
+// LogKey is where one machine's log tail is stored.
+func LogKey(machine string) string { return LogPrefix + sanitiseSegment(machine) + ".log" }
+
 // BindingKey is where an agent learns which employee its machine serves.
 func BindingKey(machine string) string {
 	return BindingPrefix + sanitiseSegment(machine) + ".json"

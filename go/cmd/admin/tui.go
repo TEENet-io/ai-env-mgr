@@ -109,10 +109,14 @@ func tuiUser(ask func(string) string, run func(error)) {
 }
 
 func tuiMachine(ask func(string) string, run func(error)) {
-	fmt.Println("  机器:  1)列表  2)绑定  3)解绑  4)删除(下线机器)")
+	fmt.Println("  机器:  1)列表  2)绑定  3)解绑  4)删除(下线机器)  5)看日志")
 	switch ask("  选择: ") {
 	case "1":
 		run(cmdMachine([]string{"list"}))
+	case "5":
+		if h := ask("  主机名: "); h != "" {
+			run(cmdLog([]string{h}))
+		}
 	case "2":
 		h := ask("  主机名: ")
 		u := ask("  员工名: ")

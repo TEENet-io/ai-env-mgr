@@ -1,85 +1,45 @@
 package main
 
 import (
-	"fmt"
+	"bytes"
 	"os"
 	"path/filepath"
-	"strings"
 	"testing"
 )
 
-// The sync interval can be set as low as one minute, so an append-only log
-// would grow without bound on a machine nobody logs into.
-func TestOpenLogRollsWhenLarge(t *testing.T) {
+func TestReadLogTailSmallFileReturnsAll(t *testing.T) {
 	dir := t.TempDir()
-	path := filepath.Join(dir, "agent.log")
-
-	big := strings.Repeat("x", maxLogBytes+1)
-	if err := os.WriteFile(path, []byte(big), 0o600); err != nil {
+	if err := os.WriteFile(filepath.Join(dir, "agent.log"), []byte("line1\nline2\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-
-	f, err := openLog(dir)
-	if err != nil {
-		t.Fatal(err)
-	}
-	fmt.Fprintln(f, "fresh line")
-	f.Close()
-
-	info, err := os.Stat(path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if info.Size() >= int64(maxLogBytes) {
-		t.Errorf("the live log should have been rolled, still %d bytes", info.Size())
-	}
-
-	// The previous generation must survive: it holds what happened before.
-	old, err := os.Stat(path + logBackupSuffix)
-	if err != nil {
-		t.Fatalf("the previous log should be kept: %v", err)
-	}
-	if old.Size() != int64(len(big)) {
-		t.Errorf("rolled log is %d bytes, want %d", old.Size(), len(big))
+	if got := readLogTail(dir); string(got) != "line1\nline2\n" {
+		t.Fatalf("got %q", got)
 	}
 }
 
-// A log below the threshold must keep accumulating rather than being rolled
-// on every start, which would throw away history at each reboot.
-func TestOpenLogAppendsWhenSmall(t *testing.T) {
-	dir := t.TempDir()
-	path := filepath.Join(dir, "agent.log")
-	if err := os.WriteFile(path, []byte("existing\n"), 0o600); err != nil {
-		t.Fatal(err)
-	}
-
-	f, err := openLog(dir)
-	if err != nil {
-		t.Fatal(err)
-	}
-	fmt.Fprintln(f, "appended")
-	f.Close()
-
-	data, err := os.ReadFile(path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !strings.Contains(string(data), "existing") || !strings.Contains(string(data), "appended") {
-		t.Errorf("both lines should be present, got %q", data)
-	}
-	if _, err := os.Stat(path + logBackupSuffix); err == nil {
-		t.Error("a small log should not have been rolled")
+func TestReadLogTailMissingReturnsNil(t *testing.T) {
+	if readLogTail(t.TempDir()) != nil {
+		t.Fatal("a missing log should yield nil, not an empty upload")
 	}
 }
 
-func TestOpenLogCreatesWhenAbsent(t *testing.T) {
+func TestReadLogTailCapsSizeAndTrimsPartialLine(t *testing.T) {
 	dir := t.TempDir()
-	f, err := openLog(dir)
-	if err != nil {
-		t.Fatalf("openLog on an empty directory: %v", err)
+	// A file larger than the tail window: an old head line, a big filler with no
+	// newlines, then a fresh tail line.
+	content := append([]byte("OLDHEAD\n"), bytes.Repeat([]byte("x"), logTailBytes)...)
+	content = append(content, []byte("\nFRESHTAIL\n")...)
+	if err := os.WriteFile(filepath.Join(dir, "agent.log"), content, 0o644); err != nil {
+		t.Fatal(err)
 	}
-	f.Close()
-	if _, err := os.Stat(filepath.Join(dir, "agent.log")); err != nil {
-		t.Errorf("the log should have been created: %v", err)
+	got := readLogTail(dir)
+	if len(got) > logTailBytes {
+		t.Fatalf("tail is %d bytes, larger than the %d cap", len(got), logTailBytes)
+	}
+	if bytes.Contains(got, []byte("OLDHEAD")) {
+		t.Fatal("tail should not include content beyond the window")
+	}
+	if !bytes.Contains(got, []byte("FRESHTAIL")) {
+		t.Fatal("tail should include the most recent line")
 	}
 }

@@ -346,6 +346,13 @@ func (s *Syncer) prepareUpdate(pol model.Policy, errs *[]string) []byte {
 	return data
 }
 
+// UploadLog stores the recent agent log for this machine so the admin can read
+// it remotely (see `admin log <machine>`). Best effort: the caller logs and
+// ignores failures rather than failing the sync over a log upload.
+func (s *Syncer) UploadLog(tail []byte) error {
+	return s.Store.Put(ossclient.LogKey(s.Machine.Name()), tail)
+}
+
 // Heartbeat re-uploads the machine's last status with a fresh timestamp, so
 // the admin sees it as alive between full syncs.
 //

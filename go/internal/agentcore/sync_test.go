@@ -108,6 +108,17 @@ func TestRunOnceSkipsUpdateAlreadyAttempted(t *testing.T) {
 	}
 }
 
+func TestUploadLogWritesToLogKey(t *testing.T) {
+	store := newFakeStore()
+	s := newSyncer(t, store, &fakeApplier{})
+	if err := s.UploadLog([]byte("scheduled sync ok\n")); err != nil {
+		t.Fatal(err)
+	}
+	if string(store.puts[ossclient.LogKey("DESKTOP-A")]) != "scheduled sync ok\n" {
+		t.Fatalf("log not uploaded to LogKey; puts=%v", store.puts)
+	}
+}
+
 func TestHeartbeatBeforeSyncWritesNothing(t *testing.T) {
 	store := newFakeStore()
 	s := newSyncer(t, store, &fakeApplier{})

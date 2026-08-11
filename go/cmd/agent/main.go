@@ -279,6 +279,14 @@ func loop(s *agentcore.Syncer, stop <-chan struct{}, wake <-chan struct{}) {
 		for _, e := range st.Errors {
 			log.Printf("  - %s", e)
 		}
+		// Push the recent log to OSS so the admin can read it without reaching
+		// the machine. Best effort: a failed upload (e.g. the RAM policy has no
+		// _logs/ write yet) is logged, not fatal.
+		if tail := readLogTail(stateDir()); tail != nil {
+			if err := s.UploadLog(tail); err != nil {
+				log.Printf("log upload failed: %v", err)
+			}
+		}
 		// Honour a remotely changed interval from the next cycle onwards.
 		interval = s.NextInterval(st)
 	}

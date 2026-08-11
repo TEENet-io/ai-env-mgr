@@ -1,10 +1,48 @@
 package main
 
 import (
+	"bytes"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 )
+
+// logTailBytes is how much of the tail is uploaded to OSS each sync: enough
+// recent history for the admin to diagnose, small enough to move cheaply.
+const logTailBytes = 64 << 10
+
+// readLogTail returns the last logTailBytes of the agent log, dropping a
+// partial first line so the upload starts on a clean line. Returns nil if the
+// log cannot be read (nothing to upload).
+func readLogTail(dir string) []byte {
+	f, err := os.Open(filepath.Join(dir, "agent.log"))
+	if err != nil {
+		return nil
+	}
+	defer f.Close()
+	info, err := f.Stat()
+	if err != nil {
+		return nil
+	}
+	off := int64(0)
+	if info.Size() > logTailBytes {
+		off = info.Size() - logTailBytes
+	}
+	if _, err := f.Seek(off, io.SeekStart); err != nil {
+		return nil
+	}
+	b, err := io.ReadAll(f)
+	if err != nil {
+		return nil
+	}
+	if off > 0 {
+		if i := bytes.IndexByte(b, '\n'); i >= 0 {
+			b = b[i+1:]
+		}
+	}
+	return b
+}
 
 const (
 	// maxLogBytes is when the log gets rolled. Small enough that a year of
