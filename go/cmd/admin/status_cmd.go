@@ -85,7 +85,7 @@ func cmdStatus() error {
 
 		fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n",
 			m.Machine, user, locals, agent, last,
-			dashIfEmpty(shorten(st.PolicyETag)), block, applocker, state)
+			dashIfEmpty(shorten(st.PolicyETag)), block, applocker, stateColor(state))
 	}
 	if err := w.Flush(); err != nil {
 		return err
@@ -125,9 +125,9 @@ func cmdStatus() error {
 
 	fmt.Println()
 	if problems == 0 {
-		fmt.Printf("%d machine(s), all healthy\n", len(machines))
+		fmt.Printf("%d machine(s), %s\n", len(machines), paint("all healthy", cGreen))
 	} else {
-		fmt.Printf("%d machine(s), %d need attention\n", len(machines), problems)
+		fmt.Printf("%d machine(s), %s\n", len(machines), paint(fmt.Sprintf("%d need attention", problems), cYellow))
 	}
 	return nil
 }

@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"os"
 	"strings"
+	"text/tabwriter"
 )
 
 func cmdAgent(args []string) error {
@@ -147,8 +148,12 @@ func cmdAgentStatus() error {
 		fmt.Println("no agent update targeted (agents stay on their current version)")
 		return nil
 	}
-	fmt.Printf("target version: %s\n", p.AgentUpdateVersion)
-	fmt.Printf("binary sha256:  %s\n", p.AgentUpdateSHA256)
-	fmt.Println("compare against 'admin status' -- machines still on an older version have not updated yet")
+	w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
+	fmt.Fprintf(w, "%s\t%s\n", cell("TARGET VERSION", cBold), p.AgentUpdateVersion)
+	fmt.Fprintf(w, "%s\t%s\n", cell("BINARY SHA256", cBold), p.AgentUpdateSHA256)
+	if err := w.Flush(); err != nil {
+		return err
+	}
+	fmt.Println("\ncompare against 'admin status' -- machines still on an older version have not updated yet")
 	return nil
 }

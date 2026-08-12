@@ -99,7 +99,7 @@ func cmdMachine(args []string) error {
 		fmt.Fprintln(w, "MACHINE\tUSER\tBOUND AT\tNOTE\tSTATE")
 		for _, m := range bound {
 			fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\n",
-				m.Machine, m.Binding.User, m.Binding.BoundAt, dashIfEmpty(m.Binding.Note), describeState(m))
+				m.Machine, m.Binding.User, m.Binding.BoundAt, dashIfEmpty(m.Binding.Note), stateColor(describeState(m)))
 		}
 		return w.Flush()
 
