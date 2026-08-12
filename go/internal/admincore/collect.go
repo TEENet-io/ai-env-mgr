@@ -2,6 +2,7 @@ package admincore
 
 import (
 	"fmt"
+	"sort"
 	"strings"
 	"time"
 
@@ -59,30 +60,52 @@ func (m *Manager) CollectStats() ([]CollectStat, bool, error) {
 	if err != nil {
 		return nil, false, err
 	}
-	stats := make([]CollectStat, 0, len(us.Users))
-	for _, e := range us.Users {
-		prefix := ossclient.DataCollectPrefix(e.WindowsUser)
-		infos, err := m.Store.ListInfo(prefix)
-		if err != nil {
-			return nil, false, fmt.Errorf("list collected data for %q: %w", e.WindowsUser, err)
+	// Collection is machine-wide and keyed by the Windows user whose profile a
+	// session came from, which can include accounts that were never added to
+	// the roster. So the stats are built from the objects themselves rather
+	// than from the roster; roster employees are seeded at zero so they still
+	// show before any upload arrives.
+	byUser := map[string]*CollectStat{}
+	ensure := func(u string) *CollectStat {
+		s := byUser[u]
+		if s == nil {
+			s = &CollectStat{User: u}
+			byUser[u] = s
 		}
-		s := CollectStat{User: e.WindowsUser}
-		for _, o := range infos {
-			// The key mirrors the source tree, so the segment right after the
-			// prefix tells us which tool the file came from.
-			rest := strings.TrimPrefix(o.Key, prefix)
-			switch {
-			case strings.HasPrefix(rest, ".claude/"):
-				s.Claude++
-			case strings.HasPrefix(rest, ".codex/"):
-				s.Codex++
-			}
-			s.Total++
-			if o.LastModified.After(s.Latest) {
-				s.Latest = o.LastModified
-			}
-		}
-		stats = append(stats, s)
+		return s
 	}
+	for _, e := range us.Users {
+		ensure(e.WindowsUser)
+	}
+
+	infos, err := m.Store.ListInfo(ossclient.Root)
+	if err != nil {
+		return nil, false, fmt.Errorf("list collected data: %w", err)
+	}
+	for _, o := range infos {
+		user, rel, ok := ossclient.DataCollectUser(o.Key)
+		if !ok {
+			continue // not a data_collect object (policy, bindings, status, ...)
+		}
+		s := ensure(user)
+		// The key mirrors the source tree, so the first segment of rel tells us
+		// which tool the file came from.
+		switch {
+		case strings.HasPrefix(rel, ".claude/"):
+			s.Claude++
+		case strings.HasPrefix(rel, ".codex/"):
+			s.Codex++
+		}
+		s.Total++
+		if o.LastModified.After(s.Latest) {
+			s.Latest = o.LastModified
+		}
+	}
+
+	stats := make([]CollectStat, 0, len(byUser))
+	for _, s := range byUser {
+		stats = append(stats, *s)
+	}
+	sort.Slice(stats, func(i, j int) bool { return stats[i].User < stats[j].User })
 	return stats, pol.CollectEnabled, nil
 }

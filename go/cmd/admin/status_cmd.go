@@ -110,10 +110,6 @@ func cmdStatus() error {
 				m.Machine, m.Binding.User)
 			fmt.Printf("  Local accounts: %s\n", strings.Join(m.Status.LocalUsers, ", "))
 		}
-		if len(m.ExtraUsers) > 0 {
-			fmt.Printf("\n  %s has unexpected accounts: %s\n",
-				m.Machine, strings.Join(m.ExtraUsers, ", "))
-		}
 		switch m.Status.LastEvent {
 		case "suspend":
 			fmt.Printf("\n  %s reported it was going to sleep %s -- this is expected, not a fault.\n",
@@ -178,15 +174,13 @@ func describeState(m admincore.MachineState) string {
 		return "OFFLINE"
 	}
 
-	// Fresh enough that the agent is clearly alive; surface config drift.
-	switch {
-	case len(m.ExtraUsers) > 0:
-		return "EXTRA USERS"
-	case len(m.Status.Errors) > 0:
+	// Fresh enough that the agent is clearly alive; surface real errors. A
+	// machine having several user profiles is normal (shared desktops), so it
+	// is not flagged -- the LOCAL USERS column already shows who is on it.
+	if len(m.Status.Errors) > 0 {
 		return fmt.Sprintf("%d ERROR(S)", len(m.Status.Errors))
-	default:
-		return "OK"
 	}
+	return "OK"
 }
 
 // needsAttention reports whether a table state is something the admin should

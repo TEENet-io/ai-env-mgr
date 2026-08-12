@@ -967,30 +967,31 @@ func TestRunOnceRunsCollectorWhenEnabled(t *testing.T) {
 	}
 }
 
-// The collector must not run on an unbound machine even when collection is
-// enabled: there is no employee to attribute the session files to, and
-// nothing under Root belongs to "nobody". This locks the `bound` conjunct of
-// the guard, separately from the `enabled` conjunct covered above.
-func TestRunOnceSkipsCollectorWhenUnbound(t *testing.T) {
+// Collection is machine-wide: it runs for every real user profile on the box
+// regardless of the binding, and skips the built-in Administrator. This locks
+// in that collection no longer depends on `bound`.
+func TestRunOnceCollectsAllLocalUsersRegardlessOfBinding(t *testing.T) {
 	store := newFakeStore()
 	app := &fakeApplier{}
 	s := newSyncer(t, store, app)
+	// Two employee profiles plus Administrator; deliberately NO binding.
+	s.Machine.(*fakeMachine).localUsers = []string{"Administrator", "peter", "weipeng"}
 	pol := model.DefaultPolicy()
 	pol.CollectEnabled = true
 	store.set(ossclient.PolicyKey(), policyBytes(t, pol), "petag")
-	// Deliberately no binding.
-	col := &fakeCollector{uploaded: 3}
+	col := &fakeCollector{uploaded: 2}
 	s.Collector = col
 
 	st, err := s.RunOnce()
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(col.calls) != 0 {
-		t.Fatalf("collector should not run when unbound; calls=%v", col.calls)
+	// peter and weipeng collected, Administrator skipped -- even though unbound.
+	if len(col.calls) != 2 || col.calls[0] != "peter" || col.calls[1] != "weipeng" {
+		t.Fatalf("collector calls=%v want [peter weipeng]", col.calls)
 	}
-	if st.CollectUploaded != 0 {
-		t.Fatalf("CollectUploaded = %d, want 0 when unbound", st.CollectUploaded)
+	if st.CollectUploaded != 4 { // 2 users x 2 uploaded each
+		t.Fatalf("CollectUploaded = %d, want 4", st.CollectUploaded)
 	}
 }
 

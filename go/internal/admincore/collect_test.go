@@ -128,6 +128,35 @@ func TestCollectStatsCountsPerEmployeeAndTool(t *testing.T) {
 	}
 }
 
+// Collection is machine-wide, so data can land under an account that was never
+// added to the roster. CollectStats must surface it rather than hide it.
+func TestCollectStatsIncludesNonRosterUsers(t *testing.T) {
+	fs := newFakeStore()
+	m := &Manager{Store: fs}
+	if err := m.AddUser("weipeng", "", ""); err != nil {
+		t.Fatal(err)
+	}
+	// peter is NOT on the roster, but has collected data.
+	pfx := ossclient.DataCollectPrefix("peter")
+	fs.objects[pfx+".claude/projects/p/a.jsonl"] = []byte("data")
+	fs.objects[pfx+".codex/sessions/x.jsonl"] = []byte("data")
+
+	stats, _, err := m.CollectStats()
+	if err != nil {
+		t.Fatal(err)
+	}
+	byUser := map[string]CollectStat{}
+	for _, s := range stats {
+		byUser[s.User] = s
+	}
+	if p, ok := byUser["peter"]; !ok || p.Total != 2 || p.Claude != 1 || p.Codex != 1 {
+		t.Fatalf("peter (off-roster) stats = %+v, ok=%v; want claude=1 codex=1 total=2", byUser["peter"], ok)
+	}
+	if w, ok := byUser["weipeng"]; !ok || w.Total != 0 {
+		t.Fatalf("roster user weipeng should appear at 0, got %+v ok=%v", w, ok)
+	}
+}
+
 func TestCollectStatsReportsEnabledFlag(t *testing.T) {
 	fs := newFakeStore()
 	m := &Manager{Store: fs}

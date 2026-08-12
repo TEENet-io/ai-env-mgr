@@ -278,3 +278,35 @@ func TestDataCollectKey(t *testing.T) {
 		}
 	}
 }
+
+func TestDataCollectUser(t *testing.T) {
+	cases := []struct {
+		key       string
+		user, rel string
+		ok        bool
+	}{
+		{"agent_workdir/work1/data_collect/.claude/projects/p/a.jsonl", "work1", ".claude/projects/p/a.jsonl", true},
+		{"agent_workdir/peter/data_collect/.codex/sessions/x.jsonl", "peter", ".codex/sessions/x.jsonl", true},
+		// not data_collect objects
+		{"agent_workdir/work1/credentials.zip", "", "", false},
+		{"agent_workdir/policy.json", "", "", false},
+		{"agent_workdir/_status/DESKTOP-A.json", "", "", false},
+		{"admin/users.json", "", "", false},
+	}
+	for _, c := range cases {
+		user, rel, ok := DataCollectUser(c.key)
+		if ok != c.ok || user != c.user || rel != c.rel {
+			t.Errorf("DataCollectUser(%q) = (%q,%q,%v) want (%q,%q,%v)", c.key, user, rel, ok, c.user, c.rel, c.ok)
+		}
+	}
+}
+
+// DataCollectUser must be the exact inverse of DataCollectKey for real inputs.
+func TestDataCollectUserRoundTrip(t *testing.T) {
+	user, rel := "weipeng", ".claude/projects/p/a.jsonl"
+	key := DataCollectKey(user, rel)
+	gotUser, gotRel, ok := DataCollectUser(key)
+	if !ok || gotUser != user || gotRel != rel {
+		t.Fatalf("round trip: (%q,%q,%v) want (%q,%q,true)", gotUser, gotRel, ok, user, rel)
+	}
+}

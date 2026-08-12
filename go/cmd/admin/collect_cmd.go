@@ -104,12 +104,12 @@ func cmdCollectStat() error {
 		return err
 	}
 	if len(stats) == 0 {
-		fmt.Println("no employees on the roster yet -- add one with 'admin user add'")
+		fmt.Println("nothing collected yet, and no employees on the roster -- add one with 'admin user add'")
 		return nil
 	}
 
 	w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
-	fmt.Fprintln(w, "EMPLOYEE\tOBJECTS\t.claude\t.codex\tLATEST")
+	fmt.Fprintln(w, "USER\tOBJECTS\t.claude\t.codex\tLATEST")
 	withData, total := 0, 0
 	for _, s := range stats {
 		latest := "-"
@@ -126,7 +126,7 @@ func cmdCollectStat() error {
 		return err
 	}
 
-	fmt.Printf("\ntotal: %d objects, %d/%d employees have data\n", total, withData, len(stats))
+	fmt.Printf("\ntotal: %d objects, %d/%d users have data\n", total, withData, len(stats))
 	state := "off"
 	if enabled {
 		state = "on"

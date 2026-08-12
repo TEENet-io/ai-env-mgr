@@ -55,6 +55,10 @@ type Machine interface {
 	ProfileDir(user string) string
 }
 
+// administratorAccount is the built-in local admin. It is a profile like any
+// other but never an employee, so machine-wide collection skips it.
+const administratorAccount = "administrator"
+
 // Marker file names inside the state directory.
 const (
 	policyMarkerFile   = "policy.etag"
@@ -269,14 +273,21 @@ func (s *Syncer) RunOnce() (model.Status, error) {
 	}
 
 	// ---- collection ----
-	// Only when enabled by policy, only for a bound employee whose profile is
-	// present: there is nothing to scan otherwise, and the object key needs the
-	// employee's directory.
+	// Machine-wide and independent of the binding: every real user profile on
+	// the box is collected into its own data_collect/{user}/, so a shared
+	// desktop with several accounts has all of them captured, not just the one
+	// it is bound to. LocalUsers already drops system profiles; the built-in
+	// Administrator is skipped here because it is not an employee.
 	collectUploaded := 0
-	if pol.CollectEnabled && s.Collector != nil && bound && boundUserExists {
-		cr := s.Collector.CollectOnce(binding.User, pol.CollectQuietSeconds, pol.CollectSince)
-		collectUploaded = cr.Uploaded
-		errs = append(errs, cr.Errors...)
+	if pol.CollectEnabled && s.Collector != nil {
+		for _, u := range localUsers {
+			if strings.EqualFold(u, administratorAccount) {
+				continue
+			}
+			cr := s.Collector.CollectOnce(u, pol.CollectQuietSeconds, pol.CollectSince)
+			collectUploaded += cr.Uploaded
+			errs = append(errs, cr.Errors...)
+		}
 	}
 
 	// ---- self-update: download + verify ----

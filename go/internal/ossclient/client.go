@@ -149,6 +149,29 @@ func DataCollectKey(user, rel string) string {
 	return DataCollectPrefix(user) + clean
 }
 
+// DataCollectUser is the inverse of DataCollectKey: it reports which user a
+// collected object belongs to and the path relative to that user's
+// data_collect/ directory. ok is false for any key that is not under some
+// user's data_collect/. It lets the admin enumerate collected data by user
+// straight from object keys, without knowing the roster in advance -- which
+// matters now that collection is machine-wide and can capture accounts that
+// were never added to the roster.
+func DataCollectUser(key string) (user, rel string, ok bool) {
+	if !strings.HasPrefix(key, Root) {
+		return "", "", false
+	}
+	rest := strings.TrimPrefix(key, Root) // {user}/data_collect/{rel}
+	i := strings.IndexByte(rest, '/')
+	if i <= 0 {
+		return "", "", false
+	}
+	after := rest[i+1:] // data_collect/{rel}
+	if !strings.HasPrefix(after, DataCollectDir) {
+		return "", "", false
+	}
+	return rest[:i], strings.TrimPrefix(after, DataCollectDir), true
+}
+
 // AdminKey builds a key under the admin-only directory, which sits outside
 // Root entirely. Agent credentials are not authorised for it, which keeps the
 // roster out of their reach.
