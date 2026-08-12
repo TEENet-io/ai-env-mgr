@@ -77,10 +77,16 @@ jobs:
       - name: Create GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}
-        run: >
-          gh release create "$GITHUB_REF_NAME"
-          dist/agent.exe
-          dist/admin-linux-amd64 dist/admin-windows-amd64.exe dist/admin-darwin-arm64
-          dist/SHA256SUMS.txt
-          --title "$GITHUB_REF_NAME"
-          --notes-file .github/RELEASE_NOTES.md
+        run: |
+          set -euo pipefail
+          # Idempotent: if a release for this tag already exists (a re-cut of
+          # the same version), delete it first -- `gh release create` refuses to
+          # overwrite. The git tag itself is kept (no --cleanup-tag), so moving
+          # the tag and re-pushing it re-publishes cleanly.
+          gh release delete "$GITHUB_REF_NAME" --yes || true
+          gh release create "$GITHUB_REF_NAME" \
+            dist/agent.exe \
+            dist/admin-linux-amd64 dist/admin-windows-amd64.exe dist/admin-darwin-arm64 \
+            dist/SHA256SUMS.txt \
+            --title "$GITHUB_REF_NAME" \
+            --notes-file .github/RELEASE_NOTES.md

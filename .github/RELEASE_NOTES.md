@@ -13,7 +13,8 @@
 
 **admin 侧**
 - **TUI**：无参数或 `admin tui` 进菜单式界面,进门只输一次 AK/SK（不落盘）,之后选数字执行。
-- **固化 bucket/endpoint**：可在编译时把 bucket/endpoint 打进去,运行时只问 AK/SK（release 版仍完全通用,四项都问）。
+- **bucket/endpoint 已固化进 admin**：release 版启动**只问 AK/SK**（bucket=`ai-collect-sg`、endpoint 已编入,公网 `oss-ap-southeast-1.aliyuncs.com`），不再问 bucket/endpoint,也不会误用默认地域。AK/SK 仍不落盘。
+- **存活判定收紧到 10 分钟**：agent 每分钟心跳,静默超 **10 分钟**即显示 `OFFLINE`（旧版 2 小时窗口太宽,停机/关机的机器会长时间仍显示 `OK`）。
 - **`machine forget <主机名>`**：彻底删除已下线机器（绑定 + 状态上报一起删,从 `admin status` 消失）。
 - **`admin log <主机名>`**：读机器上传的日志。
 - **`machine list` 增加 STATE 列**：绑定名册里直接显示每台机器的存活状态（OK / STOPPED / SLEEPING / OFFLINE / STALE / NO REPORT），关机上报后这里也能看到 STOPPED，不用切到 `admin status`。
