@@ -1,6 +1,12 @@
 自动构建的二进制。
 
-## 本版更新（v1.2.3，相对 v1.1.0 新增）
+## 本版更新（v1.2.4，相对 v1.1.0 新增）
+
+**本次 v1.2.4 新增**
+- **会话采集改成 machine-wide**：一台机器上每个真人账户（排除 Administrator/系统）各采到 `data_collect/{用户}/`，**不再只采绑定那一个**——共享云电脑上多人用 AI 时每个人都会被采到。`collect stat` 也改成按 OSS 里实际有数据的用户列（含不在名册的账户）。
+- **去掉 `EXTRA USERS` 状态**：一台机器有多个用户是合法的、不再报警，`LOCAL USERS` 列照旧显示都有谁。
+- **admin 输出上色**：`status` / `machine list` 的 STATE 列按严重度着色（🟢OK / 🩶离开 / 🟡待分配 / 🔴要排查），`agent status` 表格化。仅终端内生效，管道/重定向保持纯文本，`NO_COLOR` 可关，Windows 自动开 VT。
+
 
 **agent 侧**
 - **休眠/停止上报（区分休眠与崩溃）**：云电脑休眠时会像 agent 崩溃一样静默。现在 agent 在**休眠前**上报 `suspend`、在**被停止/关机**时上报 `stopped`；**崩溃收不到通知、留不下标记**——这正是区分点。对应 `admin status` 的 STATE 分级：`SLEEPING` / `STOPPED` / `OFFLINE`（几小时内，预期）/ `STALE`（>3 天，或说要睡却没醒 → 要排查）。每晚休眠的机器不再被误报为故障。
