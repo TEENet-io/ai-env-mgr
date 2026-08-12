@@ -17,24 +17,21 @@ import "github.com/TEENet-io/ai-env-mgr/internal/config"
 // READ-WRITE RAM user -- admin.exe has to publish policy and credentials, so
 // the restricted agent key will not do.
 //
-// ossEndpoint is the PUBLIC one (no -internal), unless the administrator's
-// machine sits in the same VPC as the bucket.
+// bucket and endpoint are the deployment's fixed OSS location. They are baked
+// in so admin only ever asks for the AccessKey. Neither is a secret -- a bucket
+// name and a region -- so committing them is fine. endpoint is the PUBLIC one
+// (no -internal), unless the administrator's machine sits in the same VPC as
+// the bucket.
 //
-// All four are blank on purpose: a blank value is what makes the runtime
-// prompt ask for it. A non-blank default endpoint is a trap -- the generic
-// release build would then silently use that region (e.g. Hangzhou) against a
-// bucket in another region (e.g. Singapore) and fail with a misleading
-// AccessDenied, never giving the operator a chance to enter the right one.
-// Injected builds override these via -ldflags -X, so leaving them blank costs
-// those builds nothing.
+// The AccessKey pair stays BLANK and is never committed: it is the read-write
+// key, prompted at runtime and never written to disk. -ldflags -X can still
+// override any of these at build time.
 //
-// admin.exe never leaves the administrator's machine, so a config file is
-// perfectly reasonable here and is easier to change. Keeping these in the
-// admin's own package is what guarantees the read-write key is never
-// compiled into agent.exe.
+// Keeping these in the admin's own package is what guarantees the read-write
+// key is never compiled into agent.exe.
 var (
-	ossBucket          = ""
-	ossEndpoint        = ""
+	ossBucket          = "ai-collect-sg"
+	ossEndpoint        = "oss-ap-southeast-1.aliyuncs.com"
 	ossAccessKeyID     = ""
 	ossAccessKeySecret = ""
 )
