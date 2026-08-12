@@ -45,7 +45,10 @@ func cmdStatus() error {
 		return nil
 	}
 
-	w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
+	// StripEscape: colourised STATE cells wrap their ANSI codes in the Escape
+	// byte so tabwriter ignores them for width; this flag then removes those
+	// bytes from the output. Without it they leak as 0xff garbage.
+	w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', tabwriter.StripEscape)
 	fmt.Fprintln(w, "MACHINE\tUSER\tLOCAL USERS\tAGENT\tLAST SYNC\tPOLICY\tBLOCK\tAPPLOCKER\tSTATE")
 
 	problems := 0

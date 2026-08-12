@@ -148,7 +148,7 @@ func cmdAgentStatus() error {
 		fmt.Println("no agent update targeted (agents stay on their current version)")
 		return nil
 	}
-	w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
+	w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', tabwriter.StripEscape) // strip colour Escape bytes
 	fmt.Fprintf(w, "%s\t%s\n", cell("TARGET VERSION", cBold), p.AgentUpdateVersion)
 	fmt.Fprintf(w, "%s\t%s\n", cell("BINARY SHA256", cBold), p.AgentUpdateSHA256)
 	if err := w.Flush(); err != nil {

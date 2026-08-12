@@ -95,7 +95,7 @@ func cmdMachine(args []string) error {
 			return nil
 		}
 
-		w := tabwriter.NewWriter(os.Stdout, 0, 0, 3, ' ', 0)
+		w := tabwriter.NewWriter(os.Stdout, 0, 0, 3, ' ', tabwriter.StripEscape) // strip colour Escape bytes
 		fmt.Fprintln(w, "MACHINE\tUSER\tBOUND AT\tNOTE\tSTATE")
 		for _, m := range bound {
 			fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\n",
