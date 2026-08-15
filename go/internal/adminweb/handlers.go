@@ -69,7 +69,7 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, "/", http.StatusSeeOther)
 		return
 	}
-	if !s.limiter.allow(clientKey(r)) {
+	if !s.limiter.allow(s.clientKey(r)) {
 		s.render(w, "login.html", http.StatusTooManyRequests, pageData{Error: errRateLimited.Error()})
 		return
 	}
@@ -98,7 +98,7 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		// Never echo err verbatim: it can carry the credential back to the
 		// browser and into any log that records the response.
-		log.Printf("adminweb: sign-in from %s rejected", clientKey(r))
+		log.Printf("adminweb: sign-in from %s rejected", s.clientKey(r))
 		s.render(w, "login.html", http.StatusUnauthorized, pageData{Error: "could not reach the bucket with those credentials"})
 		return
 	}
@@ -117,9 +117,9 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 		// Strict also serves as the CSRF defence: a form posted from another
 		// origin arrives without this cookie, so it cannot act as the operator.
 		SameSite: http.SameSiteStrictMode,
-		Secure:   s.usingTLS(),
+		Secure:   s.browserUsesTLS(),
 	})
-	log.Printf("adminweb: sign-in from %s for bucket %s", clientKey(r), cfg.Bucket)
+	log.Printf("adminweb: sign-in from %s for bucket %s", s.clientKey(r), cfg.Bucket)
 	http.Redirect(w, r, "/machines", http.StatusSeeOther)
 }
 
@@ -134,7 +134,7 @@ func (s *Server) handleLogout(w http.ResponseWriter, r *http.Request) {
 		MaxAge:   -1,
 		HttpOnly: true,
 		SameSite: http.SameSiteStrictMode,
-		Secure:   s.usingTLS(),
+		Secure:   s.browserUsesTLS(),
 	})
 	http.Redirect(w, r, "/", http.StatusSeeOther)
 }

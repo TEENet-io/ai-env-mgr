@@ -29,6 +29,8 @@ func cmdWeb(args []string) error {
 			}
 			opts.KeyFile = args[i+1]
 			i++
+		case "--behind-proxy":
+			opts.BehindProxy = true
 		case "--idle-timeout":
 			if i+1 >= len(args) {
 				return fmt.Errorf("--idle-timeout needs a value")

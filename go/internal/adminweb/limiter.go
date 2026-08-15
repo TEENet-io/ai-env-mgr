@@ -4,6 +4,7 @@ import (
 	"errors"
 	"net"
 	"net/http"
+	"strings"
 	"sync"
 	"time"
 )
@@ -69,12 +70,21 @@ func (l *loginLimiter) allow(key string) bool {
 
 // clientKey identifies the caller for rate limiting.
 //
-// It deliberately uses the peer address and ignores X-Forwarded-For: that
-// header is attacker-controlled unless a trusted proxy overwrites it, and
-// trusting it here would let anyone bypass the limit by varying the header.
-// Behind a reverse proxy this makes the limit apply to the proxy as a whole,
-// which is the safe direction to be wrong in.
-func clientKey(r *http.Request) string {
+// Direct serving uses the peer address and ignores X-Real-IP, because that
+// header is attacker-controlled and trusting it would let anyone bypass the
+// limit by varying it.
+//
+// Behind a declared proxy the peer address is always the proxy, which would
+// collapse the limit into a single global bucket and let one noisy address
+// lock everyone out. There X-Real-IP is trustworthy for a specific reason:
+// --behind-proxy only serves a private address, so the proxy is the only thing
+// that can reach the socket, and it overwrites the header on every request.
+func (s *Server) clientKey(r *http.Request) string {
+	if s.opts.BehindProxy {
+		if real := strings.TrimSpace(r.Header.Get("X-Real-IP")); real != "" {
+			return real
+		}
+	}
 	host, _, err := net.SplitHostPort(r.RemoteAddr)
 	if err != nil {
 		return r.RemoteAddr

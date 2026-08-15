@@ -267,3 +267,70 @@ func TestSecurityHeadersArePresent(t *testing.T) {
 		t.Fatal("sign-in page is cacheable")
 	}
 }
+
+// --behind-proxy exists so a containerised proxy can reach the console over
+// the docker bridge, which is not loopback. It must not become a way to serve
+// credentials in the clear to the internet.
+func TestBehindProxyOnlyRelaxesPrivateAddresses(t *testing.T) {
+	private := []string{"172.23.0.1:9080", "10.0.0.5:9080", "192.168.1.9:9080"}
+	for _, listen := range private {
+		if _, err := New(Options{Listen: listen}); err == nil {
+			t.Fatalf("%s was accepted without TLS or --behind-proxy", listen)
+		}
+		if _, err := New(Options{Listen: listen, BehindProxy: true}); err != nil {
+			t.Fatalf("%s with --behind-proxy was rejected: %v", listen, err)
+		}
+	}
+	// Public addresses, and anything that binds every interface, still need a
+	// certificate no matter what the operator claims is in front.
+	for _, listen := range []string{"0.0.0.0:9080", ":9080", "47.236.115.50:9080", "admin.example.com:9080"} {
+		if _, err := New(Options{Listen: listen, BehindProxy: true}); err == nil {
+			t.Fatalf("%s was accepted with --behind-proxy but no TLS", listen)
+		}
+	}
+}
+
+// The browser reaches a proxied console over HTTPS, so the cookie must be
+// Secure even though this hop is plaintext -- otherwise it would also be sent
+// on any plaintext request to the same host.
+func TestBehindProxyMarksCookieSecureAndSetsHSTS(t *testing.T) {
+	s, err := New(Options{Listen: "172.23.0.1:9080", BehindProxy: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	s.dialOSS = func(config.Config) (store, error) { return newFakeStore(), nil }
+	c := signIn(t, s)
+	if !c.Secure {
+		t.Fatal("session cookie is not Secure behind a TLS-terminating proxy")
+	}
+	rec := httptest.NewRecorder()
+	s.Handler().ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/", nil))
+	if rec.Header().Get("Strict-Transport-Security") == "" {
+		t.Fatal("HSTS is missing behind a TLS-terminating proxy")
+	}
+}
+
+// With one shared peer address, per-caller limiting has to come from the
+// header the proxy sets, or one noisy client locks everyone out.
+func TestBehindProxyRateLimitsPerRealClient(t *testing.T) {
+	s, err := New(Options{Listen: "172.23.0.1:9080", BehindProxy: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	r1 := httptest.NewRequest(http.MethodGet, "/", nil)
+	r1.RemoteAddr = "172.23.0.2:5000"
+	r1.Header.Set("X-Real-IP", "198.51.100.4")
+	r2 := httptest.NewRequest(http.MethodGet, "/", nil)
+	r2.RemoteAddr = "172.23.0.2:5001"
+	r2.Header.Set("X-Real-IP", "198.51.100.5")
+	if s.clientKey(r1) == s.clientKey(r2) {
+		t.Fatal("two clients behind the proxy share a rate-limit bucket")
+	}
+
+	// Serving directly, the same header must be ignored: it is attacker
+	// controlled and would otherwise defeat the limit entirely.
+	direct := newTestServer(t, newFakeStore())
+	if got := direct.clientKey(r1); got != "172.23.0.2" {
+		t.Fatalf("direct serving trusted X-Real-IP, key = %q", got)
+	}
+}

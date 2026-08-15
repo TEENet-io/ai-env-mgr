@@ -160,10 +160,11 @@ Session collection (off by default)
   collect stat                                                per-employee upload counts
 
 Web console
-  web [--listen <host:port>] [--cert <file> --key <file>]
+  web [--listen <host:port>] [--cert <file> --key <file>] [--behind-proxy]
                               browser console; sign in with the OSS
                               credentials (kept in memory, never on disk).
-                              TLS is required unless bound to 127.0.0.1
+                              TLS is required unless bound to 127.0.0.1, or
+                              to a private address with --behind-proxy
 
 Other
   tui                         interactive menu (also the default when run with

@@ -24,6 +24,16 @@ type Options struct {
 	KeyFile  string        // TLS key
 	IdleTTL  time.Duration // sign out after this much inactivity
 	AbsTTL   time.Duration // sign out this long after signing in, active or not
+
+	// BehindProxy says a reverse proxy terminates TLS in front of the console.
+	//
+	// It permits serving plaintext on a PRIVATE address -- the case where the
+	// proxy runs in a container and cannot reach the host over loopback -- and
+	// nothing more: a public address still demands a certificate, because there
+	// the plaintext really would cross the internet. It also restores the two
+	// things the proxy would otherwise hide: the Secure cookie flag and HSTS,
+	// which depend on the browser's scheme rather than this hop's.
+	BehindProxy bool
 }
 
 // store is what the console needs from OSS: everything admincore.Manager uses,
@@ -61,16 +71,24 @@ func New(opts Options) (*Server, error) {
 	}
 	// Credentials that can push a binary every machine executes must not cross
 	// the network in the clear. Loopback is exempt because nothing leaves the
-	// host; anything else must present a certificate.
+	// host, and a private address is exempt only when a proxy is declared to be
+	// terminating TLS in front. Anything else must present a certificate.
 	if opts.CertFile == "" || opts.KeyFile == "" {
-		loopback, err := isLoopback(opts.Listen)
+		reach, err := classifyListen(opts.Listen)
 		if err != nil {
 			return nil, err
 		}
-		if !loopback {
+		switch {
+		case reach == reachLoopback:
+		case reach == reachPrivate && opts.BehindProxy:
+		default:
+			hint := "so pass --cert and --key, or bind to 127.0.0.1 and reach it through a tunnel"
+			if reach == reachPrivate {
+				hint = "so pass --cert and --key, or add --behind-proxy if a reverse proxy terminates TLS in front of it"
+			}
 			return nil, fmt.Errorf(
-				"refusing to serve %s without TLS: sign-in posts OSS credentials that can push a binary to every machine, "+
-					"so pass --cert and --key, or bind to 127.0.0.1 and reach it through a tunnel", opts.Listen)
+				"refusing to serve %s without TLS: sign-in posts OSS credentials that can push a binary to every machine, %s",
+				opts.Listen, hint)
 		}
 	}
 	tpl, err := template.ParseFS(assetFS, "assets/*.html")
@@ -88,26 +106,41 @@ func New(opts Options) (*Server, error) {
 	}, nil
 }
 
-// isLoopback reports whether a listen address only accepts local connections.
-// A bare port (":8080") or an empty host means every interface, so it is not
-// loopback -- getting this backwards would silently serve credentials in the
-// clear, which is exactly what the check exists to prevent.
-func isLoopback(listen string) (bool, error) {
+// reachability describes who can open a connection to a listen address.
+type reachability int
+
+const (
+	// reachPublic covers real public addresses and, deliberately, anything
+	// unrecognised: a bare port (":8080"), 0.0.0.0, and hostnames all land here
+	// so an unclear address is treated as exposed. Guessing the other way would
+	// silently serve credentials in the clear, which is what this prevents.
+	reachPublic reachability = iota
+	reachPrivate
+	reachLoopback
+)
+
+func classifyListen(listen string) (reachability, error) {
 	host, _, err := net.SplitHostPort(listen)
 	if err != nil {
-		return false, fmt.Errorf("listen address %q must be host:port: %w", listen, err)
-	}
-	if host == "" {
-		return false, nil
+		return reachPublic, fmt.Errorf("listen address %q must be host:port: %w", listen, err)
 	}
 	if host == "localhost" {
-		return true, nil
+		return reachLoopback, nil
 	}
 	ip := net.ParseIP(host)
-	if ip == nil {
-		return false, nil
+	if ip == nil { // empty host, or a name we cannot judge
+		return reachPublic, nil
 	}
-	return ip.IsLoopback(), nil
+	switch {
+	case ip.IsLoopback():
+		return reachLoopback, nil
+	case ip.IsUnspecified(): // 0.0.0.0 / :: bind every interface, public ones too
+		return reachPublic, nil
+	case ip.IsPrivate() || ip.IsLinkLocalUnicast():
+		return reachPrivate, nil
+	default:
+		return reachPublic, nil
+	}
 }
 
 // Handler builds the routes. Exposed so tests can drive the server without
@@ -164,11 +197,16 @@ func (s *Server) secureHeaders(next http.Handler) http.Handler {
 		h.Set("X-Frame-Options", "DENY")
 		// Credentials pass through the sign-in form; keep them out of caches.
 		h.Set("Cache-Control", "no-store")
-		if s.opts.CertFile != "" {
+		if s.browserUsesTLS() {
 			h.Set("Strict-Transport-Security", "max-age=31536000; includeSubDomains")
 		}
 		next.ServeHTTP(w, r)
 	})
 }
 
-func (s *Server) usingTLS() bool { return s.opts.CertFile != "" }
+// browserUsesTLS reports whether the browser reached us over HTTPS, which is
+// what the Secure cookie flag and HSTS must key off. Serving plaintext to a
+// proxy that fronts us with TLS still counts: the browser sees HTTPS, so
+// marking the cookie Secure is both correct and necessary -- without it the
+// cookie would also ride along any plaintext request to the same host.
+func (s *Server) browserUsesTLS() bool { return s.opts.CertFile != "" || s.opts.BehindProxy }
