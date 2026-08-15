@@ -191,6 +191,19 @@ const (
 // _agent/*), verify its checksum against the policy, then replace themselves.
 func AgentBinaryKey() string { return AgentPrefix + "agent.exe" }
 
+// CodexPrefix holds the repackaged Codex desktop installers. Agents read it
+// (their RAM policy needs GetObject on _codex/*); only the administrator
+// writes here, via `admin codex publish`.
+const CodexPrefix = Root + "_codex/"
+
+// CodexInstallerKey is where one version of the Codex installer lives. Unlike
+// AgentBinaryKey this is versioned rather than a single overwritten object:
+// the installer is ~700 MB, so keeping past versions in place makes a rollback
+// a policy edit instead of a re-upload.
+func CodexInstallerKey(version string) string {
+	return CodexPrefix + "codex-setup-" + sanitiseSegment(version) + ".exe"
+}
+
 // LogPrefix holds each machine's recent agent log, so the admin can read it
 // without reaching the machine. Agents write here (RAM policy needs PutObject
 // on _logs/*); the admin reads it.

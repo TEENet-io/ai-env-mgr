@@ -82,6 +82,8 @@ func main() {
 		err = cmdCollect(os.Args[2:])
 	case "agent":
 		err = cmdAgent(os.Args[2:])
+	case "codex":
+		err = cmdCodex(os.Args[2:])
 	case "status":
 		err = cmdStatus()
 	case "log":
@@ -139,6 +141,16 @@ Agents
                               for a private GitHub release)
   agent cancel                clear the update target (kill switch)
   agent status                show the current update target
+
+Codex desktop (off until published)
+  codex publish <path>|--url <url> --version <v> [--token <pat>] [--rollout <pct>]
+                              distribute a repackaged Codex installer (accept
+                              the build on a real machine first; --rollout
+                              defaults to 10% of the fleet)
+  codex rollout <pct>         widen or narrow the ring, without re-uploading
+  codex cancel                clear the target (stops further installs; does
+                              not uninstall anything)
+  codex status                show the current target and rollout
 
 Session collection (off by default)
   collect enable [--since <YYYY-MM-DD>] [--quiet <seconds>]   turn collection on

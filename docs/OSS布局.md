@@ -72,6 +72,9 @@ your-bucket/
     ├── _agent/                          agent 自更新用（agent 只读，见 §7）
     │   └── agent.exe                    管理员发布的新版二进制
     │
+    ├── _codex/                          Codex 桌面版分发（agent 只读，见 §7b）
+    │   └── codex-setup-{版本}.exe       按版本留存，便于回滚
+    │
     ├── _logs/                           机器日志上报（agent 只写,admin 读）
     │   └── {主机名}.log                 每台机器最近的 agent 日志尾部
     │
@@ -365,6 +368,29 @@ agent_workdir/work1/data_collect/.codex/sessions/{y}/{m}/{d}/rollout-....jsonl
 **权限**:agent 对 `_agent/*` 只需 **GetObject**(读)。`dist/ram-policy-agent.json` 已含这条。**只给读,绝不给写**——给了写就等于任何一台机器都能往这里塞一个所有机器都会执行的二进制。
 
 **风险与边界**(见 `操作手册`):`policy.json` 全局 → **所有机器一起更新**,无灰度;**无自动回滚**。所以:**新 agent 先在一台机器上手动验证能跑,再 `admin agent publish`**;出事用 `admin agent cancel` 急停,并手动把 `agent.exe.old` 换回。
+
+---
+
+## 7b. `_codex/`：Codex 桌面版分发（默认关闭）
+
+管理员用 `admin codex publish` 把重打包的 Codex 安装器放到 `agent_workdir/_codex/codex-setup-{版本}.exe`,并在 `policy.json` 里记下目标:
+
+| 字段(policy.json) | 含义 |
+|---|---|
+| `codexVersion` | 目标版本。**空 = 不分发**(默认)。**按相等比较**:机器上已装版本 ≠ 此值就安装此值 |
+| `codexSHA256` | 安装器的十六进制 SHA-256,装之前必须比对一致 |
+| `codexKey` | `_codex/` 下的对象键 |
+| `codexRolloutPct` | 灰度比例 0–100。机器满足 `crc32(主机名) % 100 < 此值` 才更新 |
+
+**为什么按相等而不按新旧**:把 `codexVersion` 改回旧版本**就是回滚**,agent 会把旧版装回去。"只升不降"的逻辑做不到这一点,而坏包正是需要往回退的时候。这与 §7 的 `agentUpdateVersion` 语义一致。
+
+**为什么按版本存而不是覆盖同一个键**:安装器约 700 MB,留存旧版意味着回滚只是改一个策略字段,不必重新上传。
+
+**与 §7 的关键差异**:agent 自更新是**全量**下发,Codex 分发有**灰度**。因为这个包是对上游 Codex 的重打包,补丁会随上游版本漂移,CI 通过只能证明补丁正确应用,**不能证明 ChatGPT 入口真的消失或 Computer Use 仍可用**——那只有 Windows 真机能验。所以 `admin codex publish` 的 `--rollout` 默认只有 **10%**。
+
+**权限**:agent 对 `_codex/*` 只需 **GetObject**(读)。**只给读,绝不给写**——理由同 §7。
+
+**尚未实现**:agent 侧的下载与安装。设计见 [Codex分发方案](Codex分发方案.md)，其中两个前置改造(安装器改机器级、包版本区别于 Codex 上游版本)未完成前，发布出去也装不上。
 
 ---
 
