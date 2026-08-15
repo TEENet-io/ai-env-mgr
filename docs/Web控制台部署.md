@@ -177,3 +177,69 @@ cookie 里只有一个随机 ID。
 
 发布 agent / Codex 等写操作仍然只能用命令行 —— 先让这套安全模型经过实际检验，
 再把高危操作接到公网上。
+
+---
+
+## 实际部署记录：windows-control.teenet.app
+
+生产环境（47.236.115.50）的做法，可作为同类部署的样板。
+
+该机器上 nginx 跑在 Docker 里，配置是单文件 `/root/nginx/nginx.conf`，
+证书 `/root/nginx/cert` 挂载为容器内 `/cert`，其中 `teenet.app.pem` 是
+CloudFlare Origin 泛域名证书（`*.teenet.app`，有效期至 2041），新子域直接复用。
+
+### 控制台侧
+
+```ini
+ExecStart=/opt/ai-env-mgr/admin web --listen 172.23.0.1:9080 --behind-proxy
+```
+
+`172.23.0.1` 是 nginx 所在 Docker 网络（`nginx_default`）的宿主机网关地址。
+**不能用 `127.0.0.1`** —— 那是容器自己的回环，nginx 到不了。
+该地址是私有地址，外部无法连接，所以明文只在宿主机内部这一跳。
+
+网关地址用这条命令查，不要猜：
+
+```bash
+docker network inspect nginx_default --format '{{range .IPAM.Config}}{{.Gateway}}{{end}}'
+```
+
+### nginx 侧
+
+照抄现有 server 块，`proxy_pass http://172.23.0.1:9080;` 即可。
+
+### CloudFlare 后面必须做的一件事
+
+DNS 记录要开橙色云朵（proxied）—— Origin 证书只被 CloudFlare 边缘信任，
+不被浏览器直接信任，走灰云会报证书错误。
+
+而一旦走了 CloudFlare，`$remote_addr` 就变成 CF 边缘节点的地址，
+`X-Real-IP` 传给控制台的也是它。后果是**限流退化为“每个 CF 边缘 10 次/分钟”**
+（攻击者的请求天然分散到不同边缘，等于绕过；正常用户之间反而互相挤占），
+而且**审计日志记的全是 CloudFlare 的 IP，出事查不出是谁**。
+
+所以 server 块里要加 real_ip，且只信任 CloudFlare 官方 IP 段
+（取自 https://www.cloudflare.com/ips-v4 和 ips-v6）：
+
+```nginx
+set_real_ip_from 173.245.48.0/20;
+# ... 其余 CloudFlare 段
+real_ip_header CF-Connecting-IP;
+```
+
+只信任这些段，是为了防止有人绕过 CloudFlare 直连源站、自己伪造
+`CF-Connecting-IP`。配好后控制台日志里出现的就是真实访客 IP。
+
+CloudFlare 的 IP 段偶尔会调整，变更时需要同步更新。
+
+### 验证清单
+
+```bash
+docker exec nginx nginx -t          # reload 前必做：这是共享配置，改错会影响其它站点
+docker exec nginx nginx -s reload
+journalctl -u ai-env-mgr-admin -n 5 # 确认日志里是真实 IP，不是 CloudFlare 的
+```
+
+排错时注意区分「站点问题」和「网络问题」：拿一个**已有站点做对照组**，
+两者表现一致就说明不是新部署的锅。这台机器上 IPv6 对所有站点都不通，
+而直连源站 10/10 正常，据此可以判断部署本身是好的。
