@@ -84,6 +84,8 @@ func main() {
 		err = cmdAgent(os.Args[2:])
 	case "codex":
 		err = cmdCodex(os.Args[2:])
+	case "web":
+		err = cmdWeb(os.Args[2:])
 	case "status":
 		err = cmdStatus()
 	case "log":
@@ -156,6 +158,12 @@ Session collection (off by default)
   collect enable [--since <YYYY-MM-DD>] [--quiet <seconds>]   turn collection on
   collect disable                                             turn collection off
   collect stat                                                per-employee upload counts
+
+Web console
+  web [--listen <host:port>] [--cert <file> --key <file>]
+                              browser console; sign in with the OSS
+                              credentials (kept in memory, never on disk).
+                              TLS is required unless bound to 127.0.0.1
 
 Other
   tui                         interactive menu (also the default when run with

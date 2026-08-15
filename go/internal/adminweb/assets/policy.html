@@ -1,0 +1,38 @@
+{{define "policy.html"}}<!doctype html>
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>策略 · AI 环境管理</title>
+<link rel="stylesheet" href="/static/app.css">
+</head>
+<body>
+<header>
+  <nav>
+    <a href="/machines">机器</a>
+    <a class="active" href="/policy">策略</a>
+  </nav>
+  <span class="muted">{{.Bucket}} · {{.Endpoint}}</span>
+  <form method="post" action="/logout"><button class="link">退出</button></form>
+</header>
+<main>
+  <h1>策略</h1>
+  {{if .Error}}<p class="error">{{.Error}}</p>{{end}}
+  {{with .Policy}}
+  <div class="scroll">
+  <table class="kv">
+    <tbody>
+      <tr><th>同步间隔</th><td>{{.SyncIntervalMinutes}} 分钟</td></tr>
+      <tr><th>网站拦截</th><td>{{if .BlockEnabled}}<span class="ok">开启</span>{{else}}<span class="muted">关闭</span>{{end}}（{{len .BlockedDomains}} 个域名）</td></tr>
+      <tr><th>会话采集</th><td>{{if .CollectEnabled}}<span class="ok">开启</span>{{else}}<span class="muted">关闭</span>{{end}}</td></tr>
+      <tr><th>agent 目标版本</th><td>{{if .AgentUpdateVersion}}{{.AgentUpdateVersion}}{{else}}<span class="muted">未设置</span>{{end}}</td></tr>
+      <tr><th>Codex 目标版本</th><td>{{if .CodexVersion}}{{.CodexVersion}}（灰度 {{.CodexRolloutPct}}%）{{else}}<span class="muted">未设置</span>{{end}}</td></tr>
+      <tr><th>更新时间</th><td>{{.UpdatedAt}}</td></tr>
+    </tbody>
+  </table>
+  </div>
+  <p class="muted">本页为只读。发布 agent 或 Codex 仍需通过 <code>admin</code> 命令行。</p>
+  {{end}}
+</main>
+</body>
+</html>{{end}}
