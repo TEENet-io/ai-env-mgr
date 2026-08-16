@@ -13,8 +13,8 @@
     {{range .Users}}
       <tr>
         <td class="id">{{.WindowsUser}}</td>
-        <td class="dim">{{if .CodexAccount}}{{.CodexAccount}}{{else}}—{{end}}</td>
-        <td class="dim">{{if .ClaudeAccount}}{{.ClaudeAccount}}{{else}}—{{end}}</td>
+        <td class="dim">{{if .CodexAccount}}{{noscan .CodexAccount}}{{else}}—{{end}}</td>
+        <td class="dim">{{if .ClaudeAccount}}{{noscan .ClaudeAccount}}{{else}}—{{end}}</td>
         <td>{{if .Enabled}}<span class="tag tag-ok">在职</span>{{else}}<span class="tag tag-bad">已离职</span>{{end}}</td>
         <td>
           <form method="post" action="/users/enabled" class="inline">

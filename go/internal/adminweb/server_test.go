@@ -11,6 +11,7 @@ import (
 
 	"github.com/TEENet-io/ai-env-mgr/internal/admincore"
 	"github.com/TEENet-io/ai-env-mgr/internal/config"
+	"github.com/TEENet-io/ai-env-mgr/internal/model"
 	"github.com/TEENet-io/ai-env-mgr/internal/ossclient"
 )
 
@@ -380,5 +381,38 @@ func TestUnfixedLocationStillAsks(t *testing.T) {
 	s.Handler().ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/", nil))
 	if !strings.Contains(rec.Body.String(), `name="bucket"`) {
 		t.Fatal("the sign-in form omits the bucket field when nothing is baked in")
+	}
+}
+
+// CloudFlare rewrites addresses it finds and injects a script to undo it. The
+// CSP here allows no script, so that rewrite is permanent: the markers have to
+// survive into the output, and the value has to stay escaped.
+func TestAccountsAreExcludedFromEmailObfuscation(t *testing.T) {
+	got := string(noEmailScan("peter@teenet.io"))
+	if !strings.HasPrefix(got, "<!--email_off-->") || !strings.HasSuffix(got, "<!--email_on-->") {
+		t.Fatalf("markers missing: %q", got)
+	}
+	if !strings.Contains(got, "peter@teenet.io") {
+		t.Fatalf("address lost: %q", got)
+	}
+	if noEmailScan("") != "" {
+		t.Fatal("an empty value still emitted markers")
+	}
+	// The roster is data, so the helper has to escape rather than trust it.
+	if esc := string(noEmailScan(`<img src=x onerror=alert(1)>`)); strings.Contains(esc, "<img") {
+		t.Fatalf("markup passed through unescaped: %q", esc)
+	}
+
+	// And the markers must reach the rendered page: html/template drops HTML
+	// comments, which is why they are emitted as trusted HTML at all.
+	s := newTestServer(t, newFakeStore())
+	var buf strings.Builder
+	if err := s.tpl.ExecuteTemplate(&buf, "users.html", pageData{
+		Users: []model.UserEntry{{WindowsUser: "peter", CodexAccount: "peter@teenet.io", Enabled: true}},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(buf.String(), "<!--email_off-->peter@teenet.io<!--email_on-->") {
+		t.Fatal("the rendered roster lost its email_off markers")
 	}
 }

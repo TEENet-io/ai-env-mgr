@@ -112,6 +112,7 @@ func New(opts Options) (*Server, error) {
 	tpl, err := template.New("").Funcs(template.FuncMap{
 		"classify": classifyMachine,
 		"age":      humanAge,
+		"noscan":   noEmailScan,
 	}).ParseFS(assetFS, "assets/*.html")
 	if err != nil {
 		return nil, fmt.Errorf("parse templates: %w", err)
