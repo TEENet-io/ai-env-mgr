@@ -8,7 +8,14 @@ import (
 )
 
 func cmdWeb(args []string) error {
-	opts := adminweb.Options{Listen: "127.0.0.1:8080"}
+	// Reuse the location baked into this binary, exactly as the CLI does, so
+	// the console asks only for the AccessKey.
+	built := builtIn()
+	opts := adminweb.Options{
+		Listen:   "127.0.0.1:8080",
+		Bucket:   built.Bucket,
+		Endpoint: built.Endpoint,
+	}
 	for i := 0; i < len(args); i++ {
 		switch args[i] {
 		case "--listen":

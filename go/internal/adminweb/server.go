@@ -26,6 +26,16 @@ type Options struct {
 	IdleTTL  time.Duration // sign out after this much inactivity
 	AbsTTL   time.Duration // sign out this long after signing in, active or not
 
+	// Bucket and Endpoint are the deployment's fixed OSS location, baked into
+	// the binary the same way the CLI bakes them (cmd/admin/credentials.go),
+	// so sign-in only asks for the AccessKey.
+	//
+	// When set they are also ENFORCED, not merely pre-filled: the handler uses
+	// these and ignores whatever the form carried, so the console cannot be
+	// pointed at another bucket or endpoint by editing the page.
+	Bucket   string
+	Endpoint string
+
 	// BehindProxy says a reverse proxy terminates TLS in front of the console.
 	//
 	// It permits serving plaintext on a PRIVATE address -- the case where the

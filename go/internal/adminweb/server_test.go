@@ -334,3 +334,51 @@ func TestBehindProxyRateLimitsPerRealClient(t *testing.T) {
 		t.Fatalf("direct serving trusted X-Real-IP, key = %q", got)
 	}
 }
+
+// A baked-in location must be enforced, not merely pre-filled. The form does
+// not show these fields, so a value arriving in them was crafted, and
+// honouring it would let the console be aimed at another bucket -- or another
+// endpoint entirely.
+func TestFixedLocationOverridesThePostedOne(t *testing.T) {
+	s, err := New(Options{
+		Listen:   "127.0.0.1:0",
+		Bucket:   "ai-collect-sg",
+		Endpoint: "oss-ap-southeast-1.aliyuncs.com",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var got config.Config
+	s.dialOSS = func(cfg config.Config) (store, error) {
+		got = cfg
+		return newFakeStore(), nil
+	}
+
+	form := url.Values{
+		"bucket":          {"attacker-bucket"},
+		"endpoint":        {"oss.attacker.example"},
+		"accessKeyId":     {"AK"},
+		"accessKeySecret": {"SK"},
+	}
+	req := httptest.NewRequest(http.MethodPost, "/login", strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	rec := httptest.NewRecorder()
+	s.Handler().ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusSeeOther {
+		t.Fatalf("sign-in returned %d", rec.Code)
+	}
+	if got.Bucket != "ai-collect-sg" || got.Endpoint != "oss-ap-southeast-1.aliyuncs.com" {
+		t.Fatalf("the posted location won: bucket=%q endpoint=%q", got.Bucket, got.Endpoint)
+	}
+}
+
+// With nothing baked in, the form still has to ask for all four.
+func TestUnfixedLocationStillAsks(t *testing.T) {
+	s := newTestServer(t, newFakeStore())
+	rec := httptest.NewRecorder()
+	s.Handler().ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/", nil))
+	if !strings.Contains(rec.Body.String(), `name="bucket"`) {
+		t.Fatal("the sign-in form omits the bucket field when nothing is baked in")
+	}
+}

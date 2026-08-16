@@ -141,3 +141,8 @@ code.wrap { display: block; padding: 10px; background: var(--card);
 input[type=file] { padding: 6px 0; border: 0; background: none; }
 ol { padding-left: 20px; }
 ol li { margin: 8px 0; }
+
+/* The fixed OSS location on the sign-in card: shown, not asked for. */
+.fixed-loc { margin: 16px 0 4px; font-size: 13px; }
+.fixed-loc th, .fixed-loc td { padding: 5px 0; border: 0; white-space: normal; }
+.fixed-loc th { width: 78px; color: var(--muted); font-weight: 500; }

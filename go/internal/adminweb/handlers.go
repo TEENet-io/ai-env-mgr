@@ -38,6 +38,7 @@ func (s *Server) currentSession(r *http.Request) *session {
 type pageData struct {
 	Bucket   string
 	Endpoint string
+	Fixed    bool // the OSS location is baked in, so sign-in only asks for the key
 	CSRF     string
 	Error    string
 	OK       bool
@@ -89,7 +90,18 @@ func (s *Server) handleIndex(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, "/machines", http.StatusSeeOther)
 		return
 	}
-	s.render(w, "login.html", http.StatusOK, pageData{})
+	s.render(w, "login.html", http.StatusOK, s.loginPage(""))
+}
+
+// loginPage seeds the sign-in form, telling it whether the OSS location is
+// fixed by this build or still has to be asked for.
+func (s *Server) loginPage(errMsg string) pageData {
+	return pageData{
+		Bucket:   s.opts.Bucket,
+		Endpoint: s.opts.Endpoint,
+		Fixed:    s.opts.Bucket != "" && s.opts.Endpoint != "",
+		Error:    errMsg,
+	}
 }
 
 func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
@@ -98,11 +110,11 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if !s.limiter.allow(s.clientKey(r)) {
-		s.render(w, "login.html", http.StatusTooManyRequests, pageData{Error: errRateLimited.Error()})
+		s.render(w, "login.html", http.StatusTooManyRequests, s.loginPage(errRateLimited.Error()))
 		return
 	}
 	if err := r.ParseForm(); err != nil {
-		s.render(w, "login.html", http.StatusBadRequest, pageData{Error: "could not read the form"})
+		s.render(w, "login.html", http.StatusBadRequest, s.loginPage("could not read the form"))
 		return
 	}
 	cfg := config.Config{
@@ -111,8 +123,17 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 		AccessKeyID:     strings.TrimSpace(r.PostFormValue("accessKeyId")),
 		AccessKeySecret: strings.TrimSpace(r.PostFormValue("accessKeySecret")),
 	}
+	// A baked-in location wins over anything posted. The form does not even
+	// show these fields then, so a value arriving in them was not typed by an
+	// operator, and honouring it would let the console be aimed elsewhere.
+	if s.opts.Bucket != "" {
+		cfg.Bucket = s.opts.Bucket
+	}
+	if s.opts.Endpoint != "" {
+		cfg.Endpoint = s.opts.Endpoint
+	}
 	if cfg.Endpoint == "" || cfg.Bucket == "" || cfg.AccessKeyID == "" || cfg.AccessKeySecret == "" {
-		s.render(w, "login.html", http.StatusBadRequest, pageData{Error: "all four fields are required"})
+		s.render(w, "login.html", http.StatusBadRequest, s.loginPage("fill in every field"))
 		return
 	}
 
@@ -127,14 +148,14 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 		// Never echo err verbatim: it can carry the credential back to the
 		// browser and into any log that records the response.
 		log.Printf("adminweb: sign-in from %s rejected", s.clientKey(r))
-		s.render(w, "login.html", http.StatusUnauthorized, pageData{Error: "could not reach the bucket with those credentials"})
+		s.render(w, "login.html", http.StatusUnauthorized, s.loginPage("could not reach the bucket with those credentials"))
 		return
 	}
 	mgr := &admincore.Manager{Store: st}
 
 	id, err := s.sessions.create(mgr, cfg.Bucket, cfg.Endpoint)
 	if err != nil {
-		s.render(w, "login.html", http.StatusServiceUnavailable, pageData{Error: err.Error()})
+		s.render(w, "login.html", http.StatusServiceUnavailable, s.loginPage(err.Error()))
 		return
 	}
 	http.SetCookie(w, &http.Cookie{
