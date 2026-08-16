@@ -128,7 +128,7 @@ func TestWriteRoutesIgnoreGET(t *testing.T) {
 func TestHighRiskActionsStillRequireCSRF(t *testing.T) {
 	for _, path := range []string{
 		"/agent/publish", "/agent/cancel", "/codex/publish", "/codex/cancel",
-		"/codex/rollout", "/machines/forget", "/files/put", "/files/rm",
+		"/machines/forget", "/files/put", "/files/rm",
 		"/employee-login/start", "/employee-login/finish",
 	} {
 		fs := newFakeStore()

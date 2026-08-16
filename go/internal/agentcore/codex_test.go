@@ -44,15 +44,14 @@ func newCodexSyncer(t *testing.T, store *fakeStore, codex *fakeCodex) *Syncer {
 }
 
 // codexPolicy publishes an installer and returns the policy pointing at it.
-func codexPolicy(store *fakeStore, version string, payload []byte, pct int) model.Policy {
+func codexPolicy(store *fakeStore, version string, payload []byte) model.Policy {
 	key := "agent_workdir/_codex/codex-setup-" + version + ".exe"
 	store.objects[key] = payload
 	sum := sha256.Sum256(payload)
 	return model.Policy{
-		CodexVersion:    version,
-		CodexKey:        key,
-		CodexSHA256:     hex.EncodeToString(sum[:]),
-		CodexRolloutPct: pct,
+		CodexVersion: version,
+		CodexKey:     key,
+		CodexSHA256:  hex.EncodeToString(sum[:]),
 	}
 }
 
@@ -60,7 +59,7 @@ func TestCodexInstallsWhenEligible(t *testing.T) {
 	store := newFakeStore()
 	codex := &fakeCodex{free: 100 << 30}
 	s := newCodexSyncer(t, store, codex)
-	pol := codexPolicy(store, "26.810.4967.0+b7", []byte("setup"), 100)
+	pol := codexPolicy(store, "26.810.52044-b1", []byte("setup"))
 
 	var errs []string
 	got, state := s.updateCodex(pol, &errs)
@@ -85,7 +84,7 @@ func TestCodexRefusesAChecksumMismatch(t *testing.T) {
 	store := newFakeStore()
 	codex := &fakeCodex{free: 100 << 30}
 	s := newCodexSyncer(t, store, codex)
-	pol := codexPolicy(store, "1.0.0", []byte("setup"), 100)
+	pol := codexPolicy(store, "1.0.0", []byte("setup"))
 	pol.CodexSHA256 = strings.Repeat("00", 32)
 
 	var errs []string
@@ -110,7 +109,7 @@ func TestCodexInstallsAnOlderPublishedVersion(t *testing.T) {
 	store := newFakeStore()
 	codex := &fakeCodex{installed: "2.0.0", free: 100 << 30}
 	s := newCodexSyncer(t, store, codex)
-	pol := codexPolicy(store, "1.0.0", []byte("older"), 100)
+	pol := codexPolicy(store, "1.0.0", []byte("older"))
 
 	var errs []string
 	if _, state := s.updateCodex(pol, &errs); state != CodexIdle {
@@ -125,7 +124,7 @@ func TestCodexSkipsWhenAlreadyOnTheTarget(t *testing.T) {
 	store := newFakeStore()
 	codex := &fakeCodex{installed: "1.0.0", free: 100 << 30}
 	s := newCodexSyncer(t, store, codex)
-	pol := codexPolicy(store, "1.0.0", []byte("setup"), 100)
+	pol := codexPolicy(store, "1.0.0", []byte("setup"))
 
 	var errs []string
 	s.updateCodex(pol, &errs)
@@ -155,7 +154,7 @@ func TestCodexDefersWhileInUse(t *testing.T) {
 	store := newFakeStore()
 	codex := &fakeCodex{running: true, free: 100 << 30}
 	s := newCodexSyncer(t, store, codex)
-	pol := codexPolicy(store, "1.0.0", []byte("setup"), 100)
+	pol := codexPolicy(store, "1.0.0", []byte("setup"))
 
 	var errs []string
 	_, state := s.updateCodex(pol, &errs)
@@ -174,7 +173,7 @@ func TestCodexDefersWhenTheDiskIsFull(t *testing.T) {
 	store := newFakeStore()
 	codex := &fakeCodex{free: 100 << 20} // 100 MB
 	s := newCodexSyncer(t, store, codex)
-	pol := codexPolicy(store, "1.0.0", []byte("setup"), 100)
+	pol := codexPolicy(store, "1.0.0", []byte("setup"))
 
 	var errs []string
 	_, state := s.updateCodex(pol, &errs)
@@ -189,7 +188,7 @@ func TestCodexTriesAFailedVersionOnce(t *testing.T) {
 	store := newFakeStore()
 	codex := &fakeCodex{free: 100 << 30, installErr: os.ErrPermission}
 	s := newCodexSyncer(t, store, codex)
-	pol := codexPolicy(store, "1.0.0", []byte("setup"), 100)
+	pol := codexPolicy(store, "1.0.0", []byte("setup"))
 
 	var errs []string
 	s.updateCodex(pol, &errs)
@@ -199,38 +198,33 @@ func TestCodexTriesAFailedVersionOnce(t *testing.T) {
 	}
 
 	// A newly published version is attempted again.
-	pol2 := codexPolicy(store, "1.0.1", []byte("setup2"), 100)
+	pol2 := codexPolicy(store, "1.0.1", []byte("setup2"))
 	s.updateCodex(pol2, &errs)
 	if codex.installs != 2 {
 		t.Fatalf("a new version was not attempted: installs=%d", codex.installs)
 	}
 }
 
-// The ring has to be stable: widening it adds machines rather than reshuffling
-// which ones are exposed.
-func TestRolloutIsStableAndProportional(t *testing.T) {
-	if !inRollout("any", 100) {
-		t.Fatal("100% excluded a machine")
+// A machine must install regardless of the rollout field. It is still written
+// for agents old enough to gate on it, and an agent that honoured a stale 0
+// would sit out every update without ever saying so.
+func TestCodexIgnoresTheRolloutField(t *testing.T) {
+	store := newFakeStore()
+	codex := &fakeCodex{free: 100 << 30}
+	s := newCodexSyncer(t, store, codex)
+
+	pol := codexPolicy(store, "1.0.0", []byte("setup"))
+	pol.CodexRolloutPct = 0
+
+	var errs []string
+	installed, state := s.updateCodex(pol, &errs)
+	if codex.installs != 1 {
+		t.Fatalf("rollout 0 blocked the install: installs=%d", codex.installs)
 	}
-	if inRollout("any", 0) {
-		t.Fatal("0% included a machine")
+	if installed != "1.0.0" || state != CodexIdle {
+		t.Fatalf("installed=%q state=%q", installed, state)
 	}
-	// Case does not change a machine's ring: Windows hostnames vary in case.
-	if inRollout("DESKTOP-A", 50) != inRollout("desktop-a", 50) {
-		t.Fatal("the ring depends on hostname case")
-	}
-	// A machine in the first 10% stays in every wider ring.
-	var first []string
-	for _, m := range []string{"a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k", "l"} {
-		if inRollout(m, 10) {
-			first = append(first, m)
-		}
-	}
-	for _, m := range first {
-		for _, pct := range []int{10, 25, 50, 100} {
-			if !inRollout(m, pct) {
-				t.Fatalf("%q left the ring at %d%%", m, pct)
-			}
-		}
+	if len(errs) != 0 {
+		t.Fatalf("unexpected errors: %v", errs)
 	}
 }

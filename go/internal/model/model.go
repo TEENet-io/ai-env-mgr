@@ -38,15 +38,19 @@ type Policy struct {
 	// upgrade-only rule could not express -- and a bad build is precisely when
 	// you need to go backwards.
 	//
-	// CodexRolloutPct staggers the fleet: a machine updates only when
-	// crc32(machine) % 100 < CodexRolloutPct, so the same machines are always
-	// in the first ring. 0 reaches nobody, 100 reaches everyone. Since the
-	// package is a repackaging of an upstream build whose patches drift, start
-	// small. See docs/Codex分发方案.md.
+	// CodexRolloutPct used to stagger the fleet by hashing the machine name.
+	// The staging is gone -- publishing now reaches every machine -- but the
+	// field remains, and is ALWAYS written, for the agents already in the field.
+	//
+	// Agents 1.2.5 through 1.2.7 skip the install when this is absent or zero,
+	// and the field would be omitted if it were empty. Dropping it would
+	// therefore stop Codex updates on every machine still running one of those,
+	// silently: no error, no log line, just nothing happening. Newer agents
+	// ignore it. Remove it once nothing older than 1.2.8 is left.
 	CodexVersion    string `json:"codexVersion,omitempty"`
 	CodexSHA256     string `json:"codexSHA256,omitempty"` // hex sha256 of the installer
 	CodexKey        string `json:"codexKey,omitempty"`    // object key under _codex/
-	CodexRolloutPct int    `json:"codexRolloutPct,omitempty"`
+	CodexRolloutPct int    `json:"codexRolloutPct"`
 
 	UpdatedAt string `json:"updatedAt"`
 }

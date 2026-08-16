@@ -138,14 +138,6 @@ func (s *Server) actionCodexPublish(sess *session, r *http.Request) error {
 	if err := confirmMatches(r, "confirm", version); err != nil {
 		return err
 	}
-	rollout := 10
-	if v := formValue(r, "rollout"); v != "" {
-		n, err := strconv.Atoi(v)
-		if err != nil {
-			return fmt.Errorf("the rollout must be a number between 0 and 100")
-		}
-		rollout = n
-	}
 	fetch, err := s.payloadSource(r)
 	if err != nil {
 		return err
@@ -158,25 +150,13 @@ func (s *Server) actionCodexPublish(sess *session, r *http.Request) error {
 			return err
 		}
 		setStep(fmt.Sprintf("上传 %d MB 到 OSS", len(data)>>20))
-		sum, err := mgr.PublishCodexUpdate(version, data, rollout)
+		sum, err := mgr.PublishCodexUpdate(version, data)
 		if err != nil {
 			return err
 		}
-		logAudit(client, "published Codex %s to %d%% (%d bytes, sha256 %s)", version, rollout, len(data), sum)
+		logAudit(client, "published Codex %s to the fleet (%d bytes, sha256 %s)", version, len(data), sum)
 		return nil
 	})
-}
-
-func (s *Server) actionCodexRollout(sess *session, r *http.Request) error {
-	pct, err := strconv.Atoi(formValue(r, "rollout"))
-	if err != nil {
-		return fmt.Errorf("the rollout must be a number between 0 and 100")
-	}
-	if err := sess.mgr.SetCodexRollout(pct); err != nil {
-		return err
-	}
-	logAudit(s.clientKey(r), "set the Codex rollout to %d%%", pct)
-	return nil
 }
 
 func (s *Server) actionCodexCancel(sess *session, r *http.Request) error {

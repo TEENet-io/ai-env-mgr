@@ -210,7 +210,6 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("/agent/publish", s.requirePost("/rollout", s.actionAgentPublish))
 	mux.HandleFunc("/agent/cancel", s.requirePost("/rollout", s.actionAgentCancel))
 	mux.HandleFunc("/codex/publish", s.requirePost("/rollout", s.actionCodexPublish))
-	mux.HandleFunc("/codex/rollout", s.requirePost("/rollout", s.actionCodexRollout))
 	mux.HandleFunc("/codex/cancel", s.requirePost("/rollout", s.actionCodexCancel))
 	mux.HandleFunc("/machines/forget", s.requirePost("/machines", s.actionMachineForget))
 	mux.HandleFunc("/files/put", s.requirePost("/files", s.actionFilePut))

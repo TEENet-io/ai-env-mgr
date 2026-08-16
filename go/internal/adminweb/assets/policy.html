@@ -17,8 +17,7 @@
         <span class="muted">{{len .BlockedDomains}} 个域名</span></td></tr>
       <tr><th>会话采集</th><td>{{if .CollectEnabled}}<span class="tag tag-ok">开启</span>{{else}}<span class="muted">关闭</span>{{end}}</td></tr>
       <tr><th>agent 目标版本</th><td>{{if .AgentUpdateVersion}}<span class="mono">{{.AgentUpdateVersion}}</span>{{else}}<span class="muted">未设置</span>{{end}}</td></tr>
-      <tr><th>Codex 目标版本</th><td>{{if .CodexVersion}}<span class="mono">{{.CodexVersion}}</span>
-        <span class="muted">灰度 {{.CodexRolloutPct}}%</span>{{else}}<span class="muted">未设置</span>{{end}}</td></tr>
+      <tr><th>Codex 目标版本</th><td>{{if .CodexVersion}}<span class="mono">{{.CodexVersion}}</span>{{else}}<span class="muted">未设置</span>{{end}}</td></tr>
       <tr><th>更新时间</th><td class="mono">{{.UpdatedAt}}</td></tr>
     </tbody>
   </table>

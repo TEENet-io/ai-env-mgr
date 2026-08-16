@@ -2,7 +2,6 @@ package agentcore
 
 import (
 	"fmt"
-	"hash/crc32"
 	"log"
 	"os"
 	"path/filepath"
@@ -55,7 +54,7 @@ const installHeadroom = 3 << 30 // 3 GiB
 // The comparison is for EQUALITY, never "newer". Publishing an older version
 // is how a bad build is rolled back, and an upgrade-only rule cannot express
 // that -- which is precisely when it would be needed.
-func codexEligible(pol model.Policy, machine, installed string) (bool, string) {
+func codexEligible(pol model.Policy, installed string) (bool, string) {
 	if pol.CodexVersion == "" {
 		return false, "" // nothing published; also the kill switch
 	}
@@ -65,27 +64,13 @@ func codexEligible(pol model.Policy, machine, installed string) (bool, string) {
 	if installed == pol.CodexVersion {
 		return false, ""
 	}
-	if !inRollout(machine, pol.CodexRolloutPct) {
-		return false, ""
-	}
+	// A published version reaches every machine. The staged rollout this used
+	// to consult (CodexRolloutPct, hashed against the machine name) is gone:
+	// what it was meant to buy -- confidence that the repackaged build is sound
+	// -- has to come from accepting it on a real Windows machine, and on a fleet
+	// this size a small ring mostly selected nobody. The policy field is still
+	// written, for agents old enough to gate on it.
 	return true, ""
-}
-
-// inRollout places a machine in the staged rollout.
-//
-// The hash of the machine name decides, so the same machines are always in the
-// first ring: widening the percentage adds machines rather than reshuffling
-// which ones are exposed, and a machine that took a bad build is the same one
-// that reports on it.
-func inRollout(machine string, pct int) bool {
-	if pct >= 100 {
-		return true
-	}
-	if pct <= 0 {
-		return false
-	}
-	h := crc32.ChecksumIEEE([]byte(strings.ToLower(machine)))
-	return int(h%100) < pct
 }
 
 // updateCodex runs one Codex update cycle. It returns the version now
@@ -102,7 +87,7 @@ func (s *Syncer) updateCodex(pol model.Policy, errs *[]string) (installed, state
 		*errs = append(*errs, fmt.Sprintf("codex: read installed version: %v", err))
 		return "", CodexIdle
 	}
-	eligible, why := codexEligible(pol, s.Machine.Name(), installed)
+	eligible, why := codexEligible(pol, installed)
 	if why != "" {
 		*errs = append(*errs, why)
 	}

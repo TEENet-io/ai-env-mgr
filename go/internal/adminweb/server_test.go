@@ -425,3 +425,35 @@ func TestAccountsAreExcludedFromEmailObfuscation(t *testing.T) {
 		t.Fatal("the rendered roster lost its email_off markers")
 	}
 }
+
+// The publish page renders with a Codex version set, and offers no way to
+// stage the fleet. Removing the rollout left field references behind in two
+// templates, and a template referencing a value that is gone only fails when
+// somebody opens the page -- the compiler and the router both stay quiet.
+func TestPublishPageRendersWithoutRolloutControls(t *testing.T) {
+	store := newFakeStore()
+	s := newTestServer(t, store)
+	c := signIn(t, s)
+
+	mgr := &admincore.Manager{Store: store}
+	if _, err := mgr.PublishCodexUpdate("26.810.52044-b1", []byte("installer")); err != nil {
+		t.Fatal(err)
+	}
+
+	for _, path := range []string{"/rollout", "/policy"} {
+		req := httptest.NewRequest(http.MethodGet, path, nil)
+		req.AddCookie(c)
+		rec := httptest.NewRecorder()
+		s.Handler().ServeHTTP(rec, req)
+		if rec.Code != http.StatusOK {
+			t.Fatalf("%s returned %d", path, rec.Code)
+		}
+		body := rec.Body.String()
+		if !strings.Contains(body, "26.810.52044-b1") {
+			t.Fatalf("%s did not render the published version", path)
+		}
+		if strings.Contains(body, `name="rollout"`) || strings.Contains(body, "灰度") {
+			t.Fatalf("%s still offers a rollout control", path)
+		}
+	}
+}

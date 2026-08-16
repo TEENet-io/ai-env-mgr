@@ -17,24 +17,23 @@ import (
 // against the policy and, when they differ, downloads the installer, verifies
 // this SHA-256, and only then installs it silently.
 //
-// Publishing does not by itself reach any machine: rolloutPct decides how much
-// of the fleet is eligible. This is deliberate -- the package is a repackaging
-// of an upstream build whose patches drift, and a green CI run only proves the
-// patches applied, not that the ChatGPT surfaces are gone or that Computer Use
-// still works. Accept a build on a real Windows machine first, then publish to
-// a small ring and widen it.
+// Publishing reaches every machine. There used to be a staged rollout, sized
+// as a percentage of the fleet, on the reasoning that a green CI run proves
+// only that the patches applied -- not that the ChatGPT surfaces are gone or
+// that Computer Use still works. That reasoning holds, but the staging did not
+// serve it: on a fleet this size a small ring usually selects nobody, and the
+// acceptance it was meant to buy has to happen on a real Windows machine
+// before publishing anyway. Accept the build first; publishing is the last
+// step, not the test.
 //
-// Past versions are left in place, so rolling back is `admin codex publish`
-// against the previous version -- no 700 MB re-upload.
-func (m *Manager) PublishCodexUpdate(version string, installer []byte, rolloutPct int) (string, error) {
+// Past versions are left in place, so rolling back is publishing the previous
+// version again -- no 700 MB re-upload.
+func (m *Manager) PublishCodexUpdate(version string, installer []byte) (string, error) {
 	if version == "" {
 		return "", fmt.Errorf("a version is required")
 	}
 	if len(installer) == 0 {
 		return "", fmt.Errorf("the Codex installer is empty")
-	}
-	if rolloutPct < 0 || rolloutPct > 100 {
-		return "", fmt.Errorf("rollout percentage must be between 0 and 100, got %d", rolloutPct)
 	}
 	sum := sha256.Sum256(installer)
 	hexsum := hex.EncodeToString(sum[:])
@@ -50,30 +49,14 @@ func (m *Manager) PublishCodexUpdate(version string, installer []byte, rolloutPc
 	p.CodexVersion = version
 	p.CodexSHA256 = hexsum
 	p.CodexKey = key
-	p.CodexRolloutPct = rolloutPct
+	// Agents 1.2.5 through 1.2.7 gate the install on this and treat a missing
+	// or zero value as "not my turn", so publishing to everyone means saying
+	// 100 rather than saying nothing. Newer agents ignore it entirely.
+	p.CodexRolloutPct = 100
 	if _, err := m.publishPolicy(p); err != nil {
 		return "", err
 	}
 	return hexsum, nil
-}
-
-// SetCodexRollout widens (or narrows) the ring without re-uploading. Narrowing
-// does not uninstall anything: machines that already updated stay on the new
-// version, it only stops further machines from picking it up.
-func (m *Manager) SetCodexRollout(pct int) error {
-	if pct < 0 || pct > 100 {
-		return fmt.Errorf("rollout percentage must be between 0 and 100, got %d", pct)
-	}
-	p, err := m.CurrentPolicy()
-	if err != nil {
-		return err
-	}
-	if p.CodexVersion == "" {
-		return fmt.Errorf("no Codex version published yet; run 'admin codex publish' first")
-	}
-	p.CodexRolloutPct = pct
-	_, err = m.publishPolicy(p)
-	return err
 }
 
 // CancelCodexUpdate clears the target -- the kill switch. Machines that have

@@ -119,7 +119,7 @@ Agent 用户对 `_codex/` **只读**；写入只有管理员。
 CodexVersion    string `json:"codexVersion,omitempty"`
 CodexSHA256     string `json:"codexSHA256,omitempty"`
 CodexKey        string `json:"codexKey,omitempty"`        // _codex/ 下的对象键
-CodexRolloutPct int    `json:"codexRolloutPct,omitempty"` // 0-100，灰度比例
+CodexRolloutPct int    `json:"codexRolloutPct"`            // 已废弃，恒为 100
 ```
 
 **按相等而非新旧比较**是有意的：出问题时把版本改回旧值即可回滚，
@@ -148,11 +148,14 @@ CodexUpdateError string `json:"codexUpdateError,omitempty"`
 
 新增三条：
 
-**灰度**
+**灰度（已取消）**
 
-```go
-if crc32(machine) % 100 >= pol.CodexRolloutPct { 跳过 }
-```
+原设计按 `crc32(主机名) % 100 < CodexRolloutPct` 分环下发。已去掉：机器数量少，
+发 10% 常常一台都不命中，而它想换来的信心只能靠 Windows 真机验收，灰度给不了。
+**先真机验收，再发布；发布是最后一步，不是测试手段。**
+
+> `codexRolloutPct` 字段仍然写出且恒为 100。agent 1.2.5–1.2.7 拿它当开关，
+> 字段缺失或为 0 时**一台都不装、也不报错**；新 agent 完全忽略它。
 
 **安装前置条件**
 
@@ -201,7 +204,6 @@ agent 自身二进制只有几 MB，如此可行；Codex 安装包 700 MB，
 ```
 admin codex publish <path>                                   # 本地文件
 admin codex publish --url <asset-url> --version <v> --token <pat>
-admin codex rollout <百分比>                                 # 灰度调整
 admin codex cancel                                           # kill switch
 admin codex status                                           # 目标版本 + 机队分布
 ```
@@ -220,7 +222,7 @@ admin codex status                                           # 目标版本 + �
 | 1 | CI 用 OIDC 上传 OSS（可选，也可由 admin 从 release 拉） | — |
 | 2 | ossclient 流式下载 | — |
 | 3 | Policy/Status 字段 + agent 更新任务 | 0、0.5、2 |
-| 4 | admin codex 命令 + 灰度 + machine list 列 | 3 |
+| 4 | admin codex 命令 + machine list 列 | 3 |
 
 阶段 1 非必需：`admin codex publish --url --token` 已能从私有 release 直接拉，
 CI 直传 OSS 只是省掉管理员本地中转，可以后补。

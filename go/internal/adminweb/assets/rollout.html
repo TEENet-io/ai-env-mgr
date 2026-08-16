@@ -62,16 +62,10 @@
   <table class="kv">
     <tbody>
       <tr><th>目标版本</th><td>{{if .CodexVersion}}<span class="mono">{{.CodexVersion}}</span>{{else}}<span class="muted">未设置</span>{{end}}</td></tr>
-      <tr><th>灰度比例</th><td><span class="mono">{{.CodexRolloutPct}}%</span> 的机器可安装</td></tr>
     </tbody>
   </table>
   </div>
   {{if .CodexVersion}}
-  <form method="post" action="/codex/rollout" class="form">
-    <input type="hidden" name="csrf" value="{{$.CSRF}}">
-    <label>调整灰度 %<input name="rollout" type="number" min="0" max="100" value="{{.CodexRolloutPct}}" required></label>
-    <button type="submit">保存</button>
-  </form>
   <form method="post" action="/codex/cancel" class="aside">
     <input type="hidden" name="csrf" value="{{$.CSRF}}">
     <button class="link">清除目标：已安装的机器不会被卸载</button>
@@ -81,16 +75,19 @@
 
   <form method="post" action="/codex/publish" enctype="multipart/form-data" class="form">
     <input type="hidden" name="csrf" value="{{.CSRF}}">
-    <label>版本<input name="version" required placeholder="26.810.4967.0+b7"></label>
+    <label>版本<input name="version" required placeholder="26.810.52044-b1"></label>
     <label class="wide">Release URL<input name="url" placeholder="https://github.com/TEENet-io/codex-kiosk/releases/…"></label>
     <label>GITHUB TOKEN<input name="token" type="password" placeholder="每次发布都需要输入"></label>
-    <label>灰度 %<input name="rollout" type="number" min="0" max="100" value="10"></label>
     <label>再次输入版本号<input name="confirm" required></label>
     <button type="submit" class="danger">发布 Codex</button>
   </form>
   <p class="hint">
+    版本号是 release tag 去掉 <span class="mono">offline-v</span>，前半段就是应用「关于」面板显示的号。
     安装包约 700 MB，用 URL 让服务器直接拉取；浏览器上传会被 CDN 的体积限制挡下。
-    先发一小部分，确认无误后再调到 100%。
+  </p>
+  <p class="hint">
+    <b>发布即全体安装。</b>CI 通过只证明补丁应用成功，不证明 ChatGPT 入口真的消失——
+    先在一台 Windows 真机上装好验收，再发布。
   </p>
 
   {{if .Machines}}
