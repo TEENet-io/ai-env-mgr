@@ -15,7 +15,7 @@ AI Env Mgr（AI 环境管理器）：员工的 AI 工具环境——登录、策
 | 组件 | 位置 | 作用 |
 |---|---|---|
 | `dist/agent.exe` | 每台云电脑（进镜像） | Windows 服务，定时从 OSS 拉取策略与凭据并应用到本机 |
-| `dist/admin.exe` | 管理员工作机 | 代员工登录 AI 工具、下发封禁策略、查看全局状态 |
+| `dist/admin.exe` | 管理员工作机或一台内网服务器 | 管理控制台(浏览器):代员工登录、下发策略、查看机队、发布更新 |
 | `scripts/01-Install-AITools.ps1` | 模板机 | 安装 Codex CLI / Claude Code / ChatGPT（CLI 机器级全用户；GUI 预置全用户，`-AllExistingUsers` 覆盖已有用户） |
 | `scripts/02-Manage-AIAccess.ps1` | 模板机 | 配置 AppLocker |
 
@@ -43,23 +43,33 @@ cd go && make all
 
 **3. 新增员工**
 
-```powershell
-admin.exe user add work1 --codex ai-work1@company.com --claude ai-work1@company.com
-admin.exe login --user work1 --tool all
-```
+在控制台的**员工**页登记,再到**代员工登录**页用该员工的账号完成一次 OAuth。
+然后用镜像开一台云电脑、创建同名 Windows 标准用户即可——员工登录后 Agent 自动把凭据投递到位。
 
-用镜像开一台云电脑、创建同名 Windows 标准用户即可。员工登录后 Agent 自动把凭据投递到位。
+## 管理控制台
 
-## 常用命令
+不带参数运行 `admin.exe`,浏览器打开 `http://127.0.0.1:8080`,用 OSS 的 AccessKey 登录:
 
 ```powershell
-admin.exe status                        # 查看所有机器
-admin.exe add-site gemini.google.com    # 增加封禁网站
-admin.exe disable-block                 # 临时全局开放
-admin.exe enable-block                  # 恢复封禁
-admin.exe set-interval 5                # 调整同步频率
-admin.exe login --user work1 --tool all # 凭据过期重新登录
+admin.exe
 ```
+
+**密钥只在进程内存里**,不写磁盘、不进 cookie、不进日志;关掉程序即全部登出。
+
+| 页面 | 能做什么 |
+|---|---|
+| 机器 | 机队状态、绑定/解绑/注销、看某台机器的日志 |
+| 员工 | 登记、停用(**并吊销凭据**)、启用 |
+| 代员工登录 | 替员工完成 Codex / Claude 的 OAuth |
+| 封禁策略 | 增删封禁域名、临时全局开关 |
+| 会话采集 | 同步间隔、采集开关与统计 |
+| 文件传输 | 上传文件、生成免密下载链接 |
+| 发布更新 | 发布 agent / Codex 到机队(需打字确认,Codex 有灰度) |
+| 策略总览 | 只读汇总 |
+
+要给团队共用、带域名和 HTTPS,见 [Web控制台部署.md](docs/Web控制台部署.md)。
+
+> 命令行和 TUI 已在 v1.2.7 移除:同一批操作维护两个前端,两边会各自漂移,而每次分歧都是没人察觉的 bug。
 
 ## 文档
 
