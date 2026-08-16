@@ -12,7 +12,6 @@ import (
 
 	"github.com/TEENet-io/ai-env-mgr/internal/admincore"
 	"github.com/TEENet-io/ai-env-mgr/internal/config"
-	"github.com/TEENet-io/ai-env-mgr/internal/ecdclient"
 	"github.com/TEENet-io/ai-env-mgr/internal/ossclient"
 )
 
@@ -47,12 +46,11 @@ type Options struct {
 	// which depend on the browser's scheme rather than this hop's.
 	BehindProxy bool
 
-	// ECD credentials for reading cloud desktop state. Optional: without them
-	// a quiet machine stays "offline" instead of being told apart into asleep,
-	// shut down, or an agent that has died.
-	ECDAccessKeyID     string
-	ECDAccessKeySecret string
-	ECDRegion          string
+	// ECDRegion is where the cloud desktops live. Not a secret, and no key
+	// belongs here: the lookup uses the credentials the administrator signed
+	// in with, so nothing is stored and nothing ships inside the binary.
+	// Empty disables the lookup, leaving quiet machines reading as offline.
+	ECDRegion string
 }
 
 // store is what the console needs from OSS: everything admincore.Manager uses,
@@ -83,11 +81,6 @@ type Server struct {
 
 	// jobs holds the one publish that may be in flight; see job.go.
 	jobs jobRunner
-
-	// cloud answers "asleep or dead" for machines that have gone quiet. nil
-	// when no ECD credentials were built in, which simply leaves those
-	// machines reading as offline.
-	cloud *cloudLookup
 }
 
 // New validates the options and builds the server.
@@ -134,17 +127,8 @@ func New(opts Options) (*Server, error) {
 	if err != nil {
 		return nil, fmt.Errorf("parse templates: %w", err)
 	}
-	var cloud *cloudLookup
-	if opts.ECDAccessKeyID != "" && opts.ECDAccessKeySecret != "" && opts.ECDRegion != "" {
-		client, err := ecdclient.New(opts.ECDAccessKeyID, opts.ECDAccessKeySecret, opts.ECDRegion)
-		if err != nil {
-			return nil, fmt.Errorf("cloud desktop lookup: %w", err)
-		}
-		cloud = newCloudLookup(client)
-	}
 	return &Server{
 		opts:     opts,
-		cloud:    cloud,
 		sessions: newSessionStore(opts.IdleTTL, opts.AbsTTL),
 		limiter:  newLoginLimiter(time.Minute, 10),
 		tpl:      tpl,

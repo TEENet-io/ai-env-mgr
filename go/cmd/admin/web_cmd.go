@@ -13,14 +13,10 @@ func cmdWeb(args []string) error {
 	// the console asks only for the AccessKey.
 	built := builtIn()
 	opts := adminweb.Options{
-		Listen:   "127.0.0.1:8080",
-		Bucket:   built.Bucket,
-		Endpoint: built.Endpoint,
-		// The environment wins over the built-in value, so the key can be
-		// rotated without a rebuild.
-		ECDAccessKeyID:     envOr("AIENVMGR_ECD_KEY_ID", ecdAccessKeyID),
-		ECDAccessKeySecret: envOr("AIENVMGR_ECD_KEY_SECRET", ecdAccessKeySecret),
-		ECDRegion:          envOr("AIENVMGR_ECD_REGION", ecdRegion),
+		Listen:    "127.0.0.1:8080",
+		Bucket:    built.Bucket,
+		Endpoint:  built.Endpoint,
+		ECDRegion: envOr("AIENVMGR_ECD_REGION", ecdRegion),
 	}
 	for i := 0; i < len(args); i++ {
 		switch args[i] {

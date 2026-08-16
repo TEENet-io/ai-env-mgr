@@ -26,7 +26,7 @@ func TestSessionStoreUnderConcurrentUse(t *testing.T) {
 		go func() {
 			defer wg.Done()
 			for j := 0; j < 4; j++ {
-				id, err := store.create(&admincore.Manager{Store: newFakeStore()}, "bucket", "endpoint")
+				id, err := store.create(&admincore.Manager{Store: newFakeStore()}, "bucket", "endpoint", nil)
 				if err != nil {
 					t.Errorf("create: %v", err)
 					return

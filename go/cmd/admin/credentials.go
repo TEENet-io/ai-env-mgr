@@ -36,26 +36,21 @@ var (
 	ossAccessKeySecret = ""
 )
 
-// Cloud desktop lookup (WuYing / ECD), used by the web console to tell a
+// Cloud desktop lookup (WuYing / ECD), used by the console to tell a
 // hibernating machine from one whose agent has died. WuYing suspends at the
 // hypervisor, so the guest never sees a power event and the agent cannot
 // report it -- the platform is the only source.
 //
-// The region is not a secret and is baked in. The key pair follows the same
-// rule as the OSS one above: BLANK here, injected with -ldflags at build time,
-// never committed. Use a RAM user with ONLY AliyunECDReadOnlyAccess and no OSS
-// permissions at all -- it is read-only and cannot change anything, so a leak
-// costs a list of desktops rather than control of the fleet.
+// Only the region lives here, and it is not a secret. The lookup runs with the
+// credentials the administrator signed in with, so no key is stored anywhere
+// and none ships inside the binary. That costs nothing: the lookup exists to
+// render a page, so it is only ever wanted while somebody is signed in.
 //
-// Deliberately NOT the agent's key. That one is baked into agent.exe on every
-// employee desktop in plaintext, and widening it to cover ECD would let any
-// one of those machines enumerate every desktop in the organisation, with the
-// employee assigned to each.
-var (
-	ecdRegion          = "ap-southeast-1"
-	ecdAccessKeyID     = ""
-	ecdAccessKeySecret = ""
-)
+// It does mean the administrator's own RAM user needs AliyunECDReadOnlyAccess
+// alongside its OSS permissions. Widening that key is safe in a way widening
+// the agent's is not: this one is typed at runtime and never distributed,
+// while the agent's sits in plaintext on every employee desktop.
+var ecdRegion = "ap-southeast-1"
 
 func builtIn() config.Config {
 	return config.Config{

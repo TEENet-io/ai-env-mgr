@@ -33,7 +33,12 @@ type session struct {
 	// already stops a cross-site form from carrying the cookie, but this does
 	// not depend on the browser honouring that, and the actions behind it
 	// change what a fleet of machines does.
-	csrf     string
+	csrf string
+	// cloud answers "asleep or dead" using this administrator's own
+	// credentials, so nothing has to be stored for it. The lookup only ever
+	// runs while a page is being rendered, which is exactly when somebody is
+	// signed in -- there is no background consumer to strand.
+	cloud    *cloudLookup
 	created  time.Time
 	lastSeen time.Time
 }
@@ -73,7 +78,7 @@ func newID() (string, error) {
 }
 
 // create registers a signed-in administrator and returns the session id.
-func (s *sessionStore) create(mgr *admincore.Manager, bucket, endpoint string) (string, error) {
+func (s *sessionStore) create(mgr *admincore.Manager, bucket, endpoint string, cloud *cloudLookup) (string, error) {
 	id, err := newID()
 	if err != nil {
 		return "", err
@@ -89,7 +94,7 @@ func (s *sessionStore) create(mgr *admincore.Manager, bucket, endpoint string) (
 		return "", errTooManySessions
 	}
 	now := s.now()
-	s.byID[id] = &session{mgr: mgr, bucket: bucket, endpoint: endpoint, csrf: csrf, created: now, lastSeen: now}
+	s.byID[id] = &session{mgr: mgr, bucket: bucket, endpoint: endpoint, csrf: csrf, cloud: cloud, created: now, lastSeen: now}
 	return id, nil
 }
 

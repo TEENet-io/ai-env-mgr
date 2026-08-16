@@ -8,6 +8,7 @@ import (
 
 	"github.com/TEENet-io/ai-env-mgr/internal/admincore"
 	"github.com/TEENet-io/ai-env-mgr/internal/config"
+	"github.com/TEENet-io/ai-env-mgr/internal/ecdclient"
 	"github.com/TEENet-io/ai-env-mgr/internal/model"
 )
 
@@ -156,7 +157,17 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 	}
 	mgr := &admincore.Manager{Store: st}
 
-	id, err := s.sessions.create(mgr, cfg.Bucket, cfg.Endpoint)
+	// The same credentials serve the cloud desktop lookup. A key without ECD
+	// permission simply makes that lookup fail and be logged; everything else
+	// works, so sign-in is never blocked on it.
+	var cloud *cloudLookup
+	if s.opts.ECDRegion != "" {
+		if client, cerr := ecdclient.New(cfg.AccessKeyID, cfg.AccessKeySecret, s.opts.ECDRegion); cerr == nil {
+			cloud = newCloudLookup(client)
+		}
+	}
+
+	id, err := s.sessions.create(mgr, cfg.Bucket, cfg.Endpoint, cloud)
 	if err != nil {
 		s.render(w, "login.html", http.StatusServiceUnavailable, s.loginPage(err.Error()))
 		return
@@ -205,7 +216,7 @@ func (s *Server) handleMachines(w http.ResponseWriter, r *http.Request, sess *se
 	} else {
 		// Only reaches the platform for machines whose own report is
 		// ambiguous; a fleet that is reporting normally makes no calls.
-		s.cloud.annotate(machines)
+		sess.cloud.annotate(machines)
 		data.Machines = machines
 		data.Fleet = summariseFleet(machines)
 	}
@@ -325,7 +336,7 @@ func (s *Server) handleRollout(w http.ResponseWriter, r *http.Request, sess *ses
 		data.Policy = &p
 	}
 	if machines, err := sess.mgr.CollectMachines(freshAfter); err == nil {
-		s.cloud.annotate(machines)
+		sess.cloud.annotate(machines)
 		data.Machines = machines // so the operator can see what is actually installed
 		data.Fleet = summariseFleet(machines)
 	}

@@ -36,13 +36,9 @@
 
 - **只在需要时查**:仅对已经安静下来的机器发起;机队都正常时一次调用都没有,结果缓存 1 分钟
 - 休眠标记在 `ManagementFlags` 而非 `DesktopStatus`(休眠时后者显示 `Stopped`),只读状态字段会把休眠报成关机
-- 用**独立的只读子账号**(仅 `AliyunECDReadOnlyAccess`),**不是 agent 的密钥**——那把明文躺在每台员工机器上,给它加 ECD 权限等于让任意一台都能枚举全公司的云电脑和人机对应关系
-- 拿不到凭证时功能自动关闭,安静的机器仍显示"离线",其余照常
-
-> 发布物要带上这把只读密钥,需在仓库配置三个 secret:`ADMIN_ECD_ACCESS_KEY_ID`、
-> `ADMIN_ECD_ACCESS_KEY_SECRET`、`ADMIN_ECD_REGION`。没配也能正常构建和使用,
-> 只是这项查询保持关闭。运行时也可用 `AIENVMGR_ECD_KEY_ID` / `_SECRET` / `_REGION`
-> 环境变量覆盖,**轮换密钥不必重新发版**。
+- **不需要任何新密钥,发布物里也不含密钥**:查询用的就是管理员登录时输入的那把,只在会话内存里。它只在渲染页面时发生,所以"没人登录就查不了"不损失任何东西——没人在看,也就没人需要答案
+- 前提是管理员那把 RAM 用户要有 `AliyunECDReadOnlyAccess`。加宽这把是安全的,加宽 **agent 那把不是**:agent 的密钥明文躺在每台员工机器上,给它 ECD 权限等于让任意一台都能枚举全公司的云电脑和人机对应关系
+- 拿不到权限时功能自动关闭(报错记日志),安静的机器仍显示"离线",其余照常
 
 **发布改为后台任务**
 
@@ -152,7 +148,7 @@ Status 原本只有一个 `errors` 列表，于是"还没有人替这位员工�
 | 文件 | 平台 | 凭据 |
 |---|---|---|
 | `agent.exe` | windows/amd64 | **已注入受限密钥**（来自仓库 Secrets），`config=built-in`,可直接进镜像 |
-| `admin-linux-amd64` | linux/amd64 | **OSS 读写密钥不在其中**,登录时输入。仓库配了 `ADMIN_ECD_*` secret 时会内置一把**只读**的云电脑查询密钥 |
+| `admin-linux-amd64` | linux/amd64 | **无密钥**,运行时交互输入 |
 | `admin-windows-amd64.exe` | windows/amd64 | 同上 |
 | `admin-darwin-arm64` | macOS (Apple Silicon) | 同上 |
 

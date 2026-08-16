@@ -180,7 +180,7 @@ func TestSessionsExpire(t *testing.T) {
 	store := newSessionStore(30*time.Minute, 12*time.Hour)
 	base := time.Now()
 	store.nowFunc = func() time.Time { return base }
-	id, err := store.create(&admincore.Manager{Store: newFakeStore()}, "b", "e")
+	id, err := store.create(&admincore.Manager{Store: newFakeStore()}, "b", "e", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -196,7 +196,7 @@ func TestSessionsExpire(t *testing.T) {
 	// A session kept busy must still die at the absolute cap: an idle timer
 	// alone would let a stolen cookie live indefinitely.
 	store.nowFunc = func() time.Time { return base }
-	id, err = store.create(&admincore.Manager{Store: newFakeStore()}, "b", "e")
+	id, err = store.create(&admincore.Manager{Store: newFakeStore()}, "b", "e", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
