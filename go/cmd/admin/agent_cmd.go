@@ -2,11 +2,11 @@ package main
 
 import (
 	"fmt"
-	"io"
-	"net/http"
 	"os"
-	"strings"
 	"text/tabwriter"
+	"time"
+
+	"github.com/TEENet-io/ai-env-mgr/internal/ghrelease"
 )
 
 func cmdAgent(args []string) error {
@@ -88,39 +88,10 @@ func cmdAgentPublish(args []string) error {
 	return nil
 }
 
-// downloadBinary fetches the agent binary from an http(s) URL. For a PRIVATE
-// GitHub release asset, pass a token (repo scope) via --token or GITHUB_TOKEN:
-// without it GitHub returns 404 (it hides private repos) or an HTML login page.
-// A cross-host redirect to the signed asset URL is followed by the default
-// client, which strips the Authorization header on the way (as it should).
+// downloadBinary fetches a release asset, resolving a browser-style release
+// URL through the API so a private repository works with a token.
 func downloadBinary(url, token string) ([]byte, error) {
-	if !strings.HasPrefix(url, "http://") && !strings.HasPrefix(url, "https://") {
-		return nil, fmt.Errorf("--url must be an http(s) URL, got %q", url)
-	}
-	req, err := http.NewRequest(http.MethodGet, url, nil)
-	if err != nil {
-		return nil, err
-	}
-	req.Header.Set("Accept", "application/octet-stream")
-	if token != "" {
-		req.Header.Set("Authorization", "Bearer "+token)
-	}
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		return nil, fmt.Errorf("download: %w", err)
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
-		hint := ""
-		if (resp.StatusCode == http.StatusNotFound || resp.StatusCode == http.StatusUnauthorized) && token == "" {
-			hint = " (private release? pass a GitHub token via --token or GITHUB_TOKEN, repo scope)"
-		}
-		return nil, fmt.Errorf("download %s: HTTP %d%s", url, resp.StatusCode, hint)
-	}
-	if ct := resp.Header.Get("Content-Type"); strings.HasPrefix(ct, "text/html") {
-		return nil, fmt.Errorf("download returned HTML, not a binary (Content-Type %q) -- likely an auth wall; pass a token", ct)
-	}
-	return io.ReadAll(resp.Body)
+	return ghrelease.Fetch(url, token, 30*time.Minute)
 }
 
 func cmdAgentCancel() error {
