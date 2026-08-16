@@ -110,7 +110,8 @@ func New(opts Options) (*Server, error) {
 	// classify lets a row ask for its own state without the template
 	// re-deriving the rules that fleet.go already owns.
 	tpl, err := template.New("").Funcs(template.FuncMap{
-		"classify": classifyMachine,
+		"classify": stateSeverity,
+		"state":    stateLabel,
 		"age":      humanAge,
 		"noscan":   noEmailScan,
 	}).ParseFS(assetFS, "assets/*.html")

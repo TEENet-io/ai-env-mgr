@@ -12,31 +12,13 @@ type fleetSummary struct {
 	PctOK, PctWarn, PctBad int
 }
 
-// classifyMachine sorts one machine into the three-state vocabulary the whole
-// console uses.
-//
-// Bad means somebody has to act: a machine that has never reported may not have
-// an agent at all, and one bound to a departed employee is still holding their
-// credentials. Warn is everything that is merely not right yet -- unassigned,
-// out of contact, or missing the profile its credentials are aimed at.
-func classifyMachine(m admincore.MachineState) string {
-	switch {
-	case m.Missing || m.Disabled:
-		return "bad"
-	case m.Stale || m.Unbound || m.UserMissing:
-		return "warn"
-	default:
-		return "ok"
-	}
-}
-
 func summariseFleet(machines []admincore.MachineState) *fleetSummary {
 	if len(machines) == 0 {
 		return nil
 	}
 	f := &fleetSummary{Total: len(machines)}
 	for _, m := range machines {
-		switch classifyMachine(m) {
+		switch stateSeverity(m) {
 		case "bad":
 			f.Bad++
 		case "warn":

@@ -17,14 +17,7 @@
       <tr class="r-{{classify .}}">
         <td class="id">{{.Machine}}</td>
         <td>{{if .Bound}}{{.Binding.User}}{{else}}<span class="muted">—</span>{{end}}</td>
-        <td>
-          {{if .Missing}}<span class="tag tag-bad">从未上报</span>
-          {{else if .Disabled}}<span class="tag tag-bad">已离职</span>
-          {{else if .Stale}}<span class="tag tag-warn">失联</span>
-          {{else if .Unbound}}<span class="tag tag-warn">未分配</span>
-          {{else if .UserMissing}}<span class="tag tag-warn">缺少用户</span>
-          {{else}}<span class="tag tag-ok">正常</span>{{end}}
-        </td>
+        <td><span class="tag tag-{{classify .}}">{{state .}}</span></td>
         <td class="dim" title="{{.Status.LastSync}}">{{age .Status.LastSync}}</td>
         <td class="num dim">{{.Status.AgentVersion}}</td>
         <td>

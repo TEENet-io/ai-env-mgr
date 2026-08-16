@@ -22,6 +22,11 @@ func TestRenderPreview(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	// Relative to now, so the preview shows the states an operator would
+	// actually see rather than whatever the fixed stamps happen to classify as.
+	ago := func(d time.Duration) string {
+		return time.Now().Add(-d).UTC().Format(time.RFC3339)
+	}
 	mk := func(name, user string, st admincore.MachineState) admincore.MachineState {
 		st.Machine = name
 		st.Binding = model.Binding{User: user}
@@ -30,16 +35,22 @@ func TestRenderPreview(t *testing.T) {
 	}
 	machines := []admincore.MachineState{
 		mk("hv8uqpity23nkc7", "peter", admincore.MachineState{UserMissing: true,
-			Status: model.Status{LastSync: "2026-08-16T01:35:54Z", AgentVersion: "1.2.4"}}),
+			Status: model.Status{LastSync: ago(50 * time.Minute), AgentVersion: "1.2.4"}}),
 		mk("wuying-desk-0142", "work1", admincore.MachineState{
-			Status: model.Status{LastSync: "2026-08-16T09:12:03Z", AgentVersion: "1.2.4"}}),
+			Status: model.Status{LastSync: time.Now().Add(-time.Minute).UTC().Format(time.RFC3339), AgentVersion: "1.2.4"}}),
 		mk("wuying-desk-0143", "work2", admincore.MachineState{
-			Status: model.Status{LastSync: "2026-08-16T09:11:47Z", AgentVersion: "1.2.4"}}),
+			Status: model.Status{LastSync: ago(90 * time.Second), AgentVersion: "1.2.4"}}),
 		mk("wuying-desk-0144", "lena", admincore.MachineState{Stale: true,
-			Status: model.Status{LastSync: "2026-08-15T22:04:11Z", AgentVersion: "1.2.3"}}),
+			Status: model.Status{LastSync: ago(5 * 24 * time.Hour), AgentVersion: "1.2.3"}}),
 		mk("wuying-desk-0145", "", admincore.MachineState{Unbound: true,
-			Status: model.Status{LastSync: "2026-08-16T09:09:58Z", AgentVersion: "1.2.4"}}),
+			Status: model.Status{LastSync: ago(2 * time.Minute), AgentVersion: "1.2.4"}}),
 		mk("wuying-desk-0146", "chen", admincore.MachineState{Missing: true}),
+		mk("wuying-desk-0147", "zhao", admincore.MachineState{
+			Status: model.Status{LastSync: time.Now().Add(-3 * time.Hour).UTC().Format(time.RFC3339),
+				AgentVersion: "1.2.4", LastEvent: "suspend"}}),
+		mk("wuying-desk-0148", "liu", admincore.MachineState{
+			Status: model.Status{LastSync: time.Now().Add(-9 * time.Hour).UTC().Format(time.RFC3339),
+				AgentVersion: "1.2.4", LastEvent: "stopped"}}),
 	}
 	policy := model.Policy{
 		SyncIntervalMinutes: 15, BlockEnabled: true,

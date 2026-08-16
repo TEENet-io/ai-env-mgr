@@ -16,19 +16,11 @@ import (
 // heartbeat that refreshes "last seen" regardless of the (possibly long) sync
 // interval. So a running machine's report is never more than a minute or two
 // old, which makes silence a strong, fast signal.
+// The thresholds live in admincore alongside the rules that use them; these
+// aliases keep the call sites here readable.
 const (
-	// freshAfter: reported within this window -> the agent is alive (OK).
-	// Ten minutes is ten missed heartbeats -- comfortably past any single
-	// network blip, but far tighter than a sync interval, so a machine that is
-	// actually stopped or shut down shows OFFLINE within minutes instead of
-	// looking healthy for hours. (A positive suspend/stop marker still flips it
-	// to SLEEPING/STOPPED instantly when it uploads; this is the fallback for
-	// when it cannot -- a hard power-off leaves no marker.)
-	freshAfter = 10 * time.Minute
-	// investigateAfter: quiet longer than this and it is no longer just an
-	// overnight sleep or a weekend off -- a hibernating machine wakes within a
-	// day or two, a dead agent never does. This is where silence becomes STALE.
-	investigateAfter = 3 * 24 * time.Hour
+	freshAfter       = admincore.FreshAfter
+	investigateAfter = admincore.InvestigateAfter
 )
 
 func cmdStatus() error {
@@ -140,50 +132,32 @@ func cmdStatus() error {
 // first because they need attention regardless of liveness; then the liveness
 // verdict, which folds in the agent's own last lifecycle event so an expected
 // sleep or stop reads as such rather than as a fault.
+// describeState renders the shared classification with the terminal's labels.
+// The rules themselves live in admincore.Health so the web console cannot
+// drift from them.
 func describeState(m admincore.MachineState) string {
-	switch {
-	case m.Missing:
+	switch h := m.Health(); h {
+	case admincore.HealthNoReport:
 		return "NO REPORT"
-	case m.Unbound:
+	case admincore.HealthUnbound:
 		return "UNBOUND"
-	case m.Disabled:
+	case admincore.HealthDisabledUser:
 		return "DISABLED USER"
-	case m.UserMissing:
+	case admincore.HealthUserMissing:
 		return "USER MISSING"
-	}
-
-	// The machine has reported at least once: judge liveness by how long ago,
-	// informed by whether it told us it was leaving.
-	age := status.Age(m.Status)
-	switch m.Status.LastEvent {
-	case "stopped":
-		// A clean stop is a known state, not an alarm: the agent said goodbye.
+	case admincore.HealthStopped:
 		return "STOPPED"
-	case "suspend":
-		// It said it was sleeping. Trust that until it has been quiet long
-		// enough that "never woke up" becomes the more likely explanation.
-		if age > investigateAfter {
-			return "STALE"
-		}
+	case admincore.HealthSleeping:
 		return "SLEEPING"
-	}
-
-	// No lifecycle event: rely on how fresh the last report is.
-	switch {
-	case age > investigateAfter:
+	case admincore.HealthStale:
 		return "STALE"
-	case age > freshAfter:
-		// Quiet, but within the normal off-hours window: expected, not a fault.
+	case admincore.HealthOffline:
 		return "OFFLINE"
-	}
-
-	// Fresh enough that the agent is clearly alive; surface real errors. A
-	// machine having several user profiles is normal (shared desktops), so it
-	// is not flagged -- the LOCAL USERS column already shows who is on it.
-	if len(m.Status.Errors) > 0 {
+	case admincore.HealthErrors:
 		return fmt.Sprintf("%d ERROR(S)", len(m.Status.Errors))
+	default:
+		return "OK"
 	}
-	return "OK"
 }
 
 // needsAttention reports whether a table state is something the admin should
