@@ -195,6 +195,9 @@ func (s *Syncer) RunOnce() (model.Status, error) {
 	localUsers := s.Machine.LocalUsers()
 
 	var errs []string
+	// Warnings are states rather than failures: reporting them as errors made
+	// an ordinary onboarding step look like something had gone wrong.
+	var warns []string
 	pol := model.Policy{}
 	policyETag := ""
 	credsETag := ""
@@ -227,18 +230,18 @@ func (s *Syncer) RunOnce() (model.Status, error) {
 	if !bound {
 		// The policy above is already in force. Only credentials need an
 		// employee to deliver to, so the machine reports itself and waits.
-		errs = append(errs, "no binding: this machine has not been assigned to a user yet")
+		warns = append(warns, "no binding: this machine has not been assigned to a user yet")
 	} else {
 		boundUserExists = containsFold(localUsers, binding.User)
 		if !boundUserExists {
-			errs = append(errs, fmt.Sprintf("bound user %q has no profile on this machine", binding.User))
+			warns = append(warns, fmt.Sprintf("bound user %q has no profile on this machine", binding.User))
 		}
 
 		// ---- credentials ----
 		// Skipped when the profile is absent: there is nowhere to put them.
 		credsKey := ossclient.UserKey(binding.User, "credentials.zip")
 		if !boundUserExists {
-			errs = append(errs, "credentials skipped: no profile to deliver them to")
+			warns = append(warns, "credentials skipped: no profile to deliver them to")
 		} else if etag, exists, err := s.Store.Head(credsKey); err != nil {
 			errs = append(errs, fmt.Sprintf("credentials: %v", err))
 		} else if !exists {
@@ -247,14 +250,14 @@ func (s *Syncer) RunOnce() (model.Status, error) {
 			case rmErr != nil:
 				errs = append(errs, fmt.Sprintf("credentials revoke: %v", rmErr))
 			case n > 0:
-				errs = append(errs, fmt.Sprintf("credentials revoked: removed %d file(s) for %q", n, binding.User))
+				warns = append(warns, fmt.Sprintf("credentials revoked: removed %d file(s) for %q", n, binding.User))
 				s.writeMarker(credsMarkerFile, "")
 			default:
 				// Nothing published and nothing to remove: the employee
 				// exists but the administrator has not signed in for them
 				// yet. Worth saying so -- a bound machine with no logins
 				// looks fine from every other angle.
-				errs = append(errs, fmt.Sprintf("no credentials published for %q yet", binding.User))
+				warns = append(warns, fmt.Sprintf("no credentials published for %q yet", binding.User))
 			}
 			credsETag = ""
 		} else if etag != "" && etag == s.readMarker(credsMarkerFile) {
@@ -329,6 +332,7 @@ func (s *Syncer) RunOnce() (model.Status, error) {
 		CodexVersion:    codexVersion,
 		CodexState:      codexState,
 		Errors:          errs,
+		Warnings:        warns,
 	})
 
 	if out, err := status.Marshal(st); err != nil {

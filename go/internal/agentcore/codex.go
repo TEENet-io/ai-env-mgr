@@ -125,8 +125,10 @@ func (s *Syncer) updateCodex(pol model.Policy, errs *[]string) (installed, state
 		return installed, CodexDeferred
 	}
 	if free, err := s.Codex.FreeBytes(); err == nil && free < installHeadroom {
-		*errs = append(*errs, fmt.Sprintf("codex: only %d MB free, need %d MB",
-			free>>20, uint64(installHeadroom)>>20))
+		// Reported through the deferred state rather than as an error: the
+		// machine is not broken, it just has no room today.
+		log.Printf("codex: deferring %s, only %d MB free (need %d MB)",
+			pol.CodexVersion, free>>20, uint64(installHeadroom)>>20)
 		return installed, CodexDeferred
 	}
 

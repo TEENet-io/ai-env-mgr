@@ -35,6 +35,7 @@ type Report struct {
 	CollectUploaded int
 	CodexVersion    string
 	CodexState      string
+	Warnings        []string
 	Errors          []string
 }
 
@@ -67,6 +68,7 @@ func Build(r Report) model.Status {
 		CollectUploaded:     r.CollectUploaded,
 		CodexVersion:        r.CodexVersion,
 		CodexState:          r.CodexState,
+		Warnings:            r.Warnings,
 		Errors:              errs,
 	}
 }

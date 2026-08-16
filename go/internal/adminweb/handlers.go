@@ -51,6 +51,7 @@ type pageData struct {
 	Stats    []admincore.CollectStat
 	Machine  string // the machine a log belongs to
 	Log      string
+	Notes    *admincore.MachineState // that machine's own errors and warnings
 	Files    []admincore.StagedFile
 	Link     string // a freshly minted download link
 	LinkName string
@@ -264,6 +265,18 @@ func (s *Server) handleLog(w http.ResponseWriter, r *http.Request, sess *session
 	data := newPage(sess, r, "machines")
 	machine := strings.TrimSpace(r.URL.Query().Get("machine"))
 	data.Machine = machine
+	// The machine's own errors and warnings, so the page explains the state
+	// rather than leaving the reader to find it in the log.
+	if machine != "" {
+		if all, err := sess.mgr.CollectMachines(freshAfter); err == nil {
+			for i := range all {
+				if strings.EqualFold(all[i].Machine, machine) {
+					data.Notes = &all[i]
+					break
+				}
+			}
+		}
+	}
 	if machine == "" {
 		data.Error = "no machine given"
 	} else if b, err := sess.mgr.FetchLog(machine); err != nil {

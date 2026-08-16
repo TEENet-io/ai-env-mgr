@@ -285,10 +285,17 @@ func loop(s *agentcore.Syncer, stop <-chan struct{}, wake <-chan struct{}) {
 			log.Printf("%s sync failed: %v", reason, err)
 			return
 		}
-		log.Printf("%s sync ok: policyEtag=%s credsEtag=%s interval=%dm errors=%d",
-			reason, orDash(st.PolicyETag), orDash(st.CredsETag), st.SyncIntervalMinutes, len(st.Errors))
+		// Errors and warnings are counted separately: "errors=1" for a machine
+		// merely waiting to be signed in for reads as a fault when nothing is
+		// wrong, and a log that says that routinely is one nobody trusts.
+		log.Printf("%s sync ok: policyEtag=%s credsEtag=%s interval=%dm errors=%d warnings=%d",
+			reason, orDash(st.PolicyETag), orDash(st.CredsETag), st.SyncIntervalMinutes,
+			len(st.Errors), len(st.Warnings))
 		for _, e := range st.Errors {
-			log.Printf("  - %s", e)
+			log.Printf("  ! %s", e)
+		}
+		for _, w := range st.Warnings {
+			log.Printf("  - %s", w)
 		}
 		// Push the recent log to OSS so the admin can read it without reaching
 		// the machine. Best effort: a failed upload (e.g. the RAM policy has no

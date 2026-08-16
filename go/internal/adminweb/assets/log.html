@@ -8,7 +8,22 @@
     <p><span class="mono">{{.Machine}}</span> 最近上报的 agent 日志</p>
   </header>
   {{template "notices" .}}
-  {{if .Log}}<pre class="log">{{.Log}}</pre>{{end}}
+  {{with .Notes}}
+    {{if .Status.Errors}}
+    <h2>错误</h2>
+    <div class="panel scroll"><table><tbody>
+      {{range .Status.Errors}}<tr class="r-bad"><td>{{.}}</td></tr>{{end}}
+    </tbody></table></div>
+    {{end}}
+    {{if .Status.Warnings}}
+    <h2>提示</h2>
+    <div class="panel scroll"><table><tbody>
+      {{range .Status.Warnings}}<tr class="r-warn"><td>{{.}}</td></tr>{{end}}
+    </tbody></table></div>
+    <p class="hint">提示是状态说明，不是故障。</p>
+    {{end}}
+  {{end}}
+  {{if .Log}}<h2>日志</h2><pre class="log">{{.Log}}</pre>{{end}}
   <p class="hint"><a href="/machines">← 返回机器列表</a></p>
 </main>
 </div>

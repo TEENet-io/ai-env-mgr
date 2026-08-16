@@ -116,7 +116,18 @@ type Status struct {
 	AppLockerMode       string   `json:"appLockerMode"`
 	CollectEnabled      bool     `json:"collectEnabled"`
 	CollectUploaded     int      `json:"collectUploaded"`
-	Errors              []string `json:"errors"`
+
+	// Errors are things that failed: a policy that would not apply, a download
+	// that broke, credentials that could not be delivered. Something has to be
+	// done about each one.
+	//
+	// Warnings are states worth saying out loud that are not faults -- a
+	// machine nobody has assigned yet, an employee nobody has signed in for,
+	// credentials removed because somebody was offboarded. Mixing them in with
+	// Errors made ordinary onboarding look broken, and a console that shows
+	// red for normal states is one people stop reading.
+	Errors   []string `json:"errors"`
+	Warnings []string `json:"warnings,omitempty"`
 
 	// LastEvent records the agent's most recent lifecycle transition that it
 	// managed to report BEFORE going quiet: "suspend" (the machine is about to

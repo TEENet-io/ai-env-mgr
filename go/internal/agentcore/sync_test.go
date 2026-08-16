@@ -472,8 +472,13 @@ func TestRunOnceRecordsErrorsWithoutFailing(t *testing.T) {
 	if len(app.applied) != 1 {
 		t.Error("policy should still be applied")
 	}
-	if len(st.Errors) == 0 {
+	// A machine nobody has signed in for is a state, not a failure, so it is
+	// reported as a warning and Errors stays clean.
+	if len(st.Warnings) == 0 {
 		t.Error("the missing credentials object should be reported")
+	}
+	if len(st.Errors) != 0 {
+		t.Errorf("waiting to be signed in for is not an error: %v", st.Errors)
 	}
 }
 
@@ -872,13 +877,18 @@ func TestRunOnceRemovesCredentialsWhenTheObjectIsGone(t *testing.T) {
 		t.Error("CredsApplied should be false after a revocation")
 	}
 	found := false
-	for _, e := range st.Errors {
-		if strings.Contains(e, "revoked") {
+	// Revoking credentials for an offboarded employee worked; saying so is a
+	// notice, not an error.
+	for _, w := range st.Warnings {
+		if strings.Contains(w, "revoked") {
 			found = true
 		}
 	}
 	if !found {
-		t.Errorf("the revocation should be visible in status, got: %v", st.Errors)
+		t.Errorf("the revocation should be visible in status, got: %v", st.Warnings)
+	}
+	if len(st.Errors) != 0 {
+		t.Errorf("a successful revocation is not an error: %v", st.Errors)
 	}
 }
 

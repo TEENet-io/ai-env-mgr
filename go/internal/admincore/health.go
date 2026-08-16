@@ -79,23 +79,29 @@ func (m MachineState) Health() Health {
 		return HealthOffline
 	}
 
-	// A bound machine whose employee has a profile but no published
-	// credentials is mid-onboarding, not broken: somebody still has to sign in
-	// on their behalf. The agent reports it as an error, which would otherwise
-	// paint the machine red for a perfectly ordinary state.
+	// A real failure outranks everything below: something has to be done.
 	//
-	// CredsETag is the structural signal -- it is set on every path where
-	// credentials were found, and empty only when none are published -- so
-	// this does not depend on matching the wording of a log message.
-	//
-	// The error count is what keeps a real fault from hiding behind it: the
-	// agent adds exactly one entry for this, so anything beyond that is
-	// something else, and something else is worth the red.
-	if m.Bound && m.Status.BoundUserExists && m.Status.CredsETag == "" && len(m.Status.Errors) <= 1 {
-		return HealthCredsPending
-	}
-	if len(m.Status.Errors) > 0 {
+	// Agents from 1.2.5 on keep states out of Errors entirely. Older ones put
+	// them there, so the count is tolerated for the one entry such an agent
+	// adds for pending credentials -- without that, every machine waiting to be
+	// signed in for would show red until its agent is updated.
+	// An agent that separates the two always has a warning to show for pending
+	// credentials, so an empty Warnings list is what identifies the old one.
+	// Without that check, a new agent reporting a genuine failure alongside
+	// pending credentials would be read as merely pending.
+	oldAgentCredsNotice := m.Bound && m.Status.BoundUserExists && m.Status.CredsETag == "" &&
+		len(m.Status.Errors) == 1 && len(m.Status.Warnings) == 0
+	if len(m.Status.Errors) > 0 && !oldAgentCredsNotice {
 		return HealthErrors
+	}
+
+	// Bound, the employee has a profile, and nobody has signed in for them
+	// yet: mid-onboarding rather than broken. CredsETag is the structural
+	// signal -- set on every path where credentials were found, empty only
+	// when none are published -- so this does not depend on the wording of a
+	// message.
+	if m.Bound && m.Status.BoundUserExists && m.Status.CredsETag == "" {
+		return HealthCredsPending
 	}
 	return HealthOK
 }

@@ -103,3 +103,24 @@ func TestPendingCredentialsIsNotAFault(t *testing.T) {
 		t.Fatalf("health = %q, want ok", got)
 	}
 }
+
+// From 1.2.5 the agent keeps states out of Errors, so a machine waiting to be
+// signed in for reports no errors at all -- and a machine that does report one
+// has something genuinely wrong.
+func TestNewAgentSeparatesWarningsFromErrors(t *testing.T) {
+	bound := model.Binding{User: "weipeng"}
+	pending := MachineState{Bound: true, Binding: bound, Status: model.Status{
+		LastSync:        stamp(time.Minute),
+		BoundUserExists: true,
+		Warnings:        []string{`no credentials published for "weipeng" yet`},
+	}}
+	if got := pending.Health(); got != HealthCredsPending {
+		t.Fatalf("health = %q, want creds_pending", got)
+	}
+
+	broken := pending
+	broken.Status.Errors = []string{"policy apply: access denied"}
+	if got := broken.Health(); got != HealthErrors {
+		t.Fatalf("a real failure was not flagged: %q", got)
+	}
+}
