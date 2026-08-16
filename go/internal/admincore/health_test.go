@@ -124,3 +124,73 @@ func TestNewAgentSeparatesWarningsFromErrors(t *testing.T) {
 		t.Fatalf("a real failure was not flagged: %q", got)
 	}
 }
+
+// The platform is asked only about machines whose own report leaves the
+// question open. Asking about a machine that reported a minute ago, or that
+// said goodbye on its way out, would be a call made for nothing.
+func TestOnlySilentMachinesNeedTheCloud(t *testing.T) {
+	bound := model.Binding{User: "work1"}
+	mk := func(st model.Status) MachineState {
+		return MachineState{Bound: true, Binding: bound, Status: st}
+	}
+	cases := []struct {
+		name string
+		m    MachineState
+		want bool
+	}{
+		{"reporting normally", mk(model.Status{LastSync: stamp(time.Minute), BoundUserExists: true, CredsETag: "e"}), false},
+		{"said it was suspending", mk(model.Status{LastSync: stamp(2 * time.Hour), LastEvent: "suspend"}), false},
+		{"stopped cleanly", mk(model.Status{LastSync: stamp(2 * time.Hour), LastEvent: "stopped"}), false},
+		{"quiet for an evening", mk(model.Status{LastSync: stamp(2 * time.Hour)}), true},
+		{"quiet for a week", mk(model.Status{LastSync: stamp(7 * 24 * time.Hour)}), true},
+		{"never reported", MachineState{Bound: true, Binding: bound, Missing: true}, false},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			if got := c.m.NeedsCloudLookup(); got != c.want {
+				t.Fatalf("NeedsCloudLookup = %v, want %v (health %q)", got, c.want, c.m.Health())
+			}
+		})
+	}
+}
+
+// What the platform says turns one ambiguous silence into four answers. The
+// one that matters is a desktop the platform calls Running while its agent
+// says nothing -- today that hides inside "offline" and looks like an ordinary
+// evening.
+func TestCloudStateDisambiguatesSilence(t *testing.T) {
+	quiet := MachineState{Bound: true, Binding: model.Binding{User: "work1"},
+		Status: model.Status{LastSync: stamp(2 * time.Hour)}}
+
+	cases := []struct {
+		name string
+		c    CloudDesktop
+		want Health
+		sev  string
+	}{
+		// Hibernation is reported through ManagementFlags while Status stays
+		// Stopped, which is why reading Status alone would call this shut down.
+		{"hibernating", CloudDesktop{Found: true, Status: "Stopped", Hibernated: true}, HealthHibernated, "ok"},
+		{"shut down", CloudDesktop{Found: true, Status: "Stopped"}, HealthStopped, "ok"},
+		{"running but silent", CloudDesktop{Found: true, Status: "Running"}, HealthAgentDown, "bad"},
+		{"no longer exists", CloudDesktop{Found: false}, HealthCloudMissing, "warn"},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			m := quiet
+			cd := c.c
+			m.Cloud = &cd
+			if got := m.Health(); got != c.want {
+				t.Fatalf("health = %q, want %q", got, c.want)
+			}
+			if got := m.Health().Severity(); got != c.sev {
+				t.Fatalf("severity = %q, want %q", got, c.sev)
+			}
+		})
+	}
+
+	// Without an answer from the platform it stays what it was.
+	if got := quiet.Health(); got != HealthOffline {
+		t.Fatalf("health without cloud state = %q, want offline", got)
+	}
+}

@@ -29,6 +29,12 @@ func stateLabel(m admincore.MachineState) string {
 		return "已关机"
 	case admincore.HealthSleeping:
 		return "休眠中"
+	case admincore.HealthHibernated:
+		return "休眠中"
+	case admincore.HealthAgentDown:
+		return "agent 无响应"
+	case admincore.HealthCloudMissing:
+		return "云端已删除"
 	case admincore.HealthStale:
 		return "长期失联"
 	case admincore.HealthOffline:

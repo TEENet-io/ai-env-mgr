@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"os"
 	"time"
 
 	"github.com/TEENet-io/ai-env-mgr/internal/adminweb"
@@ -15,6 +16,11 @@ func cmdWeb(args []string) error {
 		Listen:   "127.0.0.1:8080",
 		Bucket:   built.Bucket,
 		Endpoint: built.Endpoint,
+		// The environment wins over the built-in value, so the key can be
+		// rotated without a rebuild.
+		ECDAccessKeyID:     envOr("AIENVMGR_ECD_KEY_ID", ecdAccessKeyID),
+		ECDAccessKeySecret: envOr("AIENVMGR_ECD_KEY_SECRET", ecdAccessKeySecret),
+		ECDRegion:          envOr("AIENVMGR_ECD_REGION", ecdRegion),
 	}
 	for i := 0; i < len(args); i++ {
 		switch args[i] {
@@ -68,4 +74,12 @@ func cmdWeb(args []string) error {
 	fmt.Println("sign in with the OSS credentials; they stay in this process's memory only.")
 	fmt.Println("stopping the server signs everyone out.")
 	return srv.ListenAndServe()
+}
+
+// envOr prefers an environment variable, falling back to what was built in.
+func envOr(key, built string) string {
+	if v := os.Getenv(key); v != "" {
+		return v
+	}
+	return built
 }

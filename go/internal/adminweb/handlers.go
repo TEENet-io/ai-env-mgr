@@ -203,6 +203,9 @@ func (s *Server) handleMachines(w http.ResponseWriter, r *http.Request, sess *se
 		data.Error = "could not list machines"
 		log.Printf("adminweb: CollectMachines: %v", err)
 	} else {
+		// Only reaches the platform for machines whose own report is
+		// ambiguous; a fleet that is reporting normally makes no calls.
+		s.cloud.annotate(machines)
 		data.Machines = machines
 		data.Fleet = summariseFleet(machines)
 	}
@@ -322,6 +325,7 @@ func (s *Server) handleRollout(w http.ResponseWriter, r *http.Request, sess *ses
 		data.Policy = &p
 	}
 	if machines, err := sess.mgr.CollectMachines(freshAfter); err == nil {
+		s.cloud.annotate(machines)
 		data.Machines = machines // so the operator can see what is actually installed
 		data.Fleet = summariseFleet(machines)
 	}

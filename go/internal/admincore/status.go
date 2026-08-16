@@ -29,6 +29,25 @@ type MachineState struct {
 	UserMissing bool     // the bound employee has no profile on the machine
 	Disabled    bool     // bound to an employee who has been offboarded
 	ExtraUsers  []string // local profiles that are neither the bound employee nor Administrator
+
+	// Cloud is what the platform says, filled in only when the console had
+	// reason to ask -- see NeedsCloudLookup.
+	Cloud *CloudDesktop
+}
+
+// NeedsCloudLookup reports whether asking the platform would tell us anything
+// this machine's own report cannot.
+//
+// Only silence is ambiguous. A machine that reported a minute ago, or that
+// said goodbye on its way out, has already answered; asking the platform about
+// it would be a call made for nothing.
+func (m MachineState) NeedsCloudLookup() bool {
+	switch m.Health() {
+	case HealthOffline, HealthStale:
+		return true
+	default:
+		return false
+	}
 }
 
 // CollectMachines assembles the admin's machine-centric status view.

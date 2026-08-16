@@ -151,6 +151,12 @@ func describeState(m admincore.MachineState) string {
 		return "STOPPED"
 	case admincore.HealthSleeping:
 		return "SLEEPING"
+	case admincore.HealthHibernated:
+		return "HIBERNATED"
+	case admincore.HealthAgentDown:
+		return "AGENT DOWN"
+	case admincore.HealthCloudMissing:
+		return "NO DESKTOP"
 	case admincore.HealthStale:
 		return "STALE"
 	case admincore.HealthOffline:
