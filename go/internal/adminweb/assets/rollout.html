@@ -81,12 +81,14 @@
   <h2>机队现状</h2>
   <div class="panel scroll">
   <table>
-    <thead><tr><th>主机名</th><th>版本</th><th>最后同步</th></tr></thead>
+    <thead><tr><th>主机名</th><th>AGENT</th><th>CODEX</th><th>最后同步</th></tr></thead>
     <tbody>
     {{range .Machines}}
       <tr class="r-{{classify .}}">
         <td class="id">{{.Machine}}</td>
         <td class="num">{{.Status.AgentVersion}}</td>
+        <td class="num">{{if .Status.CodexVersion}}{{.Status.CodexVersion}}{{else}}<span class="muted">—</span>{{end}}
+          {{if .Status.CodexState}}<span class="tag tag-warn">{{.Status.CodexState}}</span>{{end}}</td>
         <td class="dim" title="{{.Status.LastSync}}">{{age .Status.LastSync}}</td>
       </tr>
     {{end}}

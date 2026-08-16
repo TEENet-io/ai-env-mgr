@@ -1,7 +1,11 @@
-# Codex 分发方案（设计，未实现）
+# Codex 分发方案
 
 把重打包的 Codex 桌面版（[TEENet-io/codex-kiosk](https://github.com/TEENet-io/codex-kiosk)）
 分发到无影云电脑，并在上游更新后持续推送新版本。
+
+**状态：admin 侧与 agent 侧均已实现。** agent 假定 Codex 装在 `C:\tools\Codex`
+（可用环境变量 `AIENVMGR_CODEX_ROOT` 覆盖），更新时用 `/DIR=` 原地安装，
+不会把应用挪走。
 
 **核心原则:构建 ≠ 发布。**
 CI 构建成功只说明补丁应用正确，不代表这个包可以给员工用
@@ -46,7 +50,17 @@ GitHub CI ──构建──> Release(私有仓库)
 
 ## 3. 前置改造（不做则方案不成立）
 
-### 3.1 安装器必须改成机器级 —— 阻塞项
+### 3.1 安装位置必须是机器级 —— 已满足
+
+当前镜像把 Codex 装在 `C:\tools\Codex`，属于机器级位置，SYSTEM 服务可写，
+本方案成立。
+
+原始安装器模板仍是 per-user 的（`PrivilegesRequired=lowest`、
+`DefaultDirName={%USERPROFILE|{localappdata}}\Codex`），因此**新机器装机时
+必须显式指定安装目录**，否则会装进当时那个用户的 profile，agent 就更新不到。
+agent 安装时传 `/DIR=` 正是为了保证后续更新不会漂移到别处。
+
+<details><summary>原始说明（安装器仍建议改成机器级）</summary>
 
 当前 `installer/CodexOffline.iss.tpl`：
 
@@ -61,6 +75,8 @@ agent 是 **SYSTEM 服务**。SYSTEM 执行 per-user 安装器会装进
 需改为 `PrivilegesRequired=admin` + `{autopf}\Codex` + HKLM 卸载项。
 
 > 已用 per-user 方式装过的机器不会被自动接管，需要单独清理，动手前确认。
+
+</details>
 
 ### 3.2 包版本必须区别于 Codex 上游版本 —— 阻塞项
 

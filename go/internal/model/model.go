@@ -128,6 +128,13 @@ type Status struct {
 	// when the event was reported (RFC3339).
 	LastEvent   string `json:"lastEvent,omitempty"`
 	LastEventAt string `json:"lastEventAt,omitempty"`
+
+	// CodexVersion is what this machine actually has installed, which is how
+	// an administrator tells a published version from a delivered one.
+	// CodexState explains a machine that is eligible but has not taken it:
+	// "deferred" (Codex was in use, or the disk was too full) or "failed".
+	CodexVersion string `json:"codexVersion,omitempty"`
+	CodexState   string `json:"codexState,omitempty"`
 }
 
 // HasLocalUser reports whether a given account has a profile on the machine.

@@ -230,6 +230,22 @@ func (f *fakeStore) Get(key string) ([]byte, string, error) {
 	return d, f.etags[key], nil
 }
 
+// GetToFile mirrors the real client: stream to disk, return the SHA-256.
+func (f *fakeStore) GetToFile(key, dest string) (string, error) {
+	data, ok := f.objects[key]
+	if !ok {
+		return "", fmt.Errorf("not found: %s", key)
+	}
+	if err := os.MkdirAll(filepath.Dir(dest), 0o700); err != nil {
+		return "", err
+	}
+	if err := os.WriteFile(dest, data, 0o600); err != nil {
+		return "", err
+	}
+	sum := sha256.Sum256(data)
+	return hex.EncodeToString(sum[:]), nil
+}
+
 func (f *fakeStore) Put(key string, data []byte) error {
 	if f.putErr != nil {
 		return f.putErr
