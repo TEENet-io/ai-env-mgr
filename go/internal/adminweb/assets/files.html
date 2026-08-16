@@ -1,22 +1,28 @@
-{{define "files.html"}}{{template "head" "文件"}}
+{{define "files.html"}}{{template "head" "文件传输"}}
 <body>
+<div class="app">
 {{template "nav" .}}
-<main>
-  <h1>文件</h1>
+<main class="sheet">
+  <header class="pagehead">
+    <h1>文件传输</h1>
+    <p>暂存文件并生成下载链接，用来把东西送上云电脑。</p>
+  </header>
   {{template "notices" .}}
+
   {{if .Link}}
-  <p class="ok-banner">{{.LinkName}} 的下载链接（24 小时内有效）：<br><code>{{.Link}}</code></p>
-  <p class="muted">该链接无需任何凭证即可下载，拿到即可用，请只发给需要的人。</p>
+  <p class="note note-ok">{{.LinkName}} 的下载链接，24 小时内有效：</p>
+  <code class="block">{{.Link}}</code>
+  <p class="hint">该链接无需任何凭证即可下载，拿到即可用，只发给需要的人。</p>
   {{end}}
 
-  <div class="scroll">
+  <div class="panel scroll">
   <table>
     <thead><tr><th>名称</th><th></th></tr></thead>
     <tbody>
     {{range .Files}}
       <tr>
-        <td>{{.Name}}</td>
-        <td class="nowrap">
+        <td class="id">{{.Name}}</td>
+        <td>
           <a href="/files?link={{.Name}}">生成链接</a>
           <form method="post" action="/files/rm" class="inline">
             <input type="hidden" name="csrf" value="{{$.CSRF}}">
@@ -26,20 +32,21 @@
         </td>
       </tr>
     {{else}}
-      <tr><td colspan="2" class="muted">没有暂存的文件。</td></tr>
+      <tr><td colspan="2" class="empty">没有暂存的文件。</td></tr>
     {{end}}
     </tbody>
   </table>
   </div>
 
-  <h2>上传文件</h2>
-  <form method="post" action="/files/put" enctype="multipart/form-data" class="row">
+  <h2>上传</h2>
+  <form method="post" action="/files/put" enctype="multipart/form-data" class="form">
     <input type="hidden" name="csrf" value="{{.CSRF}}">
     <label>文件<input type="file" name="file" required></label>
-    <label>另存为<input name="name" placeholder="选填，默认用原文件名"></label>
+    <label>另存为<input name="name" placeholder="默认用原文件名"></label>
     <label>链接有效期（小时）<input name="hours" type="number" min="1" value="24"></label>
     <button type="submit">上传</button>
   </form>
 </main>
+</div>
 </body>
 </html>{{end}}

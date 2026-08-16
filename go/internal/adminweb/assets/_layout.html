@@ -8,25 +8,46 @@
 </head>{{end}}
 
 {{define "nav"}}
-<header>
-  <nav>
-    {{/* Same order and wording as the TUI menu (cmd/admin/tui.go), so someone
-    moving over from the terminal finds things where they expect. */}}
-    <a href="/machines"{{if eq .Nav "machines"}} class="active"{{end}}>机器</a>
-    <a href="/users"{{if eq .Nav "users"}} class="active"{{end}}>员工</a>
-    <a href="/employee-login"{{if eq .Nav "employee-login"}} class="active"{{end}}>代员工登录</a>
-    <a href="/sites"{{if eq .Nav "sites"}} class="active"{{end}}>封禁策略</a>
-    <a href="/settings"{{if eq .Nav "settings"}} class="active"{{end}}>会话采集</a>
-    <a href="/files"{{if eq .Nav "files"}} class="active"{{end}}>文件传输</a>
-    <a href="/rollout"{{if eq .Nav "rollout"}} class="active"{{end}}>发布更新</a>
-    <a href="/policy"{{if eq .Nav "policy"}} class="active"{{end}}>策略总览</a>
-  </nav>
-  <span class="muted">{{.Bucket}}</span>
-  <form method="post" action="/logout"><button class="link">退出</button></form>
-</header>
+<nav class="rail">
+  <div class="wordmark">AI 环境管理</div>
+  {{/* Numbered to match the terminal menu in cmd/admin/tui.go: the order is
+  the one operators already know, so the habit carries over. */}}
+  <a href="/machines"{{if eq .Nav "machines"}} class="active"{{end}}><span class="n">1</span>机器</a>
+  <a href="/users"{{if eq .Nav "users"}} class="active"{{end}}><span class="n">2</span>员工</a>
+  <a href="/employee-login"{{if eq .Nav "employee-login"}} class="active"{{end}}><span class="n">3</span>代员工登录</a>
+  <a href="/sites"{{if eq .Nav "sites"}} class="active"{{end}}><span class="n">4</span>封禁策略</a>
+  <a href="/settings"{{if eq .Nav "settings"}} class="active"{{end}}><span class="n">5</span>会话采集</a>
+  <a href="/files"{{if eq .Nav "files"}} class="active"{{end}}><span class="n">6</span>文件传输</a>
+  <a href="/rollout"{{if eq .Nav "rollout"}} class="active"{{end}}><span class="n">7</span>发布更新</a>
+  <a href="/policy"{{if eq .Nav "policy"}} class="active"{{end}}><span class="n">8</span>策略总览</a>
+  <div class="foot">
+    {{.Bucket}}
+    <form method="post" action="/logout"><button class="link">退出</button></form>
+  </div>
+</nav>
 {{end}}
 
 {{define "notices"}}
-{{if .Error}}<p class="error">{{.Error}}</p>{{end}}
-{{if .OK}}<p class="ok-banner">已保存</p>{{end}}
+{{if .Error}}<p class="note note-err">{{.Error}}</p>{{end}}
+{{if .OK}}<p class="note note-ok">已保存</p>{{end}}
+{{end}}
+
+{{/* The fleet's composition at a glance: three states, the same colours the
+rows below use. Drawn only when there are machines to summarise. */}}
+{{define "fleet"}}
+{{with .Fleet}}
+<section class="fleet">
+  <div class="bar" role="img" aria-label="机队状态:正常 {{.OK}}，待处理 {{.Warn}}，异常 {{.Bad}}">
+    {{if .OK}}<span class="s-ok" style="width:{{.PctOK}}%"></span>{{end}}
+    {{if .Warn}}<span class="s-warn" style="width:{{.PctWarn}}%"></span>{{end}}
+    {{if .Bad}}<span class="s-bad" style="width:{{.PctBad}}%"></span>{{end}}
+  </div>
+  <div class="legend">
+    <span><b>{{.Total}}</b>台机器</span>
+    <span class="k k-ok"><b>{{.OK}}</b>正常</span>
+    <span class="k k-warn"><b>{{.Warn}}</b>待处理</span>
+    <span class="k k-bad"><b>{{.Bad}}</b>异常</span>
+  </div>
+</section>
+{{end}}
 {{end}}

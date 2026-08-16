@@ -107,7 +107,12 @@ func New(opts Options) (*Server, error) {
 				opts.Listen, hint)
 		}
 	}
-	tpl, err := template.ParseFS(assetFS, "assets/*.html")
+	// classify lets a row ask for its own state without the template
+	// re-deriving the rules that fleet.go already owns.
+	tpl, err := template.New("").Funcs(template.FuncMap{
+		"classify": classifyMachine,
+		"age":      humanAge,
+	}).ParseFS(assetFS, "assets/*.html")
 	if err != nil {
 		return nil, fmt.Errorf("parse templates: %w", err)
 	}
@@ -116,7 +121,7 @@ func New(opts Options) (*Server, error) {
 		sessions: newSessionStore(opts.IdleTTL, opts.AbsTTL),
 		limiter:  newLoginLimiter(time.Minute, 10),
 		tpl:      tpl,
-		pending: make(map[string]*pendingLogin),
+		pending:  make(map[string]*pendingLogin),
 		dialOSS: func(cfg config.Config) (store, error) {
 			return ossclient.New(cfg.Endpoint, cfg.Bucket, cfg.AccessKeyID, cfg.AccessKeySecret)
 		},

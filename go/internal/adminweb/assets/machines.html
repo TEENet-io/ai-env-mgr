@@ -1,31 +1,33 @@
 {{define "machines.html"}}{{template "head" "机器"}}
 <body>
+<div class="app">
 {{template "nav" .}}
-<main>
-  <h1>机器</h1>
+<main class="sheet">
+  <header class="pagehead"><h1>机器</h1></header>
   {{template "notices" .}}
-  {{if .Machines}}
-  <div class="scroll">
+  {{template "fleet" .}}
+
+  <div class="panel scroll">
   <table>
     <thead>
-      <tr><th>主机名</th><th>员工</th><th>状态</th><th>最后同步</th><th>agent</th><th></th></tr>
+      <tr><th>主机名</th><th>员工</th><th>状态</th><th>最后同步</th><th>版本</th><th></th></tr>
     </thead>
     <tbody>
     {{range .Machines}}
-      <tr>
-        <td>{{.Machine}}</td>
-        <td>{{if .Bound}}{{.Binding.User}}{{else}}<span class="muted">未绑定</span>{{end}}</td>
+      <tr class="r-{{classify .}}">
+        <td class="id">{{.Machine}}</td>
+        <td>{{if .Bound}}{{.Binding.User}}{{else}}<span class="muted">—</span>{{end}}</td>
         <td>
-          {{if .Missing}}<span class="bad">从未上报</span>
-          {{else if .Disabled}}<span class="bad">已离职</span>
-          {{else if .Stale}}<span class="warn">失联</span>
-          {{else if .Unbound}}<span class="warn">未分配</span>
-          {{else if .UserMissing}}<span class="warn">缺少用户</span>
-          {{else}}<span class="ok">正常</span>{{end}}
+          {{if .Missing}}<span class="tag tag-bad">从未上报</span>
+          {{else if .Disabled}}<span class="tag tag-bad">已离职</span>
+          {{else if .Stale}}<span class="tag tag-warn">失联</span>
+          {{else if .Unbound}}<span class="tag tag-warn">未分配</span>
+          {{else if .UserMissing}}<span class="tag tag-warn">缺少用户</span>
+          {{else}}<span class="tag tag-ok">正常</span>{{end}}
         </td>
-        <td>{{.Status.LastSync}}</td>
-        <td>{{.Status.AgentVersion}}</td>
-        <td class="nowrap">
+        <td class="dim" title="{{.Status.LastSync}}">{{age .Status.LastSync}}</td>
+        <td class="num dim">{{.Status.AgentVersion}}</td>
+        <td>
           <a href="/log?machine={{.Machine}}">日志</a>
           {{if .Bound}}
           <form method="post" action="/machines/unbind" class="inline">
@@ -36,16 +38,15 @@
           {{end}}
         </td>
       </tr>
+    {{else}}
+      <tr><td colspan="6" class="empty">还没有机器上报。</td></tr>
     {{end}}
     </tbody>
   </table>
   </div>
-  {{else if not .Error}}
-  <p class="muted">还没有机器上报。</p>
-  {{end}}
 
   <h2>绑定机器</h2>
-  <form method="post" action="/machines/bind" class="row">
+  <form method="post" action="/machines/bind" class="form">
     <input type="hidden" name="csrf" value="{{.CSRF}}">
     <label>主机名<input name="machine" required></label>
     <label>员工
@@ -54,19 +55,22 @@
         {{range .Users}}{{if .Enabled}}<option value="{{.WindowsUser}}">{{.WindowsUser}}</option>{{end}}{{end}}
       </select>
     </label>
-    <label>备注<input name="note" placeholder="选填"></label>
+    <label>备注<input name="note"></label>
     <button type="submit">绑定</button>
   </form>
+  <p class="hint">一台机器绑定一个员工：凭证只投放到这个人的用户目录。</p>
+
   <h2>注销机器</h2>
-  <p class="danger-note">
-    注销会删除该机器的绑定与状态记录，<strong>不可撤销</strong>。请输入主机名确认。
-  </p>
-  <form method="post" action="/machines/forget" class="row">
+  <div class="caution">
+    注销会删除该机器的绑定和状态记录，<strong>不可撤销</strong>。请输入主机名确认。
+  </div>
+  <form method="post" action="/machines/forget" class="form">
     <input type="hidden" name="csrf" value="{{.CSRF}}">
     <label>主机名<input name="machine" required></label>
-    <label>再次输入主机名确认<input name="confirm" required></label>
-    <button type="submit">注销</button>
+    <label>再次输入确认<input name="confirm" required></label>
+    <button type="submit" class="danger">注销</button>
   </form>
 </main>
+</div>
 </body>
 </html>{{end}}

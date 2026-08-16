@@ -1,32 +1,32 @@
 {{define "employeelogin.html"}}{{template "head" "代员工登录"}}
 <body>
+<div class="app">
 {{template "nav" .}}
-<main>
-  <h1>代员工登录</h1>
+<main class="sheet">
+  <header class="pagehead">
+    <h1>代员工登录</h1>
+    <p>用员工的账号完成一次 OAuth，令牌发布后由 agent 在下次同步时投放到他的用户目录。</p>
+  </header>
   {{template "notices" .}}
-  <p class="muted">
-    用员工的账号完成 OAuth，令牌会发布到 OSS，员工机器在下次同步时取走。
-    令牌只在本进程内存中组装，不落盘。
-  </p>
 
   {{if .AuthURL}}
-  <h2>进行中：{{.PendingUser}} · {{.PendingTool}}</h2>
+  <h2>进行中 · {{.PendingUser}} · {{.PendingTool}}</h2>
   <ol>
-    <li>在浏览器中打开下面的地址，用<strong>该员工的账号</strong>登录：
-      <p><code class="wrap">{{.AuthURL}}</code></p>
+    <li>在浏览器打开下面的地址，用<strong>该员工的账号</strong>登录：
+      <code class="block">{{.AuthURL}}</code>
     </li>
-    <li>登录后浏览器会跳到 <code>http://localhost:1455/auth/callback?code=...</code> 并报连接失败。
-      <strong>这是正常的</strong> —— 地址栏里仍然有需要的内容。</li>
-    <li>把<strong>地址栏的完整 URL</strong>复制粘贴到下面：</li>
+    <li>登录后浏览器会跳到 <code>localhost:1455</code> 并显示连接失败，<strong>这是正常的</strong>——
+      需要的内容还在地址栏里。</li>
+    <li>把地址栏的完整内容粘贴到下面。</li>
   </ol>
-  <form method="post" action="/employee-login/finish" class="row">
+  <form method="post" action="/employee-login/finish" class="form">
     <input type="hidden" name="csrf" value="{{.CSRF}}">
-    <label>回调 URL<input name="callback" required placeholder="http://localhost:1455/auth/callback?code=..."></label>
+    <label class="wide">回调内容<input name="callback" required placeholder="http://localhost:1455/auth/callback?code=…"></label>
     <button type="submit">完成并发布凭证</button>
   </form>
-  <p class="muted">15 分钟内有效。必须粘贴完整 URL，只有这样才能校验 state 参数。</p>
+  <p class="hint">15 分钟内有效。Claude 显示的是 <span class="mono">code#state</span>，把整段粘进来。</p>
   {{else}}
-  <form method="post" action="/employee-login/start" class="row">
+  <form method="post" action="/employee-login/start" class="form">
     <input type="hidden" name="csrf" value="{{.CSRF}}">
     <label>员工
       <select name="windowsUser" required>
@@ -35,14 +35,13 @@
       </select>
     </label>
     <label>工具
-      <select name="tool" required>
-        <option value="codex">Codex</option>
-        <option value="claude">Claude</option>
-      </select>
+      <select name="tool" required><option value="codex">Codex</option><option value="claude">Claude</option></select>
     </label>
     <button type="submit">开始</button>
   </form>
+  <p class="hint">一次一个工具。两个都要就做完一个再做另一个。</p>
   {{end}}
 </main>
+</div>
 </body>
 </html>{{end}}

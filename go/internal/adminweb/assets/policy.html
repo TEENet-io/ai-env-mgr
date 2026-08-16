@@ -1,27 +1,30 @@
 {{define "policy.html"}}{{template "head" "策略总览"}}
 <body>
+<div class="app">
 {{template "nav" .}}
-<main>
-  <h1>策略总览</h1>
+<main class="sheet">
+  <header class="pagehead">
+    <h1>策略总览</h1>
+    <p>每台机器同步时读到的就是这一份。</p>
+  </header>
   {{template "notices" .}}
   {{with .Policy}}
-  <div class="scroll">
+  <div class="panel scroll">
   <table class="kv">
     <tbody>
-      <tr><th>同步间隔</th><td>{{.SyncIntervalMinutes}} 分钟</td></tr>
-      <tr><th>网站拦截</th><td>{{if .BlockEnabled}}<span class="ok">开启</span>{{else}}<span class="muted">关闭</span>{{end}}（{{len .BlockedDomains}} 个域名）</td></tr>
-      <tr><th>会话采集</th><td>{{if .CollectEnabled}}<span class="ok">开启</span>{{else}}<span class="muted">关闭</span>{{end}}</td></tr>
-      <tr><th>agent 目标版本</th><td>{{if .AgentUpdateVersion}}{{.AgentUpdateVersion}}{{else}}<span class="muted">未设置</span>{{end}}</td></tr>
-      <tr><th>Codex 目标版本</th><td>{{if .CodexVersion}}{{.CodexVersion}}（灰度 {{.CodexRolloutPct}}%）{{else}}<span class="muted">未设置</span>{{end}}</td></tr>
-      <tr><th>更新时间</th><td>{{.UpdatedAt}}</td></tr>
+      <tr><th>同步间隔</th><td><span class="mono">{{.SyncIntervalMinutes}}</span> 分钟</td></tr>
+      <tr><th>网站拦截</th><td>{{if .BlockEnabled}}<span class="tag tag-ok">开启</span>{{else}}<span class="tag tag-warn">关闭</span>{{end}}
+        <span class="muted">{{len .BlockedDomains}} 个域名</span></td></tr>
+      <tr><th>会话采集</th><td>{{if .CollectEnabled}}<span class="tag tag-ok">开启</span>{{else}}<span class="muted">关闭</span>{{end}}</td></tr>
+      <tr><th>agent 目标版本</th><td>{{if .AgentUpdateVersion}}<span class="mono">{{.AgentUpdateVersion}}</span>{{else}}<span class="muted">未设置</span>{{end}}</td></tr>
+      <tr><th>Codex 目标版本</th><td>{{if .CodexVersion}}<span class="mono">{{.CodexVersion}}</span>
+        <span class="muted">灰度 {{.CodexRolloutPct}}%</span>{{else}}<span class="muted">未设置</span>{{end}}</td></tr>
+      <tr><th>更新时间</th><td class="mono">{{.UpdatedAt}}</td></tr>
     </tbody>
   </table>
   </div>
-  <p class="muted">
-    发布 agent 或 Codex 会让每台机器下载并执行一个二进制，因此仍然只能通过
-    <code>admin agent publish</code> / <code>admin codex publish</code> 操作。
-  </p>
   {{end}}
 </main>
+</div>
 </body>
 </html>{{end}}

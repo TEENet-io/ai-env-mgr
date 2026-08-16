@@ -45,6 +45,7 @@ type pageData struct {
 	Nav      string // which nav entry to mark active
 
 	Machines []admincore.MachineState
+	Fleet    *fleetSummary
 	Users    []model.UserEntry
 	Policy   *model.Policy
 	Stats    []admincore.CollectStat
@@ -201,6 +202,7 @@ func (s *Server) handleMachines(w http.ResponseWriter, r *http.Request, sess *se
 		log.Printf("adminweb: CollectMachines: %v", err)
 	} else {
 		data.Machines = machines
+		data.Fleet = summariseFleet(machines)
 	}
 	s.render(w, "machines.html", http.StatusOK, data)
 }
@@ -306,6 +308,7 @@ func (s *Server) handleRollout(w http.ResponseWriter, r *http.Request, sess *ses
 	}
 	if machines, err := sess.mgr.CollectMachines(freshAfter); err == nil {
 		data.Machines = machines // so the operator can see what is actually installed
+		data.Fleet = summariseFleet(machines)
 	}
 	s.render(w, "rollout.html", http.StatusOK, data)
 }
