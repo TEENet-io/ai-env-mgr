@@ -23,6 +23,8 @@ func stateLabel(m admincore.MachineState) string {
 		return "已离职"
 	case admincore.HealthUserMissing:
 		return "缺少用户"
+	case admincore.HealthCredsPending:
+		return "待代登录"
 	case admincore.HealthStopped:
 		return "已关机"
 	case admincore.HealthSleeping:

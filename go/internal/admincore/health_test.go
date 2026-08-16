@@ -68,3 +68,38 @@ func TestSeverityTreatsAnnouncedAbsenceAsFine(t *testing.T) {
 		}
 	}
 }
+
+// A bound machine whose employee has a profile but no credentials yet is
+// waiting for somebody to sign in on their behalf. The agent reports that as
+// an error, and treating it as one paints an ordinary onboarding step red.
+func TestPendingCredentialsIsNotAFault(t *testing.T) {
+	bound := model.Binding{User: "weipeng"}
+	pending := MachineState{Bound: true, Binding: bound, Status: model.Status{
+		LastSync:        stamp(time.Minute),
+		BoundUserExists: true,
+		CredsETag:       "",
+		Errors:          []string{`no credentials published for "weipeng" yet`},
+	}}
+	if got := pending.Health(); got != HealthCredsPending {
+		t.Fatalf("health = %q, want creds_pending", got)
+	}
+	if got := pending.Health().Severity(); got != "warn" {
+		t.Fatalf("severity = %q, want warn", got)
+	}
+
+	// A second problem alongside it is something else, and something else is
+	// worth the red.
+	alsoBroken := pending
+	alsoBroken.Status.Errors = append([]string{"policy apply: access denied"}, pending.Status.Errors...)
+	if got := alsoBroken.Health(); got != HealthErrors {
+		t.Fatalf("a real error was hidden behind pending credentials: %q", got)
+	}
+
+	// Once credentials are delivered the machine is simply fine.
+	delivered := pending
+	delivered.Status.CredsETag = "abc123"
+	delivered.Status.Errors = nil
+	if got := delivered.Health(); got != HealthOK {
+		t.Fatalf("health = %q, want ok", got)
+	}
+}

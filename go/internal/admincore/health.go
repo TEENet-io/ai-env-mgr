@@ -22,6 +22,7 @@ const (
 	HealthUnbound      Health = "unbound"       // reported, assigned to nobody
 	HealthDisabledUser Health = "disabled_user" // bound to someone offboarded
 	HealthUserMissing  Health = "user_missing"  // the bound user has no profile
+	HealthCredsPending Health = "creds_pending" // nobody has signed in for the employee yet
 )
 
 // Liveness thresholds.
@@ -77,6 +78,22 @@ func (m MachineState) Health() Health {
 		// Quiet, but within the normal off-hours window: expected, not a fault.
 		return HealthOffline
 	}
+
+	// A bound machine whose employee has a profile but no published
+	// credentials is mid-onboarding, not broken: somebody still has to sign in
+	// on their behalf. The agent reports it as an error, which would otherwise
+	// paint the machine red for a perfectly ordinary state.
+	//
+	// CredsETag is the structural signal -- it is set on every path where
+	// credentials were found, and empty only when none are published -- so
+	// this does not depend on matching the wording of a log message.
+	//
+	// The error count is what keeps a real fault from hiding behind it: the
+	// agent adds exactly one entry for this, so anything beyond that is
+	// something else, and something else is worth the red.
+	if m.Bound && m.Status.BoundUserExists && m.Status.CredsETag == "" && len(m.Status.Errors) <= 1 {
+		return HealthCredsPending
+	}
 	if len(m.Status.Errors) > 0 {
 		return HealthErrors
 	}
@@ -94,6 +111,10 @@ func (h Health) Severity() string {
 		return "ok"
 	case HealthNoReport, HealthDisabledUser, HealthErrors, HealthStale:
 		return "bad"
+	case HealthCredsPending:
+		// Setup not finished, like unassigned or no profile -- the same amber
+		// as its siblings, not the red reserved for something going wrong.
+		return "warn"
 	default:
 		return "warn"
 	}

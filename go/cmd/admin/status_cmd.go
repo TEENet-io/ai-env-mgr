@@ -145,6 +145,8 @@ func describeState(m admincore.MachineState) string {
 		return "DISABLED USER"
 	case admincore.HealthUserMissing:
 		return "USER MISSING"
+	case admincore.HealthCredsPending:
+		return "NO LOGIN YET"
 	case admincore.HealthStopped:
 		return "STOPPED"
 	case admincore.HealthSleeping:
