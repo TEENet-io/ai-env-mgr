@@ -123,6 +123,8 @@ func New(opts Options) (*Server, error) {
 		"state":    stateLabel,
 		"age":      humanAge,
 		"noscan":   noEmailScan,
+		"codex":    codexNote,
+		"codexsev": codexNoteSeverity,
 	}).ParseFS(assetFS, "assets/*.html")
 	if err != nil {
 		return nil, fmt.Errorf("parse templates: %w", err)

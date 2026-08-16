@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/TEENet-io/ai-env-mgr/internal/admincore"
+	"github.com/TEENet-io/ai-env-mgr/internal/agentcore"
 	"github.com/TEENet-io/ai-env-mgr/internal/model"
 )
 
@@ -37,9 +38,12 @@ func TestRenderPreview(t *testing.T) {
 		mk("hv8uqpity23nkc7", "peter", admincore.MachineState{UserMissing: true,
 			Status: model.Status{LastSync: ago(50 * time.Minute), AgentVersion: "1.2.4"}}),
 		mk("wuying-desk-0142", "work1", admincore.MachineState{
-			Status: model.Status{LastSync: time.Now().Add(-time.Minute).UTC().Format(time.RFC3339), AgentVersion: "1.2.4"}}),
+			Status: model.Status{LastSync: time.Now().Add(-time.Minute).UTC().Format(time.RFC3339),
+				AgentVersion: "1.2.7", CodexVersion: "26.810.52044-b1"}}),
 		mk("wuying-desk-0143", "work2", admincore.MachineState{
-			Status: model.Status{LastSync: ago(90 * time.Second), AgentVersion: "1.2.4"}}),
+			Status: model.Status{LastSync: ago(90 * time.Second),
+				AgentVersion: "1.2.7", CodexVersion: "26.803.81509-b1",
+				CodexState: agentcore.CodexFailed}}),
 		mk("wuying-desk-0144", "lena", admincore.MachineState{Stale: true,
 			Status: model.Status{LastSync: ago(5 * 24 * time.Hour), AgentVersion: "1.2.3"}}),
 		mk("wuying-desk-0145", "", admincore.MachineState{Unbound: true,
@@ -59,7 +63,7 @@ func TestRenderPreview(t *testing.T) {
 		CollectSince:       "2026-08-01",
 		AgentUpdateVersion: "1.2.4",
 		AgentUpdateSHA256:  "d4626f337aeb4e34a12f0e3c9fa1a559ab1377c3d4626f337aeb4e34a12f0e3c",
-		CodexVersion:       "26.810.4967.0+b7", CodexRolloutPct: 10,
+		CodexVersion:       "26.810.52044-b1", CodexRolloutPct: 100,
 		UpdatedAt: "2026-08-16T09:03:50Z",
 	}
 	users := []model.UserEntry{

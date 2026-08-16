@@ -1,6 +1,7 @@
 package adminweb
 
 import (
+	"bytes"
 	"errors"
 	"net/http"
 	"net/http/httptest"
@@ -10,6 +11,7 @@ import (
 	"time"
 
 	"github.com/TEENet-io/ai-env-mgr/internal/admincore"
+	"github.com/TEENet-io/ai-env-mgr/internal/agentcore"
 	"github.com/TEENet-io/ai-env-mgr/internal/config"
 	"github.com/TEENet-io/ai-env-mgr/internal/model"
 	"github.com/TEENet-io/ai-env-mgr/internal/ossclient"
@@ -455,5 +457,51 @@ func TestPublishPageRendersWithoutRolloutControls(t *testing.T) {
 		if strings.Contains(body, `name="rollout"`) || strings.Contains(body, "灰度") {
 			t.Fatalf("%s still offers a rollout control", path)
 		}
+	}
+}
+
+// The machines table renders the Codex column, with the tag that says why a
+// machine is not on the published version yet. Template errors -- a field
+// reference that no longer resolves, a mis-scoped variable -- surface only
+// when the page is executed, which the compiler and the router never do.
+func TestMachinesPageRendersCodexColumn(t *testing.T) {
+	s := newTestServer(t, newFakeStore())
+	fresh := time.Now().UTC().Format(time.RFC3339)
+	machines := []admincore.MachineState{
+		{Machine: "pc1", Bound: true, Binding: model.Binding{User: "a"},
+			Status: model.Status{Machine: "pc1", LastSync: fresh,
+				AgentVersion: "1.2.7", CodexVersion: "26.810.52044-b1"}},
+		{Machine: "pc2", Bound: true, Binding: model.Binding{User: "b"},
+			Status: model.Status{Machine: "pc2", LastSync: fresh,
+				AgentVersion: "1.2.6", CodexVersion: "26.803.81509-b1",
+				CodexState: agentcore.CodexFailed}},
+		// Too old to install at all: no Codex support before 1.2.5.
+		{Machine: "pc3", Bound: true, Binding: model.Binding{User: "c"},
+			Status: model.Status{Machine: "pc3", LastSync: fresh, AgentVersion: "1.2.4"}},
+	}
+	policy := model.Policy{CodexVersion: "26.810.52044-b1"}
+	data := pageData{CSRF: "t", Nav: "machines", Machines: machines,
+		Fleet: summariseFleet(machines), Policy: &policy}
+
+	var buf bytes.Buffer
+	if err := s.tpl.ExecuteTemplate(&buf, "machines.html", data); err != nil {
+		t.Fatalf("machines.html: %v", err)
+	}
+	body := buf.String()
+	for _, want := range []string{
+		"CODEX",
+		"26.810.52044-b1", // arrived
+		"26.803.81509-b1", // did not
+		"安装失败",            // and will not retry
+		"待更新",             // the 1.2.4 machine, which never will
+	} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("machines page is missing %q", want)
+		}
+	}
+	// Exactly one machine is pending: the one on the published version must
+	// not be tagged, or the column stops meaning anything.
+	if n := strings.Count(body, "待更新"); n != 1 {
+		t.Fatalf("待更新 appears %d times, want 1", n)
 	}
 }

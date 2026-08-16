@@ -207,6 +207,12 @@ func (s *Server) handleMachines(w http.ResponseWriter, r *http.Request, sess *se
 	if us, err := sess.mgr.LoadUsers(); err == nil {
 		data.Users = us.Users // the bind form offers the roster
 	}
+	// The published Codex version, so each machine's own can be shown as
+	// "arrived" or "not yet" rather than as a bare string nobody can place.
+	// A failure here costs the comparison, not the page.
+	if p, err := sess.mgr.CurrentPolicy(); err == nil {
+		data.Policy = &p
+	}
 	// Same freshness window the CLI uses (cmd/admin/status_cmd.go), so the two
 	// front ends never disagree about whether a machine is alive.
 	machines, err := sess.mgr.CollectMachines(freshAfter)
