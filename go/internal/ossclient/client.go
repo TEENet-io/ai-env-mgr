@@ -10,11 +10,15 @@ package ossclient
 
 import (
 	"bytes"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"io"
 	"net/http"
+	"os"
 	"path"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -190,6 +194,19 @@ const (
 // self-update. Agents read it (their RAM policy needs GetObject on
 // _agent/*), verify its checksum against the policy, then replace themselves.
 func AgentBinaryKey() string { return AgentPrefix + "agent.exe" }
+
+// CodexPrefix holds the repackaged Codex desktop installers. Agents read it
+// (their RAM policy needs GetObject on _codex/*); only the administrator
+// writes here, via `admin codex publish`.
+const CodexPrefix = Root + "_codex/"
+
+// CodexInstallerKey is where one version of the Codex installer lives. Unlike
+// AgentBinaryKey this is versioned rather than a single overwritten object:
+// the installer is ~700 MB, so keeping past versions in place makes a rollback
+// a policy edit instead of a re-upload.
+func CodexInstallerKey(version string) string {
+	return CodexPrefix + "codex-setup-" + sanitiseSegment(version) + ".exe"
+}
 
 // LogPrefix holds each machine's recent agent log, so the admin can read it
 // without reaching the machine. Agents write here (RAM policy needs PutObject
@@ -410,4 +427,45 @@ func (c *Client) SignedURL(key string, ttl time.Duration) (string, error) {
 		return "", fmt.Errorf("sign url for %q: %w", key, err)
 	}
 	return url, nil
+}
+
+// GetToFile streams an object to disk, returning its SHA-256.
+//
+// Get reads the whole object into memory, which is fine for a policy file or
+// the agent binary but not for the Codex installer: at ~700 MB, on a cloud
+// desktop with 4-8 GB of RAM, buffering it would risk taking the machine down
+// to deliver an update to it.
+//
+// The download goes to a temporary file in the destination's directory and is
+// renamed into place only after it is complete, so a partial file is never
+// mistaken for a finished one.
+func (c *Client) GetToFile(key, dest string) (string, error) {
+	rc, err := c.bucket.GetObject(key)
+	if err != nil {
+		return "", fmt.Errorf("get %q: %w", key, classify(err))
+	}
+	defer rc.Close()
+
+	if err := os.MkdirAll(filepath.Dir(dest), 0o700); err != nil {
+		return "", err
+	}
+	tmp, err := os.CreateTemp(filepath.Dir(dest), ".download-*")
+	if err != nil {
+		return "", err
+	}
+	tmpName := tmp.Name()
+	defer os.Remove(tmpName) // no-op once the rename below succeeds
+
+	sum := sha256.New()
+	if _, err := io.Copy(io.MultiWriter(tmp, sum), rc); err != nil {
+		tmp.Close()
+		return "", fmt.Errorf("download %q: %w", key, err)
+	}
+	if err := tmp.Close(); err != nil {
+		return "", err
+	}
+	if err := os.Rename(tmpName, dest); err != nil {
+		return "", err
+	}
+	return hex.EncodeToString(sum.Sum(nil)), nil
 }

@@ -1,0 +1,69 @@
+{{define "machines.html"}}{{template "head" "机器"}}
+<body>
+<div class="app">
+{{template "nav" .}}
+<main class="sheet">
+  <header class="pagehead"><h1>机器</h1></header>
+  {{template "notices" .}}
+  {{template "fleet" .}}
+
+  <div class="panel scroll">
+  <table>
+    <thead>
+      <tr><th>主机名</th><th>员工</th><th>状态</th><th>最后同步</th><th>版本</th><th></th></tr>
+    </thead>
+    <tbody>
+    {{range .Machines}}
+      <tr class="r-{{classify .}}">
+        <td class="id">{{.Machine}}</td>
+        <td>{{if .Bound}}{{.Binding.User}}{{else}}<span class="muted">—</span>{{end}}</td>
+        <td><span class="tag tag-{{classify .}}">{{state .}}</span></td>
+        <td class="dim" title="{{.Status.LastSync}}">{{age .Status.LastSync}}</td>
+        <td class="num dim">{{.Status.AgentVersion}}</td>
+        <td>
+          <a href="/log?machine={{.Machine}}">日志</a>
+          {{if .Bound}}
+          <form method="post" action="/machines/unbind" class="inline">
+            <input type="hidden" name="csrf" value="{{$.CSRF}}">
+            <input type="hidden" name="machine" value="{{.Machine}}">
+            <button class="link">解绑</button>
+          </form>
+          {{end}}
+        </td>
+      </tr>
+    {{else}}
+      <tr><td colspan="6" class="empty">还没有机器上报。</td></tr>
+    {{end}}
+    </tbody>
+  </table>
+  </div>
+
+  <h2>绑定机器</h2>
+  <form method="post" action="/machines/bind" class="form">
+    <input type="hidden" name="csrf" value="{{.CSRF}}">
+    <label>主机名<input name="machine" required></label>
+    <label>员工
+      <select name="user" required>
+        <option value="">选择…</option>
+        {{range .Users}}{{if .Enabled}}<option value="{{.WindowsUser}}">{{.WindowsUser}}</option>{{end}}{{end}}
+      </select>
+    </label>
+    <label>备注<input name="note"></label>
+    <button type="submit">绑定</button>
+  </form>
+  <p class="hint">一台机器绑定一个员工：凭证只投放到这个人的用户目录。</p>
+
+  <h2>注销机器</h2>
+  <div class="caution">
+    注销会删除该机器的绑定和状态记录，<strong>不可撤销</strong>。请输入主机名确认。
+  </div>
+  <form method="post" action="/machines/forget" class="form">
+    <input type="hidden" name="csrf" value="{{.CSRF}}">
+    <label>主机名<input name="machine" required></label>
+    <label>再次输入确认<input name="confirm" required></label>
+    <button type="submit" class="danger">注销</button>
+  </form>
+</main>
+</div>
+</body>
+</html>{{end}}

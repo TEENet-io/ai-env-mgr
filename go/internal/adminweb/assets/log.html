@@ -1,0 +1,16 @@
+{{define "log.html"}}{{template "head" "日志"}}
+<body>
+<div class="app">
+{{template "nav" .}}
+<main class="sheet">
+  <header class="pagehead">
+    <h1>日志</h1>
+    <p><span class="mono">{{.Machine}}</span> 最近上报的 agent 日志</p>
+  </header>
+  {{template "notices" .}}
+  {{if .Log}}<pre class="log">{{.Log}}</pre>{{end}}
+  <p class="hint"><a href="/machines">← 返回机器列表</a></p>
+</main>
+</div>
+</body>
+</html>{{end}}

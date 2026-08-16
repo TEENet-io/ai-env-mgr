@@ -164,6 +164,7 @@ func newSyncer() (*agentcore.Syncer, error) {
 			StateDir: stateDir(),
 		},
 		Updater: localUpdater{},
+		Codex:   newCodexInstaller(),
 	}, nil
 }
 

@@ -1,0 +1,427 @@
+/* AI Env Mgr console.
+ *
+ * An instrument panel for a fleet, not a dashboard. Two rules carry the look:
+ * machine-generated values (hostnames, versions, hashes, timestamps) are set in
+ * monospace and human language is not, so the eye sorts identifiers from prose
+ * without reading them; and one status vocabulary -- four states, same colour
+ * and same word -- is used identically in the fleet strip, the row rails and
+ * the badges, so the summary and the table are visibly one system.
+ *
+ * No webfonts and no script: the page is served from a binary with a strict
+ * CSP, and this console can push a binary every machine executes, so the
+ * absence of script is worth more than anything script would buy.
+ */
+
+:root {
+  --ground: #e9edf1;
+  --panel: #ffffff;
+  --panel-sunk: #f4f6f9;
+  --ink: #0e1720;
+  --ink-soft: #56687a;
+  --ink-faint: #8698a9;
+  --rule: #d2dae2;
+  --rule-faint: rgba(14, 23, 32, 0.045);
+  --accent: #1544c4;
+  --accent-soft: rgba(21, 68, 196, 0.09);
+  /* Text on a filled accent or danger button. Dark mode lightens both fills,
+   * so white text on them fails contrast -- it flips to the ground colour. */
+  --on-fill: #ffffff;
+  --ok: #0b7a55;
+  --warn: #9a5b00;
+  --bad: #b21f28;
+  --ok-bg: rgba(11, 122, 85, 0.12);
+  --warn-bg: rgba(154, 91, 0, 0.13);
+  --bad-bg: rgba(178, 31, 40, 0.11);
+
+  --sans: system-ui, -apple-system, "Segoe UI", "PingFang SC", "Hiragino Sans GB",
+          "Microsoft YaHei", sans-serif;
+  --mono: ui-monospace, "SF Mono", "Cascadia Mono", "JetBrains Mono", Consolas,
+          "Liberation Mono", monospace;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --ground: #0d1319;
+    --panel: #151d25;
+    --panel-sunk: #111820;
+    --ink: #e6ecf2;
+    --ink-soft: #93a5b6;
+    --ink-faint: #6b7d8e;
+    --rule: #26313c;
+    --rule-faint: rgba(255, 255, 255, 0.035);
+    --accent: #7aa2ff;
+    --accent-soft: rgba(122, 162, 255, 0.14);
+    --on-fill: #0d1319;
+    --ok: #45c48d;
+    --warn: #e0a33c;
+    --bad: #ef6b72;
+    --ok-bg: rgba(69, 196, 141, 0.15);
+    --warn-bg: rgba(224, 163, 60, 0.15);
+    --bad-bg: rgba(239, 107, 114, 0.15);
+  }
+}
+
+* { box-sizing: border-box; }
+
+html { -webkit-text-size-adjust: 100%; }
+
+body {
+  margin: 0;
+  color: var(--ink);
+  font: 14px/1.55 var(--sans);
+  background-color: var(--ground);
+  /* Faint ruling, like the paper in a chart recorder. One texture, and only
+   * on the ground -- panels sit on top of it opaque. */
+  background-image: repeating-linear-gradient(
+    to bottom, var(--rule-faint) 0 1px, transparent 1px 6px);
+}
+
+/* ---------- shell ---------- */
+
+.app { display: flex; min-height: 100vh; align-items: stretch; }
+
+.rail {
+  flex: 0 0 208px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 20px 12px;
+  background: var(--panel);
+  border-right: 1px solid var(--rule);
+}
+
+.rail .wordmark {
+  padding: 0 10px 18px;
+  font-size: 12px;
+  font-weight: 650;
+  color: var(--ink-faint);
+}
+
+.rail a {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  padding: 7px 10px;
+  border-radius: 5px;
+  color: var(--ink-soft);
+  text-decoration: none;
+}
+/* The number is how this menu is navigated in the terminal; it is the same
+ * ordering, kept so the habit transfers. */
+.rail a .n {
+  font: 11px/1 var(--mono);
+  color: var(--ink-faint);
+  font-variant-numeric: tabular-nums;
+}
+.rail a:hover { background: var(--panel-sunk); color: var(--ink); }
+.rail a.active { background: var(--accent-soft); color: var(--accent); font-weight: 600; }
+.rail a.active .n { color: var(--accent); }
+
+.rail .foot {
+  margin-top: auto;
+  padding: 14px 10px 0;
+  border-top: 1px solid var(--rule);
+  font: 11px/1.6 var(--mono);
+  color: var(--ink-faint);
+  word-break: break-all;
+}
+.rail .foot form { margin: 6px 0 0; }
+
+.sheet { flex: 1 1 auto; min-width: 0; padding: 26px 30px 60px; }
+.sheet > * { max-width: 1080px; }
+
+/* ---------- page head ---------- */
+
+.pagehead { margin-bottom: 18px; }
+.pagehead h1 {
+  margin: 0;
+  font-size: 21px;
+  font-weight: 650;
+  letter-spacing: -0.012em;
+}
+.pagehead p { margin: 5px 0 0; color: var(--ink-soft); }
+
+/* Section labels. No tracking or uppercase: those are Latin devices, and
+ * letter-spacing on Chinese just prises the characters apart. The hierarchy
+ * comes from size, weight and colour instead. */
+h2 {
+  margin: 28px 0 9px;
+  font-size: 12px;
+  font-weight: 650;
+  color: var(--ink-faint);
+}
+
+/* ---------- fleet strip: the one thing this console is remembered by ------- */
+
+.fleet { margin-bottom: 20px; }
+.fleet .bar {
+  display: flex;
+  height: 8px;
+  border-radius: 4px;
+  overflow: hidden;
+  background: var(--panel-sunk);
+  border: 1px solid var(--rule);
+}
+.fleet .bar span { display: block; }
+.fleet .bar .s-ok { background: var(--ok); }
+.fleet .bar .s-warn { background: var(--warn); }
+.fleet .bar .s-bad { background: var(--bad); }
+
+.fleet .legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 18px;
+  margin-top: 9px;
+  font-size: 12px;
+  color: var(--ink-soft);
+}
+.fleet .legend b {
+  font: 600 15px/1 var(--mono);
+  font-variant-numeric: tabular-nums;
+  margin-right: 5px;
+  color: var(--ink);
+}
+.fleet .legend .k::before {
+  content: "";
+  display: inline-block;
+  width: 7px; height: 7px;
+  margin-right: 6px;
+  border-radius: 2px;
+  vertical-align: 1px;
+}
+.fleet .legend .k-ok::before { background: var(--ok); }
+.fleet .legend .k-warn::before { background: var(--warn); }
+.fleet .legend .k-bad::before { background: var(--bad); }
+
+/* ---------- panels and tables ---------- */
+
+.panel {
+  background: var(--panel);
+  border: 1px solid var(--rule);
+  border-radius: 8px;
+  overflow: hidden;
+}
+.scroll { overflow-x: auto; }
+
+table { border-collapse: collapse; width: 100%; }
+th, td {
+  padding: 8px 14px;
+  text-align: left;
+  border-bottom: 1px solid var(--rule);
+  white-space: nowrap;
+}
+tbody tr:last-child td { border-bottom: 0; }
+thead th {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--ink-faint);
+  background: var(--panel-sunk);
+}
+tbody tr:hover td { background: var(--panel-sunk); }
+
+/* Machine-generated values read as such. */
+td.id, td.num, .mono {
+  font: 13px/1.5 var(--mono);
+  font-variant-numeric: tabular-nums;
+}
+td.id { font-weight: 600; }
+td.dim { color: var(--ink-faint); }
+
+table.kv th {
+  width: 190px;
+  font-weight: 500;
+  color: var(--ink-soft);
+  background: transparent;
+  text-transform: none;
+  letter-spacing: 0;
+  font-size: 14px;
+}
+table.kv td { white-space: normal; }
+
+/* The rail on each row repeats the strip's colour, so a glance down the table
+ * reads the same way the summary above it does. Drawn as an inset shadow on
+ * the first cell rather than a narrow column: a table sizes cells to their
+ * content, so a 3px column will not stay 3px. */
+td.rail-cell { display: none; }
+/* Only rows that carry a state get a rail -- keyed off the state class, so a
+ * key/value table elsewhere on the page does not pick up a stray stripe. */
+tr.r-ok td:first-child { box-shadow: inset 3px 0 0 var(--ok); }
+tr.r-warn td:first-child { box-shadow: inset 3px 0 0 var(--warn); }
+tr.r-bad td:first-child { box-shadow: inset 3px 0 0 var(--bad); }
+
+.tag {
+  display: inline-block;
+  padding: 2px 7px;
+  border-radius: 4px;
+  font: 600 11px/1.6 var(--sans);
+  letter-spacing: 0.02em;
+}
+.tag-ok { background: var(--ok-bg); color: var(--ok); }
+.tag-warn { background: var(--warn-bg); color: var(--warn); }
+.tag-bad { background: var(--bad-bg); color: var(--bad); }
+
+.empty { padding: 22px 14px; color: var(--ink-faint); }
+
+/* ---------- forms ---------- */
+
+.form {
+  background: var(--panel);
+  border: 1px solid var(--rule);
+  border-radius: 8px;
+  padding: 16px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px;
+  align-items: flex-end;
+}
+.form label {
+  display: block;
+  flex: 1 1 190px;
+  min-width: 160px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--ink-faint);
+}
+.form label.wide { flex-basis: 100%; }
+
+input, select, textarea {
+  width: 100%;
+  margin-top: 5px;
+  padding: 8px 10px;
+  border: 1px solid var(--rule);
+  border-radius: 5px;
+  background: var(--panel-sunk);
+  color: var(--ink);
+  font: 14px/1.4 var(--sans);
+}
+input[name="machine"], input[name="version"], input[name="confirm"],
+input[name="url"], input[name="callback"], textarea { font-family: var(--mono); font-size: 13px; }
+textarea { resize: vertical; }
+input[type="file"] { padding: 6px 0; border: 0; background: none; }
+input:focus-visible, select:focus-visible, textarea:focus-visible,
+button:focus-visible, a:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+button {
+  padding: 8px 15px;
+  border: 1px solid transparent;
+  border-radius: 5px;
+  background: var(--accent);
+  color: var(--on-fill);
+  font: 600 13px/1.4 var(--sans);
+  cursor: pointer;
+}
+button:hover { filter: brightness(1.08); }
+button.link {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--accent);
+  font-weight: 500;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+button.danger { background: var(--bad); }
+form.inline { display: inline; }
+/* A bare "clear the target" control needs its own line and some air, or it
+ * reads as though it belongs to whatever panel it happens to sit under. */
+form.aside { margin: 10px 0 4px; }
+
+/* ---------- notices ---------- */
+
+.note {
+  margin: 0 0 16px;
+  padding: 10px 13px;
+  border-radius: 6px;
+  border-left: 3px solid;
+  font-size: 13px;
+}
+.note-err { background: var(--bad-bg); border-color: var(--bad); color: var(--bad); }
+.note-ok { background: var(--ok-bg); border-color: var(--ok); color: var(--ok); }
+
+/* Where an action reaches every machine, or cannot be undone. */
+.caution {
+  margin: 0 0 14px;
+  padding: 13px 15px;
+  border: 1px solid var(--bad);
+  border-radius: 8px;
+  background: var(--bad-bg);
+  font-size: 13px;
+}
+.caution strong { color: var(--bad); }
+
+/* ---------- sign-in ---------- */
+
+body.gate {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 100vh;
+  padding: 24px;
+}
+.gate .card {
+  width: min(370px, 100%);
+  padding: 30px;
+  background: var(--panel);
+  border: 1px solid var(--rule);
+  border-radius: 10px;
+}
+.gate h1 { margin: 0; font-size: 13px; font-weight: 650; color: var(--ink-faint); }
+.gate .lede { margin: 14px 0 20px; color: var(--ink-soft); font-size: 13px; }
+.gate label { display: block; margin-bottom: 13px; font-size: 12px; font-weight: 600;
+  color: var(--ink-faint); }
+.gate input { font-family: var(--mono); font-size: 13px; }
+.gate button { width: 100%; margin-top: 6px; padding: 10px; }
+
+/* ---------- misc ---------- */
+
+pre.log {
+  margin: 0;
+  padding: 16px;
+  background: var(--panel);
+  border: 1px solid var(--rule);
+  border-radius: 8px;
+  overflow-x: auto;
+  max-height: 68vh;
+  font: 12px/1.6 var(--mono);
+}
+code {
+  font: 13px/1.5 var(--mono);
+  background: var(--panel-sunk);
+  border: 1px solid var(--rule);
+  border-radius: 4px;
+  padding: 1px 5px;
+}
+code.block {
+  display: block;
+  padding: 11px 13px;
+  word-break: break-all;
+  white-space: pre-wrap;
+}
+a { color: var(--accent); }
+.muted { color: var(--ink-faint); }
+ol { margin: 10px 0; padding-left: 19px; }
+ol li { margin: 7px 0; }
+.hint { margin: 9px 0 0; font-size: 12px; color: var(--ink-faint); }
+
+@media (max-width: 760px) {
+  .app { display: block; }
+  .rail {
+    flex-direction: row;
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    gap: 4px;
+    padding: 10px 12px;
+    border-right: 0;
+    border-bottom: 1px solid var(--rule);
+  }
+  .rail .wordmark, .rail .foot { display: none; }
+  .rail a { white-space: nowrap; }
+  .sheet { padding: 18px 16px 48px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * { transition: none !important; animation: none !important; }
+}

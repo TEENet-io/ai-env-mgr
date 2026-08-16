@@ -3,8 +3,9 @@ package main
 import "testing"
 
 // The administrator pastes whatever the browser left in the address bar. That
-// is usually the full callback URL, sometimes just the code, and occasionally
-// a callback from an abandoned earlier attempt.
+// is usually the full callback URL, and occasionally a callback from an
+// abandoned earlier attempt. The parsing itself lives in authflow, shared with
+// the web console; this covers the terminal wrapper around it.
 func TestCodeFromCallback(t *testing.T) {
 	const state = "abc123state"
 

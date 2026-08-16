@@ -28,7 +28,27 @@ type Policy struct {
 	// remote kill switch. See OSS布局.md §7.
 	AgentUpdateVersion string `json:"agentUpdateVersion,omitempty"`
 	AgentUpdateSHA256  string `json:"agentUpdateSHA256,omitempty"` // hex sha256 of the target binary
-	UpdatedAt          string `json:"updatedAt"`
+
+	// Codex desktop distribution. Empty version means "do not distribute" and
+	// is the remote kill switch, exactly like AgentUpdateVersion above.
+	//
+	// The agent compares for EQUALITY, not for "newer": it installs whenever
+	// the version recorded on the machine differs from CodexVersion. Setting
+	// the target back to an older version is therefore a rollback, which an
+	// upgrade-only rule could not express -- and a bad build is precisely when
+	// you need to go backwards.
+	//
+	// CodexRolloutPct staggers the fleet: a machine updates only when
+	// crc32(machine) % 100 < CodexRolloutPct, so the same machines are always
+	// in the first ring. 0 reaches nobody, 100 reaches everyone. Since the
+	// package is a repackaging of an upstream build whose patches drift, start
+	// small. See docs/Codex分发方案.md.
+	CodexVersion    string `json:"codexVersion,omitempty"`
+	CodexSHA256     string `json:"codexSHA256,omitempty"` // hex sha256 of the installer
+	CodexKey        string `json:"codexKey,omitempty"`    // object key under _codex/
+	CodexRolloutPct int    `json:"codexRolloutPct,omitempty"`
+
+	UpdatedAt string `json:"updatedAt"`
 }
 
 // Sync interval bounds. The interval can lock a machine out of reach if set
@@ -108,6 +128,13 @@ type Status struct {
 	// when the event was reported (RFC3339).
 	LastEvent   string `json:"lastEvent,omitempty"`
 	LastEventAt string `json:"lastEventAt,omitempty"`
+
+	// CodexVersion is what this machine actually has installed, which is how
+	// an administrator tells a published version from a delivered one.
+	// CodexState explains a machine that is eligible but has not taken it:
+	// "deferred" (Codex was in use, or the disk was too full) or "failed".
+	CodexVersion string `json:"codexVersion,omitempty"`
+	CodexState   string `json:"codexState,omitempty"`
 }
 
 // HasLocalUser reports whether a given account has a profile on the machine.

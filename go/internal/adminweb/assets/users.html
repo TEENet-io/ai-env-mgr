@@ -1,0 +1,50 @@
+{{define "users.html"}}{{template "head" "员工"}}
+<body>
+<div class="app">
+{{template "nav" .}}
+<main class="sheet">
+  <header class="pagehead"><h1>员工</h1></header>
+  {{template "notices" .}}
+
+  <div class="panel scroll">
+  <table>
+    <thead><tr><th>WINDOWS 用户</th><th>CODEX 账号</th><th>CLAUDE 账号</th><th>状态</th><th></th></tr></thead>
+    <tbody>
+    {{range .Users}}
+      <tr>
+        <td class="id">{{.WindowsUser}}</td>
+        <td class="dim">{{if .CodexAccount}}{{noscan .CodexAccount}}{{else}}—{{end}}</td>
+        <td class="dim">{{if .ClaudeAccount}}{{noscan .ClaudeAccount}}{{else}}—{{end}}</td>
+        <td>{{if .Enabled}}<span class="tag tag-ok">在职</span>{{else}}<span class="tag tag-bad">已离职</span>{{end}}</td>
+        <td>
+          <form method="post" action="/users/enabled" class="inline">
+            <input type="hidden" name="csrf" value="{{$.CSRF}}">
+            <input type="hidden" name="windowsUser" value="{{.WindowsUser}}">
+            <input type="hidden" name="enabled" value="{{if .Enabled}}0{{else}}1{{end}}">
+            <button class="link">{{if .Enabled}}停用{{else}}启用{{end}}</button>
+          </form>
+        </td>
+      </tr>
+    {{else}}
+      <tr><td colspan="5" class="empty">还没有员工。</td></tr>
+    {{end}}
+    </tbody>
+  </table>
+  </div>
+
+  <h2>新增员工</h2>
+  <form method="post" action="/users/add" class="form">
+    <input type="hidden" name="csrf" value="{{.CSRF}}">
+    <label>Windows 用户<input name="windowsUser" required placeholder="work1"></label>
+    <label>Codex 账号<input name="codexAccount"></label>
+    <label>Claude 账号<input name="claudeAccount"></label>
+    <button type="submit">新增</button>
+  </form>
+  <p class="hint">
+    账号栏只是给管理员看的备注。停用会在下次同步时移除该员工机器上的凭证；
+    要发放登录态请到<a href="/employee-login">代员工登录</a>。
+  </p>
+</main>
+</div>
+</body>
+</html>{{end}}

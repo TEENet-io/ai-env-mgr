@@ -1,0 +1,152 @@
+package adminweb
+
+import (
+	"crypto/subtle"
+	"fmt"
+	"log"
+	"net/http"
+	"net/url"
+	"strconv"
+	"strings"
+)
+
+// requirePost gates a state-changing handler on POST plus a matching CSRF
+// token, then redirects back to the page it came from.
+//
+// The redirect is not cosmetic: it turns the POST into a GET, so a refresh
+// cannot replay the action. Several of these change what every machine in the
+// fleet does, and repeating one by accident is a real cost.
+func (s *Server) requirePost(back string, next func(*session, *http.Request) error) http.HandlerFunc {
+	return s.requireSession(func(w http.ResponseWriter, r *http.Request, sess *session) {
+		if r.Method != http.MethodPost {
+			http.Redirect(w, r, back, http.StatusSeeOther)
+			return
+		}
+		// parseUpload handles both a plain form and a multipart upload, so a
+		// file-carrying POST still has its CSRF token parsed before the check.
+		if err := parseUpload(r); err != nil {
+			s.redirectWithError(w, r, back, "could not read the form")
+			return
+		}
+		// Constant-time so a token cannot be recovered by timing the compare.
+		if subtle.ConstantTimeCompare([]byte(r.PostFormValue("csrf")), []byte(sess.csrf)) != 1 {
+			log.Printf("adminweb: rejected a POST to %s with a bad CSRF token from %s", r.URL.Path, s.clientKey(r))
+			s.redirectWithError(w, r, back, "the form expired; reload the page and try again")
+			return
+		}
+		if err := next(sess, r); err != nil {
+			log.Printf("adminweb: %s: %v", r.URL.Path, err)
+			s.redirectWithError(w, r, back, err.Error())
+			return
+		}
+		http.Redirect(w, r, back+"?ok=1", http.StatusSeeOther)
+	})
+}
+
+// redirectWithError carries a message through the redirect in the query
+// string. Nothing here is secret -- these are validation messages, never the
+// credentials themselves.
+func (s *Server) redirectWithError(w http.ResponseWriter, r *http.Request, back, msg string) {
+	http.Redirect(w, r, back+"?err="+url.QueryEscape(msg), http.StatusSeeOther)
+}
+
+func formValue(r *http.Request, name string) string {
+	return strings.TrimSpace(r.PostFormValue(name))
+}
+
+// --- users ---
+
+func (s *Server) actionUserAdd(sess *session, r *http.Request) error {
+	name := formValue(r, "windowsUser")
+	if name == "" {
+		return fmt.Errorf("a Windows user name is required")
+	}
+	return sess.mgr.AddUser(name, formValue(r, "codexAccount"), formValue(r, "claudeAccount"))
+}
+
+func (s *Server) actionUserEnabled(sess *session, r *http.Request) error {
+	name := formValue(r, "windowsUser")
+	if name == "" {
+		return fmt.Errorf("a Windows user name is required")
+	}
+	return sess.mgr.SetUserEnabled(name, formValue(r, "enabled") == "1")
+}
+
+// --- machines ---
+
+func (s *Server) actionMachineBind(sess *session, r *http.Request) error {
+	machine, user := formValue(r, "machine"), formValue(r, "user")
+	if machine == "" || user == "" {
+		return fmt.Errorf("both a machine and a user are required")
+	}
+	return sess.mgr.BindMachine(machine, user, formValue(r, "note"))
+}
+
+func (s *Server) actionMachineUnbind(sess *session, r *http.Request) error {
+	machine := formValue(r, "machine")
+	if machine == "" {
+		return fmt.Errorf("a machine is required")
+	}
+	return sess.mgr.UnbindMachine(machine)
+}
+
+// --- website blocking ---
+
+func (s *Server) actionSites(sess *session, r *http.Request) error {
+	add := splitDomains(formValue(r, "add"))
+	remove := splitDomains(formValue(r, "remove"))
+	if len(add) == 0 && len(remove) == 0 {
+		return fmt.Errorf("nothing to add or remove")
+	}
+	_, err := sess.mgr.MutateDomains(add, remove)
+	return err
+}
+
+// splitDomains accepts the several separators an operator might paste in:
+// newlines from a list, commas from a spreadsheet, spaces from typing.
+func splitDomains(s string) []string {
+	fields := strings.FieldsFunc(s, func(r rune) bool {
+		return r == '\n' || r == '\r' || r == ',' || r == ' ' || r == '\t' || r == ';'
+	})
+	var out []string
+	for _, f := range fields {
+		if f = strings.TrimSpace(f); f != "" {
+			out = append(out, f)
+		}
+	}
+	return out
+}
+
+func (s *Server) actionBlockEnabled(sess *session, r *http.Request) error {
+	_, err := sess.mgr.SetBlockEnabled(formValue(r, "enabled") == "1")
+	return err
+}
+
+// --- settings ---
+
+func (s *Server) actionSyncInterval(sess *session, r *http.Request) error {
+	minutes, err := strconv.Atoi(formValue(r, "minutes"))
+	if err != nil {
+		return fmt.Errorf("the interval must be a whole number of minutes")
+	}
+	_, err = sess.mgr.SetSyncInterval(minutes)
+	return err
+}
+
+func (s *Server) actionCollect(sess *session, r *http.Request) error {
+	enabled := formValue(r, "enabled") == "1"
+	var since *string
+	var quiet *int
+	if v := formValue(r, "since"); v != "" {
+		since = &v
+	}
+	if v := formValue(r, "quiet"); v != "" {
+		n, err := strconv.Atoi(v)
+		if err != nil {
+			return fmt.Errorf("the quiet period must be a whole number of seconds")
+		}
+		quiet = &n
+	}
+	_, err := sess.mgr.SetCollect(enabled, since, quiet)
+	return err
+}

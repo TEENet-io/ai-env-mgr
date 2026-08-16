@@ -1,0 +1,102 @@
+{{define "rollout.html"}}{{template "head" "发布更新"}}
+<body>
+<div class="app">
+{{template "nav" .}}
+<main class="sheet">
+  <header class="pagehead"><h1>发布更新</h1></header>
+  {{template "notices" .}}
+
+  <div class="caution">
+    发布会让<strong>每一台机器</strong>下载并执行一个二进制。构建通过不等于可用，
+    请先在一台真实机器上验收。发布需要把版本号原样输入一次。
+  </div>
+  {{template "fleet" .}}
+
+  {{with .Policy}}
+  <h2>agent</h2>
+  <div class="panel scroll">
+  <table class="kv">
+    <tbody>
+      <tr><th>目标版本</th><td>{{if .AgentUpdateVersion}}<span class="mono">{{.AgentUpdateVersion}}</span>{{else}}<span class="muted">未设置</span>{{end}}</td></tr>
+      {{if .AgentUpdateSHA256}}<tr><th>SHA-256</th><td class="mono muted">{{.AgentUpdateSHA256}}</td></tr>{{end}}
+    </tbody>
+  </table>
+  </div>
+  {{if .AgentUpdateVersion}}
+  <form method="post" action="/agent/cancel" class="aside">
+    <input type="hidden" name="csrf" value="{{$.CSRF}}">
+    <button class="link">清除目标：尚未更新的机器停止尝试</button>
+  </form>
+  {{end}}
+  {{end}}
+
+  <form method="post" action="/agent/publish" enctype="multipart/form-data" class="form">
+    <input type="hidden" name="csrf" value="{{.CSRF}}">
+    <label>版本<input name="version" required placeholder="1.3.0"></label>
+    <label>上传文件<input type="file" name="file"></label>
+    <label>或从 URL 拉取<input name="url" placeholder="https://…/agent.exe"></label>
+    <label>GITHUB TOKEN<input name="token" type="password" placeholder="每次发布都需要输入"></label>
+    <label>再次输入版本号<input name="confirm" required></label>
+    <button type="submit" class="danger">发布 agent</button>
+  </form>
+
+  {{with .Policy}}
+  <h2>Codex 桌面版</h2>
+  <div class="panel scroll">
+  <table class="kv">
+    <tbody>
+      <tr><th>目标版本</th><td>{{if .CodexVersion}}<span class="mono">{{.CodexVersion}}</span>{{else}}<span class="muted">未设置</span>{{end}}</td></tr>
+      <tr><th>灰度比例</th><td><span class="mono">{{.CodexRolloutPct}}%</span> 的机器可安装</td></tr>
+    </tbody>
+  </table>
+  </div>
+  {{if .CodexVersion}}
+  <form method="post" action="/codex/rollout" class="form">
+    <input type="hidden" name="csrf" value="{{$.CSRF}}">
+    <label>调整灰度 %<input name="rollout" type="number" min="0" max="100" value="{{.CodexRolloutPct}}" required></label>
+    <button type="submit">保存</button>
+  </form>
+  <form method="post" action="/codex/cancel" class="aside">
+    <input type="hidden" name="csrf" value="{{$.CSRF}}">
+    <button class="link">清除目标：已安装的机器不会被卸载</button>
+  </form>
+  {{end}}
+  {{end}}
+
+  <form method="post" action="/codex/publish" enctype="multipart/form-data" class="form">
+    <input type="hidden" name="csrf" value="{{.CSRF}}">
+    <label>版本<input name="version" required placeholder="26.810.4967.0+b7"></label>
+    <label class="wide">Release URL<input name="url" placeholder="https://github.com/TEENet-io/codex-kiosk/releases/…"></label>
+    <label>GITHUB TOKEN<input name="token" type="password" placeholder="每次发布都需要输入"></label>
+    <label>灰度 %<input name="rollout" type="number" min="0" max="100" value="10"></label>
+    <label>再次输入版本号<input name="confirm" required></label>
+    <button type="submit" class="danger">发布 Codex</button>
+  </form>
+  <p class="hint">
+    安装包约 700 MB，用 URL 让服务器直接拉取；浏览器上传会被 CDN 的体积限制挡下。
+    先发一小部分，确认无误后再调到 100%。
+  </p>
+
+  {{if .Machines}}
+  <h2>机队现状</h2>
+  <div class="panel scroll">
+  <table>
+    <thead><tr><th>主机名</th><th>AGENT</th><th>CODEX</th><th>最后同步</th></tr></thead>
+    <tbody>
+    {{range .Machines}}
+      <tr class="r-{{classify .}}">
+        <td class="id">{{.Machine}}</td>
+        <td class="num">{{.Status.AgentVersion}}</td>
+        <td class="num">{{if .Status.CodexVersion}}{{.Status.CodexVersion}}{{else}}<span class="muted">—</span>{{end}}
+          {{if .Status.CodexState}}<span class="tag tag-warn">{{.Status.CodexState}}</span>{{end}}</td>
+        <td class="dim" title="{{.Status.LastSync}}">{{age .Status.LastSync}}</td>
+      </tr>
+    {{end}}
+    </tbody>
+  </table>
+  </div>
+  {{end}}
+</main>
+</div>
+</body>
+</html>{{end}}

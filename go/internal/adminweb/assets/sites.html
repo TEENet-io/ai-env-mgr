@@ -1,0 +1,45 @@
+{{define "sites.html"}}{{template "head" "封禁策略"}}
+<body>
+<div class="app">
+{{template "nav" .}}
+<main class="sheet">
+  <header class="pagehead">
+    <h1>封禁策略</h1>
+    {{with .Policy}}<p>
+      {{if .BlockEnabled}}<span class="tag tag-ok">拦截中</span>{{else}}<span class="tag tag-warn">已全局关闭</span>{{end}}
+      共 {{len .BlockedDomains}} 个域名，对机器上所有用户生效。
+    </p>{{end}}
+  </header>
+  {{template "notices" .}}
+
+  {{with .Policy}}
+  <form method="post" action="/sites/enabled" class="inline">
+    <input type="hidden" name="csrf" value="{{$.CSRF}}">
+    <input type="hidden" name="enabled" value="{{if .BlockEnabled}}0{{else}}1{{end}}">
+    <button type="submit"{{if .BlockEnabled}} class="danger"{{end}}>
+      {{if .BlockEnabled}}临时全局关闭{{else}}恢复拦截{{end}}
+    </button>
+  </form>
+
+  <h2>域名清单</h2>
+  <div class="panel scroll">
+  <table>
+    <tbody>
+    {{range .BlockedDomains}}<tr><td class="id">{{.}}</td></tr>
+    {{else}}<tr><td class="empty">清单为空。</td></tr>{{end}}
+    </tbody>
+  </table>
+  </div>
+  {{end}}
+
+  <h2>增删域名</h2>
+  <form method="post" action="/sites/mutate" class="form">
+    <input type="hidden" name="csrf" value="{{.CSRF}}">
+    <label class="wide">新增<textarea name="add" rows="3" placeholder="每行一个，也可用逗号或空格分隔"></textarea></label>
+    <label class="wide">移除<textarea name="remove" rows="2"></textarea></label>
+    <button type="submit">提交</button>
+  </form>
+</main>
+</div>
+</body>
+</html>{{end}}

@@ -33,6 +33,8 @@ type Report struct {
 	CredsApplied    bool
 	CollectEnabled  bool
 	CollectUploaded int
+	CodexVersion    string
+	CodexState      string
 	Errors          []string
 }
 
@@ -63,6 +65,8 @@ func Build(r Report) model.Status {
 		AppLockerMode:       AppLockerMode(),
 		CollectEnabled:      r.CollectEnabled,
 		CollectUploaded:     r.CollectUploaded,
+		CodexVersion:        r.CodexVersion,
+		CodexState:          r.CodexState,
 		Errors:              errs,
 	}
 }

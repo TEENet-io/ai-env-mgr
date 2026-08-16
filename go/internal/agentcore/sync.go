@@ -10,6 +10,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"log"
 	"os"
 	"path/filepath"
 	"strings"
@@ -33,6 +34,10 @@ type Store interface {
 	Head(key string) (etag string, exists bool, err error)
 	Get(key string) ([]byte, string, error)
 	Put(key string, data []byte) error
+	// GetToFile streams an object to disk and returns its SHA-256. The Codex
+	// installer is ~700 MB, and buffering that on a cloud desktop to deliver
+	// an update to it would risk taking the machine down.
+	GetToFile(key, dest string) (sha256hex string, err error)
 }
 
 // Applier performs the local side effects: writing browser policy into the
@@ -93,6 +98,11 @@ type Syncer struct {
 	// Updater applies an agent self-update when the policy targets a version
 	// other than this binary's. Optional: nil disables self-update.
 	Updater Updater
+
+	// Codex installs the repackaged Codex desktop when the policy targets a
+	// version this machine does not have. Optional: nil disables it, which is
+	// what every non-Windows build and every test gets.
+	Codex CodexInstaller
 
 	// mu guards lastStatus. ReportEvent runs on the service control handler's
 	// goroutine, which can overlap the worker goroutine's RunOnce/Heartbeat, so
@@ -290,6 +300,11 @@ func (s *Syncer) RunOnce() (model.Status, error) {
 		}
 	}
 
+	// ---- Codex desktop ----
+	// Before the agent's own update: a self-update restarts this process, and
+	// a Codex install interrupted halfway is worse than one that waits a cycle.
+	codexVersion, codexState := s.updateCodex(pol, &errs)
+
 	// ---- self-update: download + verify ----
 	// The binary is fetched and checksummed now so any problem surfaces in this
 	// cycle's status, but it is applied only after status is uploaded (below),
@@ -311,6 +326,8 @@ func (s *Syncer) RunOnce() (model.Status, error) {
 		CredsApplied:    credsApplied,
 		CollectEnabled:  pol.CollectEnabled,
 		CollectUploaded: collectUploaded,
+		CodexVersion:    codexVersion,
+		CodexState:      codexState,
 		Errors:          errs,
 	})
 
@@ -445,11 +462,25 @@ func (s *Syncer) ReportEvent(event string) {
 
 	// Bound the upload: run it off the calling goroutine and give up after
 	// eventReportTimeout so a dying network cannot delay suspend or stop.
+	//
+	// The outcome is logged rather than discarded. Without it, a machine that
+	// shows as merely offline is unexplainable after the fact: silence looks
+	// identical whether the OS never delivered the event, or it did and the
+	// upload could not finish before the machine went away. The log survives
+	// the sleep and is uploaded on the next sync after waking, which is when
+	// somebody is asking the question.
 	done := make(chan error, 1)
 	go func() { done <- s.Store.Put(ossclient.StatusKey(st.Machine), out) }()
 	select {
-	case <-done:
+	case err := <-done:
+		if err != nil {
+			log.Printf("lifecycle event %q: report FAILED: %v", event, err)
+		} else {
+			log.Printf("lifecycle event %q: reported", event)
+		}
 	case <-time.After(eventReportTimeout):
+		log.Printf("lifecycle event %q: report TIMED OUT after %s -- the admin will see this machine as offline",
+			event, eventReportTimeout)
 	}
 
 	s.mu.Lock()

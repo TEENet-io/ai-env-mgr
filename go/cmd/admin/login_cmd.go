@@ -4,7 +4,6 @@ import (
 	"bufio"
 	"context"
 	"fmt"
-	"net/url"
 	"os"
 	"strings"
 	"time"
@@ -152,22 +151,17 @@ func readPasted() (string, error) {
 // because the browser is usually not on the machine running this command --
 // the administrator drives a fleet of cloud desktops from their own laptop.
 // A listener would also collide with Codex itself, which uses that port.
+// codeFromCallback wraps the shared parser, printing the note the terminal
+// flow has always shown when a bare code left nothing to verify.
 func codeFromCallback(pasted, wantState string) (string, error) {
-	if u, err := url.Parse(pasted); err == nil && u.Query().Get("code") != "" {
-		q := u.Query()
-		if got := q.Get("state"); got != "" && got != wantState {
-			return "", fmt.Errorf("that callback belongs to a different login attempt (state mismatch); start again")
-		}
-		return q.Get("code"), nil
+	code, stateVerified, err := authflow.CodeFromCallback(pasted, wantState)
+	if err != nil {
+		return "", err
 	}
-
-	// A bare code was pasted. There is no state to check, so say so rather
-	// than implying a verification happened.
-	if strings.Contains(pasted, "code=") {
-		return "", fmt.Errorf("could not parse that URL; paste the whole address bar contents")
+	if !stateVerified {
+		fmt.Println("note: no state was present, so the state parameter could not be verified")
 	}
-	fmt.Println("note: a bare code was pasted, so the state parameter could not be verified")
-	return pasted, nil
+	return code, nil
 }
 
 // loginClaude runs the Claude flow. Claude shows the code on its own page
@@ -189,12 +183,7 @@ func loginClaude(ctx context.Context) (model.CredentialSet, error) {
 	if err != nil {
 		return nil, err
 	}
-	// Be forgiving if a whole callback URL gets pasted instead of just the code.
-	if u, perr := url.Parse(pasted); perr == nil && u.Query().Get("code") != "" {
-		pasted = u.Query().Get("code")
-	}
-
-	code, gotState := authflow.ParsePastedClaudeCode(pasted, state)
+	code, gotState := authflow.ClaudeCodeFromPaste(pasted, state)
 	tokens, err := authflow.ClaudeExchange(ctx, code, gotState, verifier)
 	if err != nil {
 		return nil, err

@@ -1,0 +1,49 @@
+{{define "settings.html"}}{{template "head" "会话采集"}}
+<body>
+<div class="app">
+{{template "nav" .}}
+<main class="sheet">
+  <header class="pagehead"><h1>会话采集</h1></header>
+  {{template "notices" .}}
+
+  {{with .Policy}}
+  <h2>同步间隔</h2>
+  <form method="post" action="/settings/interval" class="form">
+    <input type="hidden" name="csrf" value="{{$.CSRF}}">
+    <label>分钟<input name="minutes" type="number" min="1" value="{{.SyncIntervalMinutes}}" required></label>
+    <button type="submit">保存</button>
+  </form>
+  <p class="hint">agent 每隔这么久拉一次策略并上报状态。</p>
+
+  <h2>采集开关</h2>
+  <p>当前：{{if .CollectEnabled}}<span class="tag tag-ok">采集中</span>{{else}}<span class="tag tag-warn">未开启</span>{{end}}
+    采集覆盖机器上的所有用户，各自归档。</p>
+  <form method="post" action="/settings/collect" class="form">
+    <input type="hidden" name="csrf" value="{{$.CSRF}}">
+    <input type="hidden" name="enabled" value="{{if .CollectEnabled}}0{{else}}1{{end}}">
+    <label>起始日期<input name="since" placeholder="YYYY-MM-DD" value="{{.CollectSince}}"></label>
+    <label>静默秒数<input name="quiet" type="number" min="0" value="{{if .CollectQuietSeconds}}{{.CollectQuietSeconds}}{{end}}"></label>
+    <button type="submit"{{if .CollectEnabled}} class="danger"{{end}}>
+      {{if .CollectEnabled}}关闭采集{{else}}开启采集{{end}}
+    </button>
+  </form>
+  {{end}}
+
+  {{if .Stats}}
+  <h2>已采集</h2>
+  <div class="panel scroll">
+  <table>
+    <thead><tr><th>员工</th><th>CODEX</th><th>CLAUDE</th><th>合计</th></tr></thead>
+    <tbody>
+    {{range .Stats}}
+      <tr><td class="id">{{.User}}</td><td class="num">{{.Codex}}</td>
+        <td class="num">{{.Claude}}</td><td class="num">{{.Total}}</td></tr>
+    {{end}}
+    </tbody>
+  </table>
+  </div>
+  {{end}}
+</main>
+</div>
+</body>
+</html>{{end}}

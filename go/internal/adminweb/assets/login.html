@@ -1,0 +1,19 @@
+{{define "login.html"}}{{template "head" "登录"}}
+<body class="gate">
+<main class="card">
+  <h1>AI 环境管理</h1>
+  <p class="lede">用 OSS AccessKey 登录。凭证只保存在本次会话的内存中，不写入磁盘。</p>
+  {{if .Error}}<p class="note note-err">{{.Error}}</p>{{end}}
+  <form method="post" action="/login" autocomplete="off">
+    {{if .Fixed}}{{/* Baked into this build; nothing here for an operator to
+    decide, and the sign-in page is unauthenticated. */}}{{else}}
+    <label>Endpoint<input name="endpoint" required value="{{.Endpoint}}"></label>
+    <label>Bucket<input name="bucket" required value="{{.Bucket}}"></label>
+    {{end}}
+    <label>AccessKey ID<input name="accessKeyId" required autocomplete="off" autofocus></label>
+    <label>AccessKey Secret<input name="accessKeySecret" type="password" required autocomplete="off"></label>
+    <button type="submit">登录</button>
+  </form>
+</main>
+</body>
+</html>{{end}}
