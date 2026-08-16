@@ -10,12 +10,15 @@
 {{define "nav"}}
 <header>
   <nav>
+    {{/* Same order and wording as the TUI menu (cmd/admin/tui.go), so someone
+    moving over from the terminal finds things where they expect. */}}
     <a href="/machines"{{if eq .Nav "machines"}} class="active"{{end}}>机器</a>
-    <a href="/users"{{if eq .Nav "users"}} class="active"{{end}}>用户</a>
-    <a href="/sites"{{if eq .Nav "sites"}} class="active"{{end}}>网站拦截</a>
-    <a href="/rollout"{{if eq .Nav "rollout"}} class="active"{{end}}>发布</a>
-    <a href="/files"{{if eq .Nav "files"}} class="active"{{end}}>文件</a>
-    <a href="/settings"{{if eq .Nav "settings"}} class="active"{{end}}>设置</a>
+    <a href="/users"{{if eq .Nav "users"}} class="active"{{end}}>员工</a>
+    <a href="/employee-login"{{if eq .Nav "employee-login"}} class="active"{{end}}>代员工登录</a>
+    <a href="/sites"{{if eq .Nav "sites"}} class="active"{{end}}>封禁策略</a>
+    <a href="/settings"{{if eq .Nav "settings"}} class="active"{{end}}>会话采集</a>
+    <a href="/files"{{if eq .Nav "files"}} class="active"{{end}}>文件传输</a>
+    <a href="/rollout"{{if eq .Nav "rollout"}} class="active"{{end}}>发布更新</a>
     <a href="/policy"{{if eq .Nav "policy"}} class="active"{{end}}>策略总览</a>
   </nav>
   <span class="muted">{{.Bucket}}</span>

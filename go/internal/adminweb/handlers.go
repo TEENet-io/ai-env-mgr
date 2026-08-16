@@ -311,7 +311,7 @@ func (s *Server) handleRollout(w http.ResponseWriter, r *http.Request, sess *ses
 }
 
 func (s *Server) handleEmployeeLogin(w http.ResponseWriter, r *http.Request, sess *session) {
-	data := newPage(sess, r, "users")
+	data := newPage(sess, r, "employee-login")
 	if us, err := sess.mgr.LoadUsers(); err == nil {
 		data.Users = us.Users
 	}
