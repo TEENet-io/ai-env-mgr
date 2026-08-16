@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"os"
 	"strconv"
 	"strings"
 	"time"
@@ -34,22 +33,18 @@ func confirmMatches(r *http.Request, field, want string) error {
 	return nil
 }
 
-// releaseToken picks the credential for fetching a private release asset.
+// releaseToken reads the credential for fetching a private release asset from
+// the form, and from nowhere else.
 //
-// A token typed into the form wins; otherwise GITHUB_TOKEN from the process
-// environment is used, matching what the CLI has always done so the two are
-// not configured differently.
-//
-// The environment is the right home for it and the binary is not: baking a
-// token in would put the one secret at rest on a public-facing host, which is
-// exactly what this console avoids by keeping OSS credentials in session
-// memory. Give it read-only access to the one repository, so a leak costs a
-// source read and nothing else.
+// The CLI accepts GITHUB_TOKEN from its environment, which suits a tool run on
+// the administrator's own machine. This console is reachable from the internet
+// and deliberately holds nothing at rest -- the OSS AccessKey lives in session
+// memory for exactly that reason -- so a token parked in its environment would
+// be the one secret on that disk, and would quietly turn "an administrator
+// entered this" into "the server had it all along". Typed per publish, it
+// exists for one request and is gone.
 func releaseToken(r *http.Request) string {
-	if t := formValue(r, "token"); t != "" {
-		return t
-	}
-	return os.Getenv("GITHUB_TOKEN")
+	return formValue(r, "token")
 }
 
 // payload returns the bytes to publish: either an upload, or a download the

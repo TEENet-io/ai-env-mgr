@@ -84,23 +84,19 @@ func TestConfirmMatches(t *testing.T) {
 	}
 }
 
-// The CLI has always read GITHUB_TOKEN; the console asked for it every time.
-// Same tool, same configuration.
-func TestReleaseTokenFallsBackToTheEnvironment(t *testing.T) {
+// The console must not pick a token up from its environment. It is reachable
+// from the internet and keeps nothing at rest, so a token sitting there would
+// silently replace "an administrator entered this" with "the server had it".
+func TestReleaseTokenComesOnlyFromTheForm(t *testing.T) {
 	t.Setenv("GITHUB_TOKEN", "from-env")
 
 	typed := httptest_NewPostForm(url.Values{"token": {"typed-in"}})
 	if got := releaseToken(typed); got != "typed-in" {
-		t.Fatalf("a typed token was overridden: %q", got)
+		t.Fatalf("the typed token was not used: %q", got)
 	}
 
 	blank := httptest_NewPostForm(url.Values{})
-	if got := releaseToken(blank); got != "from-env" {
-		t.Fatalf("the environment was not consulted: %q", got)
-	}
-
-	t.Setenv("GITHUB_TOKEN", "")
 	if got := releaseToken(blank); got != "" {
-		t.Fatalf("a token appeared from nowhere: %q", got)
+		t.Fatalf("a token came from the environment: %q", got)
 	}
 }
