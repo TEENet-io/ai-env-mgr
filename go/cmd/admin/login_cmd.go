@@ -153,21 +153,28 @@ func readPasted() (string, error) {
 // the administrator drives a fleet of cloud desktops from their own laptop.
 // A listener would also collide with Codex itself, which uses that port.
 func codeFromCallback(pasted, wantState string) (string, error) {
+	// An empty wantState would compare equal to an absent one and let the
+	// check pass, so refuse rather than match.
+	if wantState == "" {
+		return "", fmt.Errorf("this login is missing its state; start again")
+	}
 	if u, err := url.Parse(pasted); err == nil && u.Query().Get("code") != "" {
-		q := u.Query()
-		if got := q.Get("state"); got != "" && got != wantState {
+		// The state must match, and a callback carrying none does not.
+		// Letting an absent state through would accept a code this login
+		// never asked for -- paste a crafted URL and somebody else's tokens
+		// get published as the employee's credentials. PKCE already makes
+		// that hard, since a code issued for another challenge will not
+		// exchange against our verifier; this is the check that says so.
+		if u.Query().Get("state") != wantState {
 			return "", fmt.Errorf("that callback belongs to a different login attempt (state mismatch); start again")
 		}
-		return q.Get("code"), nil
+		return u.Query().Get("code"), nil
 	}
 
-	// A bare code was pasted. There is no state to check, so say so rather
-	// than implying a verification happened.
 	if strings.Contains(pasted, "code=") {
 		return "", fmt.Errorf("could not parse that URL; paste the whole address bar contents")
 	}
-	fmt.Println("note: a bare code was pasted, so the state parameter could not be verified")
-	return pasted, nil
+	return "", fmt.Errorf("paste the whole callback URL, not just the code -- the state parameter in it is what ties the code to this login")
 }
 
 // loginClaude runs the Claude flow. Claude shows the code on its own page

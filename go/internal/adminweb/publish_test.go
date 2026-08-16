@@ -84,17 +84,52 @@ func TestConfirmMatches(t *testing.T) {
 	}
 }
 
-// A bare code cannot be checked against the state that ties it to this
-// session's flow, so it must be refused rather than quietly accepted.
-func TestCodeFromCallbackRequiresState(t *testing.T) {
-	if _, err := codeFromCallback("abc123", "st"); err == nil {
-		t.Fatal("a bare code was accepted with no state to verify")
+// Nothing ties a code to this session's flow except the state, so every way of
+// arriving without a matching one has to be refused. A callback that simply
+// omits state is the dangerous case: it looks well-formed, and an earlier
+// version let it through.
+func TestCodexCallbackRequiresMatchingState(t *testing.T) {
+	const cb = "http://localhost:1455/auth/callback?"
+	for _, bad := range []struct{ name, pasted string }{
+		{"no state at all", cb + "code=attacker"},
+		{"empty state", cb + "code=attacker&state="},
+		{"someone else's state", cb + "code=attacker&state=other"},
+		{"a bare code", "attackercode"},
+	} {
+		if _, err := codexCodeFromCallback(bad.pasted, "st"); err == nil {
+			t.Fatalf("accepted a callback with %s", bad.name)
+		}
 	}
-	if _, err := codeFromCallback("http://localhost:1455/auth/callback?code=c&state=other", "st"); err == nil {
-		t.Fatal("a callback from a different flow was accepted")
-	}
-	got, err := codeFromCallback("http://localhost:1455/auth/callback?code=goodcode&state=st", "st")
+	got, err := codexCodeFromCallback(cb+"code=goodcode&state=st", "st")
 	if err != nil || got != "goodcode" {
 		t.Fatalf("a matching callback failed: %q %v", got, err)
+	}
+	// An empty expected state must never compare equal to an absent one.
+	if _, err := codexCodeFromCallback(cb+"code=c", ""); err == nil {
+		t.Fatal("an empty expected state matched an absent one")
+	}
+}
+
+// Claude shows "code#state" rather than redirecting, so it needs its own
+// parsing -- feeding it the callback parser rejected every valid sign-in.
+func TestClaudePasteRequiresMatchingState(t *testing.T) {
+	got, err := claudeCodeFromPaste("goodcode#st", "st")
+	if err != nil || got != "goodcode" {
+		t.Fatalf("the value Claude displays was rejected: %q %v", got, err)
+	}
+	for _, bad := range []string{"goodcode", "goodcode#other", ""} {
+		if _, err := claudeCodeFromPaste(bad, "st"); err == nil {
+			t.Fatalf("accepted %q", bad)
+		}
+	}
+	// A pasted URL is tolerated, but still only with a matching state.
+	if _, err := claudeCodeFromPaste("https://claude.ai/cb?code=c&state=st", "st"); err != nil {
+		t.Fatalf("a pasted callback URL was rejected: %v", err)
+	}
+	if _, err := claudeCodeFromPaste("https://claude.ai/cb?code=c", "st"); err == nil {
+		t.Fatal("accepted a pasted URL with no state")
+	}
+	if _, err := claudeCodeFromPaste("c#", ""); err == nil {
+		t.Fatal("an empty expected state matched an absent one")
 	}
 }

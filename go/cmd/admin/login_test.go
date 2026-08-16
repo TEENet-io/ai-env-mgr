@@ -3,8 +3,9 @@ package main
 import "testing"
 
 // The administrator pastes whatever the browser left in the address bar. That
-// is usually the full callback URL, sometimes just the code, and occasionally
-// a callback from an abandoned earlier attempt.
+// is usually the full callback URL, and occasionally a callback from an
+// abandoned earlier attempt. Anything without a matching state is refused:
+// the state is the only thing tying a pasted code to this login.
 func TestCodeFromCallback(t *testing.T) {
 	const state = "abc123state"
 
@@ -30,13 +31,26 @@ func TestCodeFromCallback(t *testing.T) {
 		}
 	})
 
-	t.Run("bare code", func(t *testing.T) {
-		got, err := codeFromCallback("THECODE", state)
-		if err != nil {
-			t.Fatal(err)
+	// A bare code carries no state, so nothing says it came from this login
+	// rather than from a URL somebody talked the operator into pasting. The
+	// exchange would likely fail on the PKCE verifier anyway; refusing here
+	// says why, and does not depend on that.
+	t.Run("bare code is refused", func(t *testing.T) {
+		if _, err := codeFromCallback("THECODE", state); err == nil {
+			t.Fatal("a bare code was accepted with no state to verify")
 		}
-		if got != "THECODE" {
-			t.Errorf("code = %q, want THECODE", got)
+	})
+
+	t.Run("callback with no state is refused", func(t *testing.T) {
+		if _, err := codeFromCallback("http://localhost:1455/auth/callback?code=THECODE", state); err == nil {
+			t.Fatal("a callback carrying no state was accepted")
+		}
+	})
+
+	// An empty expected state must not compare equal to an absent one.
+	t.Run("empty expected state is refused", func(t *testing.T) {
+		if _, err := codeFromCallback("http://localhost:1455/auth/callback?code=THECODE", ""); err == nil {
+			t.Fatal("an empty expected state matched an absent one")
 		}
 	})
 
