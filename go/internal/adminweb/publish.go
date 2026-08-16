@@ -47,13 +47,19 @@ func releaseToken(r *http.Request) string {
 	return formValue(r, "token")
 }
 
-// payload returns the bytes to publish: either an upload, or a download the
-// server performs itself.
-func (s *Server) payload(r *http.Request) ([]byte, error) {
+// payloadSource validates the request now and returns a closure that produces
+// the bytes later.
+//
+// The split matters: a browser upload lives in the request body, which is torn
+// down when the handler returns, so it has to be read here. A URL is fetched
+// by the background job instead, which is the whole point -- that is the part
+// that takes minutes.
+func (s *Server) payloadSource(r *http.Request) (func() ([]byte, error), error) {
 	if url := formValue(r, "url"); url != "" {
-		// Same helper the CLI uses. The token is used for this request and
-		// then dropped; it is never stored.
-		return downloadFromURL(url, releaseToken(r))
+		// The token is used for that one fetch and then dropped; it is never
+		// stored.
+		token := releaseToken(r)
+		return func() ([]byte, error) { return downloadFromURL(url, token) }, nil
 	}
 	f, hdr, err := r.FormFile("file")
 	if err != nil {
@@ -64,7 +70,11 @@ func (s *Server) payload(r *http.Request) ([]byte, error) {
 		return nil, fmt.Errorf("that file is %d MB; uploads are capped at %d MB, publish it by URL instead",
 			hdr.Size>>20, maxUploadBytes>>20)
 	}
-	return io.ReadAll(io.LimitReader(f, maxUploadBytes+1))
+	data, err := io.ReadAll(io.LimitReader(f, maxUploadBytes+1))
+	if err != nil {
+		return nil, err
+	}
+	return func() ([]byte, error) { return data, nil }, nil
 }
 
 // parseUpload accepts a multipart form, keeping most of the body on disk
@@ -86,17 +96,28 @@ func (s *Server) actionAgentPublish(sess *session, r *http.Request) error {
 	if err := confirmMatches(r, "confirm", version); err != nil {
 		return err
 	}
-	data, err := s.payload(r)
+	// Read the upload before returning: the request body is gone once this
+	// handler does, so it cannot be deferred to the background job.
+	fetch, err := s.payloadSource(r)
 	if err != nil {
 		return err
 	}
-	sum, err := sess.mgr.PublishAgentUpdate(version, data)
-	if err != nil {
-		return err
-	}
-	// Worth a line in the log: this is the action that reaches every machine.
-	logAudit(s.clientKey(r), "published agent %s (%d bytes, sha256 %s)", version, len(data), sum)
-	return nil
+	mgr, client := sess.mgr, s.clientKey(r)
+	return s.jobs.start("agent", version, func(setStep func(string)) error {
+		setStep("获取二进制")
+		data, err := fetch()
+		if err != nil {
+			return err
+		}
+		setStep(fmt.Sprintf("上传 %d MB 到 OSS", len(data)>>20))
+		sum, err := mgr.PublishAgentUpdate(version, data)
+		if err != nil {
+			return err
+		}
+		// Worth a line in the log: this is what reaches every machine.
+		logAudit(client, "published agent %s (%d bytes, sha256 %s)", version, len(data), sum)
+		return nil
+	})
 }
 
 func (s *Server) actionAgentCancel(sess *session, r *http.Request) error {
@@ -125,16 +146,25 @@ func (s *Server) actionCodexPublish(sess *session, r *http.Request) error {
 		}
 		rollout = n
 	}
-	data, err := s.payload(r)
+	fetch, err := s.payloadSource(r)
 	if err != nil {
 		return err
 	}
-	sum, err := sess.mgr.PublishCodexUpdate(version, data, rollout)
-	if err != nil {
-		return err
-	}
-	logAudit(s.clientKey(r), "published Codex %s to %d%% (%d bytes, sha256 %s)", version, rollout, len(data), sum)
-	return nil
+	mgr, client := sess.mgr, s.clientKey(r)
+	return s.jobs.start("codex", version, func(setStep func(string)) error {
+		setStep("下载安装包")
+		data, err := fetch()
+		if err != nil {
+			return err
+		}
+		setStep(fmt.Sprintf("上传 %d MB 到 OSS", len(data)>>20))
+		sum, err := mgr.PublishCodexUpdate(version, data, rollout)
+		if err != nil {
+			return err
+		}
+		logAudit(client, "published Codex %s to %d%% (%d bytes, sha256 %s)", version, rollout, len(data), sum)
+		return nil
+	})
 }
 
 func (s *Server) actionCodexRollout(sess *session, r *http.Request) error {

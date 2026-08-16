@@ -1,10 +1,26 @@
 {{define "rollout.html"}}{{template "head" "发布更新"}}
+{{template "refresh-while-running" .}}
 <body>
 <div class="app">
 {{template "nav" .}}
 <main class="sheet">
   <header class="pagehead"><h1>发布更新</h1></header>
   {{template "notices" .}}
+
+  {{with .Job}}
+  <section class="panel job">
+    {{if .Running}}
+      <h3>正在发布 {{.Kind}} <span class="mono">{{.Version}}</span></h3>
+      <p>{{.Step}}——已用时 {{.Elapsed}}。可以离开本页，发布在服务器上继续。</p>
+    {{else if eq (printf "%s" .State) "failed"}}
+      <h3 class="bad">发布失败：{{.Kind}} <span class="mono">{{.Version}}</span></h3>
+      <p class="bad">{{.Err}}</p>
+    {{else}}
+      <h3 class="ok">发布完成：{{.Kind}} <span class="mono">{{.Version}}</span></h3>
+      <p class="muted">耗时 {{.Elapsed}}。机器在下次同步时取到。</p>
+    {{end}}
+  </section>
+  {{end}}
 
   <div class="caution">
     发布会让<strong>每一台机器</strong>下载并执行一个二进制。构建通过不等于可用，

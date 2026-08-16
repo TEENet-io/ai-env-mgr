@@ -52,6 +52,7 @@ type pageData struct {
 	Machine  string // the machine a log belongs to
 	Log      string
 	Notes    *admincore.MachineState // that machine's own errors and warnings
+	Job      *job                    // a publish in flight, or the last one
 	Files    []admincore.StagedFile
 	Link     string // a freshly minted download link
 	LinkName string
@@ -312,6 +313,7 @@ func (s *Server) handleFiles(w http.ResponseWriter, r *http.Request, sess *sessi
 // handleRollout is the page for the two actions that reach every machine.
 func (s *Server) handleRollout(w http.ResponseWriter, r *http.Request, sess *session) {
 	data := newPage(sess, r, "rollout")
+	data.Job = s.jobs.snapshot()
 	p, err := sess.mgr.CurrentPolicy()
 	if err != nil {
 		data.Error = "could not read the policy"

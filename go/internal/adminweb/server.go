@@ -72,6 +72,9 @@ type Server struct {
 	// token so one console session cannot finish another's flow.
 	pendingMu sync.Mutex
 	pending   map[string]*pendingLogin
+
+	// jobs holds the one publish that may be in flight; see job.go.
+	jobs jobRunner
 }
 
 // New validates the options and builds the server.

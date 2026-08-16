@@ -425,3 +425,11 @@ ol li { margin: 7px 0; }
 @media (prefers-reduced-motion: reduce) {
   * { transition: none !important; animation: none !important; }
 }
+
+/* A publish in flight. It reports on itself; the page reloads while it runs. */
+.job { padding: 14px 16px; margin-bottom: 16px; }
+.job h3 { margin: 0 0 4px; font-size: 14px; font-weight: 650; }
+.job h3.ok { color: var(--ok); }
+.job h3.bad { color: var(--bad); }
+.job p { margin: 0; font-size: 13px; color: var(--ink-soft); }
+.job p.bad { color: var(--bad); }
