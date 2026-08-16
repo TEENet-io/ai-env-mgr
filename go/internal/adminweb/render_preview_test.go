@@ -88,6 +88,9 @@ func TestRenderPreview(t *testing.T) {
 		LinkName:    "agent-1.2.4.exe",
 		AuthURL:     "https://auth.openai.com/oauth/authorize?client_id=app_EMoamEEZ73f0CkXaXp7hrann&code_challenge=8q3n…&state=7f2a9c",
 		PendingUser: "peter", PendingTool: "codex",
+		Job: &job{Kind: "codex", Version: "26.810.52044-b1", State: jobRunning,
+			Step: "下载安装包", Started: time.Now().Add(-95 * time.Second),
+			Done: 412 << 20, Total: 700 << 20},
 		Fixed: true,
 	}
 	for _, name := range []string{

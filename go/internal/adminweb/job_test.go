@@ -20,7 +20,7 @@ func TestPublishReturnsWithoutWaiting(t *testing.T) {
 	started := make(chan struct{})
 	var r jobRunner
 	go func() {
-		_ = r.start("test", "1.0.0", func(func(string)) error {
+		_ = r.start("test", "1.0.0", func(func(string), func(done, total int64)) error {
 			close(started)
 			<-release // hold the job open
 			return nil
@@ -52,7 +52,7 @@ func TestOnlyOnePublishAtATime(t *testing.T) {
 	var r jobRunner
 	release := make(chan struct{})
 	started := make(chan struct{})
-	if err := r.start("codex", "1.0.0", func(func(string)) error {
+	if err := r.start("codex", "1.0.0", func(func(string), func(done, total int64)) error {
 		close(started)
 		<-release
 		return nil
@@ -61,7 +61,7 @@ func TestOnlyOnePublishAtATime(t *testing.T) {
 	}
 	<-started
 
-	if err := r.start("codex", "2.0.0", func(func(string)) error { return nil }); err == nil {
+	if err := r.start("codex", "2.0.0", func(func(string), func(done, total int64)) error { return nil }); err == nil {
 		t.Fatal("a second publish started while one was running")
 	}
 	close(release)
@@ -74,7 +74,7 @@ func TestOnlyOnePublishAtATime(t *testing.T) {
 		}
 		time.Sleep(5 * time.Millisecond)
 	}
-	if err := r.start("codex", "2.0.0", func(func(string)) error { return nil }); err != nil {
+	if err := r.start("codex", "2.0.0", func(func(string), func(done, total int64)) error { return nil }); err != nil {
 		t.Fatalf("a publish was refused after the previous one finished: %v", err)
 	}
 }
@@ -84,7 +84,7 @@ func TestOnlyOnePublishAtATime(t *testing.T) {
 func TestFailureIsKeptForThePage(t *testing.T) {
 	var r jobRunner
 	done := make(chan struct{})
-	if err := r.start("agent", "1.0.0", func(func(string)) error {
+	if err := r.start("agent", "1.0.0", func(func(string), func(done, total int64)) error {
 		defer close(done)
 		return errors.New("the download returned HTTP 404")
 	}); err != nil {
@@ -114,7 +114,7 @@ func TestJobProgressIsRaceFree(t *testing.T) {
 	var r jobRunner
 	release := make(chan struct{})
 	started := make(chan struct{})
-	_ = r.start("codex", "1.0.0", func(setStep func(string)) error {
+	_ = r.start("codex", "1.0.0", func(setStep func(string), _ func(done, total int64)) error {
 		close(started)
 		for i := 0; i < 200; i++ {
 			setStep("下载中")

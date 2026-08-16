@@ -17,7 +17,7 @@ import (
 //
 // The policy is global, so this rolls out to every machine at once. Validate
 // the binary on one machine first; there is no automatic rollback.
-func (m *Manager) PublishAgentUpdate(version string, binary []byte) (string, error) {
+func (m *Manager) PublishAgentUpdate(version string, binary []byte, onProgress func(done, total int64)) (string, error) {
 	if version == "" {
 		return "", fmt.Errorf("a version is required")
 	}

@@ -32,6 +32,39 @@ type job struct {
 	Err     string
 	Started time.Time
 	Ended   time.Time
+
+	// Done and Total size the bar on the page. Total is 0 when the current
+	// step cannot say how much there is -- a server that sent no
+	// Content-Length -- and the page then shows an indeterminate bar rather
+	// than a wrong one.
+	Done  int64
+	Total int64
+}
+
+// Percent is how far the current step has got, 0 when it cannot be known.
+func (j *job) Percent() int {
+	if j.Total <= 0 || j.Done <= 0 {
+		return 0
+	}
+	if j.Done >= j.Total {
+		return 100
+	}
+	return int(j.Done * 100 / j.Total)
+}
+
+// Measured reports whether there is a total to measure against, which decides
+// whether the page draws a real bar or an indeterminate one.
+func (j *job) Measured() bool { return j.Total > 0 }
+
+// Sized renders the transfer for humans: "123 / 700 MB".
+func (j *job) Sized() string {
+	if j.Total <= 0 {
+		if j.Done <= 0 {
+			return ""
+		}
+		return fmt.Sprintf("%d MB", j.Done>>20)
+	}
+	return fmt.Sprintf("%d / %d MB", j.Done>>20, j.Total>>20)
 }
 
 func (j *job) Running() bool { return j.State == jobRunning }
@@ -63,7 +96,7 @@ type jobRunner struct {
 var errJobBusy = fmt.Errorf("上一个发布还在进行中，等它结束再发下一个")
 
 // start runs fn in the background, refusing if something is already running.
-func (r *jobRunner) start(kind, version string, fn func(setStep func(string)) error) error {
+func (r *jobRunner) start(kind, version string, fn func(setStep func(string), setProgress func(done, total int64)) error) error {
 	r.mu.Lock()
 	if r.current != nil && r.current.Running() {
 		r.mu.Unlock()
@@ -75,11 +108,18 @@ func (r *jobRunner) start(kind, version string, fn func(setStep func(string)) er
 
 	setStep := func(step string) {
 		r.mu.Lock()
-		j.Step = step
+		// Each step measures its own transfer, so the bar restarts with it
+		// rather than carrying the previous step's numbers.
+		j.Step, j.Done, j.Total = step, 0, 0
+		r.mu.Unlock()
+	}
+	setProgress := func(done, total int64) {
+		r.mu.Lock()
+		j.Done, j.Total = done, total
 		r.mu.Unlock()
 	}
 	go func() {
-		err := fn(setStep)
+		err := fn(setStep, setProgress)
 		r.mu.Lock()
 		defer r.mu.Unlock()
 		j.Ended = time.Now()

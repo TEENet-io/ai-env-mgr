@@ -45,9 +45,9 @@ rows below use. Drawn only when there are machines to summarise. */}}
 {{with .Fleet}}
 <section class="fleet">
   <div class="bar" role="img" aria-label="机队状态:正常 {{.OK}}，待处理 {{.Warn}}，异常 {{.Bad}}">
-    {{if .OK}}<span class="s-ok" style="width:{{.PctOK}}%"></span>{{end}}
-    {{if .Warn}}<span class="s-warn" style="width:{{.PctWarn}}%"></span>{{end}}
-    {{if .Bad}}<span class="s-bad" style="width:{{.PctBad}}%"></span>{{end}}
+    {{if .OK}}<span class="s-ok w{{.PctOK}}"></span>{{end}}
+    {{if .Warn}}<span class="s-warn w{{.PctWarn}}"></span>{{end}}
+    {{if .Bad}}<span class="s-bad w{{.PctBad}}"></span>{{end}}
   </div>
   <div class="legend">
     <span><b>{{.Total}}</b>台机器</span>

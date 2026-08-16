@@ -11,7 +11,18 @@
   <section class="panel job">
     {{if .Running}}
       <h3>正在发布 {{.Kind}} <span class="mono">{{.Version}}</span></h3>
+      {{/* A native <progress> carries its value in attributes, so the bar needs
+           no inline style and the CSP stays without 'unsafe-inline'. Omitting
+           value renders the indeterminate bar, which is the honest picture when
+           the server sent no Content-Length. */}}
+      {{if .Measured}}
+      <progress value="{{.Done}}" max="{{.Total}}">{{.Percent}}%</progress>
+      <p>{{.Step}} <span class="mono">{{.Percent}}%</span>
+        <span class="muted">{{.Sized}}</span>——已用时 {{.Elapsed}}。可以离开本页，发布在服务器上继续。</p>
+      {{else}}
+      <progress></progress>
       <p>{{.Step}}——已用时 {{.Elapsed}}。可以离开本页，发布在服务器上继续。</p>
+      {{end}}
     {{else if eq (printf "%s" .State) "failed"}}
       <h3 class="bad">发布失败：{{.Kind}} <span class="mono">{{.Version}}</span></h3>
       <p class="bad">{{.Err}}</p>

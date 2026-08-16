@@ -28,6 +28,16 @@ import (
 // Client is a thin wrapper around a single OSS bucket.
 type Client struct {
 	bucket *oss.Bucket
+	// signBucket produces presigned URLs, and is the same bucket reached
+	// through the endpoint the rest of the world can use.
+	//
+	// It differs from bucket only when the console runs inside the bucket's own
+	// region and talks to OSS over the internal endpoint. That path is worth
+	// taking -- publishing a 509 MB installer over this host's public egress
+	// measured 163 KB/s, close to an hour, while the internal endpoint does not
+	// touch that limit at all -- but an internal host in a download link is
+	// unreachable from anywhere the link would actually be opened.
+	signBucket *oss.Bucket
 }
 
 // withHTTPS makes a scheme-less endpoint use TLS.
@@ -48,6 +58,15 @@ func withHTTPS(endpoint string) string {
 // restricted key; the admin machine passes the public endpoint and a
 // read-write key.
 func New(endpoint, bucket, accessKeyID, accessKeySecret string) (*Client, error) {
+	return NewSplit(endpoint, "", bucket, accessKeyID, accessKeySecret)
+}
+
+// NewSplit builds a client that moves data over one endpoint and signs links
+// with another.
+//
+// publicEndpoint may be empty, which means "sign with the same endpoint you
+// transfer over" and is what everything except the in-region console wants.
+func NewSplit(endpoint, publicEndpoint, bucket, accessKeyID, accessKeySecret string) (*Client, error) {
 	switch {
 	case endpoint == "":
 		return nil, fmt.Errorf("endpoint is required")
@@ -66,7 +85,17 @@ func New(endpoint, bucket, accessKeyID, accessKeySecret string) (*Client, error)
 	if err != nil {
 		return nil, fmt.Errorf("open bucket %q: %w", bucket, err)
 	}
-	return &Client{bucket: b}, nil
+	signBucket := b
+	if publicEndpoint != "" && publicEndpoint != endpoint {
+		signCli, err := oss.New(withHTTPS(publicEndpoint), accessKeyID, accessKeySecret)
+		if err != nil {
+			return nil, fmt.Errorf("create oss signing client: %w", err)
+		}
+		if signBucket, err = signCli.Bucket(bucket); err != nil {
+			return nil, fmt.Errorf("open bucket %q for signing: %w", bucket, err)
+		}
+	}
+	return &Client{bucket: b, signBucket: signBucket}, nil
 }
 
 // The two top-level directories this project uses inside the bucket.
@@ -287,6 +316,34 @@ func (c *Client) Put(key string, data []byte) error {
 	return nil
 }
 
+// PutProgress is Put, reporting bytes as they go up.
+//
+// Publishing an installer moves hundreds of megabytes, and the operator is
+// watching a page: without this, the only sign of life is a rising elapsed
+// time, which looks identical whether the transfer is slow or wedged.
+func (c *Client) PutProgress(key string, data []byte, onProgress func(done, total int64)) error {
+	if onProgress == nil {
+		return c.Put(key, data)
+	}
+	listener := &putProgress{report: onProgress}
+	if err := c.bucket.PutObject(key, bytes.NewReader(data), oss.Progress(listener)); err != nil {
+		return fmt.Errorf("put %q: %w", key, err)
+	}
+	return nil
+}
+
+// putProgress adapts the SDK's listener to a plain callback.
+type putProgress struct {
+	report func(done, total int64)
+}
+
+func (p *putProgress) ProgressChanged(e *oss.ProgressEvent) {
+	switch e.EventType {
+	case oss.TransferStartedEvent, oss.TransferDataEvent, oss.TransferCompletedEvent:
+		p.report(e.ConsumedBytes, e.TotalBytes)
+	}
+}
+
 // Head reports an object's ETag and whether it exists at all.
 func (c *Client) Head(key string) (string, bool, error) {
 	exists, err := c.bucket.IsObjectExist(key)
@@ -422,7 +479,7 @@ func (c *Client) SignedURL(key string, ttl time.Duration) (string, error) {
 	if secs <= 0 {
 		return "", fmt.Errorf("expiry must be positive, got %s", ttl)
 	}
-	url, err := c.bucket.SignURL(key, oss.HTTPGet, secs)
+	url, err := c.signBucket.SignURL(key, oss.HTTPGet, secs)
 	if err != nil {
 		return "", fmt.Errorf("sign url for %q: %w", key, err)
 	}

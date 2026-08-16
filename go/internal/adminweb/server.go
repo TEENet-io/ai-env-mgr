@@ -51,6 +51,19 @@ type Options struct {
 	// which depend on the browser's scheme rather than this hop's.
 	BehindProxy bool
 
+	// DataEndpoint moves bytes over a different route from the one links are
+	// signed with.
+	//
+	// Set it to the region's internal OSS endpoint when the console runs on a
+	// host inside that region. Publishing a 509 MB installer over this host's
+	// public egress measured 163 KB/s -- close to an hour -- because it counts
+	// against the instance's internet bandwidth; the internal endpoint does not.
+	// Presigned links keep using Endpoint, since an internal host is
+	// unreachable from wherever such a link is actually opened.
+	//
+	// Empty means "use Endpoint for both", which is right everywhere else.
+	DataEndpoint string
+
 	// ECDRegion is where the cloud desktops live. Not a secret, and no key
 	// belongs here: the lookup uses the credentials the administrator signed
 	// in with, so nothing is stored and nothing ships inside the binary.
@@ -141,7 +154,11 @@ func New(opts Options) (*Server, error) {
 		tpl:      tpl,
 		pending:  make(map[string]*pendingLogin),
 		dialOSS: func(cfg config.Config) (store, error) {
-			return ossclient.New(cfg.Endpoint, cfg.Bucket, cfg.AccessKeyID, cfg.AccessKeySecret)
+			data := cfg.Endpoint
+			if opts.DataEndpoint != "" {
+				data = opts.DataEndpoint
+			}
+			return ossclient.NewSplit(data, cfg.Endpoint, cfg.Bucket, cfg.AccessKeyID, cfg.AccessKeySecret)
 		},
 	}, nil
 }

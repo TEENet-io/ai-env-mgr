@@ -23,6 +23,6 @@ func logAudit(client, format string, args ...any) {
 // Fetching server-side rather than uploading through the browser is the only
 // practical route for the Codex installer: it is ~700 MB, and a CDN in front
 // of the console will usually refuse a body that size long before it arrives.
-func downloadFromURL(url, token string) ([]byte, error) {
-	return ghrelease.Fetch(url, token, 30*time.Minute) // 700 MB over a slow link
+func downloadFromURL(url, token string, onProgress func(done, total int64)) ([]byte, error) {
+	return ghrelease.FetchProgress(url, token, 30*time.Minute, onProgress) // 700 MB over a slow link
 }

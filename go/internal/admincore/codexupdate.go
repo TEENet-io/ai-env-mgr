@@ -28,7 +28,7 @@ import (
 //
 // Past versions are left in place, so rolling back is publishing the previous
 // version again -- no 700 MB re-upload.
-func (m *Manager) PublishCodexUpdate(version string, installer []byte) (string, error) {
+func (m *Manager) PublishCodexUpdate(version string, installer []byte, onProgress func(done, total int64)) (string, error) {
 	if version == "" {
 		return "", fmt.Errorf("a version is required")
 	}
@@ -39,7 +39,7 @@ func (m *Manager) PublishCodexUpdate(version string, installer []byte) (string, 
 	hexsum := hex.EncodeToString(sum[:])
 
 	key := ossclient.CodexInstallerKey(version)
-	if err := m.Store.Put(key, installer); err != nil {
+	if err := putReporting(m.Store, key, installer, onProgress); err != nil {
 		return "", fmt.Errorf("upload Codex installer: %w", err)
 	}
 	p, err := m.CurrentPolicy()

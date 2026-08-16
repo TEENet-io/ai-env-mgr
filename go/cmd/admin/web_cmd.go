@@ -17,6 +17,9 @@ func cmdWeb(args []string) error {
 		Bucket:    built.Bucket,
 		Endpoint:  built.Endpoint,
 		ECDRegion: envOr("AIENVMGR_ECD_REGION", ecdRegion),
+		// Only useful when this host sits in the bucket's own region; empty
+		// everywhere else, which keeps one endpoint for everything.
+		DataEndpoint: os.Getenv("AIENVMGR_OSS_DATA_ENDPOINT"),
 	}
 	for i := 0; i < len(args); i++ {
 		switch args[i] {
@@ -40,6 +43,12 @@ func cmdWeb(args []string) error {
 			i++
 		case "--behind-proxy":
 			opts.BehindProxy = true
+		case "--oss-data-endpoint":
+			if i+1 >= len(args) {
+				return fmt.Errorf("--oss-data-endpoint needs a value")
+			}
+			opts.DataEndpoint = args[i+1]
+			i++
 		case "--idle-timeout":
 			if i+1 >= len(args) {
 				return fmt.Errorf("--idle-timeout needs a value")

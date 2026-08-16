@@ -54,12 +54,14 @@ func releaseToken(r *http.Request) string {
 // down when the handler returns, so it has to be read here. A URL is fetched
 // by the background job instead, which is the whole point -- that is the part
 // that takes minutes.
-func (s *Server) payloadSource(r *http.Request) (func() ([]byte, error), error) {
+func (s *Server) payloadSource(r *http.Request) (func(onProgress func(done, total int64)) ([]byte, error), error) {
 	if url := formValue(r, "url"); url != "" {
 		// The token is used for that one fetch and then dropped; it is never
 		// stored.
 		token := releaseToken(r)
-		return func() ([]byte, error) { return downloadFromURL(url, token) }, nil
+		return func(onProgress func(done, total int64)) ([]byte, error) {
+			return downloadFromURL(url, token, onProgress)
+		}, nil
 	}
 	f, hdr, err := r.FormFile("file")
 	if err != nil {
@@ -74,7 +76,13 @@ func (s *Server) payloadSource(r *http.Request) (func() ([]byte, error), error) 
 	if err != nil {
 		return nil, err
 	}
-	return func() ([]byte, error) { return data, nil }, nil
+	// Already in hand, so the bar for this step is simply complete.
+	return func(onProgress func(done, total int64)) ([]byte, error) {
+		if onProgress != nil {
+			onProgress(int64(len(data)), int64(len(data)))
+		}
+		return data, nil
+	}, nil
 }
 
 // parseUpload accepts a multipart form, keeping most of the body on disk
@@ -103,14 +111,14 @@ func (s *Server) actionAgentPublish(sess *session, r *http.Request) error {
 		return err
 	}
 	mgr, client := sess.mgr, s.clientKey(r)
-	return s.jobs.start("agent", version, func(setStep func(string)) error {
+	return s.jobs.start("agent", version, func(setStep func(string), setProgress func(done, total int64)) error {
 		setStep("获取二进制")
-		data, err := fetch()
+		data, err := fetch(setProgress)
 		if err != nil {
 			return err
 		}
-		setStep(fmt.Sprintf("上传 %d MB 到 OSS", len(data)>>20))
-		sum, err := mgr.PublishAgentUpdate(version, data)
+		setStep("上传到 OSS")
+		sum, err := mgr.PublishAgentUpdate(version, data, setProgress)
 		if err != nil {
 			return err
 		}
@@ -143,14 +151,14 @@ func (s *Server) actionCodexPublish(sess *session, r *http.Request) error {
 		return err
 	}
 	mgr, client := sess.mgr, s.clientKey(r)
-	return s.jobs.start("codex", version, func(setStep func(string)) error {
+	return s.jobs.start("codex", version, func(setStep func(string), setProgress func(done, total int64)) error {
 		setStep("下载安装包")
-		data, err := fetch()
+		data, err := fetch(setProgress)
 		if err != nil {
 			return err
 		}
-		setStep(fmt.Sprintf("上传 %d MB 到 OSS", len(data)>>20))
-		sum, err := mgr.PublishCodexUpdate(version, data)
+		setStep("上传到 OSS")
+		sum, err := mgr.PublishCodexUpdate(version, data, setProgress)
 		if err != nil {
 			return err
 		}

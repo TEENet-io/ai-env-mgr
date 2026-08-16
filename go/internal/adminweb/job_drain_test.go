@@ -13,7 +13,7 @@ import (
 func TestWaitBlocksUntilAPublishFinishes(t *testing.T) {
 	var r jobRunner
 	release := make(chan struct{})
-	if err := r.start("codex", "26.810.52044-b1", func(setStep func(string)) error {
+	if err := r.start("codex", "26.810.52044-b1", func(setStep func(string), _ func(done, total int64)) error {
 		setStep("上传")
 		<-release
 		return nil
@@ -41,7 +41,7 @@ func TestWaitGivesUpAtTheDeadline(t *testing.T) {
 	var r jobRunner
 	release := make(chan struct{})
 	defer close(release)
-	if err := r.start("codex", "1.0.0", func(func(string)) error {
+	if err := r.start("codex", "1.0.0", func(func(string), func(done, total int64)) error {
 		<-release
 		return nil
 	}); err != nil {

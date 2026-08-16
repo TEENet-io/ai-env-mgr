@@ -14,7 +14,7 @@ func TestPublishCodexUpdateUploadsAndSetsPolicy(t *testing.T) {
 	installer := []byte("codex setup 26.810.4967.0+b7")
 	want := sha256.Sum256(installer)
 
-	got, err := m.PublishCodexUpdate("26.810.52044-b1", installer)
+	got, err := m.PublishCodexUpdate("26.810.52044-b1", installer, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -47,10 +47,10 @@ func TestPublishCodexUpdateUploadsAndSetsPolicy(t *testing.T) {
 func TestPublishCodexUpdateKeepsPreviousVersions(t *testing.T) {
 	fs := newFakeStore()
 	m := &Manager{Store: fs}
-	if _, err := m.PublishCodexUpdate("1.0.0", []byte("old")); err != nil {
+	if _, err := m.PublishCodexUpdate("1.0.0", []byte("old"), nil); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := m.PublishCodexUpdate("2.0.0", []byte("new")); err != nil {
+	if _, err := m.PublishCodexUpdate("2.0.0", []byte("new"), nil); err != nil {
 		t.Fatal(err)
 	}
 	if string(fs.objects[ossclient.CodexInstallerKey("1.0.0")]) != "old" {
@@ -68,7 +68,7 @@ func TestPublishCodexUpdateKeepsPreviousVersions(t *testing.T) {
 func TestCancelCodexUpdateClearsTarget(t *testing.T) {
 	fs := newFakeStore()
 	m := &Manager{Store: fs}
-	if _, err := m.PublishCodexUpdate("1.0.0", []byte("bin")); err != nil {
+	if _, err := m.PublishCodexUpdate("1.0.0", []byte("bin"), nil); err != nil {
 		t.Fatal(err)
 	}
 	if err := m.CancelCodexUpdate(); err != nil {
@@ -90,10 +90,10 @@ func TestCancelCodexUpdateClearsTarget(t *testing.T) {
 
 func TestPublishCodexUpdateRejectsBadInput(t *testing.T) {
 	m := &Manager{Store: newFakeStore()}
-	if _, err := m.PublishCodexUpdate("", []byte("bin")); err == nil {
+	if _, err := m.PublishCodexUpdate("", []byte("bin"), nil); err == nil {
 		t.Fatal("empty version was accepted")
 	}
-	if _, err := m.PublishCodexUpdate("1.0.0", nil); err == nil {
+	if _, err := m.PublishCodexUpdate("1.0.0", nil, nil); err == nil {
 		t.Fatal("empty installer was accepted")
 	}
 }

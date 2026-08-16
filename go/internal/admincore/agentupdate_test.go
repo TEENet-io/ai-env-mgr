@@ -14,7 +14,7 @@ func TestPublishAgentUpdateUploadsAndSetsPolicy(t *testing.T) {
 	bin := []byte("new agent binary v1.2.0")
 	want := sha256.Sum256(bin)
 
-	got, err := m.PublishAgentUpdate("1.2.0", bin)
+	got, err := m.PublishAgentUpdate("1.2.0", bin, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -36,7 +36,7 @@ func TestPublishAgentUpdateUploadsAndSetsPolicy(t *testing.T) {
 func TestCancelAgentUpdateClearsTarget(t *testing.T) {
 	fs := newFakeStore()
 	m := &Manager{Store: fs}
-	if _, err := m.PublishAgentUpdate("1.2.0", []byte("bin")); err != nil {
+	if _, err := m.PublishAgentUpdate("1.2.0", []byte("bin"), nil); err != nil {
 		t.Fatal(err)
 	}
 	if err := m.CancelAgentUpdate(); err != nil {
@@ -53,10 +53,10 @@ func TestCancelAgentUpdateClearsTarget(t *testing.T) {
 
 func TestPublishAgentUpdateRejectsEmpty(t *testing.T) {
 	m := &Manager{Store: newFakeStore()}
-	if _, err := m.PublishAgentUpdate("", []byte("bin")); err == nil {
+	if _, err := m.PublishAgentUpdate("", []byte("bin"), nil); err == nil {
 		t.Fatal("empty version should be rejected")
 	}
-	if _, err := m.PublishAgentUpdate("1.0.0", nil); err == nil {
+	if _, err := m.PublishAgentUpdate("1.0.0", nil, nil); err == nil {
 		t.Fatal("empty binary should be rejected")
 	}
 }

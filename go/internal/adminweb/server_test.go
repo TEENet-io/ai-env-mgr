@@ -438,7 +438,7 @@ func TestPublishPageRendersWithoutRolloutControls(t *testing.T) {
 	c := signIn(t, s)
 
 	mgr := &admincore.Manager{Store: store}
-	if _, err := mgr.PublishCodexUpdate("26.810.52044-b1", []byte("installer")); err != nil {
+	if _, err := mgr.PublishCodexUpdate("26.810.52044-b1", []byte("installer"), nil); err != nil {
 		t.Fatal(err)
 	}
 

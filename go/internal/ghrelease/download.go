@@ -7,6 +7,7 @@
 package ghrelease
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -39,6 +40,16 @@ var apiBase = "https://api.github.com"
 // timeout covers the whole transfer: the Codex installer is ~700 MB, so the
 // caller passes something generous.
 func Fetch(url, token string, timeout time.Duration) ([]byte, error) {
+	return FetchProgress(url, token, timeout, nil)
+}
+
+// FetchProgress is Fetch, reporting bytes as they arrive.
+//
+// onProgress is called with what has been read and the total the server
+// declared, which is -1 when it declared none. It exists because the caller is
+// a web page watching a ~700 MB transfer: elapsed seconds alone cannot tell a
+// slow download from a stalled one.
+func FetchProgress(url, token string, timeout time.Duration, onProgress func(done, total int64)) ([]byte, error) {
 	client := &http.Client{Timeout: timeout}
 
 	if m := browserURL.FindStringSubmatch(url); m != nil {
@@ -49,7 +60,7 @@ func Fetch(url, token string, timeout time.Duration) ([]byte, error) {
 		}
 		url = assetURL
 	}
-	return get(client, url, token)
+	return get(client, url, token, onProgress)
 }
 
 // assetAPIURL asks the API for the download URL of one named asset.
@@ -107,7 +118,7 @@ func assetAPIURL(client *http.Client, owner, repo, tag, name, token string) (str
 		tag, name, strings.Join(names, ", "))
 }
 
-func get(client *http.Client, url, token string) ([]byte, error) {
+func get(client *http.Client, url, token string, onProgress func(done, total int64)) ([]byte, error) {
 	if !strings.HasPrefix(url, "https://") && !strings.HasPrefix(url, "http://") {
 		return nil, fmt.Errorf("the URL must start with http:// or https://")
 	}
@@ -137,5 +148,46 @@ func get(client *http.Client, url, token string) ([]byte, error) {
 		return nil, fmt.Errorf("the download returned HTML rather than a file, "+
 			"which usually means an auth wall (Content-Type %q)", ct)
 	}
-	return io.ReadAll(resp.Body)
+	if onProgress == nil {
+		return io.ReadAll(resp.Body)
+	}
+	// Size the buffer from Content-Length when the server gave one, so a
+	// 700 MB asset is not grown by repeated reallocation.
+	var buf bytes.Buffer
+	if resp.ContentLength > 0 {
+		buf.Grow(int(resp.ContentLength))
+	}
+	onProgress(0, resp.ContentLength)
+	if _, err := io.Copy(&buf, &countingReader{
+		r: resp.Body, total: resp.ContentLength, report: onProgress,
+	}); err != nil {
+		return nil, fmt.Errorf("download: %w", err)
+	}
+	return buf.Bytes(), nil
+}
+
+// countingReader reports progress as it is read through.
+//
+// Reports are throttled: a 700 MB transfer is tens of thousands of reads and
+// the receiver takes a lock, which is worth neither the contention nor the
+// wake-ups for updates a page redraws every few seconds anyway.
+type countingReader struct {
+	r        io.Reader
+	total    int64
+	done     int64
+	reported int64
+	report   func(done, total int64)
+}
+
+// progressStep is how much has to move before another report is worth making.
+const progressStep = 4 << 20 // 4 MiB
+
+func (c *countingReader) Read(p []byte) (int, error) {
+	n, err := c.r.Read(p)
+	c.done += int64(n)
+	if c.done-c.reported >= progressStep || (err == io.EOF && c.done != c.reported) {
+		c.reported = c.done
+		c.report(c.done, c.total)
+	}
+	return n, err
 }
