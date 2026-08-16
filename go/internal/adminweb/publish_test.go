@@ -83,3 +83,24 @@ func TestConfirmMatches(t *testing.T) {
 		t.Fatal("a mismatched confirmation passed")
 	}
 }
+
+// The CLI has always read GITHUB_TOKEN; the console asked for it every time.
+// Same tool, same configuration.
+func TestReleaseTokenFallsBackToTheEnvironment(t *testing.T) {
+	t.Setenv("GITHUB_TOKEN", "from-env")
+
+	typed := httptest_NewPostForm(url.Values{"token": {"typed-in"}})
+	if got := releaseToken(typed); got != "typed-in" {
+		t.Fatalf("a typed token was overridden: %q", got)
+	}
+
+	blank := httptest_NewPostForm(url.Values{})
+	if got := releaseToken(blank); got != "from-env" {
+		t.Fatalf("the environment was not consulted: %q", got)
+	}
+
+	t.Setenv("GITHUB_TOKEN", "")
+	if got := releaseToken(blank); got != "" {
+		t.Fatalf("a token appeared from nowhere: %q", got)
+	}
+}

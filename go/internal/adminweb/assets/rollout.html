@@ -35,7 +35,7 @@
     <label>版本<input name="version" required placeholder="1.3.0"></label>
     <label>上传文件<input type="file" name="file"></label>
     <label>或从 URL 拉取<input name="url" placeholder="https://…/agent.exe"></label>
-    <label>GITHUB TOKEN<input name="token" type="password" placeholder="私有仓库需要"></label>
+    <label>GITHUB TOKEN<input name="token" type="password" placeholder="留空则用服务器环境变量"></label>
     <label>再次输入版本号<input name="confirm" required></label>
     <button type="submit" class="danger">发布 agent</button>
   </form>
@@ -67,7 +67,7 @@
     <input type="hidden" name="csrf" value="{{.CSRF}}">
     <label>版本<input name="version" required placeholder="26.810.4967.0+b7"></label>
     <label class="wide">Release URL<input name="url" placeholder="https://github.com/TEENet-io/codex-kiosk/releases/…"></label>
-    <label>GITHUB TOKEN<input name="token" type="password"></label>
+    <label>GITHUB TOKEN<input name="token" type="password" placeholder="留空则用服务器环境变量"></label>
     <label>灰度 %<input name="rollout" type="number" min="0" max="100" value="10"></label>
     <label>再次输入版本号<input name="confirm" required></label>
     <button type="submit" class="danger">发布 Codex</button>

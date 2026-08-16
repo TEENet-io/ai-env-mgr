@@ -232,6 +232,28 @@ real_ip_header CF-Connecting-IP;
 
 CloudFlare 的 IP 段偶尔会调整，变更时需要同步更新。
 
+### 发布私有 release 用的 GitHub Token
+
+`admin codex publish --url` 要从私有仓库拉 release，需要一个 GitHub token。
+表单里可以每次手输；留空则用服务器上的环境变量：
+
+```ini
+# /etc/ai-env-mgr/env   （chmod 600）
+GITHUB_TOKEN=github_pat_xxx
+```
+```ini
+# systemd 单元
+EnvironmentFile=-/etc/ai-env-mgr/env
+```
+
+**不要把 token 编译进二进制。** 这台机器是公网可达的，而控制台之所以能说
+"静态零凭证"，正是因为 OSS 的 AccessKey 只存在会话内存里；烤进去的 token
+会成为这台机器上唯一一份落盘的密钥，拿到二进制就等于拿到你的私有仓库。
+
+Token 请建成 **fine-grained、只读 Contents、只授权 codex-kiosk 一个仓库**。
+这样万一泄露，代价是那个仓库被读，而不是账号被接管；轮换也只是改文件重启，
+不用重新编译。
+
 ### 验证清单
 
 ```bash
