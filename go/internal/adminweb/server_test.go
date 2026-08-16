@@ -64,13 +64,22 @@ func newTestServer(t *testing.T, fs *fakeStore) *Server {
 	return s
 }
 
+// Long enough that they cannot appear inside a random session id by chance.
+// Two-character stand-ins made the cookie assertion below fail roughly once in
+// a hundred runs -- a test that cries wolf that often teaches people to ignore
+// it.
+const (
+	testAccessKeyID     = "LTAIzzTESTACCESSKEYID999"
+	testAccessKeySecret = "zzTESTACCESSKEYSECRETvalue000111"
+)
+
 func signIn(t *testing.T, s *Server) *http.Cookie {
 	t.Helper()
 	form := url.Values{
 		"endpoint":        {"oss-ap-southeast-1.aliyuncs.com"},
 		"bucket":          {"ai-collect-sg"},
-		"accessKeyId":     {"AK"},
-		"accessKeySecret": {"SK"},
+		"accessKeyId":     {testAccessKeyID},
+		"accessKeySecret": {testAccessKeySecret},
 	}
 	req := httptest.NewRequest(http.MethodPost, "/login", strings.NewReader(form.Encode()))
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
@@ -111,7 +120,7 @@ func TestNewRefusesPublicBindWithoutTLS(t *testing.T) {
 func TestSessionCookieCarriesNoCredentials(t *testing.T) {
 	s := newTestServer(t, newFakeStore())
 	c := signIn(t, s)
-	for _, secret := range []string{"AK", "SK", "ai-collect-sg", "oss-ap-southeast-1"} {
+	for _, secret := range []string{testAccessKeyID, testAccessKeySecret, "ai-collect-sg", "oss-ap-southeast-1"} {
 		if strings.Contains(c.Value, secret) {
 			t.Fatalf("cookie value contains %q", secret)
 		}
@@ -358,8 +367,8 @@ func TestFixedLocationOverridesThePostedOne(t *testing.T) {
 	form := url.Values{
 		"bucket":          {"attacker-bucket"},
 		"endpoint":        {"oss.attacker.example"},
-		"accessKeyId":     {"AK"},
-		"accessKeySecret": {"SK"},
+		"accessKeyId":     {testAccessKeyID},
+		"accessKeySecret": {testAccessKeySecret},
 	}
 	req := httptest.NewRequest(http.MethodPost, "/login", strings.NewReader(form.Encode()))
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
