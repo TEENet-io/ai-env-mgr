@@ -57,14 +57,34 @@ jobs:
           fi
           GOOS=windows GOARCH=amd64 go build -trimpath -ldflags "${LD}" -o ../dist/agent.exe ./cmd/agent
 
-      # admin: no key, ever. The administrator enters credentials at runtime.
-      # Built for the three platforms an administrator is likely to run on.
-      - name: Build admin (linux/windows/macos, no key)
+      # admin: the OSS read-write key is NEVER built in -- the administrator
+      # enters it in the console at sign-in and it stays in memory.
+      #
+      # The ECD key is different and is built in when configured: it is
+      # read-only (AliyunECDReadOnlyAccess, a separate RAM user), and the
+      # console uses it unattended to tell a hibernating machine from one whose
+      # agent has died -- there is nobody to type it at that moment. Without
+      # the secrets the build still succeeds and that lookup simply stays off,
+      # leaving quiet machines reading as offline.
+      - name: Build admin (linux/windows/macos)
         working-directory: go
+        env:
+          ADMIN_ECD_ACCESS_KEY_ID: ${{ secrets.ADMIN_ECD_ACCESS_KEY_ID }}
+          ADMIN_ECD_ACCESS_KEY_SECRET: ${{ secrets.ADMIN_ECD_ACCESS_KEY_SECRET }}
+          ADMIN_ECD_REGION: ${{ secrets.ADMIN_ECD_REGION }}
         run: |
           set -euo pipefail
           VER="${GITHUB_REF_NAME#v}"
           LD="-s -w -X main.version=${VER}"
+          if [ -n "${ADMIN_ECD_ACCESS_KEY_ID}" ] && [ -n "${ADMIN_ECD_ACCESS_KEY_SECRET}" ]; then
+            LD="${LD} -X main.ecdAccessKeyID=${ADMIN_ECD_ACCESS_KEY_ID} -X main.ecdAccessKeySecret=${ADMIN_ECD_ACCESS_KEY_SECRET}"
+            echo "cloud desktop lookup: built in"
+          else
+            echo "cloud desktop lookup: no secrets configured, leaving it off"
+          fi
+          if [ -n "${ADMIN_ECD_REGION}" ]; then
+            LD="${LD} -X main.ecdRegion=${ADMIN_ECD_REGION}"
+          fi
           build() { GOOS="$1" GOARCH="$2" go build -trimpath -ldflags "${LD}" -o "../dist/$3" ./cmd/admin; }
           build linux   amd64 admin-linux-amd64
           build windows amd64 admin-windows-amd64.exe
