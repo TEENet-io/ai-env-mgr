@@ -49,6 +49,13 @@ type pageData struct {
 	Stats    []admincore.CollectStat
 	Machine  string // the machine a log belongs to
 	Log      string
+	Files    []admincore.StagedFile
+	Link     string // a freshly minted download link
+	LinkName string
+
+	PendingUser string // an employee sign-in waiting for the pasted callback
+	PendingTool string
+	AuthURL     string
 }
 
 // newPage seeds the fields every page needs, including the notices carried
@@ -242,4 +249,55 @@ func (s *Server) handleLog(w http.ResponseWriter, r *http.Request, sess *session
 		data.Log = string(b)
 	}
 	s.render(w, "log.html", http.StatusOK, data)
+}
+
+func (s *Server) handleFiles(w http.ResponseWriter, r *http.Request, sess *session) {
+	data := newPage(sess, r, "files")
+	files, err := sess.mgr.ListFiles()
+	if err != nil {
+		data.Error = "could not list staged files"
+		log.Printf("adminweb: ListFiles: %v", err)
+	} else {
+		data.Files = files
+	}
+	// A link is minted on demand rather than listed for every file: each one is
+	// a URL that downloads the object without any credential, so they should be
+	// created when wanted and left to expire.
+	if name := strings.TrimSpace(r.URL.Query().Get("link")); name != "" {
+		if url, err := sess.mgr.LinkFile(name, 24*time.Hour); err != nil {
+			data.Error = "could not create a link for " + name
+		} else {
+			data.Link, data.LinkName = url, name
+		}
+	}
+	s.render(w, "files.html", http.StatusOK, data)
+}
+
+// handleRollout is the page for the two actions that reach every machine.
+func (s *Server) handleRollout(w http.ResponseWriter, r *http.Request, sess *session) {
+	data := newPage(sess, r, "rollout")
+	p, err := sess.mgr.CurrentPolicy()
+	if err != nil {
+		data.Error = "could not read the policy"
+		log.Printf("adminweb: CurrentPolicy: %v", err)
+	} else {
+		data.Policy = &p
+	}
+	if machines, err := sess.mgr.CollectMachines(freshAfter); err == nil {
+		data.Machines = machines // so the operator can see what is actually installed
+	}
+	s.render(w, "rollout.html", http.StatusOK, data)
+}
+
+func (s *Server) handleEmployeeLogin(w http.ResponseWriter, r *http.Request, sess *session) {
+	data := newPage(sess, r, "users")
+	if us, err := sess.mgr.LoadUsers(); err == nil {
+		data.Users = us.Users
+	}
+	s.pendingMu.Lock()
+	if p := s.pending[sess.csrf]; p != nil && time.Since(p.started) <= employeeLoginTTL {
+		data.PendingUser, data.PendingTool, data.AuthURL = p.user, p.tool, p.authURL
+	}
+	s.pendingMu.Unlock()
+	s.render(w, "employeelogin.html", http.StatusOK, data)
 }

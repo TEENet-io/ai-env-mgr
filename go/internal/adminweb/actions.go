@@ -22,7 +22,9 @@ func (s *Server) requirePost(back string, next func(*session, *http.Request) err
 			http.Redirect(w, r, back, http.StatusSeeOther)
 			return
 		}
-		if err := r.ParseForm(); err != nil {
+		// parseUpload handles both a plain form and a multipart upload, so a
+		// file-carrying POST still has its CSRF token parsed before the check.
+		if err := parseUpload(r); err != nil {
 			s.redirectWithError(w, r, back, "could not read the form")
 			return
 		}

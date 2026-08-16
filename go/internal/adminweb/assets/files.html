@@ -1,0 +1,45 @@
+{{define "files.html"}}{{template "head" "文件"}}
+<body>
+{{template "nav" .}}
+<main>
+  <h1>文件</h1>
+  {{template "notices" .}}
+  {{if .Link}}
+  <p class="ok-banner">{{.LinkName}} 的下载链接（24 小时内有效）：<br><code>{{.Link}}</code></p>
+  <p class="muted">该链接无需任何凭证即可下载，拿到即可用，请只发给需要的人。</p>
+  {{end}}
+
+  <div class="scroll">
+  <table>
+    <thead><tr><th>名称</th><th></th></tr></thead>
+    <tbody>
+    {{range .Files}}
+      <tr>
+        <td>{{.Name}}</td>
+        <td class="nowrap">
+          <a href="/files?link={{.Name}}">生成链接</a>
+          <form method="post" action="/files/rm" class="inline">
+            <input type="hidden" name="csrf" value="{{$.CSRF}}">
+            <input type="hidden" name="name" value="{{.Name}}">
+            <button class="link">删除</button>
+          </form>
+        </td>
+      </tr>
+    {{else}}
+      <tr><td colspan="2" class="muted">没有暂存的文件。</td></tr>
+    {{end}}
+    </tbody>
+  </table>
+  </div>
+
+  <h2>上传文件</h2>
+  <form method="post" action="/files/put" enctype="multipart/form-data" class="row">
+    <input type="hidden" name="csrf" value="{{.CSRF}}">
+    <label>文件<input type="file" name="file" required></label>
+    <label>另存为<input name="name" placeholder="选填，默认用原文件名"></label>
+    <label>链接有效期（小时）<input name="hours" type="number" min="1" value="24"></label>
+    <button type="submit">上传</button>
+  </form>
+</main>
+</body>
+</html>{{end}}

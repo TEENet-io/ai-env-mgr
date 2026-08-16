@@ -7,6 +7,7 @@ import (
 	"io/fs"
 	"net"
 	"net/http"
+	"sync"
 	"time"
 
 	"github.com/TEENet-io/ai-env-mgr/internal/admincore"
@@ -56,6 +57,11 @@ type Server struct {
 	tpl      *template.Template
 	// dialOSS is the seam tests use to avoid talking to a real bucket.
 	dialOSS func(cfg config.Config) (store, error)
+
+	// pending holds in-flight employee sign-ins, keyed by the session's CSRF
+	// token so one console session cannot finish another's flow.
+	pendingMu sync.Mutex
+	pending   map[string]*pendingLogin
 }
 
 // New validates the options and builds the server.
@@ -100,6 +106,7 @@ func New(opts Options) (*Server, error) {
 		sessions: newSessionStore(opts.IdleTTL, opts.AbsTTL),
 		limiter:  newLoginLimiter(time.Minute, 10),
 		tpl:      tpl,
+		pending: make(map[string]*pendingLogin),
 		dialOSS: func(cfg config.Config) (store, error) {
 			return ossclient.New(cfg.Endpoint, cfg.Bucket, cfg.AccessKeyID, cfg.AccessKeySecret)
 		},
@@ -156,11 +163,11 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("/sites", s.requireSession(s.handleSites))
 	mux.HandleFunc("/settings", s.requireSession(s.handleSettings))
 	mux.HandleFunc("/log", s.requireSession(s.handleLog))
+	mux.HandleFunc("/files", s.requireSession(s.handleFiles))
+	mux.HandleFunc("/rollout", s.requireSession(s.handleRollout))
+	mux.HandleFunc("/employee-login", s.requireSession(s.handleEmployeeLogin))
 
 	// Every state-changing route is POST + CSRF + redirect (see requirePost).
-	// The high-risk actions are deliberately absent: publishing an agent or a
-	// Codex build reaches every machine, and forgetting a machine cannot be
-	// undone, so those stay on the CLI until the console has earned it.
 	mux.HandleFunc("/users/add", s.requirePost("/users", s.actionUserAdd))
 	mux.HandleFunc("/users/enabled", s.requirePost("/users", s.actionUserEnabled))
 	mux.HandleFunc("/machines/bind", s.requirePost("/machines", s.actionMachineBind))
@@ -169,6 +176,21 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("/sites/enabled", s.requirePost("/sites", s.actionBlockEnabled))
 	mux.HandleFunc("/settings/interval", s.requirePost("/settings", s.actionSyncInterval))
 	mux.HandleFunc("/settings/collect", s.requirePost("/settings", s.actionCollect))
+
+	// Fleet-wide and irreversible actions. Each additionally demands the exact
+	// version or hostname typed back (see confirmMatches) and writes an audit
+	// line, because these are the ones that make every machine run a binary or
+	// that cannot be undone.
+	mux.HandleFunc("/agent/publish", s.requirePost("/rollout", s.actionAgentPublish))
+	mux.HandleFunc("/agent/cancel", s.requirePost("/rollout", s.actionAgentCancel))
+	mux.HandleFunc("/codex/publish", s.requirePost("/rollout", s.actionCodexPublish))
+	mux.HandleFunc("/codex/rollout", s.requirePost("/rollout", s.actionCodexRollout))
+	mux.HandleFunc("/codex/cancel", s.requirePost("/rollout", s.actionCodexCancel))
+	mux.HandleFunc("/machines/forget", s.requirePost("/machines", s.actionMachineForget))
+	mux.HandleFunc("/files/put", s.requirePost("/files", s.actionFilePut))
+	mux.HandleFunc("/files/rm", s.requirePost("/files", s.actionFileRemove))
+	mux.HandleFunc("/employee-login/start", s.requirePost("/employee-login", s.actionEmployeeLoginStart))
+	mux.HandleFunc("/employee-login/finish", s.requirePost("/employee-login", s.actionEmployeeLoginFinish))
 	// Serve only assets/static, so the templates next to it are never handed
 	// out as raw files, and strip the prefix so paths resolve inside it.
 	staticFS, err := fs.Sub(assetFS, "assets/static")

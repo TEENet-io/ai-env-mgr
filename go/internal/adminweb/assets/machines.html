@@ -57,7 +57,16 @@
     <label>备注<input name="note" placeholder="选填"></label>
     <button type="submit">绑定</button>
   </form>
-  <p class="muted">注销机器（<code>machine forget</code>）不可撤销，仍需使用命令行。</p>
+  <h2>注销机器</h2>
+  <p class="danger-note">
+    注销会删除该机器的绑定与状态记录，<strong>不可撤销</strong>。请输入主机名确认。
+  </p>
+  <form method="post" action="/machines/forget" class="row">
+    <input type="hidden" name="csrf" value="{{.CSRF}}">
+    <label>主机名<input name="machine" required></label>
+    <label>再次输入主机名确认<input name="confirm" required></label>
+    <button type="submit">注销</button>
+  </form>
 </main>
 </body>
 </html>{{end}}

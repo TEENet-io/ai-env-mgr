@@ -130,3 +130,14 @@ pre.log {
   background: var(--card); border: 1px solid var(--line); border-radius: 8px;
   padding: 14px; overflow-x: auto; max-height: 70vh; font-size: 13px; line-height: 1.45;
 }
+
+.danger-note {
+  margin: 12px 0; padding: 12px 14px; border-radius: 8px;
+  border: 1px solid color-mix(in srgb, var(--bad) 40%, transparent);
+  background: color-mix(in srgb, var(--bad) 8%, transparent);
+}
+code.wrap { display: block; padding: 10px; background: var(--card);
+  border: 1px solid var(--line); border-radius: 6px; word-break: break-all; }
+input[type=file] { padding: 6px 0; border: 0; background: none; }
+ol { padding-left: 20px; }
+ol li { margin: 8px 0; }

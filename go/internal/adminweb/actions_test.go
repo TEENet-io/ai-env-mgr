@@ -123,16 +123,24 @@ func TestWriteRoutesIgnoreGET(t *testing.T) {
 	}
 }
 
-// The high-risk actions must not have quietly acquired a web route.
-func TestFleetWideActionsAreNotExposed(t *testing.T) {
-	s := newTestServer(t, newFakeStore())
-	cookie := signIn(t, s)
+// The fleet-wide and irreversible actions are reachable now, but every one of
+// them must still demand its CSRF token like the rest.
+func TestHighRiskActionsStillRequireCSRF(t *testing.T) {
 	for _, path := range []string{
-		"/agent/publish", "/codex/publish", "/machines/forget", "/files/put",
+		"/agent/publish", "/agent/cancel", "/codex/publish", "/codex/cancel",
+		"/codex/rollout", "/machines/forget", "/files/put", "/files/rm",
+		"/employee-login/start", "/employee-login/finish",
 	} {
-		rec := post(t, s, path, cookie, url.Values{})
-		if rec.Code != http.StatusNotFound {
-			t.Fatalf("%s is reachable (%d); publishing reaches every machine and forget cannot be undone", path, rec.Code)
+		fs := newFakeStore()
+		s := newTestServer(t, fs)
+		cookie := signIn(t, s)
+		before := len(fs.objects)
+		rec := post(t, s, path, cookie, url.Values{"version": {"1.0.0"}, "machine": {"PC1"}})
+		if loc := rec.Header().Get("Location"); !strings.Contains(loc, "err=") {
+			t.Fatalf("%s without a CSRF token did not report an error", path)
+		}
+		if len(fs.objects) != before {
+			t.Fatalf("%s without a CSRF token still wrote to the store", path)
 		}
 	}
 }

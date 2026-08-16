@@ -1,0 +1,48 @@
+{{define "employeelogin.html"}}{{template "head" "替员工登录"}}
+<body>
+{{template "nav" .}}
+<main>
+  <h1>替员工登录</h1>
+  {{template "notices" .}}
+  <p class="muted">
+    用员工的账号完成 OAuth，令牌会发布到 OSS，员工机器在下次同步时取走。
+    令牌只在本进程内存中组装，不落盘。
+  </p>
+
+  {{if .AuthURL}}
+  <h2>进行中：{{.PendingUser}} · {{.PendingTool}}</h2>
+  <ol>
+    <li>在浏览器中打开下面的地址，用<strong>该员工的账号</strong>登录：
+      <p><code class="wrap">{{.AuthURL}}</code></p>
+    </li>
+    <li>登录后浏览器会跳到 <code>http://localhost:1455/auth/callback?code=...</code> 并报连接失败。
+      <strong>这是正常的</strong> —— 地址栏里仍然有需要的内容。</li>
+    <li>把<strong>地址栏的完整 URL</strong>复制粘贴到下面：</li>
+  </ol>
+  <form method="post" action="/employee-login/finish" class="row">
+    <input type="hidden" name="csrf" value="{{.CSRF}}">
+    <label>回调 URL<input name="callback" required placeholder="http://localhost:1455/auth/callback?code=..."></label>
+    <button type="submit">完成并发布凭证</button>
+  </form>
+  <p class="muted">15 分钟内有效。必须粘贴完整 URL，只有这样才能校验 state 参数。</p>
+  {{else}}
+  <form method="post" action="/employee-login/start" class="row">
+    <input type="hidden" name="csrf" value="{{.CSRF}}">
+    <label>员工
+      <select name="windowsUser" required>
+        <option value="">选择…</option>
+        {{range .Users}}{{if .Enabled}}<option value="{{.WindowsUser}}">{{.WindowsUser}}</option>{{end}}{{end}}
+      </select>
+    </label>
+    <label>工具
+      <select name="tool" required>
+        <option value="codex">Codex</option>
+        <option value="claude">Claude</option>
+      </select>
+    </label>
+    <button type="submit">开始</button>
+  </form>
+  {{end}}
+</main>
+</body>
+</html>{{end}}
