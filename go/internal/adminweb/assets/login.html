@@ -12,14 +12,10 @@
   <p class="muted">用你的 OSS AccessKey 登录。凭证只保存在本次会话的内存中，不会写入磁盘。</p>
   {{if .Error}}<p class="error">{{.Error}}</p>{{end}}
   <form method="post" action="/login" autocomplete="off">
-    {{if .Fixed}}
-    <table class="kv fixed-loc">
-      <tbody>
-        <tr><th>Bucket</th><td>{{.Bucket}}</td></tr>
-        <tr><th>Endpoint</th><td>{{.Endpoint}}</td></tr>
-      </tbody>
-    </table>
-    {{else}}
+    {{if .Fixed}}{{/* The bucket and endpoint are baked into this build, so
+    they are neither asked for nor shown: there is nothing here for an operator
+    to decide, and naming the bucket on an unauthenticated page tells a passer-by
+    where the deployment lives. */}}{{else}}
     <label>Endpoint
       <input name="endpoint" required placeholder="oss-ap-southeast-1.aliyuncs.com" value="{{.Endpoint}}">
     </label>
