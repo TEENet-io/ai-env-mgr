@@ -4,7 +4,6 @@ import (
 	"bufio"
 	"context"
 	"fmt"
-	"net/url"
 	"os"
 	"strings"
 	"time"
@@ -152,29 +151,17 @@ func readPasted() (string, error) {
 // because the browser is usually not on the machine running this command --
 // the administrator drives a fleet of cloud desktops from their own laptop.
 // A listener would also collide with Codex itself, which uses that port.
+// codeFromCallback wraps the shared parser, printing the note the terminal
+// flow has always shown when a bare code left nothing to verify.
 func codeFromCallback(pasted, wantState string) (string, error) {
-	// An empty wantState would compare equal to an absent one and let the
-	// check pass, so refuse rather than match.
-	if wantState == "" {
-		return "", fmt.Errorf("this login is missing its state; start again")
+	code, stateVerified, err := authflow.CodeFromCallback(pasted, wantState)
+	if err != nil {
+		return "", err
 	}
-	if u, err := url.Parse(pasted); err == nil && u.Query().Get("code") != "" {
-		// The state must match, and a callback carrying none does not.
-		// Letting an absent state through would accept a code this login
-		// never asked for -- paste a crafted URL and somebody else's tokens
-		// get published as the employee's credentials. PKCE already makes
-		// that hard, since a code issued for another challenge will not
-		// exchange against our verifier; this is the check that says so.
-		if u.Query().Get("state") != wantState {
-			return "", fmt.Errorf("that callback belongs to a different login attempt (state mismatch); start again")
-		}
-		return u.Query().Get("code"), nil
+	if !stateVerified {
+		fmt.Println("note: no state was present, so the state parameter could not be verified")
 	}
-
-	if strings.Contains(pasted, "code=") {
-		return "", fmt.Errorf("could not parse that URL; paste the whole address bar contents")
-	}
-	return "", fmt.Errorf("paste the whole callback URL, not just the code -- the state parameter in it is what ties the code to this login")
+	return code, nil
 }
 
 // loginClaude runs the Claude flow. Claude shows the code on its own page
@@ -196,12 +183,7 @@ func loginClaude(ctx context.Context) (model.CredentialSet, error) {
 	if err != nil {
 		return nil, err
 	}
-	// Be forgiving if a whole callback URL gets pasted instead of just the code.
-	if u, perr := url.Parse(pasted); perr == nil && u.Query().Get("code") != "" {
-		pasted = u.Query().Get("code")
-	}
-
-	code, gotState := authflow.ParsePastedClaudeCode(pasted, state)
+	code, gotState := authflow.ClaudeCodeFromPaste(pasted, state)
 	tokens, err := authflow.ClaudeExchange(ctx, code, gotState, verifier)
 	if err != nil {
 		return nil, err

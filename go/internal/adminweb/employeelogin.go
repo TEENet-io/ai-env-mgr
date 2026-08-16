@@ -4,8 +4,6 @@ import (
 	"context"
 	"fmt"
 	"net/http"
-	"net/url"
-	"strings"
 	"time"
 
 	"github.com/TEENet-io/ai-env-mgr/internal/authflow"
@@ -89,9 +87,9 @@ func (s *Server) actionEmployeeLoginFinish(sess *session, r *http.Request) error
 	var code string
 	switch p.tool {
 	case "codex":
-		code, err = codexCodeFromCallback(pasted, p.state)
+		code, _, err = authflow.CodeFromCallback(pasted, p.state)
 	case "claude":
-		code, err = claudeCodeFromPaste(pasted, p.state)
+		code, p.state = authflow.ClaudeCodeFromPaste(pasted, p.state)
 	}
 	if err != nil {
 		return err
@@ -140,60 +138,6 @@ func (s *Server) clearPending(sess *session) {
 	s.pendingMu.Unlock()
 }
 
-// codexCodeFromCallback pulls the authorisation code out of the callback URL
-// Codex redirects to.
-//
-// The state must match unconditionally. Accepting a callback that simply
-// carries no state -- which an earlier version did -- means accepting a code
-// this session never asked for: an operator who pasted a crafted URL would
-// publish the tokens of somebody else's account as the employee's credentials.
-// PKCE already makes that hard, since a code issued for another challenge will
-// not exchange against our verifier, but the check is the part that says so
-// rather than relying on it.
-func codexCodeFromCallback(pasted, wantState string) (string, error) {
-	// Guard the comparison itself: with an empty wantState, a callback that
-	// carries no state would compare equal and pass. That should never happen
-	// -- a flow always stores one -- so treat it as a broken flow, not a match.
-	if wantState == "" {
-		return "", fmt.Errorf("this sign-in is missing its state; start again")
-	}
-	pasted = strings.TrimSpace(pasted)
-	u, err := url.Parse(pasted)
-	if err != nil || u.Query().Get("code") == "" {
-		return "", fmt.Errorf("paste the whole callback URL from the address bar, starting with http://localhost:1455/")
-	}
-	if u.Query().Get("state") != wantState {
-		return "", fmt.Errorf("that callback belongs to a different sign-in attempt (state mismatch); start again")
-	}
-	return u.Query().Get("code"), nil
-}
-
-// claudeCodeFromPaste reads what Claude displays after sign-in, which is a
-// code and state joined by "#" rather than a callback URL. A pasted URL is
-// tolerated for the operator who reaches for the address bar out of habit.
-func claudeCodeFromPaste(pasted, wantState string) (string, error) {
-	if wantState == "" {
-		return "", fmt.Errorf("this sign-in is missing its state; start again")
-	}
-	pasted = strings.TrimSpace(pasted)
-	if u, err := url.Parse(pasted); err == nil && u.Query().Get("code") != "" {
-		if u.Query().Get("state") != wantState {
-			return "", fmt.Errorf("that callback belongs to a different sign-in attempt (state mismatch); start again")
-		}
-		return u.Query().Get("code"), nil
-	}
-	code, state := authflow.ParsePastedClaudeCode(pasted, "")
-	if code == "" {
-		return "", fmt.Errorf("paste the code Claude showed you")
-	}
-	// Same reasoning as above: no state means nothing ties this code to the
-	// flow this session started, so ask for the whole value rather than
-	// guessing that it is ours.
-	if state == "" {
-		return "", fmt.Errorf("paste the whole value Claude showed, including the part after the # -- it is what ties the code to this sign-in")
-	}
-	if state != wantState {
-		return "", fmt.Errorf("that code belongs to a different sign-in attempt (state mismatch); start again")
-	}
-	return code, nil
-}
+// Nothing is parsed here: both front ends call the same helpers in authflow,
+// so the console and the CLI cannot end up disagreeing about what a pasted
+// value means.
