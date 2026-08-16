@@ -1,13 +1,18 @@
 package adminweb
 
 import (
+	"context"
 	"embed"
 	"fmt"
 	"html/template"
 	"io/fs"
+	"log"
 	"net"
 	"net/http"
+	"os"
+	"os/signal"
 	"sync"
+	"syscall"
 	"time"
 
 	"github.com/TEENet-io/ai-env-mgr/internal/admincore"
@@ -230,8 +235,20 @@ func (s *Server) Handler() http.Handler {
 	return s.secureHeaders(mux)
 }
 
-// ListenAndServe runs the console until it fails.
+// publishDrainTimeout bounds how long shutdown waits for a publish to finish.
+//
+// Long enough for the slow half of the job -- several hundred megabytes up to
+// OSS -- and short enough that a wedged job cannot hold the service down
+// indefinitely. systemd's TimeoutStopSec must exceed it, or systemd sends
+// SIGKILL first and the wait buys nothing.
+const publishDrainTimeout = 20 * time.Minute
+
+// ListenAndServe runs the console until it fails, finishing any publish that
+// is in flight before it exits.
 func (s *Server) ListenAndServe() error {
+	stop := make(chan os.Signal, 1)
+	signal.Notify(stop, syscall.SIGTERM, syscall.SIGINT)
+
 	srv := &http.Server{
 		Addr:    s.opts.Listen,
 		Handler: s.Handler(),
@@ -242,10 +259,38 @@ func (s *Server) ListenAndServe() error {
 		WriteTimeout:      2 * time.Minute,
 		IdleTimeout:       2 * time.Minute,
 	}
-	if s.opts.CertFile != "" {
-		return srv.ListenAndServeTLS(s.opts.CertFile, s.opts.KeyFile)
+	serveErr := make(chan error, 1)
+	go func() {
+		if s.opts.CertFile != "" {
+			serveErr <- srv.ListenAndServeTLS(s.opts.CertFile, s.opts.KeyFile)
+			return
+		}
+		serveErr <- srv.ListenAndServe()
+	}()
+
+	select {
+	case err := <-serveErr:
+		return err
+	case sig := <-stop:
+		// Stop taking requests first, so nothing new starts while draining.
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		_ = srv.Shutdown(ctx)
+		cancel()
+
+		if j := s.jobs.snapshot(); j != nil && j.Running() {
+			log.Printf("%s received; finishing the %s %s publish before exiting (up to %s)",
+				sig, j.Kind, j.Version, publishDrainTimeout)
+			if s.jobs.wait(publishDrainTimeout) {
+				log.Printf("publish finished; exiting")
+			} else {
+				// Said out loud because the alternative is an operator who
+				// believes a publish landed when it did not.
+				log.Printf("publish did NOT finish within %s; exiting anyway. "+
+					"The policy was not updated -- publish it again.", publishDrainTimeout)
+			}
+		}
+		return nil
 	}
-	return srv.ListenAndServe()
 }
 
 // secureHeaders applies defence-in-depth headers to every response.

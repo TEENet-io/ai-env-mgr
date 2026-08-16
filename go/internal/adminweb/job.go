@@ -92,6 +92,29 @@ func (r *jobRunner) start(kind, version string, fn func(setStep func(string)) er
 	return nil
 }
 
+// wait blocks until nothing is running, or until the deadline passes. It
+// reports whether the job finished.
+//
+// This exists for shutdown. A publish moves ~700 MB and writes the policy only
+// at the very end, so a process that exits mid-flight destroys the work and
+// leaves nothing behind to say so: no policy change, no audit line, and a job
+// page that comes back empty because the state lived in memory. An operator
+// then sees a fleet that was never given the new version and no reason why.
+// It has happened -- a deploy restarted the console while a Codex publish was
+// uploading.
+func (r *jobRunner) wait(deadline time.Duration) bool {
+	const poll = 250 * time.Millisecond
+	for waited := time.Duration(0); waited < deadline; waited += poll {
+		j := r.snapshot()
+		if j == nil || !j.Running() {
+			return true
+		}
+		time.Sleep(poll)
+	}
+	j := r.snapshot()
+	return j == nil || !j.Running()
+}
+
 // snapshot returns a copy safe to render while the job keeps running.
 func (r *jobRunner) snapshot() *job {
 	r.mu.Lock()

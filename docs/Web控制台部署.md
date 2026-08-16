@@ -120,6 +120,13 @@ ExecStart=/opt/ai-env-mgr/admin web --listen 127.0.0.1:8080
 Restart=on-failure
 RestartSec=5
 
+# 发布 Codex 要搬约 700 MB，而策略是在最后一刻才写的。进程中途退出会
+# 把整个发布毁掉，且不留任何痕迹：策略没变、没有审计日志、任务页面因为
+# 状态只在内存里而变回空白——管理员会以为发布成功了，其实机队什么都没收到。
+# 所以控制台收到 SIGTERM 后会先把在跑的发布做完（最多等 20 分钟）再退出。
+# 这个值必须大于 20 分钟，否则 systemd 先发 SIGKILL，等待就白等了。
+TimeoutStopSec=25min
+
 # 控制台不持有任何静态凭证，也不写文件，所以可以收得很紧。
 DynamicUser=yes
 NoNewPrivileges=yes
