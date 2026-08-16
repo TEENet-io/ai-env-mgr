@@ -29,6 +29,11 @@ type session struct {
 	mgr      *admincore.Manager
 	bucket   string // shown in the UI so an operator can tell environments apart
 	endpoint string
+	// csrf is embedded in every form and checked on every POST. SameSite=Strict
+	// already stops a cross-site form from carrying the cookie, but this does
+	// not depend on the browser honouring that, and the actions behind it
+	// change what a fleet of machines does.
+	csrf     string
 	created  time.Time
 	lastSeen time.Time
 }
@@ -73,6 +78,10 @@ func (s *sessionStore) create(mgr *admincore.Manager, bucket, endpoint string) (
 	if err != nil {
 		return "", err
 	}
+	csrf, err := newID()
+	if err != nil {
+		return "", err
+	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.reapLocked()
@@ -80,7 +89,7 @@ func (s *sessionStore) create(mgr *admincore.Manager, bucket, endpoint string) (
 		return "", errTooManySessions
 	}
 	now := s.now()
-	s.byID[id] = &session{mgr: mgr, bucket: bucket, endpoint: endpoint, created: now, lastSeen: now}
+	s.byID[id] = &session{mgr: mgr, bucket: bucket, endpoint: endpoint, csrf: csrf, created: now, lastSeen: now}
 	return id, nil
 }
 

@@ -1,23 +1,9 @@
-{{define "policy.html"}}<!doctype html>
-<html lang="zh">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>策略 · AI 环境管理</title>
-<link rel="stylesheet" href="/static/app.css">
-</head>
+{{define "policy.html"}}{{template "head" "策略总览"}}
 <body>
-<header>
-  <nav>
-    <a href="/machines">机器</a>
-    <a class="active" href="/policy">策略</a>
-  </nav>
-  <span class="muted">{{.Bucket}} · {{.Endpoint}}</span>
-  <form method="post" action="/logout"><button class="link">退出</button></form>
-</header>
+{{template "nav" .}}
 <main>
-  <h1>策略</h1>
-  {{if .Error}}<p class="error">{{.Error}}</p>{{end}}
+  <h1>策略总览</h1>
+  {{template "notices" .}}
   {{with .Policy}}
   <div class="scroll">
   <table class="kv">
@@ -31,7 +17,10 @@
     </tbody>
   </table>
   </div>
-  <p class="muted">本页为只读。发布 agent 或 Codex 仍需通过 <code>admin</code> 命令行。</p>
+  <p class="muted">
+    发布 agent 或 Codex 会让每台机器下载并执行一个二进制，因此仍然只能通过
+    <code>admin agent publish</code> / <code>admin codex publish</code> 操作。
+  </p>
   {{end}}
 </main>
 </body>

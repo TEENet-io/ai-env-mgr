@@ -1,28 +1,14 @@
-{{define "machines.html"}}<!doctype html>
-<html lang="zh">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>机器 · AI 环境管理</title>
-<link rel="stylesheet" href="/static/app.css">
-</head>
+{{define "machines.html"}}{{template "head" "机器"}}
 <body>
-<header>
-  <nav>
-    <a class="active" href="/machines">机器</a>
-    <a href="/policy">策略</a>
-  </nav>
-  <span class="muted">{{.Bucket}} · {{.Endpoint}}</span>
-  <form method="post" action="/logout"><button class="link">退出</button></form>
-</header>
+{{template "nav" .}}
 <main>
   <h1>机器</h1>
-  {{if .Error}}<p class="error">{{.Error}}</p>{{end}}
+  {{template "notices" .}}
   {{if .Machines}}
   <div class="scroll">
   <table>
     <thead>
-      <tr><th>主机名</th><th>员工</th><th>状态</th><th>最后同步</th><th>agent 版本</th></tr>
+      <tr><th>主机名</th><th>员工</th><th>状态</th><th>最后同步</th><th>agent</th><th></th></tr>
     </thead>
     <tbody>
     {{range .Machines}}
@@ -39,6 +25,16 @@
         </td>
         <td>{{.Status.LastSync}}</td>
         <td>{{.Status.AgentVersion}}</td>
+        <td class="nowrap">
+          <a href="/log?machine={{.Machine}}">日志</a>
+          {{if .Bound}}
+          <form method="post" action="/machines/unbind" class="inline">
+            <input type="hidden" name="csrf" value="{{$.CSRF}}">
+            <input type="hidden" name="machine" value="{{.Machine}}">
+            <button class="link">解绑</button>
+          </form>
+          {{end}}
+        </td>
       </tr>
     {{end}}
     </tbody>
@@ -47,6 +43,21 @@
   {{else if not .Error}}
   <p class="muted">还没有机器上报。</p>
   {{end}}
+
+  <h2>绑定机器</h2>
+  <form method="post" action="/machines/bind" class="row">
+    <input type="hidden" name="csrf" value="{{.CSRF}}">
+    <label>主机名<input name="machine" required></label>
+    <label>员工
+      <select name="user" required>
+        <option value="">选择…</option>
+        {{range .Users}}{{if .Enabled}}<option value="{{.WindowsUser}}">{{.WindowsUser}}</option>{{end}}{{end}}
+      </select>
+    </label>
+    <label>备注<input name="note" placeholder="选填"></label>
+    <button type="submit">绑定</button>
+  </form>
+  <p class="muted">注销机器（<code>machine forget</code>）不可撤销，仍需使用命令行。</p>
 </main>
 </body>
 </html>{{end}}

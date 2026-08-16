@@ -102,3 +102,31 @@ code { font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 13px; }
   background: color-mix(in srgb, var(--bad) 12%, transparent);
   color: var(--bad);
 }
+
+/* Forms that sit inside a page rather than on the sign-in card. */
+.row { display: flex; flex-wrap: wrap; gap: 14px; align-items: flex-end; margin: 12px 0 4px; }
+.row label { margin: 0; min-width: 180px; flex: 1 1 180px; }
+.row button { margin: 0; }
+form.inline { display: inline; margin: 0; }
+form.inline button { margin: 0; }
+h2 { font-size: 15px; margin: 26px 0 6px; }
+textarea {
+  width: 100%; margin-top: 4px; padding: 8px 10px;
+  border: 1px solid var(--line); border-radius: 6px;
+  background: var(--bg); color: var(--fg); font: inherit; resize: vertical;
+}
+select {
+  width: 100%; margin-top: 4px; padding: 9px 10px;
+  border: 1px solid var(--line); border-radius: 6px;
+  background: var(--bg); color: var(--fg); font: inherit;
+}
+td.nowrap { white-space: nowrap; }
+td.nowrap a { margin-right: 10px; }
+.ok-banner {
+  margin: 14px 0 0; padding: 10px 12px; border-radius: 6px;
+  background: color-mix(in srgb, var(--ok) 12%, transparent); color: var(--ok);
+}
+pre.log {
+  background: var(--card); border: 1px solid var(--line); border-radius: 8px;
+  padding: 14px; overflow-x: auto; max-height: 70vh; font-size: 13px; line-height: 1.45;
+}

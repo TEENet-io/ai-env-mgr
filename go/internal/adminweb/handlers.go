@@ -38,9 +38,30 @@ func (s *Server) currentSession(r *http.Request) *session {
 type pageData struct {
 	Bucket   string
 	Endpoint string
+	CSRF     string
 	Error    string
+	OK       bool
+	Nav      string // which nav entry to mark active
+
 	Machines []admincore.MachineState
+	Users    []model.UserEntry
 	Policy   *model.Policy
+	Stats    []admincore.CollectStat
+	Machine  string // the machine a log belongs to
+	Log      string
+}
+
+// newPage seeds the fields every page needs, including the notices carried
+// through the redirect that follows a POST.
+func newPage(sess *session, r *http.Request, nav string) pageData {
+	return pageData{
+		Bucket:   sess.bucket,
+		Endpoint: sess.endpoint,
+		CSRF:     sess.csrf,
+		Nav:      nav,
+		Error:    r.URL.Query().Get("err"),
+		OK:       r.URL.Query().Get("ok") == "1",
+	}
 }
 
 func (s *Server) render(w http.ResponseWriter, name string, code int, data pageData) {
@@ -140,7 +161,10 @@ func (s *Server) handleLogout(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleMachines(w http.ResponseWriter, r *http.Request, sess *session) {
-	data := pageData{Bucket: sess.bucket, Endpoint: sess.endpoint}
+	data := newPage(sess, r, "machines")
+	if us, err := sess.mgr.LoadUsers(); err == nil {
+		data.Users = us.Users // the bind form offers the roster
+	}
 	// Same freshness window the CLI uses (cmd/admin/status_cmd.go), so the two
 	// front ends never disagree about whether a machine is alive.
 	machines, err := sess.mgr.CollectMachines(freshAfter)
@@ -154,7 +178,7 @@ func (s *Server) handleMachines(w http.ResponseWriter, r *http.Request, sess *se
 }
 
 func (s *Server) handlePolicy(w http.ResponseWriter, r *http.Request, sess *session) {
-	data := pageData{Bucket: sess.bucket, Endpoint: sess.endpoint}
+	data := newPage(sess, r, "policy")
 	p, err := sess.mgr.CurrentPolicy()
 	if err != nil {
 		data.Error = "could not read the policy"
@@ -163,4 +187,59 @@ func (s *Server) handlePolicy(w http.ResponseWriter, r *http.Request, sess *sess
 		data.Policy = &p
 	}
 	s.render(w, "policy.html", http.StatusOK, data)
+}
+
+func (s *Server) handleUsers(w http.ResponseWriter, r *http.Request, sess *session) {
+	data := newPage(sess, r, "users")
+	us, err := sess.mgr.LoadUsers()
+	if err != nil {
+		data.Error = "could not read the roster"
+		log.Printf("adminweb: LoadUsers: %v", err)
+	} else {
+		data.Users = us.Users
+	}
+	s.render(w, "users.html", http.StatusOK, data)
+}
+
+func (s *Server) handleSites(w http.ResponseWriter, r *http.Request, sess *session) {
+	data := newPage(sess, r, "sites")
+	p, err := sess.mgr.CurrentPolicy()
+	if err != nil {
+		data.Error = "could not read the policy"
+		log.Printf("adminweb: CurrentPolicy: %v", err)
+	} else {
+		data.Policy = &p
+	}
+	s.render(w, "sites.html", http.StatusOK, data)
+}
+
+func (s *Server) handleSettings(w http.ResponseWriter, r *http.Request, sess *session) {
+	data := newPage(sess, r, "settings")
+	p, err := sess.mgr.CurrentPolicy()
+	if err != nil {
+		data.Error = "could not read the policy"
+		log.Printf("adminweb: CurrentPolicy: %v", err)
+	} else {
+		data.Policy = &p
+	}
+	// Collection stats are informational; a failure here should not hide the
+	// settings themselves.
+	if stats, _, err := sess.mgr.CollectStats(); err == nil {
+		data.Stats = stats
+	}
+	s.render(w, "settings.html", http.StatusOK, data)
+}
+
+func (s *Server) handleLog(w http.ResponseWriter, r *http.Request, sess *session) {
+	data := newPage(sess, r, "machines")
+	machine := strings.TrimSpace(r.URL.Query().Get("machine"))
+	data.Machine = machine
+	if machine == "" {
+		data.Error = "no machine given"
+	} else if b, err := sess.mgr.FetchLog(machine); err != nil {
+		data.Error = "no log uploaded for this machine yet"
+	} else {
+		data.Log = string(b)
+	}
+	s.render(w, "log.html", http.StatusOK, data)
 }

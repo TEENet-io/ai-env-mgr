@@ -1,0 +1,138 @@
+package adminweb
+
+import (
+	"net/http"
+	"net/http/httptest"
+	"net/url"
+	"strings"
+	"testing"
+)
+
+// post drives a state-changing route the way a browser would.
+func post(t *testing.T, s *Server, path string, cookie *http.Cookie, form url.Values) *httptest.ResponseRecorder {
+	t.Helper()
+	req := httptest.NewRequest(http.MethodPost, path, strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	if cookie != nil {
+		req.AddCookie(cookie)
+	}
+	rec := httptest.NewRecorder()
+	s.Handler().ServeHTTP(rec, req)
+	return rec
+}
+
+func csrfOf(t *testing.T, s *Server, cookie *http.Cookie) string {
+	t.Helper()
+	sess := s.sessions.get(cookie.Value)
+	if sess == nil {
+		t.Fatal("no session for cookie")
+	}
+	return sess.csrf
+}
+
+// Without this, any page on the internet could post a form that retires an
+// employee or unbinds a machine using the operator's session.
+func TestWritesRequireCSRFToken(t *testing.T) {
+	writes := []struct {
+		path string
+		form url.Values
+	}{
+		{"/users/add", url.Values{"windowsUser": {"mallory"}}},
+		{"/users/enabled", url.Values{"windowsUser": {"work1"}, "enabled": {"0"}}},
+		{"/machines/bind", url.Values{"machine": {"PC1"}, "user": {"work1"}}},
+		{"/machines/unbind", url.Values{"machine": {"PC1"}}},
+		{"/sites/mutate", url.Values{"add": {"evil.example"}}},
+		{"/sites/enabled", url.Values{"enabled": {"0"}}},
+		{"/settings/interval", url.Values{"minutes": {"1"}}},
+		{"/settings/collect", url.Values{"enabled": {"1"}}},
+	}
+	for _, w := range writes {
+		fs := newFakeStore()
+		s := newTestServer(t, fs)
+		cookie := signIn(t, s)
+		before := len(fs.objects)
+
+		// A valid session but no token: must not act.
+		rec := post(t, s, w.path, cookie, w.form)
+		if loc := rec.Header().Get("Location"); !strings.Contains(loc, "err=") {
+			t.Fatalf("%s without a CSRF token did not report an error (Location %q)", w.path, loc)
+		}
+		if len(fs.objects) != before {
+			t.Fatalf("%s without a CSRF token still wrote to the store", w.path)
+		}
+
+		// A wrong token must fail the same way.
+		bad := url.Values{"csrf": {"not-the-token"}}
+		for k, v := range w.form {
+			bad[k] = v
+		}
+		rec = post(t, s, w.path, cookie, bad)
+		if loc := rec.Header().Get("Location"); !strings.Contains(loc, "err=") {
+			t.Fatalf("%s with a wrong CSRF token was accepted", w.path)
+		}
+		if len(fs.objects) != before {
+			t.Fatalf("%s with a wrong CSRF token still wrote to the store", w.path)
+		}
+	}
+}
+
+func TestWritesRequireSession(t *testing.T) {
+	s := newTestServer(t, newFakeStore())
+	rec := post(t, s, "/users/add", nil, url.Values{"windowsUser": {"mallory"}})
+	if rec.Code != http.StatusSeeOther || rec.Header().Get("Location") != "/" {
+		t.Fatalf("an unauthenticated write returned %d -> %q", rec.Code, rec.Header().Get("Location"))
+	}
+}
+
+func TestWriteWithValidTokenApplies(t *testing.T) {
+	fs := newFakeStore()
+	s := newTestServer(t, fs)
+	cookie := signIn(t, s)
+	form := url.Values{"csrf": {csrfOf(t, s, cookie)}, "minutes": {"42"}}
+
+	rec := post(t, s, "/settings/interval", cookie, form)
+	if loc := rec.Header().Get("Location"); !strings.HasSuffix(loc, "?ok=1") {
+		t.Fatalf("valid write redirected to %q", loc)
+	}
+	p, err := (&testManager{fs}).policy()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if p.SyncIntervalMinutes != 42 {
+		t.Fatalf("interval = %d, want 42", p.SyncIntervalMinutes)
+	}
+}
+
+// A GET on a write route must not act -- browsers, crawlers and link
+// prefetchers all issue GETs unprompted.
+func TestWriteRoutesIgnoreGET(t *testing.T) {
+	fs := newFakeStore()
+	s := newTestServer(t, fs)
+	cookie := signIn(t, s)
+	before := len(fs.objects)
+
+	req := httptest.NewRequest(http.MethodGet, "/users/add?windowsUser=mallory", nil)
+	req.AddCookie(cookie)
+	rec := httptest.NewRecorder()
+	s.Handler().ServeHTTP(rec, req)
+	if rec.Code != http.StatusSeeOther {
+		t.Fatalf("GET on a write route returned %d", rec.Code)
+	}
+	if len(fs.objects) != before {
+		t.Fatal("GET on a write route changed the store")
+	}
+}
+
+// The high-risk actions must not have quietly acquired a web route.
+func TestFleetWideActionsAreNotExposed(t *testing.T) {
+	s := newTestServer(t, newFakeStore())
+	cookie := signIn(t, s)
+	for _, path := range []string{
+		"/agent/publish", "/codex/publish", "/machines/forget", "/files/put",
+	} {
+		rec := post(t, s, path, cookie, url.Values{})
+		if rec.Code != http.StatusNotFound {
+			t.Fatalf("%s is reachable (%d); publishing reaches every machine and forget cannot be undone", path, rec.Code)
+		}
+	}
+}

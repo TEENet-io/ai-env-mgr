@@ -152,6 +152,23 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("/", s.handleIndex)
 	mux.HandleFunc("/machines", s.requireSession(s.handleMachines))
 	mux.HandleFunc("/policy", s.requireSession(s.handlePolicy))
+	mux.HandleFunc("/users", s.requireSession(s.handleUsers))
+	mux.HandleFunc("/sites", s.requireSession(s.handleSites))
+	mux.HandleFunc("/settings", s.requireSession(s.handleSettings))
+	mux.HandleFunc("/log", s.requireSession(s.handleLog))
+
+	// Every state-changing route is POST + CSRF + redirect (see requirePost).
+	// The high-risk actions are deliberately absent: publishing an agent or a
+	// Codex build reaches every machine, and forgetting a machine cannot be
+	// undone, so those stay on the CLI until the console has earned it.
+	mux.HandleFunc("/users/add", s.requirePost("/users", s.actionUserAdd))
+	mux.HandleFunc("/users/enabled", s.requirePost("/users", s.actionUserEnabled))
+	mux.HandleFunc("/machines/bind", s.requirePost("/machines", s.actionMachineBind))
+	mux.HandleFunc("/machines/unbind", s.requirePost("/machines", s.actionMachineUnbind))
+	mux.HandleFunc("/sites/mutate", s.requirePost("/sites", s.actionSites))
+	mux.HandleFunc("/sites/enabled", s.requirePost("/sites", s.actionBlockEnabled))
+	mux.HandleFunc("/settings/interval", s.requirePost("/settings", s.actionSyncInterval))
+	mux.HandleFunc("/settings/collect", s.requirePost("/settings", s.actionCollect))
 	// Serve only assets/static, so the templates next to it are never handed
 	// out as raw files, and strip the prefix so paths resolve inside it.
 	staticFS, err := fs.Sub(assetFS, "assets/static")

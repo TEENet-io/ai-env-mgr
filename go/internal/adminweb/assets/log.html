@@ -1,0 +1,11 @@
+{{define "log.html"}}{{template "head" "日志"}}
+<body>
+{{template "nav" .}}
+<main>
+  <h1>日志 · {{.Machine}}</h1>
+  {{template "notices" .}}
+  {{if .Log}}<pre class="log">{{.Log}}</pre>{{end}}
+  <p><a href="/machines">← 返回机器列表</a></p>
+</main>
+</body>
+</html>{{end}}

@@ -1,0 +1,37 @@
+{{define "sites.html"}}{{template "head" "网站拦截"}}
+<body>
+{{template "nav" .}}
+<main>
+  <h1>网站拦截</h1>
+  {{template "notices" .}}
+  {{with .Policy}}
+  <p>
+    当前状态：{{if .BlockEnabled}}<span class="ok">开启</span>{{else}}<span class="warn">已全局关闭</span>{{end}}
+    ，共 {{len .BlockedDomains}} 个域名。
+  </p>
+  <form method="post" action="/sites/enabled" class="inline">
+    <input type="hidden" name="csrf" value="{{$.CSRF}}">
+    <input type="hidden" name="enabled" value="{{if .BlockEnabled}}0{{else}}1{{end}}">
+    <button type="submit">{{if .BlockEnabled}}临时全局关闭{{else}}恢复拦截{{end}}</button>
+  </form>
+
+  <h2>域名清单</h2>
+  <div class="scroll">
+  <table>
+    <tbody>
+    {{range .BlockedDomains}}<tr><td>{{.}}</td></tr>{{else}}<tr><td class="muted">清单为空。</td></tr>{{end}}
+    </tbody>
+  </table>
+  </div>
+  {{end}}
+
+  <h2>增删域名</h2>
+  <form method="post" action="/sites/mutate" class="row">
+    <input type="hidden" name="csrf" value="{{.CSRF}}">
+    <label>新增<textarea name="add" rows="3" placeholder="每行一个，也可用逗号或空格分隔"></textarea></label>
+    <label>移除<textarea name="remove" rows="3" placeholder="每行一个"></textarea></label>
+    <button type="submit">提交</button>
+  </form>
+</main>
+</body>
+</html>{{end}}
