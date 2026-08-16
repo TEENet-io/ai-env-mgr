@@ -10,6 +10,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"log"
 	"os"
 	"path/filepath"
 	"strings"
@@ -445,11 +446,25 @@ func (s *Syncer) ReportEvent(event string) {
 
 	// Bound the upload: run it off the calling goroutine and give up after
 	// eventReportTimeout so a dying network cannot delay suspend or stop.
+	//
+	// The outcome is logged rather than discarded. Without it, a machine that
+	// shows as merely offline is unexplainable after the fact: silence looks
+	// identical whether the OS never delivered the event, or it did and the
+	// upload could not finish before the machine went away. The log survives
+	// the sleep and is uploaded on the next sync after waking, which is when
+	// somebody is asking the question.
 	done := make(chan error, 1)
 	go func() { done <- s.Store.Put(ossclient.StatusKey(st.Machine), out) }()
 	select {
-	case <-done:
+	case err := <-done:
+		if err != nil {
+			log.Printf("lifecycle event %q: report FAILED: %v", event, err)
+		} else {
+			log.Printf("lifecycle event %q: reported", event)
+		}
 	case <-time.After(eventReportTimeout):
+		log.Printf("lifecycle event %q: report TIMED OUT after %s -- the admin will see this machine as offline",
+			event, eventReportTimeout)
 	}
 
 	s.mu.Lock()

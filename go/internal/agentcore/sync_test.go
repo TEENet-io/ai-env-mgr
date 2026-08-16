@@ -1,11 +1,13 @@
 package agentcore
 
 import (
+	"bytes"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log"
 	"os"
 	"path/filepath"
 	"strings"
@@ -1085,5 +1087,32 @@ func TestRunOnceReportsNoLifecycleEvent(t *testing.T) {
 	}
 	if st.LastEvent != "" {
 		t.Fatalf("a normal sync should carry no lifecycle event, got %q", st.LastEvent)
+	}
+}
+
+// A machine that shows as merely offline has to be explainable afterwards:
+// the OS may never have delivered the event, or the upload may not have
+// finished before the machine went away. Those look identical unless the
+// outcome is recorded, so ReportEvent logs it.
+func TestReportEventLogsItsOutcome(t *testing.T) {
+	var buf bytes.Buffer
+	log.SetOutput(&buf)
+	log.SetFlags(0)
+	defer func() { log.SetOutput(os.Stderr); log.SetFlags(log.LstdFlags) }()
+
+	store := newFakeStore()
+	s := newSyncer(t, store, &fakeApplier{})
+	s.lastStatus = model.Status{Machine: "DESKTOP-A"}
+
+	s.ReportEvent("suspend")
+	if got := buf.String(); !strings.Contains(got, `lifecycle event "suspend": reported`) {
+		t.Fatalf("a successful report was not logged: %q", got)
+	}
+
+	buf.Reset()
+	store.putErr = errors.New("network is unreachable")
+	s.ReportEvent("suspend")
+	if got := buf.String(); !strings.Contains(got, "report FAILED") {
+		t.Fatalf("a failed report was not logged: %q", got)
 	}
 }
