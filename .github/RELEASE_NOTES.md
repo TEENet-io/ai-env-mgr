@@ -154,13 +154,17 @@ Status 原本只有一个 `errors` 列表，于是"还没有人替这位员工�
 
 ## admin 怎么用凭据
 
-`admin` **不含任何密钥**。在终端里直接运行(如 `admin status`),没有内置凭据、也没有 `admin.config.json` 时,它会**提示你输入** bucket / endpoint / AccessKeyId / AccessKeySecret(Secret 输入**不回显**),然后**当场向 OSS 验证**:
+`admin` **不含任何密钥**,只编译进 bucket 名、endpoint 和区域(都不是秘密)。
+
+不带参数运行就在本机开控制台(`http://127.0.0.1:8080`),在浏览器里输 AccessKeyId / AccessKeySecret 登录,**当场向 OSS 验证**:
 
 - 密钥错(`InvalidAccessKeyId`/`SignatureDoesNotMatch`)→ 提示重输;
 - 密钥对但权限不足(`AccessDenied`)→ 提示去补 RAM 授权;
-- 通过 → 继续执行命令。
+- 通过 → 建立会话。
 
-**输入的凭据不写磁盘**,每次运行都要重新输入(这是刻意的:管理员那把是**全桶读写**密钥,不落盘最稳妥)。非终端环境(管道/CI)不会卡输入,而是直接报"未配置凭据"。
+**凭据只在进程内存里**:不写磁盘、不进 cookie、不进日志,cookie 里只有一个随机会话 ID。关掉程序就等于全体登出——机器上没有任何静态凭证可供翻找。这是刻意的:管理员那把是**全桶读写**密钥。
+
+管理员的 RAM 用户除 OSS 权限外还需 **`AliyunECDReadOnlyAccess`**,控制台才能查云电脑状态、把"休眠"和"agent 挂了"分开。没有也能用,只是安静的机器一律显示"离线"。
 
 ## 安全说明
 
