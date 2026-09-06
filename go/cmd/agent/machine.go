@@ -166,18 +166,16 @@ func (localApplier) DeployCreds(profileDir string, set model.CredentialSet) (int
 			user, strings.Join(failed, "; "))
 	}
 
-	// Restart the tools only when a login actually changed.
+	// Restart the tools only when a login actually changed on disk.
 	//
 	// The kill is a taskkill /F: it takes an employee's in-progress work with
-	// no chance to save. A stale login is worth that -- the session would
-	// otherwise keep running on a token that may have been revoked -- but a
-	// new config.toml or model catalog is not. Those change what the next
-	// launch does, and the employee can restart when it suits them.
-	for entry := range set {
-		if model.IsLoginCredential(entry) {
-			creds.StopAITools()
-			break
-		}
+	// no chance to save. The archive carries every entry ever published for
+	// them, so a login from months ago rides along with today's catalog and
+	// "the archive contains a login" is true of every delivery. The decision
+	// therefore rests on which bytes moved (creds.NeedsToolRestart), not on
+	// what the archive happened to contain.
+	if creds.NeedsToolRestart(rep) {
+		creds.StopAITools()
 	}
 	return rep.Written, rep.Placed, rep.Merged, nil
 }
