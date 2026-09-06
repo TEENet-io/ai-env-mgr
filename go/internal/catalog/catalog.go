@@ -164,6 +164,13 @@ func entryFor(template map[string]any, m litellm.Model) map[string]any {
 			}
 		}
 	}
+	// Only "function" is honoured; anything else keeps the template's value.
+	// The template says freeform (a custom tool with a grammar), which is
+	// what OpenAI's own backend wants and what a function-only upstream
+	// refuses with "only function tools can use Responses compatibility mode".
+	if m.Info.ApplyPatchTool == "function" {
+		entry["apply_patch_tool_type"] = "function"
+	}
 	if levels := reasoningLevels(m.Info.ReasoningLevels); len(levels) > 0 {
 		entry["supported_reasoning_levels"] = levels
 		entry["default_reasoning_level"] = defaultReasoning(m.Info, levels)

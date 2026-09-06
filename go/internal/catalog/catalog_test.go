@@ -209,3 +209,25 @@ func TestIdentityRewriteFallsBackToSlug(t *testing.T) {
 		t.Errorf("slug fallback missing:\n%.120s", text)
 	}
 }
+
+func TestApplyPatchToolTypeFollowsGatewayFlag(t *testing.T) {
+	raw, err := Build([]litellm.Model{
+		{Name: "compat", Info: litellm.ModelInfo{CatalogVisible: true, ApplyPatchTool: "function"}},
+		{Name: "native", Info: litellm.ModelInfo{CatalogVisible: true}},
+		{Name: "odd", Info: litellm.ModelInfo{CatalogVisible: true, ApplyPatchTool: "grammar"}},
+	}, nil)
+	if err != nil {
+		t.Fatalf("build: %v", err)
+	}
+	entries := decode(t, raw)
+	if got := find(entries, "compat")["apply_patch_tool_type"]; got != "function" {
+		t.Errorf("compat model should declare apply_patch as a function tool, got %v", got)
+	}
+	// A function-only upstream refuses the custom form; a native one wants it.
+	if got := find(entries, "native")["apply_patch_tool_type"]; got != "freeform" {
+		t.Errorf("native model should keep the template's freeform, got %v", got)
+	}
+	if got := find(entries, "odd")["apply_patch_tool_type"]; got != "freeform" {
+		t.Errorf("an unknown value must not be written into the catalog, got %v", got)
+	}
+}
