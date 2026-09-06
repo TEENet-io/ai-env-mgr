@@ -72,13 +72,6 @@ type ModelInfo struct {
 	DefaultReasoning string   `json:"default_reasoning"`
 	Modalities       []string `json:"modalities"`
 	CatalogVisible   bool     `json:"catalog_visible"`
-
-	// ApplyPatchTool selects how Codex declares its apply_patch tool for this
-	// model: "" (leave the template's freeform custom tool) or "function".
-	// Upstreams that only take function tools -- the relay's compatibility
-	// mode says so outright -- reject the custom form, and without
-	// apply_patch the model cannot edit files the way Codex intends.
-	ApplyPatchTool string `json:"apply_patch_tool"`
 }
 
 // Model pairs a routing key with its catalog metadata.

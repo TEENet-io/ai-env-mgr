@@ -164,13 +164,12 @@ func entryFor(template map[string]any, m litellm.Model) map[string]any {
 			}
 		}
 	}
-	// Only "function" is honoured; anything else keeps the template's value.
-	// The template says freeform (a custom tool with a grammar), which is
-	// what OpenAI's own backend wants and what a function-only upstream
-	// refuses with "only function tools can use Responses compatibility mode".
-	if m.Info.ApplyPatchTool == "function" {
-		entry["apply_patch_tool_type"] = "function"
-	}
+	// apply_patch_tool_type is deliberately never changed from the template.
+	// Codex 0.148's ApplyPatchToolType enum has exactly one variant,
+	// "freeform"; any other string makes serde reject the whole catalog,
+	// Codex silently falls back to its default provider, and the employee is
+	// shown a ChatGPT sign-in. That happened on 2026-09-07 with "function".
+	// Upstreams that refuse custom tools are handled at the gateway instead.
 	if levels := reasoningLevels(m.Info.ReasoningLevels); len(levels) > 0 {
 		entry["supported_reasoning_levels"] = levels
 		entry["default_reasoning_level"] = defaultReasoning(m.Info, levels)
