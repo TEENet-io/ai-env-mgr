@@ -196,3 +196,69 @@ func TestListKeysStopsOnShortPage(t *testing.T) {
 		t.Errorf("short page should end the loop: %d keys in %d calls", len(keys), calls)
 	}
 }
+
+func TestListKeysCarriesTheHashNotThePlaintext(t *testing.T) {
+	// /key/list never returns the plaintext. Handle() must therefore fall
+	// back to the hash, or revocation of a listed token sends an empty key.
+	c := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+		_, _ = io.WriteString(w, `{"keys":[{"token":"abc123","key_alias":"emp-alice","models":["grok-4.6"]}]}`)
+	})
+	keys, err := c.ListKeys(context.Background())
+	if err != nil {
+		t.Fatalf("list: %v", err)
+	}
+	if keys[0].Key != "" || keys[0].Token != "abc123" || keys[0].Handle() != "abc123" {
+		t.Fatalf("listed key not parsed as hash-only: %+v", keys[0])
+	}
+}
+
+func TestDeleteKeyRefusesEmptyHandle(t *testing.T) {
+	called := false
+	c := newTestClient(t, func(w http.ResponseWriter, r *http.Request) { called = true })
+	if err := c.DeleteKey(context.Background(), ""); err == nil {
+		t.Fatal("an empty handle must be refused locally, not sent as a 404-shaped no-op")
+	}
+	if called {
+		t.Error("empty handle reached the gateway")
+	}
+}
+
+func TestDeleteKeyByAliasSendsKeyAliases(t *testing.T) {
+	var got map[string]any
+	c := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/key/delete" {
+			t.Errorf("unexpected path %s", r.URL.Path)
+		}
+		body, _ := io.ReadAll(r.Body)
+		_ = json.Unmarshal(body, &got)
+		_, _ = io.WriteString(w, `{"deleted_keys":["x"]}`)
+	})
+	if err := c.DeleteKeyByAlias(context.Background(), "emp-alice"); err != nil {
+		t.Fatalf("delete by alias: %v", err)
+	}
+	aliases, _ := got["key_aliases"].([]any)
+	if len(aliases) != 1 || aliases[0] != "emp-alice" {
+		t.Errorf("key_aliases not sent: %v", got)
+	}
+	if _, hasKeys := got["keys"]; hasKeys {
+		t.Errorf("must not also send keys: %v", got)
+	}
+}
+
+func TestUpdateKeyAcceptsHashHandle(t *testing.T) {
+	var got map[string]any
+	c := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(r.Body)
+		_ = json.Unmarshal(body, &got)
+		_, _ = io.WriteString(w, `{}`)
+	})
+	if err := c.UpdateKey(context.Background(), "abc123", []string{"grok-4.6"}); err != nil {
+		t.Fatalf("update: %v", err)
+	}
+	if got["key"] != "abc123" {
+		t.Errorf("hash handle not forwarded as key: %v", got)
+	}
+	if err := c.UpdateKey(context.Background(), "", nil); err == nil {
+		t.Error("empty handle must be refused")
+	}
+}

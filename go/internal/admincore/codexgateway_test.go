@@ -3,6 +3,7 @@ package admincore
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"strings"
 	"testing"
 
@@ -42,7 +43,10 @@ func (f *fakeGateway) GenerateKey(_ context.Context, alias string, models []stri
 	}
 	k := litellm.Key{Key: "sk-" + alias, KeyAlias: alias, Models: models}
 	f.generated = append(f.generated, k)
-	f.existing[alias] = k
+	// What the gateway later lists: the hash, never the plaintext. This is
+	// the detail a first version of the fake got wrong, which let code that
+	// revoked by plaintext pass every test and fail against the real thing.
+	f.existing[alias] = litellm.Key{Token: "hash-of-" + alias, KeyAlias: alias, Models: models}
 	return k, nil
 }
 
@@ -51,15 +55,32 @@ func (f *fakeGateway) UpdateKey(_ context.Context, key string, models []string) 
 	return nil
 }
 
-func (f *fakeGateway) DeleteKey(_ context.Context, keys ...string) error {
-	f.deleted = append(f.deleted, keys...)
+func (f *fakeGateway) DeleteKey(_ context.Context, handles ...string) error {
+	for _, h := range handles {
+		if h == "" {
+			// The real gateway answers an empty key with 404 "No keys found".
+			return fmt.Errorf("gateway /key/delete returned 404: No keys found")
+		}
+	}
+	f.deleted = append(f.deleted, handles...)
 	for alias, k := range f.existing {
-		for _, target := range keys {
-			if k.Key == target {
+		for _, target := range handles {
+			if k.Key == target || k.Token == target {
 				delete(f.existing, alias)
 			}
 		}
 	}
+	return nil
+}
+
+func (f *fakeGateway) DeleteKeyByAlias(_ context.Context, alias string) error {
+	k, ok := f.existing[alias]
+	if !ok {
+		return fmt.Errorf("gateway /key/delete returned 404: No keys found")
+	}
+	f.deleted = append(f.deleted, "alias:"+alias)
+	_ = k
+	delete(f.existing, alias)
 	return nil
 }
 
@@ -137,13 +158,14 @@ func TestProvisionRevokesPreviousTokenForSameEmployee(t *testing.T) {
 	// A second live token for one person cannot be attributed or reconciled.
 	m, _ := managerWithUser(t, "alice")
 	gw := newFakeGateway()
-	gw.existing["emp-alice"] = litellm.Key{Key: "sk-old", KeyAlias: "emp-alice"}
+	// As the real gateway lists it: hash only, no plaintext.
+	gw.existing["emp-alice"] = litellm.Key{Token: "hash-old", KeyAlias: "emp-alice"}
 
 	if err := m.ProvisionCodexGateway(context.Background(), gw, GatewayConfig{BaseURL: "https://gw.example"}, "alice", nil, 0); err != nil {
 		t.Fatalf("provision: %v", err)
 	}
-	if len(gw.deleted) != 1 || gw.deleted[0] != "sk-old" {
-		t.Errorf("previous token was not revoked, deleted = %v", gw.deleted)
+	if len(gw.deleted) != 1 || gw.deleted[0] != "alias:emp-alice" {
+		t.Errorf("previous token must be revoked by alias, deleted = %v", gw.deleted)
 	}
 }
 
@@ -220,7 +242,8 @@ func TestSetModelsUpdatesTokenAndCatalogTogether(t *testing.T) {
 		t.Fatalf("set models: %v", err)
 	}
 
-	if got := gw.updated["sk-emp-alice"]; len(got) != 1 || got[0] != "glm-5" {
+	// The token was found via the listing, so it is updated by its hash.
+	if got := gw.updated["hash-of-emp-alice"]; len(got) != 1 || got[0] != "glm-5" {
 		t.Errorf("token allowlist not narrowed: %v", got)
 	}
 	set := deliveredSet(t, store, "alice")
@@ -258,8 +281,8 @@ func TestRevokeDeletesTheToken(t *testing.T) {
 	if err := m.RevokeCodexGateway(context.Background(), gw, "alice"); err != nil {
 		t.Fatalf("revoke: %v", err)
 	}
-	if len(gw.deleted) != 1 || gw.deleted[0] != "sk-emp-alice" {
-		t.Errorf("token not revoked: %v", gw.deleted)
+	if len(gw.deleted) != 1 || gw.deleted[0] != "alias:emp-alice" {
+		t.Errorf("token must be revoked by alias: %v", gw.deleted)
 	}
 }
 

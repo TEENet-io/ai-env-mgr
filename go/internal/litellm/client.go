@@ -46,8 +46,15 @@ func New(baseURL, adminKey string) *Client {
 }
 
 // Key is a per-employee token as the gateway reports it.
+//
+// Key (the plaintext) is present only in the response to /key/generate.
+// Everywhere else -- /key/list in particular -- the gateway reports the
+// hashed Token instead, so code that revokes or updates a token it did not
+// just mint must not reach for Key: it will be empty, and the gateway
+// answers an empty key with 404 "No keys found".
 type Key struct {
-	Key       string   `json:"key,omitempty"`
+	Key       string   `json:"key,omitempty"`   // plaintext; /key/generate only
+	Token     string   `json:"token,omitempty"` // sha-256 of the plaintext; what /key/list returns
 	KeyAlias  string   `json:"key_alias"`
 	Models    []string `json:"models"`
 	MaxBudget *float64 `json:"max_budget,omitempty"`
@@ -105,26 +112,63 @@ func (c *Client) GenerateKey(ctx context.Context, alias string, models []string,
 	return out, nil
 }
 
-// UpdateKey changes which models a token may use.
+// Handle returns the identifier the gateway accepts for updating or
+// revoking this token: the plaintext when it is known, otherwise the hash.
+// The gateway's /key/update and /key/delete take either (they hash a
+// plaintext themselves), so callers need not care which they hold.
+func (k Key) Handle() string {
+	if k.Key != "" {
+		return k.Key
+	}
+	return k.Token
+}
+
+// UpdateKey changes which models a token may use. handle is Key.Handle().
 //
 // This takes effect at the gateway immediately and does not touch the
 // employee's machine. It governs what they *can* use; the catalog governs
 // what they can *see*, so a permission change normally needs both.
-func (c *Client) UpdateKey(ctx context.Context, key string, models []string) error {
+func (c *Client) UpdateKey(ctx context.Context, handle string, models []string) error {
+	if handle == "" {
+		return fmt.Errorf("update key: no token handle (neither plaintext nor hash)")
+	}
 	return c.do(ctx, http.MethodPost, "/key/update", map[string]any{
-		"key":    key,
+		"key":    handle,
 		"models": models,
 	}, nil)
 }
 
-// DeleteKey revokes tokens. Revocation is server-side and takes effect at
-// once, so it does not depend on the employee's machine being reachable --
-// which is the whole reason offboarding does not rely on the agent alone.
-func (c *Client) DeleteKey(ctx context.Context, keys ...string) error {
-	if len(keys) == 0 {
+// DeleteKey revokes tokens by handle (plaintext or hash). Revocation is
+// server-side and takes effect at once, so it does not depend on the
+// employee's machine being reachable -- which is the whole reason
+// offboarding does not rely on the agent alone.
+//
+// An empty handle is refused here rather than sent: the gateway answers it
+// with 404 "No keys found", which reads as "already gone" and would let a
+// live token survive a revocation that reported success.
+func (c *Client) DeleteKey(ctx context.Context, handles ...string) error {
+	if len(handles) == 0 {
 		return nil
 	}
-	return c.do(ctx, http.MethodPost, "/key/delete", map[string]any{"keys": keys}, nil)
+	for _, h := range handles {
+		if h == "" {
+			return fmt.Errorf("delete key: empty token handle")
+		}
+	}
+	return c.do(ctx, http.MethodPost, "/key/delete", map[string]any{"keys": handles}, nil)
+}
+
+// DeleteKeyByAlias revokes whatever token carries alias.
+//
+// This is the form offboarding uses. The alias is the one handle this console
+// derives itself (see admincore.KeyAlias) and therefore always has, whereas
+// the plaintext is gone the moment /key/generate returns and the hash has to
+// be fetched first.
+func (c *Client) DeleteKeyByAlias(ctx context.Context, alias string) error {
+	if alias == "" {
+		return fmt.Errorf("delete key: empty alias")
+	}
+	return c.do(ctx, http.MethodPost, "/key/delete", map[string]any{"key_aliases": []string{alias}}, nil)
 }
 
 // FindKeyByAlias locates an existing token by its alias.

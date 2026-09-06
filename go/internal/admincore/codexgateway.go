@@ -17,7 +17,8 @@ import (
 type Gateway interface {
 	GenerateKey(ctx context.Context, alias string, models []string, maxBudget float64, metadata map[string]string) (litellm.Key, error)
 	UpdateKey(ctx context.Context, key string, models []string) error
-	DeleteKey(ctx context.Context, keys ...string) error
+	DeleteKey(ctx context.Context, handles ...string) error
+	DeleteKeyByAlias(ctx context.Context, alias string) error
 	FindKeyByAlias(ctx context.Context, alias string) (litellm.Key, bool, error)
 	Models(ctx context.Context) ([]litellm.Model, error)
 }
@@ -69,11 +70,15 @@ func (m *Manager) ProvisionCodexGateway(ctx context.Context, gw Gateway, cfg Gat
 		return err
 	}
 
+	// Revoke by alias, not by the token from the listing: the listing carries
+	// only the hash, and a first version of this code passed the (empty)
+	// plaintext instead -- the gateway answered 404 and re-provisioning
+	// failed for anyone who already had a token.
 	alias := KeyAlias(windowsUser)
-	if existing, found, err := gw.FindKeyByAlias(ctx, alias); err != nil {
+	if _, found, err := gw.FindKeyByAlias(ctx, alias); err != nil {
 		return fmt.Errorf("check existing token for %q: %w", windowsUser, err)
 	} else if found {
-		if err := gw.DeleteKey(ctx, existing.Key); err != nil {
+		if err := gw.DeleteKeyByAlias(ctx, alias); err != nil {
 			return fmt.Errorf("revoke previous token for %q: %w", windowsUser, err)
 		}
 	}
@@ -129,7 +134,7 @@ func (m *Manager) SetCodexGatewayModels(ctx context.Context, gw Gateway, cfg Gat
 	if err != nil {
 		return err
 	}
-	if err := gw.UpdateKey(ctx, key.Key, allowed); err != nil {
+	if err := gw.UpdateKey(ctx, key.Handle(), allowed); err != nil {
 		return fmt.Errorf("update token for %q: %w", windowsUser, err)
 	}
 
@@ -150,14 +155,13 @@ func (m *Manager) SetCodexGatewayModels(ctx context.Context, gw Gateway, cfg Gat
 // A user with no token is not an error: offboarding runs against everyone
 // being removed, including those who never had Codex provisioned.
 func (m *Manager) RevokeCodexGateway(ctx context.Context, gw Gateway, windowsUser string) error {
-	key, found, err := gw.FindKeyByAlias(ctx, KeyAlias(windowsUser))
-	if err != nil {
+	alias := KeyAlias(windowsUser)
+	if _, found, err := gw.FindKeyByAlias(ctx, alias); err != nil {
 		return fmt.Errorf("look up token for %q: %w", windowsUser, err)
-	}
-	if !found {
+	} else if !found {
 		return nil
 	}
-	if err := gw.DeleteKey(ctx, key.Key); err != nil {
+	if err := gw.DeleteKeyByAlias(ctx, alias); err != nil {
 		return fmt.Errorf("revoke token for %q: %w", windowsUser, err)
 	}
 	return nil
