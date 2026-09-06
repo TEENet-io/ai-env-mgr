@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/TEENet-io/ai-env-mgr/internal/creds"
@@ -15,6 +16,7 @@ import (
 
 // fakeGateway records what the orchestration asked the gateway to do.
 type fakeGateway struct {
+	mu     *sync.Mutex // nil in single-threaded tests
 	models []litellm.Model
 
 	existing  map[string]litellm.Key
@@ -37,9 +39,22 @@ func newFakeGateway() *fakeGateway {
 	}
 }
 
+func (f *fakeGateway) lock() func() {
+	if f.mu == nil {
+		return func() {}
+	}
+	f.mu.Lock()
+	return f.mu.Unlock
+}
+
 func (f *fakeGateway) GenerateKey(_ context.Context, alias string, models []string, _ float64, _ map[string]string) (litellm.Key, error) {
+	defer f.lock()()
 	if f.generateErr != nil {
 		return litellm.Key{}, f.generateErr
+	}
+	if _, taken := f.existing[alias]; taken {
+		// The real gateway enforces alias uniqueness with a 400.
+		return litellm.Key{}, &litellm.APIError{Status: 400, Path: "/key/generate", Body: "Key with alias '" + alias + "' already exists."}
 	}
 	k := litellm.Key{Key: "sk-" + alias, KeyAlias: alias, Models: models}
 	f.generated = append(f.generated, k)
@@ -74,6 +89,7 @@ func (f *fakeGateway) DeleteKey(_ context.Context, handles ...string) error {
 }
 
 func (f *fakeGateway) DeleteKeyByAlias(_ context.Context, alias string) error {
+	defer f.lock()()
 	k, ok := f.existing[alias]
 	if !ok {
 		return fmt.Errorf("gateway /key/delete returned 404: No keys found")
@@ -85,6 +101,7 @@ func (f *fakeGateway) DeleteKeyByAlias(_ context.Context, alias string) error {
 }
 
 func (f *fakeGateway) FindKeyByAlias(_ context.Context, alias string) (litellm.Key, bool, error) {
+	defer f.lock()()
 	k, ok := f.existing[alias]
 	return k, ok, nil
 }
@@ -289,5 +306,38 @@ func TestRevokeDeletesTheToken(t *testing.T) {
 func TestKeyAliasIsDeterministicAndCaseInsensitive(t *testing.T) {
 	if KeyAlias("Alice") != KeyAlias("alice") {
 		t.Error("alias must not vary with the casing of the Windows user name")
+	}
+}
+
+func TestConcurrentProvisionsForOneEmployeeDoNotCollide(t *testing.T) {
+	// A double-click used to make the second request find no token (the
+	// first had just revoked it), skip revocation, and collide with the
+	// token the first was minting. Serialised, both must succeed and leave
+	// exactly one live token.
+	m, _ := managerWithUser(t, "alice")
+	gw := newFakeGateway()
+	gw.mu = &sync.Mutex{}
+	if err := m.ProvisionCodexGateway(context.Background(), gw, GatewayConfig{BaseURL: "https://gw.example"}, "alice", nil, 0); err != nil {
+		t.Fatalf("initial provision: %v", err)
+	}
+
+	var wg sync.WaitGroup
+	errs := make(chan error, 8)
+	for i := 0; i < 8; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			errs <- m.ProvisionCodexGateway(context.Background(), gw, GatewayConfig{BaseURL: "https://gw.example"}, "alice", nil, 0)
+		}()
+	}
+	wg.Wait()
+	close(errs)
+	for err := range errs {
+		if err != nil {
+			t.Errorf("concurrent provision failed: %v", err)
+		}
+	}
+	if n := len(gw.existing); n != 1 {
+		t.Errorf("expected exactly one live token, found %d", n)
 	}
 }

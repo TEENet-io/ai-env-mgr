@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"sort"
 	"strings"
+	"sync"
 
 	"github.com/TEENet-io/ai-env-mgr/internal/catalog"
 	"github.com/TEENet-io/ai-env-mgr/internal/litellm"
@@ -21,6 +22,23 @@ type Gateway interface {
 	DeleteKeyByAlias(ctx context.Context, alias string) error
 	FindKeyByAlias(ctx context.Context, alias string) (litellm.Key, bool, error)
 	Models(ctx context.Context) ([]litellm.Model, error)
+}
+
+// provisionLocks serialises gateway provisioning per employee.
+//
+// Two concurrent provisions for one person -- a double-click is enough --
+// interleave badly: the second finds no token (the first has just revoked
+// the old one), skips revocation, and then collides with the token the
+// first is minting. The first succeeds; the second reports a confusing
+// "alias already exists". Holding a per-user lock across the whole sequence
+// removes the interleaving instead of papering over its symptom.
+var provisionLocks sync.Map // windowsUser (lower-cased) -> *sync.Mutex
+
+func lockProvision(windowsUser string) func() {
+	v, _ := provisionLocks.LoadOrStore(strings.ToLower(windowsUser), &sync.Mutex{})
+	mu := v.(*sync.Mutex)
+	mu.Lock()
+	return mu.Unlock
 }
 
 // GatewayConfig is what the delivered config.toml must point at.
@@ -50,6 +68,8 @@ func KeyAlias(windowsUser string) string { return "emp-" + strings.ToLower(windo
 // one person cannot be attributed or reconciled, and the old one would stay
 // valid forever.
 func (m *Manager) ProvisionCodexGateway(ctx context.Context, gw Gateway, cfg GatewayConfig, windowsUser string, models []string, maxBudget float64) error {
+	defer lockProvision(windowsUser)()
+
 	us, err := m.LoadUsers()
 	if err != nil {
 		return err
@@ -85,6 +105,13 @@ func (m *Manager) ProvisionCodexGateway(ctx context.Context, gw Gateway, cfg Gat
 
 	key, err := gw.GenerateKey(ctx, alias, allowed, maxBudget, map[string]string{"employee": windowsUser})
 	if err != nil {
+		if litellm.IsAliasTaken(err) {
+			// Revoked a moment ago and taken again already: something else
+			// provisioned this person between our revoke and our mint. The
+			// lock above prevents that within this process, so this is
+			// another console instance or an operator on the gateway UI.
+			return fmt.Errorf("token for %q was just issued by another operation; refresh the page instead of retrying", windowsUser)
+		}
 		return fmt.Errorf("issue token for %q: %w", windowsUser, err)
 	}
 
@@ -117,6 +144,7 @@ func (m *Manager) ProvisionCodexGateway(ctx context.Context, gw Gateway, cfg Gat
 // withdrawn models listed in the picker; updating only the catalog leaves
 // them reachable by typing the name.
 func (m *Manager) SetCodexGatewayModels(ctx context.Context, gw Gateway, cfg GatewayConfig, windowsUser string, models []string) error {
+	defer lockProvision(windowsUser)()
 	alias := KeyAlias(windowsUser)
 	key, found, err := gw.FindKeyByAlias(ctx, alias)
 	if err != nil {
@@ -155,6 +183,7 @@ func (m *Manager) SetCodexGatewayModels(ctx context.Context, gw Gateway, cfg Gat
 // A user with no token is not an error: offboarding runs against everyone
 // being removed, including those who never had Codex provisioned.
 func (m *Manager) RevokeCodexGateway(ctx context.Context, gw Gateway, windowsUser string) error {
+	defer lockProvision(windowsUser)()
 	alias := KeyAlias(windowsUser)
 	if _, found, err := gw.FindKeyByAlias(ctx, alias); err != nil {
 		return fmt.Errorf("look up token for %q: %w", windowsUser, err)
