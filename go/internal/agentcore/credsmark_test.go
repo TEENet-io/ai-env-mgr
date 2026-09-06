@@ -39,7 +39,7 @@ func TestMarkRoundTripsAndVerifies(t *testing.T) {
 	// SHA-256 of that exact content.
 	placed := map[string]string{target: sha256Hex(t, target)}
 
-	s.writeCredsMark("etag-1", placed)
+	s.writeCredsMark("etag-1", placed, nil)
 	m, ok := s.readCredsMark()
 	if !ok || m.ETag != "etag-1" || len(m.Placed) != 1 {
 		t.Fatalf("marker did not round-trip: %+v ok=%v", m, ok)
@@ -68,7 +68,7 @@ func TestEmptyManifestIsNotWritten(t *testing.T) {
 	// Writing a marker with nothing in it would recreate the old behaviour:
 	// an ETag that claims delivery with no way to check it.
 	s := &Syncer{StateDir: t.TempDir()}
-	s.writeCredsMark("etag-1", nil)
+	s.writeCredsMark("etag-1", nil, nil)
 	if _, err := os.Stat(markerPath(s)); !os.IsNotExist(err) {
 		t.Error("a marker with no manifest should not have been written")
 	}

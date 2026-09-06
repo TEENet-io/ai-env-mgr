@@ -66,13 +66,18 @@ type Report struct {
 	// leaves the employee without the file the delivery existed for.
 	Skipped []string
 
-	// Placed maps each written file's path to the SHA-256 of the bytes that
-	// actually reached disk.
+	// Placed maps a written file's path to the SHA-256 of the bytes that
+	// reached disk, for files this tool owns outright.
 	//
-	// It hashes what was WRITTEN rather than what was delivered, which is the
-	// only version that can be checked later: config.toml is merged into the
-	// employee's own file, so its contents never equal the delivered bytes.
+	// It hashes what was WRITTEN rather than what was delivered: even for
+	// these, a later check has to compare against what actually landed.
 	Placed map[string]string
+
+	// Merged lists files written by folding into whatever the employee
+	// already had. Their contents are theirs to change, so only their
+	// presence can be checked -- hashing them would make every edit look
+	// like damage and overwrite the edit on the next sync.
+	Merged []string
 }
 
 // WriteToProfileReport is WriteToProfile plus the entries it did not
@@ -100,31 +105,39 @@ func WriteToProfileReport(profileDir string, set model.CredentialSet) (Report, e
 		}
 
 		payload := data
+		merged := false
 		switch entry {
 		case model.PathClaudeConfig:
-			merged, err := mergeClaudeConfig(target, data)
+			merged = true
+			mergedBytes, err := mergeClaudeConfig(target, data)
 			if err != nil {
 				rep.Written, rep.Skipped = written, skipped
 				return rep, err
 			}
-			payload = merged
+			payload = mergedBytes
 		case model.PathCodexConfig:
-			merged, err := mergeCodexConfig(target, data)
+			merged = true
+			mergedBytes, err := mergeCodexConfig(target, data)
 			if err != nil {
 				rep.Written, rep.Skipped = written, skipped
 				return rep, err
 			}
-			payload = merged
+			payload = mergedBytes
 		}
 
 		if err := os.WriteFile(target, payload, 0o600); err != nil {
 			rep.Written, rep.Skipped = written, skipped
 			return rep, fmt.Errorf("write %q: %w", entry, err)
 		}
-		rep.Placed[target] = fmt.Sprintf("%x", sha256.Sum256(payload))
+		if merged {
+			rep.Merged = append(rep.Merged, target)
+		} else {
+			rep.Placed[target] = fmt.Sprintf("%x", sha256.Sum256(payload))
+		}
 		written++
 	}
 	sort.Strings(skipped)
+	sort.Strings(rep.Merged)
 	rep.Written, rep.Skipped = written, skipped
 	return rep, nil
 }
@@ -136,7 +149,7 @@ func WriteToProfileReport(profileDir string, set model.CredentialSet) (Report, e
 // records only which archive it fetched, so a file that was never written --
 // because an older build had no target for it -- or one the employee later
 // deleted or edited looks identical to a clean delivery forever after.
-func VerifyPlaced(placed map[string]string) (ok bool, drifted []string) {
+func VerifyPlaced(placed map[string]string, merged []string) (ok bool, drifted []string) {
 	for path, want := range placed {
 		data, err := os.ReadFile(path)
 		if err != nil {
@@ -144,6 +157,14 @@ func VerifyPlaced(placed map[string]string) (ok bool, drifted []string) {
 			continue
 		}
 		if fmt.Sprintf("%x", sha256.Sum256(data)) != want {
+			drifted = append(drifted, path)
+		}
+	}
+	// Merged files are only checked for existence. Their contents belong to
+	// the employee once delivered; treating an edit as damage would undo it
+	// on the next sync.
+	for _, path := range merged {
+		if info, err := os.Stat(path); err != nil || info.Size() == 0 {
 			drifted = append(drifted, path)
 		}
 	}

@@ -19,6 +19,7 @@ import (
 type credsMark struct {
 	ETag   string            `json:"etag"`
 	Placed map[string]string `json:"placed"` // absolute path -> SHA-256
+	Merged []string          `json:"merged"` // checked for presence only
 }
 
 // readCredsMark loads the marker. A marker written by an older build is bare
@@ -34,17 +35,17 @@ func (s *Syncer) readCredsMark() (credsMark, bool) {
 	if err := json.Unmarshal([]byte(raw), &m); err != nil {
 		return credsMark{}, false
 	}
-	if m.ETag == "" || len(m.Placed) == 0 {
+	if m.ETag == "" || (len(m.Placed) == 0 && len(m.Merged) == 0) {
 		return credsMark{}, false
 	}
 	return m, true
 }
 
-func (s *Syncer) writeCredsMark(etag string, placed map[string]string) {
-	if etag == "" || len(placed) == 0 {
+func (s *Syncer) writeCredsMark(etag string, placed map[string]string, merged []string) {
+	if etag == "" || (len(placed) == 0 && len(merged) == 0) {
 		return
 	}
-	data, err := json.Marshal(credsMark{ETag: etag, Placed: placed})
+	data, err := json.Marshal(credsMark{ETag: etag, Placed: placed, Merged: merged})
 	if err != nil {
 		return
 	}
@@ -58,7 +59,7 @@ func (s *Syncer) writeCredsMark(etag string, placed map[string]string) {
 // looks like the agent thrashing, when in fact it is repairing a file that
 // was removed, edited, or never written in the first place.
 func (s *Syncer) credsIntact(m credsMark) bool {
-	ok, drifted := creds.VerifyPlaced(m.Placed)
+	ok, drifted := creds.VerifyPlaced(m.Placed, m.Merged)
 	if !ok {
 		log.Printf("credentials: redelivering, %d file(s) missing or changed: %s",
 			len(drifted), strings.Join(baseNames(drifted), ", "))

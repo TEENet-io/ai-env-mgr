@@ -312,8 +312,10 @@ func TestWriteToProfileReportNamesSkippedEntries(t *testing.T) {
 	if rep.Skipped[0] != "another/unknown" || rep.Skipped[1] != "codex/from-a-newer-console.json" {
 		t.Errorf("skipped list is not sorted or wrong: %v", rep.Skipped)
 	}
-	if len(rep.Placed) != 1 {
-		t.Errorf("manifest should name the one file written: %v", rep.Placed)
+	// The one file written here is config.toml, which is merged -- so it is
+	// tracked for presence rather than hashed.
+	if len(rep.Merged) != 1 || len(rep.Placed) != 0 {
+		t.Errorf("merged file should be presence-tracked: placed=%v merged=%v", rep.Placed, rep.Merged)
 	}
 }
 
@@ -329,10 +331,59 @@ func TestWriteToProfileReportSkipsNothingForKnownEntries(t *testing.T) {
 	if len(rep.Skipped) != 0 {
 		t.Errorf("recognised entries were reported as skipped: %v", rep.Skipped)
 	}
-	if len(rep.Placed) != 2 {
-		t.Errorf("manifest should cover both files: %v", rep.Placed)
+	// config.toml is merged, so it is presence-checked rather than hashed:
+	// hashing it would make an employee's own edit look like damage.
+	if len(rep.Placed) != 1 || len(rep.Merged) != 1 {
+		t.Errorf("verbatim vs merged split is wrong: placed=%v merged=%v", rep.Placed, rep.Merged)
 	}
-	if ok, drifted := VerifyPlaced(rep.Placed); !ok {
+	if ok, drifted := VerifyPlaced(rep.Placed, rep.Merged); !ok {
 		t.Errorf("freshly written files failed verification: %v", drifted)
+	}
+}
+
+func TestVerifyPlacedToleratesEditsToMergedFiles(t *testing.T) {
+	// config.toml is merged into whatever the employee already had, so its
+	// contents are theirs. Treating an edit as damage would redeliver every
+	// cycle and undo their change each time.
+	dir := t.TempDir()
+	rep, err := WriteToProfileReport(dir, model.CredentialSet{
+		model.PathCodexConfig: []byte("model = \"grok-4.6\"\n"),
+		model.PathCodexModels: []byte(`{"models":[]}`),
+	})
+	if err != nil {
+		t.Fatalf("write: %v", err)
+	}
+
+	cfg := filepath.Join(dir, ".codex", "config.toml")
+	if err := os.WriteFile(cfg, []byte("model = \"grok-4.6\"\napproval_policy = \"never\"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if ok, drifted := VerifyPlaced(rep.Placed, rep.Merged); !ok {
+		t.Errorf("an employee edit to a merged file was treated as drift: %v", drifted)
+	}
+
+	// A deleted merged file is still drift: it needs putting back.
+	os.Remove(cfg)
+	if ok, _ := VerifyPlaced(rep.Placed, rep.Merged); ok {
+		t.Error("a deleted merged file should count as drift")
+	}
+}
+
+func TestVerifyPlacedCatchesEditsToOwnedFiles(t *testing.T) {
+	// models.json is written verbatim and is not the employee's to change:
+	// an edited catalog would offer models the gateway refuses.
+	dir := t.TempDir()
+	rep, err := WriteToProfileReport(dir, model.CredentialSet{
+		model.PathCodexModels: []byte(`{"models":[]}`),
+	})
+	if err != nil {
+		t.Fatalf("write: %v", err)
+	}
+	target := filepath.Join(dir, ".codex", "models.json")
+	if err := os.WriteFile(target, []byte(`{"models":[{"slug":"made-up"}]}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if ok, drifted := VerifyPlaced(rep.Placed, rep.Merged); ok {
+		t.Errorf("an edited catalog passed verification: %v", drifted)
 	}
 }

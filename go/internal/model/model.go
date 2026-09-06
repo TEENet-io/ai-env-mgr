@@ -204,3 +204,19 @@ const (
 	PathClaudeCreds  = "claude/.credentials.json"
 	PathClaudeConfig = "claude.json"
 )
+
+// IsLoginCredential reports whether an archive entry carries a login the AI
+// tools cache in memory.
+//
+// Only these justify force-killing a running tool. Codex and Claude read a
+// token once at startup and never again, so a stale one keeps a session
+// working against an account that may have been revoked. Configuration and
+// the model catalog have no such urgency: they change what the next launch
+// does, and taking someone's work away to apply them sooner is a bad trade.
+func IsLoginCredential(entry string) bool {
+	switch entry {
+	case PathCodexAuth, PathClaudeCreds:
+		return true
+	}
+	return false
+}

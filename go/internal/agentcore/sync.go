@@ -49,7 +49,7 @@ type Applier interface {
 	// how many files it placed along with a path -> SHA-256 manifest of the
 	// bytes that reached disk. The manifest is what lets a later cycle tell a
 	// delivered file from one that was skipped or has since been removed.
-	DeployCreds(profileDir string, set model.CredentialSet) (int, map[string]string, error)
+	DeployCreds(profileDir string, set model.CredentialSet) (int, map[string]string, []string, error)
 	RemoveCreds(profileDir string) (int, error)
 }
 
@@ -282,16 +282,17 @@ func (s *Syncer) RunOnce() (model.Status, error) {
 			credsETag = etag
 			if set, err := creds.Unpack(data); err != nil {
 				errs = append(errs, fmt.Sprintf("credentials unpack: %v", err))
-			} else if n, placed, err := s.Applier.DeployCreds(s.Machine.ProfileDir(binding.User), set); err != nil {
+			} else if n, placed, merged, err := s.Applier.DeployCreds(s.Machine.ProfileDir(binding.User), set); err != nil {
 				errs = append(errs, fmt.Sprintf("credentials deploy: %v", err))
 			} else if n > 0 {
 				credsApplied = true
-				s.writeCredsMark(etag, placed)
+				s.writeCredsMark(etag, placed, merged)
 				// Name the files. Without this a delivery leaves only an
 				// ETag behind, so "the archive was fetched" and "the file
 				// the employee needs is on disk" cannot be told apart -- the
 				// exact gap that let a silently skipped entry go unnoticed.
-				log.Printf("credentials: placed %d file(s): %s", n, strings.Join(baseNames(placed), ", "))
+				log.Printf("credentials: placed %d file(s): %s", n,
+					strings.Join(append(baseNames(placed), baseNames(merged)...), ", "))
 			} else {
 				// The archive held nothing we recognise. Saying so beats
 				// retrying forever with no trace in admin status.

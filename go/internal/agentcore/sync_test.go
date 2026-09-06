@@ -286,13 +286,13 @@ func (a *fakeApplier) ApplyPolicy(p model.Policy) error {
 	return nil
 }
 
-func (a *fakeApplier) DeployCreds(profileDir string, set model.CredentialSet) (int, map[string]string, error) {
+func (a *fakeApplier) DeployCreds(profileDir string, set model.CredentialSet) (int, map[string]string, []string, error) {
 	if a.deployErr != nil {
-		return 0, nil, a.deployErr
+		return 0, nil, nil, a.deployErr
 	}
 	a.deployed = append(a.deployed, set)
 	if a.deployNone {
-		return 0, nil, nil
+		return 0, nil, nil, nil
 	}
 	// A manifest of files that really exist, so the sync loop's verification
 	// behaves as it would on a machine rather than always failing.
@@ -306,9 +306,9 @@ func (a *fakeApplier) DeployCreds(profileDir string, set model.CredentialSet) (i
 		}
 	}
 	if a.deployedN > 0 {
-		return a.deployedN, placed, nil
+		return a.deployedN, placed, nil, nil
 	}
-	return len(set), placed, nil
+	return len(set), placed, nil, nil
 }
 
 // fakeMachine stands in for the real host.

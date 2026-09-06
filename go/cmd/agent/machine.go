@@ -127,13 +127,13 @@ type localApplier struct{}
 
 func (localApplier) ApplyPolicy(p model.Policy) error { return policy.Apply(p) }
 
-func (localApplier) DeployCreds(profileDir string, set model.CredentialSet) (int, map[string]string, error) {
+func (localApplier) DeployCreds(profileDir string, set model.CredentialSet) (int, map[string]string, []string, error) {
 	rep, err := creds.WriteToProfileReport(profileDir, set)
 	if err != nil {
-		return rep.Written, nil, err
+		return rep.Written, nil, nil, err
 	}
 	if rep.Written == 0 {
-		return 0, nil, nil
+		return 0, nil, nil, nil
 	}
 
 	// An entry this agent does not recognize means the console is delivering
@@ -141,7 +141,7 @@ func (localApplier) DeployCreds(profileDir string, set model.CredentialSet) (int
 	// difference between "the employee is missing a file" being visible in
 	// admin status and it looking like a perfectly clean delivery.
 	if len(rep.Skipped) > 0 {
-		return rep.Written, nil, fmt.Errorf("this agent does not know how to place %s; update the agent",
+		return rep.Written, nil, nil, fmt.Errorf("this agent does not know how to place %s; update the agent",
 			strings.Join(rep.Skipped, ", "))
 	}
 
@@ -162,14 +162,24 @@ func (localApplier) DeployCreds(profileDir string, set model.CredentialSet) (int
 		}
 	}
 	if len(failed) > 0 {
-		return rep.Written, nil, fmt.Errorf("credentials written but not readable by %s (%s)",
+		return rep.Written, nil, nil, fmt.Errorf("credentials written but not readable by %s (%s)",
 			user, strings.Join(failed, "; "))
 	}
 
-	// Codex and Claude cache credentials in memory and never re-read the file,
-	// so new tokens only take effect once the processes restart.
-	creds.StopAITools()
-	return rep.Written, rep.Placed, nil
+	// Restart the tools only when a login actually changed.
+	//
+	// The kill is a taskkill /F: it takes an employee's in-progress work with
+	// no chance to save. A stale login is worth that -- the session would
+	// otherwise keep running on a token that may have been revoked -- but a
+	// new config.toml or model catalog is not. Those change what the next
+	// launch does, and the employee can restart when it suits them.
+	for entry := range set {
+		if model.IsLoginCredential(entry) {
+			creds.StopAITools()
+			break
+		}
+	}
+	return rep.Written, rep.Placed, rep.Merged, nil
 }
 
 // RemoveCreds deletes an offboarded employee's logins from their profile.
