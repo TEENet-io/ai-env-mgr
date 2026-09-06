@@ -45,7 +45,11 @@ type Store interface {
 // them again when the employee is offboarded.
 type Applier interface {
 	ApplyPolicy(p model.Policy) error
-	DeployCreds(profileDir string, set model.CredentialSet) (int, error)
+	// DeployCreds writes the archive into the employee's profile and returns
+	// how many files it placed along with a path -> SHA-256 manifest of the
+	// bytes that reached disk. The manifest is what lets a later cycle tell a
+	// delivered file from one that was skipped or has since been removed.
+	DeployCreds(profileDir string, set model.CredentialSet) (int, map[string]string, error)
 	RemoveCreds(profileDir string) (int, error)
 }
 
@@ -260,10 +264,16 @@ func (s *Syncer) RunOnce() (model.Status, error) {
 				warns = append(warns, fmt.Sprintf("no credentials published for %q yet", binding.User))
 			}
 			credsETag = ""
-		} else if etag != "" && etag == s.readMarker(credsMarkerFile) {
-			// Already delivered in an earlier cycle. Do not download it:
-			// there is nothing to learn and it is the machine's most
-			// sensitive object.
+		} else if mark, ok := s.readCredsMark(); ok && etag != "" && etag == mark.ETag && s.credsIntact(mark) {
+			// Already delivered in an earlier cycle AND every file it placed
+			// is still on disk unchanged. Do not download it: there is
+			// nothing to learn and it is the machine's most sensitive object.
+			//
+			// The verification is what makes the ETag safe to trust. On its
+			// own it records only which archive was fetched, not what came of
+			// it -- so an entry an older build had no target for, or a file
+			// the employee later deleted, would leave the machine short of a
+			// file forever with the marker still claiming success.
 			credsETag = etag
 			credsApplied = true
 		} else if data, _, err := s.Store.Get(credsKey); err != nil {
@@ -272,11 +282,16 @@ func (s *Syncer) RunOnce() (model.Status, error) {
 			credsETag = etag
 			if set, err := creds.Unpack(data); err != nil {
 				errs = append(errs, fmt.Sprintf("credentials unpack: %v", err))
-			} else if n, err := s.Applier.DeployCreds(s.Machine.ProfileDir(binding.User), set); err != nil {
+			} else if n, placed, err := s.Applier.DeployCreds(s.Machine.ProfileDir(binding.User), set); err != nil {
 				errs = append(errs, fmt.Sprintf("credentials deploy: %v", err))
 			} else if n > 0 {
 				credsApplied = true
-				s.writeMarker(credsMarkerFile, etag)
+				s.writeCredsMark(etag, placed)
+				// Name the files. Without this a delivery leaves only an
+				// ETag behind, so "the archive was fetched" and "the file
+				// the employee needs is on disk" cannot be told apart -- the
+				// exact gap that let a silently skipped entry go unnoticed.
+				log.Printf("credentials: placed %d file(s): %s", n, strings.Join(baseNames(placed), ", "))
 			} else {
 				// The archive held nothing we recognise. Saying so beats
 				// retrying forever with no trace in admin status.

@@ -289,3 +289,50 @@ func TestClaudeConfigReplacesCorruptFile(t *testing.T) {
 	}
 	assertSameJSON(t, raw, []byte(delivered))
 }
+
+func TestWriteToProfileReportNamesSkippedEntries(t *testing.T) {
+	// A silent skip is indistinguishable from success: the agent writes what
+	// it knows, reports a clean deploy, and the employee is missing the file
+	// the delivery existed for.
+	dir := t.TempDir()
+	rep, err := WriteToProfileReport(dir, model.CredentialSet{
+		model.PathCodexConfig:             []byte("model = \"x\"\n"),
+		"codex/from-a-newer-console.json": []byte("{}"),
+		"another/unknown":                 []byte("x"),
+	})
+	if err != nil {
+		t.Fatalf("write: %v", err)
+	}
+	if rep.Written != 1 {
+		t.Errorf("wrote %d files, want 1", rep.Written)
+	}
+	if len(rep.Skipped) != 2 {
+		t.Fatalf("skipped = %v, want both unknown entries", rep.Skipped)
+	}
+	if rep.Skipped[0] != "another/unknown" || rep.Skipped[1] != "codex/from-a-newer-console.json" {
+		t.Errorf("skipped list is not sorted or wrong: %v", rep.Skipped)
+	}
+	if len(rep.Placed) != 1 {
+		t.Errorf("manifest should name the one file written: %v", rep.Placed)
+	}
+}
+
+func TestWriteToProfileReportSkipsNothingForKnownEntries(t *testing.T) {
+	dir := t.TempDir()
+	rep, err := WriteToProfileReport(dir, model.CredentialSet{
+		model.PathCodexConfig: []byte("model = \"x\"\n"),
+		model.PathCodexModels: []byte(`{"models":[]}`),
+	})
+	if err != nil {
+		t.Fatalf("write: %v", err)
+	}
+	if len(rep.Skipped) != 0 {
+		t.Errorf("recognised entries were reported as skipped: %v", rep.Skipped)
+	}
+	if len(rep.Placed) != 2 {
+		t.Errorf("manifest should cover both files: %v", rep.Placed)
+	}
+	if ok, drifted := VerifyPlaced(rep.Placed); !ok {
+		t.Errorf("freshly written files failed verification: %v", drifted)
+	}
+}

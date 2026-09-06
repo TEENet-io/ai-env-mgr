@@ -1,6 +1,7 @@
 package creds
 
 import (
+	"crypto/sha256"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -50,14 +51,52 @@ func TargetPath(profileDir, entry string) (string, error) {
 // future-format file than an attack, and failing the whole deploy over one
 // unknown entry would leave a user's known-good credentials undelivered.
 func WriteToProfile(profileDir string, set model.CredentialSet) (int, error) {
+	r, err := WriteToProfileReport(profileDir, set)
+	return r.Written, err
+}
+
+// Report describes what one delivery actually did.
+type Report struct {
+	// Written counts the files placed on disk.
+	Written int
+
+	// Skipped names archive entries this build has no target for. A silent
+	// skip is indistinguishable from success: an agent older than the console
+	// delivering to it writes what it knows, reports a clean deploy, and
+	// leaves the employee without the file the delivery existed for.
+	Skipped []string
+
+	// Placed maps each written file's path to the SHA-256 of the bytes that
+	// actually reached disk.
+	//
+	// It hashes what was WRITTEN rather than what was delivered, which is the
+	// only version that can be checked later: config.toml is merged into the
+	// employee's own file, so its contents never equal the delivered bytes.
+	Placed map[string]string
+}
+
+// WriteToProfileReport is WriteToProfile plus the entries it did not
+// recognize.
+//
+// The skipped list exists because a silent skip is indistinguishable from
+// success. An agent older than the console delivering to it has no entry for
+// a newly introduced file, writes the ones it does know, and reports a clean
+// deploy -- while the employee is missing the file that made the delivery
+// worth doing. That failure is invisible from every angle unless the skips
+// are carried back out.
+func WriteToProfileReport(profileDir string, set model.CredentialSet) (Report, error) {
+	rep := Report{Placed: map[string]string{}}
 	written := 0
+	var skipped []string
 	for entry, data := range set {
 		target, err := TargetPath(profileDir, entry)
 		if err != nil {
+			skipped = append(skipped, entry)
 			continue
 		}
 		if err := os.MkdirAll(filepath.Dir(target), 0o700); err != nil {
-			return written, fmt.Errorf("create directory for %q: %w", entry, err)
+			rep.Written, rep.Skipped = written, skipped
+			return rep, fmt.Errorf("create directory for %q: %w", entry, err)
 		}
 
 		payload := data
@@ -65,23 +104,51 @@ func WriteToProfile(profileDir string, set model.CredentialSet) (int, error) {
 		case model.PathClaudeConfig:
 			merged, err := mergeClaudeConfig(target, data)
 			if err != nil {
-				return written, err
+				rep.Written, rep.Skipped = written, skipped
+				return rep, err
 			}
 			payload = merged
 		case model.PathCodexConfig:
 			merged, err := mergeCodexConfig(target, data)
 			if err != nil {
-				return written, err
+				rep.Written, rep.Skipped = written, skipped
+				return rep, err
 			}
 			payload = merged
 		}
 
 		if err := os.WriteFile(target, payload, 0o600); err != nil {
-			return written, fmt.Errorf("write %q: %w", entry, err)
+			rep.Written, rep.Skipped = written, skipped
+			return rep, fmt.Errorf("write %q: %w", entry, err)
 		}
+		rep.Placed[target] = fmt.Sprintf("%x", sha256.Sum256(payload))
 		written++
 	}
-	return written, nil
+	sort.Strings(skipped)
+	rep.Written, rep.Skipped = written, skipped
+	return rep, nil
+}
+
+// VerifyPlaced reports whether every file in placed is still on disk with the
+// same contents.
+//
+// This is what makes a delivery checkable after the fact. The agent otherwise
+// records only which archive it fetched, so a file that was never written --
+// because an older build had no target for it -- or one the employee later
+// deleted or edited looks identical to a clean delivery forever after.
+func VerifyPlaced(placed map[string]string) (ok bool, drifted []string) {
+	for path, want := range placed {
+		data, err := os.ReadFile(path)
+		if err != nil {
+			drifted = append(drifted, path)
+			continue
+		}
+		if fmt.Sprintf("%x", sha256.Sum256(data)) != want {
+			drifted = append(drifted, path)
+		}
+	}
+	sort.Strings(drifted)
+	return len(drifted) == 0, drifted
 }
 
 // Present reports which credential files are already in place under

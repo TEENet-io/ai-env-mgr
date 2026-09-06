@@ -127,13 +127,22 @@ type localApplier struct{}
 
 func (localApplier) ApplyPolicy(p model.Policy) error { return policy.Apply(p) }
 
-func (localApplier) DeployCreds(profileDir string, set model.CredentialSet) (int, error) {
-	n, err := creds.WriteToProfile(profileDir, set)
+func (localApplier) DeployCreds(profileDir string, set model.CredentialSet) (int, map[string]string, error) {
+	rep, err := creds.WriteToProfileReport(profileDir, set)
 	if err != nil {
-		return n, err
+		return rep.Written, nil, err
 	}
-	if n == 0 {
-		return 0, nil
+	if rep.Written == 0 {
+		return 0, nil, nil
+	}
+
+	// An entry this agent does not recognize means the console is delivering
+	// something newer than this build knows how to place. Reporting it is the
+	// difference between "the employee is missing a file" being visible in
+	// admin status and it looking like a perfectly clean delivery.
+	if len(rep.Skipped) > 0 {
+		return rep.Written, nil, fmt.Errorf("this agent does not know how to place %s; update the agent",
+			strings.Join(rep.Skipped, ", "))
 	}
 
 	// The agent runs as SYSTEM, so freshly written files would otherwise not
@@ -153,14 +162,14 @@ func (localApplier) DeployCreds(profileDir string, set model.CredentialSet) (int
 		}
 	}
 	if len(failed) > 0 {
-		return n, fmt.Errorf("credentials written but not readable by %s (%s)",
+		return rep.Written, nil, fmt.Errorf("credentials written but not readable by %s (%s)",
 			user, strings.Join(failed, "; "))
 	}
 
 	// Codex and Claude cache credentials in memory and never re-read the file,
 	// so new tokens only take effect once the processes restart.
 	creds.StopAITools()
-	return n, nil
+	return rep.Written, rep.Placed, nil
 }
 
 // RemoveCreds deletes an offboarded employee's logins from their profile.
