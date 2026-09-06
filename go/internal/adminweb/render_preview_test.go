@@ -8,6 +8,7 @@ import (
 
 	"github.com/TEENet-io/ai-env-mgr/internal/admincore"
 	"github.com/TEENet-io/ai-env-mgr/internal/agentcore"
+	"github.com/TEENet-io/ai-env-mgr/internal/litellm"
 	"github.com/TEENet-io/ai-env-mgr/internal/model"
 )
 
@@ -92,10 +93,24 @@ func TestRenderPreview(t *testing.T) {
 			Step: "下载安装包", Started: time.Now().Add(-95 * time.Second),
 			Done: 412 << 20, Total: 700 << 20},
 		Fixed: true,
+
+		GatewayURL:     "https://litellm.teenet.app",
+		GatewayEnabled: true,
+		GatewayModels: []litellm.Model{
+			{Name: "grok-4.6", Info: litellm.ModelInfo{DisplayName: "Grok 4.6", ContextWindow: 256000, ReasoningLevels: []string{"low", "high"}}},
+			{Name: "deepseek-v3.2", Info: litellm.ModelInfo{DisplayName: "DeepSeek V3.2", ContextWindow: 128000, ReasoningLevels: []string{"low", "high"}}},
+			{Name: "glm-5", Info: litellm.ModelInfo{DisplayName: "智谱 GLM-5", ContextWindow: 128000, ReasoningLevels: []string{"low", "high"}}},
+		},
+		GatewayHolders: []gatewayHolder{
+			{WindowsUser: "peter", Enabled: true, HasToken: true, Models: []string{"grok-4.6", "glm-5"}, Spend: 3.42},
+			{WindowsUser: "work1", Enabled: true},
+			{WindowsUser: "work9", Enabled: false, HasToken: true, Models: []string{"grok-4.6"}, Spend: 11.08, Orphaned: true},
+		},
 	}
 	for _, name := range []string{
 		"login.html", "machines.html", "users.html", "employee-login", "sites.html",
 		"settings.html", "files.html", "rollout.html", "policy.html", "log.html",
+		"gateway.html",
 	} {
 		tplName := name
 		if name == "employee-login" {
@@ -107,6 +122,7 @@ func TestRenderPreview(t *testing.T) {
 			"employeelogin.html": "employee-login", "sites.html": "sites",
 			"settings.html": "settings", "files.html": "files",
 			"rollout.html": "rollout", "policy.html": "policy", "log.html": "machines",
+			"gateway.html": "gateway",
 		}[tplName]
 		f, err := os.Create(filepath.Join(dir, tplName))
 		if err != nil {

@@ -566,3 +566,43 @@ ol li { margin: 7px 0; }
 .fleet .bar .w98 { width: 98%; }
 .fleet .bar .w99 { width: 99%; }
 .fleet .bar .w100 { width: 100%; }
+
+/* Model checkboxes on the gateway page.
+ *
+ * These sit inside .form, whose children are laid out as flexible columns.
+ * A fieldset there would be squeezed alongside the text inputs, so it claims
+ * a full row of its own and lays its own boxes out inside it. */
+.form fieldset.checks {
+  flex: 1 1 100%;
+  margin: 0;
+  padding: 12px 14px;
+  border: 1px solid var(--rule);
+  border-radius: 6px;
+  background: var(--panel-sunk);
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 18px;
+}
+.form fieldset.checks legend {
+  padding: 0 6px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--ink-faint);
+}
+/* Overrides the full-width rule that inputs get inside .form: a checkbox
+ * stretched to the column width would be a hairline the user cannot hit. */
+.form label.check {
+  flex: 0 1 auto;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  font-weight: 500;
+  color: var(--ink);
+  cursor: pointer;
+}
+.form label.check input[type="checkbox"] {
+  width: auto;
+  margin: 0;
+  flex: none;
+}

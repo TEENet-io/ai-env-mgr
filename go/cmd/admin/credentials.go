@@ -52,6 +52,23 @@ var (
 // while the agent's sits in plaintext on every employee desktop.
 var ecdRegion = "ap-southeast-1"
 
+// The model gateway (LiteLLM) the console issues employee tokens against.
+//
+// Baked in for the same reason bucket and endpoint are: it is the
+// deployment's fixed address, not something an operator should be able to
+// retarget from the command line. Pointing the console at another gateway
+// would mean issuing tokens on one and delivering configuration for another,
+// and the mismatch would only surface as employees whose Codex cannot reach
+// anything.
+//
+// Not a secret -- a hostname. The management key that goes with it is NOT
+// here: it comes from AIENVMGR_GATEWAY_ADMIN_KEY at startup and lives only in
+// process memory, so it is never compiled into a binary that gets copied
+// around. Empty disables the gateway page entirely.
+//
+// -ldflags -X can still override this at build time.
+var gatewayURL = "https://litellm.teenet.app"
+
 func builtIn() config.Config {
 	return config.Config{
 		Bucket:          ossBucket,

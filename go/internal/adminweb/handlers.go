@@ -9,6 +9,7 @@ import (
 	"github.com/TEENet-io/ai-env-mgr/internal/admincore"
 	"github.com/TEENet-io/ai-env-mgr/internal/config"
 	"github.com/TEENet-io/ai-env-mgr/internal/ecdclient"
+	"github.com/TEENet-io/ai-env-mgr/internal/litellm"
 	"github.com/TEENet-io/ai-env-mgr/internal/model"
 )
 
@@ -57,6 +58,13 @@ type pageData struct {
 	Files    []admincore.StagedFile
 	Link     string // a freshly minted download link
 	LinkName string
+
+	// Gateway page: what the gateway offers, and who currently holds a token.
+	GatewayURL      string
+	GatewayEnabled  bool
+	GatewayModels   []litellm.Model
+	GatewayHolders  []gatewayHolder
+	GatewayUnusable string // why the page cannot act, when it cannot
 
 	PendingUser string // an employee sign-in waiting for the pasted callback
 	PendingTool string

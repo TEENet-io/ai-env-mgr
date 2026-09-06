@@ -23,6 +23,7 @@ import (
 var profileTargets = map[string][]string{
 	model.PathCodexAuth:    {".codex", "auth.json"},
 	model.PathCodexConfig:  {".codex", "config.toml"},
+	model.PathCodexModels:  {".codex", "models.json"},
 	model.PathClaudeCreds:  {".claude", ".credentials.json"},
 	model.PathClaudeConfig: {".claude.json"},
 }
@@ -60,8 +61,15 @@ func WriteToProfile(profileDir string, set model.CredentialSet) (int, error) {
 		}
 
 		payload := data
-		if entry == model.PathClaudeConfig {
+		switch entry {
+		case model.PathClaudeConfig:
 			merged, err := mergeClaudeConfig(target, data)
+			if err != nil {
+				return written, err
+			}
+			payload = merged
+		case model.PathCodexConfig:
+			merged, err := mergeCodexConfig(target, data)
 			if err != nil {
 				return written, err
 			}

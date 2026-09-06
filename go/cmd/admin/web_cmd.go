@@ -20,6 +20,11 @@ func cmdWeb(args []string) error {
 		// Only useful when this host sits in the bucket's own region; empty
 		// everywhere else, which keeps one endpoint for everything.
 		DataEndpoint: os.Getenv("AIENVMGR_OSS_DATA_ENDPOINT"),
+		GatewayURL:   envOr("AIENVMGR_GATEWAY_URL", gatewayURL),
+		// The management key is taken from the environment only -- never a
+		// flag. A flag would put it in the process table, where any local
+		// account could read it off `ps`.
+		GatewayAdminKey: os.Getenv("AIENVMGR_GATEWAY_ADMIN_KEY"),
 	}
 	for i := 0; i < len(args); i++ {
 		switch args[i] {
@@ -65,6 +70,12 @@ func cmdWeb(args []string) error {
 	}
 	if (opts.CertFile == "") != (opts.KeyFile == "") {
 		return fmt.Errorf("--cert and --key go together")
+	}
+	// The gateway address is built in, so a missing key is the only way this
+	// can be half-configured. Say so at startup rather than rendering a page
+	// whose every button fails.
+	if opts.GatewayURL != "" && opts.GatewayAdminKey == "" {
+		return fmt.Errorf("gateway is built in as %s but AIENVMGR_GATEWAY_ADMIN_KEY is empty", opts.GatewayURL)
 	}
 
 	srv, err := adminweb.New(opts)

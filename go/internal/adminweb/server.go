@@ -64,6 +64,20 @@ type Options struct {
 	// Empty means "use Endpoint for both", which is right everywhere else.
 	DataEndpoint string
 
+	// GatewayURL is the LiteLLM gateway's base address, e.g.
+	// "https://litellm.teenet.app". Empty disables the model-gateway page
+	// entirely rather than showing controls that cannot work.
+	GatewayURL string
+
+	// GatewayAdminKey authenticates this console to the gateway's management
+	// API. It is injected from the environment at startup and lives only in
+	// this process's memory, like every other credential here: never written
+	// to disk, logged, or placed in a cookie.
+	//
+	// It is a proxy_admin key rather than the gateway's master key, so it can
+	// be revoked on its own without rotating the gateway's own secret.
+	GatewayAdminKey string
+
 	// ECDRegion is where the cloud desktops live. Not a secret, and no key
 	// belongs here: the lookup uses the credentials the administrator signed
 	// in with, so nothing is stored and nothing ships inside the binary.
@@ -143,6 +157,7 @@ func New(opts Options) (*Server, error) {
 		"noscan":   noEmailScan,
 		"codex":    codexNote,
 		"codexsev": codexNoteSeverity,
+		"ctxsize":  contextWindowLabel,
 	}).ParseFS(assetFS, "assets/*.html")
 	if err != nil {
 		return nil, fmt.Errorf("parse templates: %w", err)
@@ -216,6 +231,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("/files", s.requireSession(s.handleFiles))
 	mux.HandleFunc("/rollout", s.requireSession(s.handleRollout))
 	mux.HandleFunc("/employee-login", s.requireSession(s.handleEmployeeLogin))
+	mux.HandleFunc("/gateway", s.requireSession(s.handleGateway))
 
 	// Every state-changing route is POST + CSRF + redirect (see requirePost).
 	mux.HandleFunc("/users/add", s.requirePost("/users", s.actionUserAdd))
@@ -238,6 +254,8 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("/machines/forget", s.requirePost("/machines", s.actionMachineForget))
 	mux.HandleFunc("/files/put", s.requirePost("/files", s.actionFilePut))
 	mux.HandleFunc("/files/rm", s.requirePost("/files", s.actionFileRemove))
+	mux.HandleFunc("/gateway/provision", s.requirePost("/gateway", s.actionGatewayProvision))
+	mux.HandleFunc("/gateway/revoke", s.requirePost("/gateway", s.actionGatewayRevoke))
 	mux.HandleFunc("/employee-login/start", s.requirePost("/employee-login", s.actionEmployeeLoginStart))
 	mux.HandleFunc("/employee-login/finish", s.requirePost("/employee-login", s.actionEmployeeLoginFinish))
 	// Serve only assets/static, so the templates next to it are never handed

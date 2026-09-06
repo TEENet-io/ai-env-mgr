@@ -26,7 +26,8 @@ seconds. */}}
   <a href="/settings"{{if eq .Nav "settings"}} class="active"{{end}}><span class="n">5</span>会话采集</a>
   <a href="/files"{{if eq .Nav "files"}} class="active"{{end}}><span class="n">6</span>文件传输</a>
   <a href="/rollout"{{if eq .Nav "rollout"}} class="active"{{end}}><span class="n">7</span>发布更新</a>
-  <a href="/policy"{{if eq .Nav "policy"}} class="active"{{end}}><span class="n">8</span>策略总览</a>
+  <a href="/gateway"{{if eq .Nav "gateway"}} class="active"{{end}}><span class="n">8</span>模型网关</a>
+  <a href="/policy"{{if eq .Nav "policy"}} class="active"{{end}}><span class="n">9</span>策略总览</a>
   <div class="foot">
     {{.Bucket}}
     <form method="post" action="/logout"><button class="link">退出</button></form>

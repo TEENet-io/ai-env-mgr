@@ -200,6 +200,7 @@ type CredentialSet map[string][]byte
 const (
 	PathCodexAuth    = "codex/auth.json"
 	PathCodexConfig  = "codex/config.toml"
+	PathCodexModels  = "codex/models.json"
 	PathClaudeCreds  = "claude/.credentials.json"
 	PathClaudeConfig = "claude.json"
 )

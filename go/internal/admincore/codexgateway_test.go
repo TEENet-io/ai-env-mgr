@@ -1,0 +1,270 @@
+package admincore
+
+import (
+	"context"
+	"encoding/json"
+	"strings"
+	"testing"
+
+	"github.com/TEENet-io/ai-env-mgr/internal/creds"
+	"github.com/TEENet-io/ai-env-mgr/internal/litellm"
+	"github.com/TEENet-io/ai-env-mgr/internal/model"
+	"github.com/TEENet-io/ai-env-mgr/internal/ossclient"
+)
+
+// fakeGateway records what the orchestration asked the gateway to do.
+type fakeGateway struct {
+	models []litellm.Model
+
+	existing  map[string]litellm.Key
+	generated []litellm.Key
+	deleted   []string
+	updated   map[string][]string
+
+	generateErr error
+	modelsErr   error
+}
+
+func newFakeGateway() *fakeGateway {
+	return &fakeGateway{
+		models: []litellm.Model{
+			{Name: "grok-4.6", Info: litellm.ModelInfo{DisplayName: "Grok 4.6", ContextWindow: 256000, CatalogVisible: true}},
+			{Name: "glm-5", Info: litellm.ModelInfo{DisplayName: "GLM-5", ContextWindow: 128000, CatalogVisible: true}},
+		},
+		existing: map[string]litellm.Key{},
+		updated:  map[string][]string{},
+	}
+}
+
+func (f *fakeGateway) GenerateKey(_ context.Context, alias string, models []string, _ float64, _ map[string]string) (litellm.Key, error) {
+	if f.generateErr != nil {
+		return litellm.Key{}, f.generateErr
+	}
+	k := litellm.Key{Key: "sk-" + alias, KeyAlias: alias, Models: models}
+	f.generated = append(f.generated, k)
+	f.existing[alias] = k
+	return k, nil
+}
+
+func (f *fakeGateway) UpdateKey(_ context.Context, key string, models []string) error {
+	f.updated[key] = models
+	return nil
+}
+
+func (f *fakeGateway) DeleteKey(_ context.Context, keys ...string) error {
+	f.deleted = append(f.deleted, keys...)
+	for alias, k := range f.existing {
+		for _, target := range keys {
+			if k.Key == target {
+				delete(f.existing, alias)
+			}
+		}
+	}
+	return nil
+}
+
+func (f *fakeGateway) FindKeyByAlias(_ context.Context, alias string) (litellm.Key, bool, error) {
+	k, ok := f.existing[alias]
+	return k, ok, nil
+}
+
+func (f *fakeGateway) Models(context.Context) ([]litellm.Model, error) {
+	if f.modelsErr != nil {
+		return nil, f.modelsErr
+	}
+	return f.models, nil
+}
+
+// managerWithUser returns a manager whose roster already contains user,
+// which every provisioning path requires before it will issue anything.
+func managerWithUser(t *testing.T, user string) (*Manager, *fakeStore) {
+	t.Helper()
+	m, store := newManager()
+	if err := m.SaveUsers(model.Users{Users: []model.UserEntry{{WindowsUser: user}}}); err != nil {
+		t.Fatalf("seed roster: %v", err)
+	}
+	return m, store
+}
+
+func deliveredSet(t *testing.T, store *fakeStore, user string) model.CredentialSet {
+	t.Helper()
+	blob, ok := store.objects[ossclient.UserKey(user, "credentials.zip")]
+	if !ok {
+		t.Fatal("nothing was delivered to the object store")
+	}
+	set, err := creds.Unpack(blob)
+	if err != nil {
+		t.Fatalf("unpack delivered archive: %v", err)
+	}
+	return set
+}
+
+func TestProvisionDeliversConfigAndCatalog(t *testing.T) {
+	m, store := managerWithUser(t, "alice")
+	gw := newFakeGateway()
+
+	if err := m.ProvisionCodexGateway(context.Background(), gw, GatewayConfig{BaseURL: "https://gw.example"}, "alice", nil, 5); err != nil {
+		t.Fatalf("provision: %v", err)
+	}
+
+	set := deliveredSet(t, store, "alice")
+	cfg := string(set[model.PathCodexConfig])
+	if !strings.Contains(cfg, `base_url = "https://gw.example/v1"`) {
+		t.Errorf("config does not point at the gateway:\n%s", cfg)
+	}
+	if !strings.Contains(cfg, `wire_api = "responses"`) {
+		t.Errorf("wire_api must be responses; Codex speaks nothing else:\n%s", cfg)
+	}
+	if !strings.Contains(cfg, "sk-emp-alice") {
+		t.Errorf("token not delivered:\n%s", cfg)
+	}
+	if !strings.Contains(cfg, "stream_idle_timeout_ms = 7200000") {
+		t.Errorf("long-task timeout missing; agent runs would be cut off:\n%s", cfg)
+	}
+
+	var catalogDoc struct {
+		Models []map[string]any `json:"models"`
+	}
+	if err := json.Unmarshal(set[model.PathCodexModels], &catalogDoc); err != nil {
+		t.Fatalf("catalog is not valid JSON: %v", err)
+	}
+	if len(catalogDoc.Models) != 2 {
+		t.Errorf("expected both gateway models in the catalog, got %d", len(catalogDoc.Models))
+	}
+}
+
+func TestProvisionRevokesPreviousTokenForSameEmployee(t *testing.T) {
+	// A second live token for one person cannot be attributed or reconciled.
+	m, _ := managerWithUser(t, "alice")
+	gw := newFakeGateway()
+	gw.existing["emp-alice"] = litellm.Key{Key: "sk-old", KeyAlias: "emp-alice"}
+
+	if err := m.ProvisionCodexGateway(context.Background(), gw, GatewayConfig{BaseURL: "https://gw.example"}, "alice", nil, 0); err != nil {
+		t.Fatalf("provision: %v", err)
+	}
+	if len(gw.deleted) != 1 || gw.deleted[0] != "sk-old" {
+		t.Errorf("previous token was not revoked, deleted = %v", gw.deleted)
+	}
+}
+
+func TestProvisionWithdrawsTokenWhenDeliveryFails(t *testing.T) {
+	// Otherwise the gateway accumulates live tokens nobody holds.
+	m, _ := managerWithUser(t, "alice")
+	gw := newFakeGateway()
+	gw.models = nil // forces catalog.Build to fail after the token is minted
+	gw.modelsErr = nil
+
+	err := m.ProvisionCodexGateway(context.Background(), gw, GatewayConfig{BaseURL: "https://gw.example"}, "alice", nil, 0)
+	if err == nil {
+		t.Fatal("expected provisioning to fail with no models")
+	}
+	if len(gw.generated) > 0 && len(gw.deleted) == 0 {
+		t.Error("a token was issued but not withdrawn after the failure")
+	}
+}
+
+func TestProvisionRejectsUnknownModel(t *testing.T) {
+	// A typo in a slug must surface now, not as "why can't they use that".
+	m, _ := managerWithUser(t, "alice")
+	gw := newFakeGateway()
+
+	err := m.ProvisionCodexGateway(context.Background(), gw, GatewayConfig{BaseURL: "https://gw.example"}, "alice", []string{"grok-4.6", "gpt-9"}, 0)
+	if err == nil || !strings.Contains(err.Error(), "gpt-9") {
+		t.Fatalf("expected the unknown slug to be named, got %v", err)
+	}
+	if len(gw.generated) != 0 {
+		t.Error("a token was issued despite an invalid request")
+	}
+}
+
+func TestProvisionRejectsUserNotOnRoster(t *testing.T) {
+	m, _ := managerWithUser(t, "alice")
+	gw := newFakeGateway()
+	if err := m.ProvisionCodexGateway(context.Background(), gw, GatewayConfig{BaseURL: "https://gw.example"}, "mallory", nil, 0); err == nil {
+		t.Fatal("expected provisioning an unknown user to fail")
+	}
+	if len(gw.generated) != 0 {
+		t.Error("a token was issued for someone not on the roster")
+	}
+}
+
+func TestCatalogIsRestrictedToTheEmployeeAllowlist(t *testing.T) {
+	m, store := managerWithUser(t, "alice")
+	gw := newFakeGateway()
+
+	if err := m.ProvisionCodexGateway(context.Background(), gw, GatewayConfig{BaseURL: "https://gw.example"}, "alice", []string{"glm-5"}, 0); err != nil {
+		t.Fatalf("provision: %v", err)
+	}
+	set := deliveredSet(t, store, "alice")
+
+	var doc struct {
+		Models []map[string]any `json:"models"`
+	}
+	_ = json.Unmarshal(set[model.PathCodexModels], &doc)
+	if len(doc.Models) != 1 || doc.Models[0]["slug"] != "glm-5" {
+		t.Fatalf("picker would offer models the gateway refuses: %v", doc.Models)
+	}
+	if def := string(set[model.PathCodexConfig]); !strings.Contains(def, `model              = "glm-5"`) {
+		t.Errorf("default model must be one the employee may use:\n%s", def)
+	}
+}
+
+func TestSetModelsUpdatesTokenAndCatalogTogether(t *testing.T) {
+	m, store := managerWithUser(t, "alice")
+	gw := newFakeGateway()
+	if err := m.ProvisionCodexGateway(context.Background(), gw, GatewayConfig{BaseURL: "https://gw.example"}, "alice", nil, 0); err != nil {
+		t.Fatalf("provision: %v", err)
+	}
+
+	if err := m.SetCodexGatewayModels(context.Background(), gw, GatewayConfig{BaseURL: "https://gw.example"}, "alice", []string{"glm-5"}); err != nil {
+		t.Fatalf("set models: %v", err)
+	}
+
+	if got := gw.updated["sk-emp-alice"]; len(got) != 1 || got[0] != "glm-5" {
+		t.Errorf("token allowlist not narrowed: %v", got)
+	}
+	set := deliveredSet(t, store, "alice")
+	var doc struct {
+		Models []map[string]any `json:"models"`
+	}
+	_ = json.Unmarshal(set[model.PathCodexModels], &doc)
+	if len(doc.Models) != 1 {
+		t.Errorf("catalog still lists withdrawn models: %v", doc.Models)
+	}
+	// The previously delivered config must survive a catalog-only update.
+	if _, ok := set[model.PathCodexConfig]; !ok {
+		t.Error("updating the catalog dropped the delivered config.toml")
+	}
+}
+
+func TestRevokeIsQuietWhenNoTokenExists(t *testing.T) {
+	// Offboarding runs across everyone, including those never provisioned.
+	m, _ := managerWithUser(t, "alice")
+	gw := newFakeGateway()
+	if err := m.RevokeCodexGateway(context.Background(), gw, "alice"); err != nil {
+		t.Fatalf("revoke without a token should be a no-op, got %v", err)
+	}
+	if len(gw.deleted) != 0 {
+		t.Error("revocation touched the gateway when there was nothing to revoke")
+	}
+}
+
+func TestRevokeDeletesTheToken(t *testing.T) {
+	m, _ := managerWithUser(t, "alice")
+	gw := newFakeGateway()
+	if err := m.ProvisionCodexGateway(context.Background(), gw, GatewayConfig{BaseURL: "https://gw.example"}, "alice", nil, 0); err != nil {
+		t.Fatalf("provision: %v", err)
+	}
+	if err := m.RevokeCodexGateway(context.Background(), gw, "alice"); err != nil {
+		t.Fatalf("revoke: %v", err)
+	}
+	if len(gw.deleted) != 1 || gw.deleted[0] != "sk-emp-alice" {
+		t.Errorf("token not revoked: %v", gw.deleted)
+	}
+}
+
+func TestKeyAliasIsDeterministicAndCaseInsensitive(t *testing.T) {
+	if KeyAlias("Alice") != KeyAlias("alice") {
+		t.Error("alias must not vary with the casing of the Windows user name")
+	}
+}
