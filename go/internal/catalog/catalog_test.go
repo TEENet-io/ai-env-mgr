@@ -2,6 +2,7 @@ package catalog
 
 import (
 	"encoding/json"
+	"strings"
 	"testing"
 
 	"github.com/TEENet-io/ai-env-mgr/internal/litellm"
@@ -156,5 +157,55 @@ func TestBuildDropsUnknownReasoningLevels(t *testing.T) {
 	}
 	if entries[0]["default_reasoning_level"] != "low" {
 		t.Errorf("default should fall back to a supported level, got %v", entries[0]["default_reasoning_level"])
+	}
+}
+
+func instructionsOf(t *testing.T, e map[string]any) string {
+	t.Helper()
+	msgs, _ := e["model_messages"].(map[string]any)
+	text, _ := msgs["instructions_template"].(string)
+	if text == "" {
+		t.Fatalf("entry %v has no instructions_template", e["slug"])
+	}
+	return text
+}
+
+func TestBuildNamesTheRealModelInItsInstructions(t *testing.T) {
+	// The template's first sentence says "based on GPT-5". Sent to Grok, Grok
+	// says it is GPT-5 -- and the employee concludes the gateway lied.
+	raw, err := Build(gatewayModels(), nil)
+	if err != nil {
+		t.Fatalf("build: %v", err)
+	}
+	entries := decode(t, raw)
+
+	grok := instructionsOf(t, find(entries, "grok-4.6"))
+	if !strings.HasPrefix(grok, "You are Codex, a coding agent running on Grok 4.6.") {
+		t.Errorf("grok's instructions still claim another model:\n%.120s", grok)
+	}
+	if strings.Contains(grok, "based on GPT-5") {
+		t.Errorf("GPT-5 identity survived rewrite")
+	}
+	// Everything after the first sentence -- the tool protocol -- is intact.
+	if !strings.Contains(grok, "You and the user share one workspace") {
+		t.Errorf("protocol text after the identity sentence was damaged")
+	}
+
+	// Each entry gets its own sentence; a shared nested map would make every
+	// model introduce itself as whichever one was built last.
+	glm := instructionsOf(t, find(entries, "glm-5"))
+	if !strings.HasPrefix(glm, "You are Codex, a coding agent running on 智谱 GLM-5.") {
+		t.Errorf("glm's instructions carry the wrong name:\n%.120s", glm)
+	}
+}
+
+func TestIdentityRewriteFallsBackToSlug(t *testing.T) {
+	raw, err := Build([]litellm.Model{{Name: "bare-model", Info: litellm.ModelInfo{CatalogVisible: true}}}, nil)
+	if err != nil {
+		t.Fatalf("build: %v", err)
+	}
+	text := instructionsOf(t, decode(t, raw)[0])
+	if !strings.HasPrefix(text, "You are Codex, a coding agent running on bare-model.") {
+		t.Errorf("slug fallback missing:\n%.120s", text)
 	}
 }

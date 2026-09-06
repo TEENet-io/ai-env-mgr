@@ -15,6 +15,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"sort"
+	"strings"
 
 	"github.com/TEENet-io/ai-env-mgr/internal/litellm"
 )
@@ -43,6 +44,17 @@ var customProviderPatch = map[string]any{
 	"multi_agent_version": nil,
 	"use_responses_lite":  false,
 }
+
+// upstreamIdentity is the opening sentence of the instructions the template
+// carries. It is OpenAI's own text for their own model; copied verbatim to a
+// model that is not GPT-5, it makes that model introduce itself as GPT-5 when
+// asked -- which reads, to an employee who just picked Grok in the picker, as
+// the gateway having routed them somewhere else.
+//
+// Only this sentence is rewritten. The 17,000 characters after it describe
+// Codex's tool protocol and are what make apply_patch and the shell work at
+// all; "Codex" is the product persona and stays.
+const upstreamIdentity = "You are Codex, an agent based on GPT-5."
 
 // reasoningDescriptions are the picker's sub-labels for each effort level.
 var reasoningDescriptions = map[string]string{
@@ -123,6 +135,7 @@ func entryFor(template map[string]any, m litellm.Model) map[string]any {
 	for k, v := range customProviderPatch {
 		entry[k] = v
 	}
+	rewriteIdentity(entry, m)
 
 	// slug is the routing key: the picker sends it back as the `model` field
 	// and the gateway routes on it, so it must equal the gateway's
@@ -156,6 +169,36 @@ func entryFor(template map[string]any, m litellm.Model) map[string]any {
 		entry["default_reasoning_level"] = defaultReasoning(m.Info, levels)
 	}
 	return entry
+}
+
+// rewriteIdentity replaces the template's "based on GPT-5" introduction with
+// the model's real name. The nested map is copied first: entryFor's clone is
+// shallow, and editing model_messages in place would rewrite it for every
+// model built from the same template -- the last one would win.
+//
+// A template whose opening sentence is not the known one is left untouched.
+// Guessing at a different sentence would risk damaging the protocol text.
+func rewriteIdentity(entry map[string]any, m litellm.Model) {
+	messages, ok := entry["model_messages"].(map[string]any)
+	if !ok {
+		return
+	}
+	text, ok := messages["instructions_template"].(string)
+	if !ok || !strings.HasPrefix(text, upstreamIdentity) {
+		return
+	}
+	name := m.Info.DisplayName
+	if name == "" {
+		name = m.Name
+	}
+	replacement := fmt.Sprintf("You are Codex, a coding agent running on %s.", name)
+
+	copied := make(map[string]any, len(messages))
+	for k, v := range messages {
+		copied[k] = v
+	}
+	copied["instructions_template"] = replacement + strings.TrimPrefix(text, upstreamIdentity)
+	entry["model_messages"] = copied
 }
 
 func reasoningLevels(levels []string) []map[string]string {
