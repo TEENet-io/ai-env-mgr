@@ -253,15 +253,37 @@ func TestOffboardContinuesPastGatewayFailure(t *testing.T) {
 	if _, live := gw.existing["emp-alice"]; !live {
 		t.Error("test setup: token should still be live so the list flags it")
 	}
-	if entries, _ := m.ReadAudit("alice"); len(entries) != 1 || entries[0].Action != AuditOnboard {
-		t.Errorf("a partial offboard must not be audited as done: %+v", entries)
+	// A partial offboard is still recorded -- what did happen (roster,
+	// files, bindings) is worth a line -- but marked as partial so the
+	// history does not read as a clean close.
+	entries, _ := m.ReadAudit("alice")
+	if len(entries) != 2 || entries[0].Action != AuditOffboard {
+		t.Fatalf("a partial offboard must still be audited: %+v", entries)
+	}
+	if entries[0].Detail["partial"] != true {
+		t.Errorf("partial offboard not marked as such: %+v", entries[0].Detail)
+	}
+	if s, _ := entries[0].Detail["error"].(string); !strings.Contains(s, "gateway down") {
+		t.Errorf("partial offboard should record why: %+v", entries[0].Detail)
 	}
 }
 
-func TestOffboardUnknownUserIsAnError(t *testing.T) {
+// A token whose alias matches nobody on the roster is exactly what the
+// account list flags as "已离职仍有令牌", and its 修复 button posts here.
+// Refusing the one case the button exists for made it dead.
+func TestOffboardWithoutRosterEntryStillRevokesToken(t *testing.T) {
 	m, _ := newManager()
-	if err := m.Offboard(context.Background(), newFakeGateway(), "ghost"); err == nil {
-		t.Fatal("offboarding someone not on the roster must be refused")
+	gw := newFakeGateway()
+	gw.existing["emp-ghost"] = litellm.Key{Token: "hash-of-emp-ghost", KeyAlias: "emp-ghost", UserID: "emp-ghost"}
+
+	if err := m.Offboard(context.Background(), gw, "ghost"); err != nil {
+		t.Fatalf("offboard: %v", err)
+	}
+	if _, live := gw.existing["emp-ghost"]; live {
+		t.Error("the stray token is still live")
+	}
+	if entries, _ := m.ReadAudit("ghost"); len(entries) != 1 || entries[0].Action != AuditOffboard {
+		t.Errorf("audit: %+v", entries)
 	}
 }
 

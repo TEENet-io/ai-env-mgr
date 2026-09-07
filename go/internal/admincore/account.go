@@ -118,6 +118,11 @@ func (m *Manager) Onboard(ctx context.Context, gw Gateway, cfg GatewayConfig, sp
 // gateway is unreachable, or a departed employee's machine keeps a working
 // configuration until someone remembers to try again. Failures are joined
 // and reported, and the account list flags whatever is left over.
+//
+// A name that is not on the roster is not refused: a token whose alias
+// matches nobody is precisely what the account list flags as "已离职仍有令牌",
+// and its 修复 button posts here. The roster step is then skipped and the
+// rest -- revoke, withdraw, unbind -- runs against the name as given.
 func (m *Manager) Offboard(ctx context.Context, gw Gateway, windowsUser string) error {
 	defer lockProvision(windowsUser)()
 
@@ -125,15 +130,14 @@ func (m *Manager) Offboard(ctx context.Context, gw Gateway, windowsUser string) 
 	if err != nil {
 		return err
 	}
-	e := us.Find(windowsUser)
-	if e == nil {
-		return fmt.Errorf("user %q not found in roster", windowsUser)
-	}
 	// Use the roster's spelling from here on: stored objects are keyed by it.
-	name := e.WindowsUser
-	e.Enabled = false
-	if err := m.SaveUsers(us); err != nil {
-		return err
+	name := windowsUser
+	if e := us.Find(windowsUser); e != nil {
+		name = e.WindowsUser
+		e.Enabled = false
+		if err := m.SaveUsers(us); err != nil {
+			return err
+		}
 	}
 
 	var failures []error
@@ -153,7 +157,13 @@ func (m *Manager) Offboard(ctx context.Context, gw Gateway, windowsUser string) 
 	}
 
 	if len(failures) > 0 {
-		return fmt.Errorf("user %q is disabled, but: %w", name, errors.Join(failures...))
+		joined := errors.Join(failures...)
+		// Record what did happen: the roster, the files and the bindings are
+		// already changed, and a history that skipped the line would read as
+		// if nobody had ever tried. The flag keeps it from reading as a clean
+		// close, which is what the account list's leftover tags are for.
+		m.appendAudit(name, AuditOffboard, map[string]any{"partial": true, "error": joined.Error()})
+		return fmt.Errorf("user %q is disabled, but: %w", name, joined)
 	}
 	m.appendAudit(name, AuditOffboard, nil)
 	return nil
