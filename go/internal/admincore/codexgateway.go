@@ -16,7 +16,7 @@ import (
 // as an interface keeps the onboarding logic testable without a live
 // gateway, matching how Store is handled for the object store.
 type Gateway interface {
-	GenerateKey(ctx context.Context, alias string, models []string, maxBudget float64, metadata map[string]string) (litellm.Key, error)
+	GenerateKey(ctx context.Context, alias, userID string, models []string, metadata map[string]string) (litellm.Key, error)
 	UpdateKey(ctx context.Context, key string, models []string) error
 	DeleteKey(ctx context.Context, handles ...string) error
 	DeleteKeyByAlias(ctx context.Context, alias string) error
@@ -103,7 +103,7 @@ func (m *Manager) ProvisionCodexGateway(ctx context.Context, gw Gateway, cfg Gat
 		}
 	}
 
-	key, err := gw.GenerateKey(ctx, alias, allowed, maxBudget, map[string]string{"employee": windowsUser})
+	key, err := gw.GenerateKey(ctx, alias, alias, allowed, map[string]string{"employee": windowsUser})
 	if err != nil {
 		if litellm.IsAliasTaken(err) {
 			// Revoked a moment ago and taken again already: something else

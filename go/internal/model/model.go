@@ -168,7 +168,12 @@ type UserEntry struct {
 	WindowsUser   string `json:"windowsUser"`
 	CodexAccount  string `json:"codexAccount"`
 	ClaudeAccount string `json:"claudeAccount"`
-	Enabled       bool   `json:"enabled"`
+	// Name and Department are labels for the administrator's benefit and
+	// are mirrored onto the gateway user (user_alias, metadata.department)
+	// so the gateway UI shows the same person. The roster is authoritative.
+	Name       string `json:"name,omitempty"`
+	Department string `json:"department,omitempty"`
+	Enabled    bool   `json:"enabled"`
 }
 
 // Users is stored at admin/users.json, outside the agent's directory and

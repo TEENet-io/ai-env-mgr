@@ -18,7 +18,7 @@ func TestRevokeByAliasAgainstRealGateway(t *testing.T) {
 	const alias = "emp-zz-probe-revoke"
 
 	_ = c.DeleteKeyByAlias(ctx, alias) // clean slate; 404 here is fine
-	if _, err := c.GenerateKey(ctx, alias, []string{"grok-4.6"}, 0.01, nil); err != nil {
+	if _, err := c.GenerateKey(ctx, alias, alias, []string{"grok-4.6"}, nil); err != nil {
 		t.Fatalf("generate: %v", err)
 	}
 	listed, found, err := c.FindKeyByAlias(ctx, alias)

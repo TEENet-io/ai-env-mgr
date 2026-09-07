@@ -29,10 +29,10 @@ func TestGenerateKeySendsAliasAndModels(t *testing.T) {
 		}
 		body, _ := io.ReadAll(r.Body)
 		_ = json.Unmarshal(body, &got)
-		_, _ = io.WriteString(w, `{"key":"sk-emp","key_alias":"emp-alice","models":["grok-4.6"]}`)
+		_, _ = io.WriteString(w, `{"key":"sk-emp","key_alias":"emp-alice","user_id":"emp-alice","models":["grok-4.6"]}`)
 	})
 
-	key, err := c.GenerateKey(context.Background(), "emp-alice", []string{"grok-4.6"}, 5, map[string]string{"employee": "alice"})
+	key, err := c.GenerateKey(context.Background(), "emp-alice", "emp-alice", []string{"grok-4.6"}, map[string]string{"employee": "alice"})
 	if err != nil {
 		t.Fatalf("generate: %v", err)
 	}
@@ -42,8 +42,8 @@ func TestGenerateKeySendsAliasAndModels(t *testing.T) {
 	if got["key_alias"] != "emp-alice" {
 		t.Errorf("key_alias = %v", got["key_alias"])
 	}
-	if got["max_budget"] != float64(5) {
-		t.Errorf("max_budget = %v", got["max_budget"])
+	if got["user_id"] != "emp-alice" {
+		t.Errorf("user_id = %v", got["user_id"])
 	}
 }
 
@@ -53,7 +53,7 @@ func TestGenerateKeyRejectsResponseWithoutToken(t *testing.T) {
 	c := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
 		_, _ = io.WriteString(w, `{"key_alias":"emp-alice"}`)
 	})
-	if _, err := c.GenerateKey(context.Background(), "emp-alice", []string{"grok-4.6"}, 0, nil); err == nil {
+	if _, err := c.GenerateKey(context.Background(), "emp-alice", "emp-alice", []string{"grok-4.6"}, nil); err == nil {
 		t.Fatal("expected an error when the gateway returns no token")
 	}
 }
@@ -64,7 +64,7 @@ func TestIsAliasTakenRecognizesDuplicate(t *testing.T) {
 		_, _ = io.WriteString(w, `{"message":"Key with alias 'emp-alice' already exists."}`)
 	})
 
-	_, err := c.GenerateKey(context.Background(), "emp-alice", []string{"grok-4.6"}, 0, nil)
+	_, err := c.GenerateKey(context.Background(), "emp-alice", "emp-alice", []string{"grok-4.6"}, nil)
 	if err == nil {
 		t.Fatal("expected an error")
 	}
@@ -78,7 +78,7 @@ func TestIsAliasTakenIgnoresOtherFailures(t *testing.T) {
 		w.WriteHeader(http.StatusInternalServerError)
 		_, _ = io.WriteString(w, `{"message":"boom"}`)
 	})
-	_, err := c.GenerateKey(context.Background(), "emp-alice", nil, 0, nil)
+	_, err := c.GenerateKey(context.Background(), "emp-alice", "emp-alice", nil, nil)
 	if IsAliasTaken(err) {
 		t.Errorf("a 500 must not be read as a duplicate alias: %v", err)
 	}
@@ -260,5 +260,29 @@ func TestUpdateKeyAcceptsHashHandle(t *testing.T) {
 	}
 	if err := c.UpdateKey(context.Background(), "", nil); err == nil {
 		t.Error("empty handle must be refused")
+	}
+}
+
+func TestGenerateKeyAttachesKeyToUser(t *testing.T) {
+	// Budget and rate limits live on the user; a key minted without user_id
+	// would be enforced against nothing.
+	var got map[string]any
+	c := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(r.Body)
+		_ = json.Unmarshal(body, &got)
+		_, _ = io.WriteString(w, `{"key":"sk-emp","key_alias":"emp-alice","user_id":"emp-alice"}`)
+	})
+	key, err := c.GenerateKey(context.Background(), "emp-alice", "emp-alice", []string{"glm-5.2"}, nil)
+	if err != nil {
+		t.Fatalf("generate: %v", err)
+	}
+	if got["user_id"] != "emp-alice" {
+		t.Errorf("user_id not sent: %v", got)
+	}
+	if _, has := got["max_budget"]; has {
+		t.Errorf("key must not carry its own budget: %v", got)
+	}
+	if key.UserID != "emp-alice" {
+		t.Errorf("UserID not parsed: %+v", key)
 	}
 }

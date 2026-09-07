@@ -53,12 +53,12 @@ func New(baseURL, adminKey string) *Client {
 // just mint must not reach for Key: it will be empty, and the gateway
 // answers an empty key with 404 "No keys found".
 type Key struct {
-	Key       string   `json:"key,omitempty"`   // plaintext; /key/generate only
-	Token     string   `json:"token,omitempty"` // sha-256 of the plaintext; what /key/list returns
-	KeyAlias  string   `json:"key_alias"`
-	Models    []string `json:"models"`
-	MaxBudget *float64 `json:"max_budget,omitempty"`
-	Spend     float64  `json:"spend,omitempty"`
+	Key      string   `json:"key,omitempty"`   // plaintext; /key/generate only
+	Token    string   `json:"token,omitempty"` // sha-256 of the plaintext; what /key/list returns
+	KeyAlias string   `json:"key_alias"`
+	UserID   string   `json:"user_id,omitempty"` // the internal user whose limits this key inherits
+	Models   []string `json:"models"`
+	Spend    float64  `json:"spend,omitempty"`
 }
 
 // ModelInfo carries the catalog metadata a model declares in the gateway's
@@ -84,19 +84,24 @@ type Model struct {
 	Info ModelInfo `json:"model_info"`
 }
 
-// GenerateKey mints a token for one employee.
+// GenerateKey mints a token for one employee, owned by userID.
 //
 // alias must be stable per employee: the gateway enforces global uniqueness
 // on it, which is what stops a double-click from issuing two live tokens for
 // the same person. The plaintext token is returned once and never again, so
 // the caller must deliver it before discarding the response.
-func (c *Client) GenerateKey(ctx context.Context, alias string, models []string, maxBudget float64, metadata map[string]string) (Key, error) {
+//
+// The key carries no budget or rate limit of its own. Those live on the
+// user (see UpsertUser) so that they survive re-issuing the token; a limit
+// on the key would reset to zero spend every time the token was replaced.
+func (c *Client) GenerateKey(ctx context.Context, alias, userID string, models []string, metadata map[string]string) (Key, error) {
+	if userID == "" {
+		return Key{}, fmt.Errorf("generate key %q: no owning user", alias)
+	}
 	body := map[string]any{
 		"key_alias": alias,
+		"user_id":   userID,
 		"models":    models,
-	}
-	if maxBudget > 0 {
-		body["max_budget"] = maxBudget
 	}
 	if len(metadata) > 0 {
 		body["metadata"] = metadata

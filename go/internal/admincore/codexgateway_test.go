@@ -47,21 +47,23 @@ func (f *fakeGateway) lock() func() {
 	return f.mu.Unlock
 }
 
-func (f *fakeGateway) GenerateKey(_ context.Context, alias string, models []string, _ float64, _ map[string]string) (litellm.Key, error) {
+func (f *fakeGateway) GenerateKey(_ context.Context, alias, userID string, models []string, _ map[string]string) (litellm.Key, error) {
 	defer f.lock()()
 	if f.generateErr != nil {
 		return litellm.Key{}, f.generateErr
 	}
+	if userID == "" {
+		return litellm.Key{}, fmt.Errorf("fake gateway: key without user_id")
+	}
 	if _, taken := f.existing[alias]; taken {
-		// The real gateway enforces alias uniqueness with a 400.
 		return litellm.Key{}, &litellm.APIError{Status: 400, Path: "/key/generate", Body: "Key with alias '" + alias + "' already exists."}
 	}
-	k := litellm.Key{Key: "sk-" + alias, KeyAlias: alias, Models: models}
+	k := litellm.Key{Key: "sk-" + alias, KeyAlias: alias, UserID: userID, Models: models}
 	f.generated = append(f.generated, k)
 	// What the gateway later lists: the hash, never the plaintext. This is
 	// the detail a first version of the fake got wrong, which let code that
 	// revoked by plaintext pass every test and fail against the real thing.
-	f.existing[alias] = litellm.Key{Token: "hash-of-" + alias, KeyAlias: alias, Models: models}
+	f.existing[alias] = litellm.Key{Token: "hash-of-" + alias, KeyAlias: alias, UserID: userID, Models: models}
 	return k, nil
 }
 
