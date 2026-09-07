@@ -12,6 +12,7 @@ import (
 )
 
 func f64(v float64) *float64 { return &v }
+func i(v int) *int           { return &v }
 
 func flagLabels(r accountRow) []string {
 	var out []string
@@ -276,5 +277,42 @@ func TestQuotaDefaultsActionPersists(t *testing.T) {
 	raw, ok := fs.objects[admincore.QuotaDefaultsKey()]
 	if !ok || !strings.Contains(string(raw), `"monthlyBudgetUSD": 33`) {
 		t.Errorf("defaults not saved: %s", raw)
+	}
+}
+
+func TestReopenSpec(t *testing.T) {
+	e := model.UserEntry{WindowsUser: "alice", Name: "Alice", Department: "研发"}
+	defaults := litellm.Quota{MonthlyBudgetUSD: 20, RPM: 60, TPM: 200000, Parallel: 4}
+	tuned := litellm.User{MaxBudget: f64(50), RPMLimit: i(120), TPMLimit: i(400000), MaxParallel: i(8),
+		Models: []string{"glm-5"}}
+	key := litellm.Key{KeyAlias: "emp-alice", Models: []string{"grok-4.6"}}
+
+	// A gateway user is the best source for both limits and allowlist.
+	got := reopenSpec(e, defaults, tuned, true, litellm.Key{}, false)
+	if got.Quota != tuned.Quota() || len(got.Models) != 1 || got.Models[0] != "glm-5" {
+		t.Errorf("with a user: %+v", got)
+	}
+	if got.Name != "Alice" || got.Department != "研发" {
+		t.Errorf("labels come from the roster: %+v", got)
+	}
+
+	// A user whose stored limits are unusable falls back to the defaults.
+	half := litellm.User{MaxBudget: f64(50), Models: []string{"glm-5"}}
+	if got := reopenSpec(e, defaults, half, true, litellm.Key{}, false); got.Quota != defaults {
+		t.Errorf("unusable limits should fall back to the defaults: %+v", got.Quota)
+	}
+
+	// Token but no user (有令牌无网关用户): the key's allowlist is the only
+	// record of what this person may use, and nil would mean "everything".
+	got = reopenSpec(e, defaults, litellm.User{}, false, key, true)
+	if got.Quota != defaults || len(got.Models) != 1 || got.Models[0] != "grok-4.6" {
+		t.Errorf("with a token only: %+v", got)
+	}
+
+	// Nothing on the gateway: defaults, and nil means every visible model,
+	// which is what a fresh account gets anyway.
+	got = reopenSpec(e, defaults, litellm.User{}, false, litellm.Key{}, false)
+	if got.Quota != defaults || got.Models != nil {
+		t.Errorf("with nothing: %+v", got)
 	}
 }

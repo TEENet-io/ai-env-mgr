@@ -398,22 +398,50 @@ func (s *Server) actionAccountReopen(sess *session, r *http.Request) error {
 	if e == nil {
 		return fmt.Errorf("user %q not found in roster", user)
 	}
-	quota, err := sess.mgr.LoadQuotaDefaults()
+	defaults, err := sess.mgr.LoadQuotaDefaults()
 	if err != nil {
 		return err
 	}
-	var models []string
-	if u, found, err := gw.UserInfo(ctx, admincore.KeyAlias(e.WindowsUser)); err != nil {
+	alias := admincore.KeyAlias(e.WindowsUser)
+	u, userFound, err := gw.UserInfo(ctx, alias)
+	if err != nil {
 		return fmt.Errorf("look up gateway user: %w", err)
-	} else if found {
-		if q := u.Quota(); q.Validate() == nil {
-			quota = q
-		}
-		models = u.Models
 	}
-	return sess.mgr.Onboard(ctx, gw, cfg, admincore.AccountSpec{
-		WindowsUser: e.WindowsUser, Name: e.Name, Department: e.Department, Quota: quota, Models: models,
-	})
+	var k litellm.Key
+	var keyFound bool
+	if !userFound {
+		if k, keyFound, err = gw.FindKeyByAlias(ctx, alias); err != nil {
+			return fmt.Errorf("look up gateway token: %w", err)
+		}
+	}
+	return sess.mgr.Onboard(ctx, gw, cfg, reopenSpec(*e, defaults, u, userFound, k, keyFound))
+}
+
+// reopenSpec decides what a row-button reopen re-onboards with: the labels
+// from the roster, the limits and allowlist from whatever the gateway
+// already holds.
+//
+// The key's allowlist is the fallback when there is a token but no user
+// record -- the pre-user state the list flags as 有令牌无网关用户. Without
+// it that reopen would pass no allowlist at all, which means "every model
+// the gateway offers": a repair button that quietly widens what somebody may
+// use. Limits stored as something Quota.Validate rejects (a user created
+// outside this console, say) fall back to the defaults rather than being
+// mirrored back.
+func reopenSpec(e model.UserEntry, defaults litellm.Quota, u litellm.User, userFound bool, k litellm.Key, keyFound bool) admincore.AccountSpec {
+	spec := admincore.AccountSpec{
+		WindowsUser: e.WindowsUser, Name: e.Name, Department: e.Department, Quota: defaults,
+	}
+	switch {
+	case userFound:
+		if q := u.Quota(); q.Validate() == nil {
+			spec.Quota = q
+		}
+		spec.Models = u.Models
+	case keyFound:
+		spec.Models = k.Models
+	}
+	return spec
 }
 
 func (s *Server) actionAccountOffboard(sess *session, r *http.Request) error {
