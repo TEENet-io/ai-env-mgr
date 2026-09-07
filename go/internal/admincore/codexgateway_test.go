@@ -24,8 +24,13 @@ type fakeGateway struct {
 	deleted   []string
 	updated   map[string][]string
 
+	users   map[string]litellm.User
+	upserts []litellm.UserSpec
+
 	generateErr error
 	modelsErr   error
+	upsertErr   error
+	listKeysErr error
 }
 
 func newFakeGateway() *fakeGateway {
@@ -36,6 +41,7 @@ func newFakeGateway() *fakeGateway {
 		},
 		existing: map[string]litellm.Key{},
 		updated:  map[string][]string{},
+		users:    map[string]litellm.User{},
 	}
 }
 
@@ -115,6 +121,53 @@ func (f *fakeGateway) Models(context.Context) ([]litellm.Model, error) {
 	return f.models, nil
 }
 
+func (f *fakeGateway) ListKeys(context.Context) ([]litellm.Key, error) {
+	defer f.lock()()
+	if f.listKeysErr != nil {
+		return nil, f.listKeysErr
+	}
+	out := make([]litellm.Key, 0, len(f.existing))
+	for _, k := range f.existing {
+		out = append(out, k)
+	}
+	return out, nil
+}
+
+func (f *fakeGateway) UpsertUser(_ context.Context, spec litellm.UserSpec) error {
+	defer f.lock()()
+	if f.upsertErr != nil {
+		return f.upsertErr
+	}
+	if err := spec.Quota.Validate(); err != nil {
+		return err
+	}
+	f.upserts = append(f.upserts, spec)
+	u := f.users[spec.UserID] // keep spend across updates, as the gateway does
+	budget, rpm, tpm, par := spec.Quota.MonthlyBudgetUSD, spec.Quota.RPM, spec.Quota.TPM, spec.Quota.Parallel
+	u.UserID, u.Alias = spec.UserID, spec.Alias
+	u.MaxBudget, u.RPMLimit, u.TPMLimit, u.MaxParallel = &budget, &rpm, &tpm, &par
+	u.BudgetDuration, u.BudgetResetAt = "1mo", "2026-10-01T00:00:00Z"
+	u.Models = spec.Models
+	u.Metadata = map[string]string{"department": spec.Department}
+	f.users[spec.UserID] = u
+	return nil
+}
+
+func (f *fakeGateway) UserInfo(_ context.Context, userID string) (litellm.User, bool, error) {
+	defer f.lock()()
+	u, ok := f.users[userID]
+	return u, ok, nil
+}
+
+func (f *fakeGateway) ListUsers(context.Context) ([]litellm.User, error) {
+	defer f.lock()()
+	out := make([]litellm.User, 0, len(f.users))
+	for _, u := range f.users {
+		out = append(out, u)
+	}
+	return out, nil
+}
+
 // managerWithUser returns a manager whose roster already contains user,
 // which every provisioning path requires before it will issue anything.
 func managerWithUser(t *testing.T, user string) (*Manager, *fakeStore) {
@@ -143,7 +196,7 @@ func TestProvisionDeliversConfigAndCatalog(t *testing.T) {
 	m, store := managerWithUser(t, "alice")
 	gw := newFakeGateway()
 
-	if err := m.ProvisionCodexGateway(context.Background(), gw, GatewayConfig{BaseURL: "https://gw.example"}, "alice", nil, 5); err != nil {
+	if err := m.ProvisionCodexGateway(context.Background(), gw, GatewayConfig{BaseURL: "https://gw.example"}, "alice", nil); err != nil {
 		t.Fatalf("provision: %v", err)
 	}
 
@@ -180,7 +233,7 @@ func TestProvisionRevokesPreviousTokenForSameEmployee(t *testing.T) {
 	// As the real gateway lists it: hash only, no plaintext.
 	gw.existing["emp-alice"] = litellm.Key{Token: "hash-old", KeyAlias: "emp-alice"}
 
-	if err := m.ProvisionCodexGateway(context.Background(), gw, GatewayConfig{BaseURL: "https://gw.example"}, "alice", nil, 0); err != nil {
+	if err := m.ProvisionCodexGateway(context.Background(), gw, GatewayConfig{BaseURL: "https://gw.example"}, "alice", nil); err != nil {
 		t.Fatalf("provision: %v", err)
 	}
 	if len(gw.deleted) != 1 || gw.deleted[0] != "alias:emp-alice" {
@@ -195,7 +248,7 @@ func TestProvisionWithdrawsTokenWhenDeliveryFails(t *testing.T) {
 	gw.models = nil // forces catalog.Build to fail after the token is minted
 	gw.modelsErr = nil
 
-	err := m.ProvisionCodexGateway(context.Background(), gw, GatewayConfig{BaseURL: "https://gw.example"}, "alice", nil, 0)
+	err := m.ProvisionCodexGateway(context.Background(), gw, GatewayConfig{BaseURL: "https://gw.example"}, "alice", nil)
 	if err == nil {
 		t.Fatal("expected provisioning to fail with no models")
 	}
@@ -209,7 +262,7 @@ func TestProvisionRejectsUnknownModel(t *testing.T) {
 	m, _ := managerWithUser(t, "alice")
 	gw := newFakeGateway()
 
-	err := m.ProvisionCodexGateway(context.Background(), gw, GatewayConfig{BaseURL: "https://gw.example"}, "alice", []string{"grok-4.6", "gpt-9"}, 0)
+	err := m.ProvisionCodexGateway(context.Background(), gw, GatewayConfig{BaseURL: "https://gw.example"}, "alice", []string{"grok-4.6", "gpt-9"})
 	if err == nil || !strings.Contains(err.Error(), "gpt-9") {
 		t.Fatalf("expected the unknown slug to be named, got %v", err)
 	}
@@ -221,7 +274,7 @@ func TestProvisionRejectsUnknownModel(t *testing.T) {
 func TestProvisionRejectsUserNotOnRoster(t *testing.T) {
 	m, _ := managerWithUser(t, "alice")
 	gw := newFakeGateway()
-	if err := m.ProvisionCodexGateway(context.Background(), gw, GatewayConfig{BaseURL: "https://gw.example"}, "mallory", nil, 0); err == nil {
+	if err := m.ProvisionCodexGateway(context.Background(), gw, GatewayConfig{BaseURL: "https://gw.example"}, "mallory", nil); err == nil {
 		t.Fatal("expected provisioning an unknown user to fail")
 	}
 	if len(gw.generated) != 0 {
@@ -233,7 +286,7 @@ func TestCatalogIsRestrictedToTheEmployeeAllowlist(t *testing.T) {
 	m, store := managerWithUser(t, "alice")
 	gw := newFakeGateway()
 
-	if err := m.ProvisionCodexGateway(context.Background(), gw, GatewayConfig{BaseURL: "https://gw.example"}, "alice", []string{"glm-5"}, 0); err != nil {
+	if err := m.ProvisionCodexGateway(context.Background(), gw, GatewayConfig{BaseURL: "https://gw.example"}, "alice", []string{"glm-5"}); err != nil {
 		t.Fatalf("provision: %v", err)
 	}
 	set := deliveredSet(t, store, "alice")
@@ -253,7 +306,7 @@ func TestCatalogIsRestrictedToTheEmployeeAllowlist(t *testing.T) {
 func TestSetModelsUpdatesTokenAndCatalogTogether(t *testing.T) {
 	m, store := managerWithUser(t, "alice")
 	gw := newFakeGateway()
-	if err := m.ProvisionCodexGateway(context.Background(), gw, GatewayConfig{BaseURL: "https://gw.example"}, "alice", nil, 0); err != nil {
+	if err := m.ProvisionCodexGateway(context.Background(), gw, GatewayConfig{BaseURL: "https://gw.example"}, "alice", nil); err != nil {
 		t.Fatalf("provision: %v", err)
 	}
 
@@ -294,7 +347,7 @@ func TestRevokeIsQuietWhenNoTokenExists(t *testing.T) {
 func TestRevokeDeletesTheToken(t *testing.T) {
 	m, _ := managerWithUser(t, "alice")
 	gw := newFakeGateway()
-	if err := m.ProvisionCodexGateway(context.Background(), gw, GatewayConfig{BaseURL: "https://gw.example"}, "alice", nil, 0); err != nil {
+	if err := m.ProvisionCodexGateway(context.Background(), gw, GatewayConfig{BaseURL: "https://gw.example"}, "alice", nil); err != nil {
 		t.Fatalf("provision: %v", err)
 	}
 	if err := m.RevokeCodexGateway(context.Background(), gw, "alice"); err != nil {
@@ -319,7 +372,7 @@ func TestConcurrentProvisionsForOneEmployeeDoNotCollide(t *testing.T) {
 	m, _ := managerWithUser(t, "alice")
 	gw := newFakeGateway()
 	gw.mu = &sync.Mutex{}
-	if err := m.ProvisionCodexGateway(context.Background(), gw, GatewayConfig{BaseURL: "https://gw.example"}, "alice", nil, 0); err != nil {
+	if err := m.ProvisionCodexGateway(context.Background(), gw, GatewayConfig{BaseURL: "https://gw.example"}, "alice", nil); err != nil {
 		t.Fatalf("initial provision: %v", err)
 	}
 
@@ -329,7 +382,7 @@ func TestConcurrentProvisionsForOneEmployeeDoNotCollide(t *testing.T) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			errs <- m.ProvisionCodexGateway(context.Background(), gw, GatewayConfig{BaseURL: "https://gw.example"}, "alice", nil, 0)
+			errs <- m.ProvisionCodexGateway(context.Background(), gw, GatewayConfig{BaseURL: "https://gw.example"}, "alice", nil)
 		}()
 	}
 	wg.Wait()
@@ -341,5 +394,41 @@ func TestConcurrentProvisionsForOneEmployeeDoNotCollide(t *testing.T) {
 	}
 	if n := len(gw.existing); n != 1 {
 		t.Errorf("expected exactly one live token, found %d", n)
+	}
+}
+
+func TestProvisionCreatesGatewayUserWhenMissing(t *testing.T) {
+	// A key needs an owner or the budget has nothing to hang on. Existing
+	// employees (weipeng, 2026-09) have a key and no user; re-issuing must
+	// heal that rather than fail.
+	m, _ := managerWithUser(t, "alice")
+	gw := newFakeGateway()
+
+	if err := m.ProvisionCodexGateway(context.Background(), gw, GatewayConfig{BaseURL: "https://gw.example"}, "alice", nil); err != nil {
+		t.Fatalf("provision: %v", err)
+	}
+	u, ok := gw.users["emp-alice"]
+	if !ok {
+		t.Fatal("gateway user was not created")
+	}
+	if u.Quota() != DefaultQuota {
+		t.Errorf("a user created on the fly gets the built-in defaults, got %+v", u.Quota())
+	}
+	if len(gw.generated) != 1 || gw.generated[0].UserID != "emp-alice" {
+		t.Errorf("key not minted under the user: %+v", gw.generated)
+	}
+}
+
+func TestProvisionKeepsExistingUserQuota(t *testing.T) {
+	m, _ := managerWithUser(t, "alice")
+	gw := newFakeGateway()
+	budget := 55.0
+	gw.users["emp-alice"] = litellm.User{UserID: "emp-alice", MaxBudget: &budget}
+
+	if err := m.ProvisionCodexGateway(context.Background(), gw, GatewayConfig{BaseURL: "https://gw.example"}, "alice", nil); err != nil {
+		t.Fatalf("provision: %v", err)
+	}
+	if len(gw.upserts) != 0 {
+		t.Errorf("re-issuing a token must not rewrite the user's quota: %+v", gw.upserts)
 	}
 }

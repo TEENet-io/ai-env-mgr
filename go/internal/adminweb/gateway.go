@@ -162,21 +162,13 @@ func (s *Server) actionGatewayProvision(sess *session, r *http.Request) error {
 		return fmt.Errorf("a Windows user name is required")
 	}
 
-	var budget float64
-	if raw := formValue(r, "budget"); raw != "" {
-		budget, err = strconv.ParseFloat(raw, 64)
-		if err != nil || budget < 0 {
-			return fmt.Errorf("预算需要是一个非负数字")
-		}
-	}
-
 	// No models selected means "everything the gateway offers", which is the
 	// common case; an explicit selection narrows it.
 	models := r.Form["models"]
 
 	ctx, cancel := context.WithTimeout(r.Context(), gatewayTimeout)
 	defer cancel()
-	return sess.mgr.ProvisionCodexGateway(ctx, gw, admincore.GatewayConfig{BaseURL: s.opts.GatewayURL}, user, models, budget)
+	return sess.mgr.ProvisionCodexGateway(ctx, gw, admincore.GatewayConfig{BaseURL: s.opts.GatewayURL}, user, models)
 }
 
 // actionGatewayRevoke withdraws one employee's token.

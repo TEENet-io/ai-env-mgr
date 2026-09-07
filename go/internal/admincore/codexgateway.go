@@ -21,7 +21,13 @@ type Gateway interface {
 	DeleteKey(ctx context.Context, handles ...string) error
 	DeleteKeyByAlias(ctx context.Context, alias string) error
 	FindKeyByAlias(ctx context.Context, alias string) (litellm.Key, bool, error)
+	ListKeys(ctx context.Context) ([]litellm.Key, error)
 	Models(ctx context.Context) ([]litellm.Model, error)
+
+	// Internal users carry the budget and rate limits a key inherits.
+	UpsertUser(ctx context.Context, spec litellm.UserSpec) error
+	UserInfo(ctx context.Context, userID string) (litellm.User, bool, error)
+	ListUsers(ctx context.Context) ([]litellm.User, error)
 }
 
 // provisionLocks serialises gateway provisioning per employee.
@@ -54,8 +60,54 @@ type GatewayConfig struct {
 // gateway's token list against the roster.
 func KeyAlias(windowsUser string) string { return "emp-" + strings.ToLower(windowsUser) }
 
-// ProvisionCodexGateway issues a gateway token for one employee and delivers
-// the Codex configuration that uses it.
+// DefaultQuota is what an account gets when nothing else has been decided:
+// the built-in fallback behind admin/quota-defaults.json (see
+// quotadefaults.go) and the quota given to a user created on the fly while
+// re-issuing a token for an employee who predates user records.
+var DefaultQuota = litellm.Quota{MonthlyBudgetUSD: 20, RPM: 60, TPM: 200000, Parallel: 4}
+
+// ensureGatewayUser makes sure the gateway user for e exists.
+//
+// With quota nil an existing user is left exactly as is -- re-issuing a
+// token must not silently reset a budget an administrator tuned -- and a
+// missing one is created with the stored defaults. With quota set the user
+// is created or updated to match: that is the onboarding and quota-change
+// path.
+func (m *Manager) ensureGatewayUser(ctx context.Context, gw Gateway, e model.UserEntry, quota *litellm.Quota, models []string) error {
+	id := KeyAlias(e.WindowsUser)
+	existing, found, err := gw.UserInfo(ctx, id)
+	if err != nil {
+		return fmt.Errorf("look up gateway user %q: %w", id, err)
+	}
+	if found && quota == nil {
+		return nil
+	}
+	spec := litellm.UserSpec{UserID: id, Alias: e.Name, Department: e.Department, Models: models}
+	switch {
+	case quota != nil:
+		spec.Quota = *quota
+	default:
+		q, err := m.LoadQuotaDefaults()
+		if err != nil {
+			return err
+		}
+		spec.Quota = q
+	}
+	if spec.Alias == "" {
+		spec.Alias = e.WindowsUser
+	}
+	if found && models == nil {
+		spec.Models = existing.Models
+	}
+	if err := gw.UpsertUser(ctx, spec); err != nil {
+		return fmt.Errorf("write gateway user %q: %w", id, err)
+	}
+	return nil
+}
+
+// ProvisionCodexGateway issues a gateway token for one employee, under their
+// gateway user, and delivers the Codex configuration that uses it. Budget
+// and rate limits are the user's, so they are untouched here.
 //
 // The order is deliberate: the token is minted first, then written to the
 // object store. Reversed, a failure between the two would leave a
@@ -67,7 +119,7 @@ func KeyAlias(windowsUser string) string { return "emp-" + strings.ToLower(windo
 // deliberate choice over inventing a fresh alias: a second live token for
 // one person cannot be attributed or reconciled, and the old one would stay
 // valid forever.
-func (m *Manager) ProvisionCodexGateway(ctx context.Context, gw Gateway, cfg GatewayConfig, windowsUser string, models []string, maxBudget float64) error {
+func (m *Manager) ProvisionCodexGateway(ctx context.Context, gw Gateway, cfg GatewayConfig, windowsUser string, models []string) error {
 	defer lockProvision(windowsUser)()
 
 	us, err := m.LoadUsers()
@@ -87,6 +139,10 @@ func (m *Manager) ProvisionCodexGateway(ctx context.Context, gw Gateway, cfg Gat
 	}
 	allowed, err := resolveAllowlist(available, models)
 	if err != nil {
+		return err
+	}
+
+	if err := m.ensureGatewayUser(ctx, gw, *us.Find(windowsUser), nil, nil); err != nil {
 		return err
 	}
 
@@ -145,6 +201,15 @@ func (m *Manager) ProvisionCodexGateway(ctx context.Context, gw Gateway, cfg Gat
 // them reachable by typing the name.
 func (m *Manager) SetCodexGatewayModels(ctx context.Context, gw Gateway, cfg GatewayConfig, windowsUser string, models []string) error {
 	defer lockProvision(windowsUser)()
+
+	us, err := m.LoadUsers()
+	if err != nil {
+		return err
+	}
+	if us.Find(windowsUser) == nil {
+		return fmt.Errorf("user %q not found in roster", windowsUser)
+	}
+
 	alias := KeyAlias(windowsUser)
 	key, found, err := gw.FindKeyByAlias(ctx, alias)
 	if err != nil {
@@ -164,6 +229,15 @@ func (m *Manager) SetCodexGatewayModels(ctx context.Context, gw Gateway, cfg Gat
 	}
 	if err := gw.UpdateKey(ctx, key.Handle(), allowed); err != nil {
 		return fmt.Errorf("update token for %q: %w", windowsUser, err)
+	}
+
+	if existingUser, found, err := gw.UserInfo(ctx, alias); err != nil {
+		return fmt.Errorf("look up gateway user %q: %w", alias, err)
+	} else if found {
+		q := existingUser.Quota()
+		if err := m.ensureGatewayUser(ctx, gw, *us.Find(windowsUser), &q, allowed); err != nil {
+			return err
+		}
 	}
 
 	catalogJSON, err := catalog.Build(available, allowed)
