@@ -8,6 +8,7 @@ import (
 
 	"github.com/TEENet-io/ai-env-mgr/internal/litellm"
 	"github.com/TEENet-io/ai-env-mgr/internal/model"
+	"github.com/TEENet-io/ai-env-mgr/internal/ossclient"
 )
 
 var testGW = GatewayConfig{BaseURL: "https://gw.example"}
@@ -222,6 +223,9 @@ func TestOffboardContinuesPastGatewayFailure(t *testing.T) {
 	if _, live := gw.existing["emp-alice"]; !live {
 		t.Error("test setup: token should still be live so the list flags it")
 	}
+	if entries, _ := m.ReadAudit("alice"); len(entries) != 1 || entries[0].Action != AuditOnboard {
+		t.Errorf("a partial offboard must not be audited as done: %+v", entries)
+	}
 }
 
 func TestOffboardUnknownUserIsAnError(t *testing.T) {
@@ -236,5 +240,31 @@ func TestOffboardWithoutTokenSucceeds(t *testing.T) {
 	_ = m.SaveUsers(model.Users{Users: []model.UserEntry{{WindowsUser: "alice", Enabled: true}}})
 	if err := m.Offboard(context.Background(), newFakeGateway(), "alice"); err != nil {
 		t.Fatalf("no token is not a failure: %v", err)
+	}
+}
+
+func TestUnbindUserContinuesPastOneFailure(t *testing.T) {
+	m, store := newManager()
+	_ = m.SaveUsers(model.Users{Users: []model.UserEntry{{WindowsUser: "alice", Enabled: true}}})
+	if err := m.BindMachine("PC-1", "alice", ""); err != nil {
+		t.Fatalf("bind PC-1: %v", err)
+	}
+	if err := m.BindMachine("PC-2", "alice", ""); err != nil {
+		t.Fatalf("bind PC-2: %v", err)
+	}
+	store.deleteErrFor = ossclient.BindingKey("PC-1")
+
+	n, err := m.unbindUser("alice")
+	if err == nil {
+		t.Fatal("the failed deletion must be reported")
+	}
+	if n != 1 {
+		t.Errorf("expected 1 successful unbind, got %d", n)
+	}
+	if _, ok := store.objects[ossclient.BindingKey("PC-2")]; ok {
+		t.Error("PC-2 should have been unbound despite PC-1 failing")
+	}
+	if _, ok := store.objects[ossclient.BindingKey("PC-1")]; !ok {
+		t.Error("PC-1's binding should remain since its delete failed")
 	}
 }

@@ -142,20 +142,27 @@ func (m *Manager) Offboard(ctx context.Context, gw Gateway, windowsUser string) 
 
 // unbindUser removes every machine binding that points at windowsUser.
 // Windows account names are case-insensitive, so the match is too.
+//
+// Every matching binding is attempted even if an earlier one fails to
+// delete: one machine's transient store error must not leave every other
+// machine still pointing at a departed employee. n counts the deletions
+// that succeeded; any failures are joined and returned alongside it.
 func (m *Manager) unbindUser(windowsUser string) (int, error) {
 	bindings, err := m.ListBindings()
 	if err != nil {
 		return 0, err
 	}
+	var failures []error
 	n := 0
 	for machine, b := range bindings {
 		if !strings.EqualFold(b.User, windowsUser) {
 			continue
 		}
 		if err := m.Store.Delete(ossclient.BindingKey(machine)); err != nil {
-			return n, fmt.Errorf("unbind %q: %w", machine, err)
+			failures = append(failures, fmt.Errorf("unbind %q: %w", machine, err))
+			continue
 		}
 		n++
 	}
-	return n, nil
+	return n, errors.Join(failures...)
 }
