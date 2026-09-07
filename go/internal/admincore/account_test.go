@@ -410,3 +410,34 @@ func TestOnboardUsesTheRostersSpellingForStoredObjects(t *testing.T) {
 		t.Errorf("audit should record the roster's spelling: %+v", entries)
 	}
 }
+
+// A stored allowlist is history, not a request: a model retired from the
+// gateway since it was written must not make re-issuing a token impossible.
+func TestReissueDropsStoredModelsTheGatewayNoLongerServes(t *testing.T) {
+	m, store, gw := onboarded(t)
+	u := gw.users["emp-alice"]
+	u.Models = []string{"glm-5", "gone-model"}
+	gw.users["emp-alice"] = u
+
+	if err := m.Reissue(context.Background(), gw, testGW, "Alice"); err != nil {
+		t.Fatalf("reissue: %v", err)
+	}
+	minted := gw.generated[len(gw.generated)-1]
+	if len(minted.Models) != 1 || minted.Models[0] != "glm-5" {
+		t.Errorf("minted token allowlist = %v, want [glm-5]", minted.Models)
+	}
+	set := deliveredSet(t, store, "Alice")
+	if body := string(set[model.PathCodexModels]); !strings.Contains(body, `"slug": "glm-5"`) ||
+		strings.Contains(body, "gone-model") || strings.Contains(body, `"slug": "grok-4.6"`) {
+		t.Errorf("catalog should hold glm-5 alone: %s", body)
+	}
+}
+
+// Explicitly requested models are still rejected: that is a typo in a slug,
+// not a stale record.
+func TestSetModelsStillRejectsAnUnknownModel(t *testing.T) {
+	m, _, gw := onboarded(t)
+	if err := m.SetModels(context.Background(), gw, testGW, "Alice", []string{"glm-5", "gone-model"}); err == nil {
+		t.Fatal("a model the gateway does not serve must be reported, not dropped")
+	}
+}

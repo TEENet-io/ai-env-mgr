@@ -3,6 +3,7 @@ package admincore
 import (
 	"context"
 	"fmt"
+	"log"
 	"sort"
 	"strings"
 	"sync"
@@ -143,17 +144,25 @@ func (m *Manager) provisionLocked(ctx context.Context, gw Gateway, cfg GatewayCo
 	// user that is "everything the gateway offers" (resolveAllowlist's own
 	// default); for one that already has a narrowed allowlist, re-issuing a
 	// token must not widen it back out.
+	stored := false
 	if models == nil {
 		if u, found, err := gw.UserInfo(ctx, KeyAlias(windowsUser)); err != nil {
 			return fmt.Errorf("look up gateway user: %w", err)
 		} else if found && len(u.Models) > 0 {
-			models = u.Models
+			models, stored = u.Models, true
 		}
 	}
 
 	available, err := gw.Models(ctx)
 	if err != nil {
 		return fmt.Errorf("read gateway model catalog: %w", err)
+	}
+	if stored {
+		// The stored list is a record of a past decision, not a request, so
+		// a model retired from the catalog since must not make re-issuing
+		// impossible -- that would strand the employee on a token nobody can
+		// replace. Requested models are still rejected (resolveAllowlist).
+		models = keepAvailable(available, models, windowsUser)
 	}
 	allowed, err := resolveAllowlist(available, models)
 	if err != nil {
@@ -266,6 +275,29 @@ func (m *Manager) setModelsLocked(ctx context.Context, gw Gateway, cfg GatewayCo
 		return nil, err
 	}
 	return allowed, nil
+}
+
+// keepAvailable drops from a stored allowlist every model the gateway no
+// longer serves, logging each one. Nothing left means nil -- "everything
+// visible" -- since an empty allowlist would deny every model instead.
+func keepAvailable(available []litellm.Model, stored []string, windowsUser string) []string {
+	names := make(map[string]bool, len(available))
+	for _, m := range available {
+		names[m.Name] = true
+	}
+	kept := make([]string, 0, len(stored))
+	for _, s := range stored {
+		if !names[s] {
+			log.Printf("admincore: %q: stored model %q is no longer in the gateway catalog; dropping it from the allowlist", windowsUser, s)
+			continue
+		}
+		kept = append(kept, s)
+	}
+	if len(kept) == 0 {
+		log.Printf("admincore: %q: no stored model is still in the gateway catalog; falling back to every visible model", windowsUser)
+		return nil
+	}
+	return kept
 }
 
 // resolveAllowlist validates the requested models against what the gateway
