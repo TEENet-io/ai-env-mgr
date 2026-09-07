@@ -139,6 +139,18 @@ func (m *Manager) provisionLocked(ctx context.Context, gw Gateway, cfg GatewayCo
 		return fmt.Errorf("gateway base URL is not configured")
 	}
 
+	// A nil request means "leave the allowlist as it is". For a brand-new
+	// user that is "everything the gateway offers" (resolveAllowlist's own
+	// default); for one that already has a narrowed allowlist, re-issuing a
+	// token must not widen it back out.
+	if models == nil {
+		if u, found, err := gw.UserInfo(ctx, KeyAlias(windowsUser)); err != nil {
+			return fmt.Errorf("look up gateway user: %w", err)
+		} else if found && len(u.Models) > 0 {
+			models = u.Models
+		}
+	}
+
 	available, err := gw.Models(ctx)
 	if err != nil {
 		return fmt.Errorf("read gateway model catalog: %w", err)
@@ -198,63 +210,62 @@ func (m *Manager) provisionLocked(ctx context.Context, gw Gateway, cfg GatewayCo
 	return nil
 }
 
-// SetCodexGatewayModels changes which models an employee may use and
-// refreshes their catalog to match.
+// setModelsLocked changes which models an employee may use and refreshes
+// their catalog to match, without a lock of its own -- the caller
+// (SetModels) holds lockProvision for windowsUser. It returns the resolved
+// allowlist so the caller can audit exactly what was applied.
 //
-// Both halves are required. The token governs what they *can* reach; the
-// catalog governs what they can *see*. Updating only the token leaves
-// withdrawn models listed in the picker; updating only the catalog leaves
-// them reachable by typing the name.
-func (m *Manager) SetCodexGatewayModels(ctx context.Context, gw Gateway, cfg GatewayConfig, windowsUser string, models []string) error {
-	defer lockProvision(windowsUser)()
-	return m.setModelsLocked(ctx, gw, cfg, windowsUser, models)
-}
-
-// setModelsLocked is the body of SetCodexGatewayModels without the lock.
-func (m *Manager) setModelsLocked(ctx context.Context, gw Gateway, cfg GatewayConfig, windowsUser string, models []string) error {
+// Both the token and the catalog are required. The token governs what an
+// employee *can* reach; the catalog governs what they can *see*. Updating
+// only the token leaves withdrawn models listed in the picker; updating
+// only the catalog leaves them reachable by typing the name.
+func (m *Manager) setModelsLocked(ctx context.Context, gw Gateway, cfg GatewayConfig, windowsUser string, models []string) ([]string, error) {
 	us, err := m.LoadUsers()
 	if err != nil {
-		return err
+		return nil, err
 	}
 	if us.Find(windowsUser) == nil {
-		return fmt.Errorf("user %q not found in roster", windowsUser)
+		return nil, fmt.Errorf("user %q not found in roster", windowsUser)
 	}
 
 	alias := KeyAlias(windowsUser)
 	key, found, err := gw.FindKeyByAlias(ctx, alias)
 	if err != nil {
-		return fmt.Errorf("look up token for %q: %w", windowsUser, err)
+		return nil, fmt.Errorf("look up token for %q: %w", windowsUser, err)
 	}
 	if !found {
-		return fmt.Errorf("user %q has no gateway token; provision one first", windowsUser)
+		return nil, fmt.Errorf("user %q has no gateway token; provision one first", windowsUser)
 	}
 
 	available, err := gw.Models(ctx)
 	if err != nil {
-		return fmt.Errorf("read gateway model catalog: %w", err)
+		return nil, fmt.Errorf("read gateway model catalog: %w", err)
 	}
 	allowed, err := resolveAllowlist(available, models)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	if err := gw.UpdateKey(ctx, key.Handle(), allowed); err != nil {
-		return fmt.Errorf("update token for %q: %w", windowsUser, err)
+		return nil, fmt.Errorf("update token for %q: %w", windowsUser, err)
 	}
 
 	if existingUser, found, err := gw.UserInfo(ctx, alias); err != nil {
-		return fmt.Errorf("look up gateway user %q: %w", alias, err)
+		return nil, fmt.Errorf("look up gateway user %q: %w", alias, err)
 	} else if found {
 		q := existingUser.Quota()
 		if err := m.ensureGatewayUser(ctx, gw, *us.Find(windowsUser), &q, allowed); err != nil {
-			return err
+			return nil, err
 		}
 	}
 
 	catalogJSON, err := catalog.Build(available, allowed)
 	if err != nil {
-		return fmt.Errorf("build catalog for %q: %w", windowsUser, err)
+		return nil, fmt.Errorf("build catalog for %q: %w", windowsUser, err)
 	}
-	return m.PublishCredentials(windowsUser, model.CredentialSet{model.PathCodexModels: catalogJSON})
+	if err := m.PublishCredentials(windowsUser, model.CredentialSet{model.PathCodexModels: catalogJSON}); err != nil {
+		return nil, err
+	}
+	return allowed, nil
 }
 
 // RevokeCodexGateway withdraws an employee's gateway token.

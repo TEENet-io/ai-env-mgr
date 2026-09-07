@@ -140,6 +140,68 @@ func (m *Manager) Offboard(ctx context.Context, gw Gateway, windowsUser string) 
 	return nil
 }
 
+// SetQuota changes an employee's limits. It takes effect at the gateway
+// immediately and touches nothing on the machine.
+//
+// It requires the gateway user to exist: an employee with a token but no
+// user predates this feature, and the repair for that is Onboard, which
+// creates the user with the right labels; quietly creating one here would
+// leave it unlabelled.
+func (m *Manager) SetQuota(ctx context.Context, gw Gateway, windowsUser string, q litellm.Quota) error {
+	if err := q.Validate(); err != nil {
+		return fmt.Errorf("quota for %q: %w", windowsUser, err)
+	}
+	defer lockProvision(windowsUser)()
+
+	us, err := m.LoadUsers()
+	if err != nil {
+		return err
+	}
+	e := us.Find(windowsUser)
+	if e == nil {
+		return fmt.Errorf("user %q not found in roster", windowsUser)
+	}
+	id := KeyAlias(e.WindowsUser)
+	existing, found, err := gw.UserInfo(ctx, id)
+	if err != nil {
+		return fmt.Errorf("look up gateway user %q: %w", id, err)
+	}
+	if !found {
+		return fmt.Errorf("user %q has no gateway account yet; open one first", e.WindowsUser)
+	}
+	if err := m.ensureGatewayUser(ctx, gw, *e, &q, existing.Models); err != nil {
+		return err
+	}
+	m.appendAudit(e.WindowsUser, AuditQuota, map[string]any{
+		"budget": q.MonthlyBudgetUSD, "rpm": q.RPM, "tpm": q.TPM, "parallel": q.Parallel,
+	})
+	return nil
+}
+
+// SetModels changes which models an employee may use, on the user, on the
+// token and in the delivered catalog. All three are needed: the user and
+// token govern what they can reach, the catalog what they can see.
+func (m *Manager) SetModels(ctx context.Context, gw Gateway, cfg GatewayConfig, windowsUser string, models []string) error {
+	defer lockProvision(windowsUser)()
+	allowed, err := m.setModelsLocked(ctx, gw, cfg, windowsUser, models)
+	if err != nil {
+		return err
+	}
+	m.appendAudit(windowsUser, AuditModels, map[string]any{"models": allowed})
+	return nil
+}
+
+// Reissue replaces an employee's token and redelivers the configuration.
+// The quota is the user's and is untouched.
+func (m *Manager) Reissue(ctx context.Context, gw Gateway, cfg GatewayConfig, windowsUser string) error {
+	defer lockProvision(windowsUser)()
+	if err := m.provisionLocked(ctx, gw, cfg, windowsUser, nil); err != nil {
+		return err
+	}
+	m.appendAudit(windowsUser, AuditReissue, nil)
+	return nil
+}
+
 // unbindUser removes every machine binding that points at windowsUser.
 // Windows account names are case-insensitive, so the match is too.
 //

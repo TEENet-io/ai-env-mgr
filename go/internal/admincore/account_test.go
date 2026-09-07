@@ -243,6 +243,68 @@ func TestOffboardWithoutTokenSucceeds(t *testing.T) {
 	}
 }
 
+func TestSetQuotaUpdatesUserOnly(t *testing.T) {
+	m, _, gw := onboarded(t)
+	q := litellm.Quota{MonthlyBudgetUSD: 50, RPM: 120, TPM: 400000, Parallel: 8}
+	if err := m.SetQuota(context.Background(), gw, "alice", q); err != nil {
+		t.Fatalf("quota: %v", err)
+	}
+	if gw.users["emp-alice"].Quota() != q {
+		t.Errorf("quota not applied: %+v", gw.users["emp-alice"].Quota())
+	}
+	if len(gw.generated) != 1 {
+		t.Error("changing a quota must not re-issue the token")
+	}
+	if len(gw.users["emp-alice"].Models) != 1 {
+		t.Errorf("quota change must keep the allowlist: %v", gw.users["emp-alice"].Models)
+	}
+	if entries, _ := m.ReadAudit("alice"); entries[0].Action != AuditQuota || entries[0].Detail["budget"] != float64(50) {
+		t.Errorf("audit: %+v", entries[0])
+	}
+}
+
+func TestSetQuotaRequiresAnAccount(t *testing.T) {
+	m, _ := newManager()
+	_ = m.SaveUsers(model.Users{Users: []model.UserEntry{{WindowsUser: "alice", Enabled: true}}})
+	err := m.SetQuota(context.Background(), newFakeGateway(), "alice", DefaultQuota)
+	if err == nil {
+		t.Fatal("no gateway user yet: the fix is onboarding, not a quota change")
+	}
+}
+
+func TestSetModelsUpdatesUserTokenAndCatalog(t *testing.T) {
+	m, store, gw := onboarded(t)
+	if err := m.SetModels(context.Background(), gw, testGW, "alice", []string{"grok-4.6"}); err != nil {
+		t.Fatalf("models: %v", err)
+	}
+	if got := gw.users["emp-alice"].Models; len(got) != 1 || got[0] != "grok-4.6" {
+		t.Errorf("user allowlist: %v", got)
+	}
+	if got := gw.updated["hash-of-emp-alice"]; len(got) != 1 || got[0] != "grok-4.6" {
+		t.Errorf("token allowlist: %v", gw.updated)
+	}
+	set := deliveredSet(t, store, "alice")
+	if !strings.Contains(string(set[model.PathCodexModels]), `"slug": "grok-4.6"`) || strings.Contains(string(set[model.PathCodexModels]), `"slug": "glm-5"`) {
+		t.Errorf("catalog not refreshed")
+	}
+	if entries, _ := m.ReadAudit("alice"); entries[0].Action != AuditModels {
+		t.Errorf("audit: %+v", entries[0])
+	}
+}
+
+func TestReissueMintsNewTokenAndAudits(t *testing.T) {
+	m, _, gw := onboarded(t)
+	if err := m.Reissue(context.Background(), gw, testGW, "alice"); err != nil {
+		t.Fatalf("reissue: %v", err)
+	}
+	if len(gw.generated) != 2 || len(gw.deleted) != 1 {
+		t.Errorf("reissue must revoke then mint: generated=%d deleted=%v", len(gw.generated), gw.deleted)
+	}
+	if entries, _ := m.ReadAudit("alice"); entries[0].Action != AuditReissue {
+		t.Errorf("audit: %+v", entries[0])
+	}
+}
+
 func TestUnbindUserContinuesPastOneFailure(t *testing.T) {
 	m, store := newManager()
 	_ = m.SaveUsers(model.Users{Users: []model.UserEntry{{WindowsUser: "alice", Enabled: true}}})

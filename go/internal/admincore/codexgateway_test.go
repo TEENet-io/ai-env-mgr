@@ -314,7 +314,7 @@ func TestSetModelsUpdatesTokenAndCatalogTogether(t *testing.T) {
 		t.Fatalf("provision: %v", err)
 	}
 
-	if err := m.SetCodexGatewayModels(context.Background(), gw, GatewayConfig{BaseURL: "https://gw.example"}, "alice", []string{"glm-5"}); err != nil {
+	if err := m.SetModels(context.Background(), gw, GatewayConfig{BaseURL: "https://gw.example"}, "alice", []string{"glm-5"}); err != nil {
 		t.Fatalf("set models: %v", err)
 	}
 
@@ -434,5 +434,18 @@ func TestProvisionKeepsExistingUserQuota(t *testing.T) {
 	}
 	if len(gw.upserts) != 0 {
 		t.Errorf("re-issuing a token must not rewrite the user's quota: %+v", gw.upserts)
+	}
+}
+
+func TestReissueKeepsNarrowedAllowlist(t *testing.T) {
+	m, store, gw := onboarded(t) // alice: glm-5 only
+	if err := m.Reissue(context.Background(), gw, testGW, "alice"); err != nil {
+		t.Fatalf("reissue: %v", err)
+	}
+	if got := gw.generated[1].Models; len(got) != 1 || got[0] != "glm-5" {
+		t.Errorf("reissue widened the allowlist: %v", got)
+	}
+	if strings.Contains(string(deliveredSet(t, store, "alice")[model.PathCodexModels]), `"slug": "grok-4.6"`) {
+		t.Error("catalog widened on reissue")
 	}
 }
