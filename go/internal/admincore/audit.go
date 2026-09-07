@@ -11,7 +11,7 @@ import (
 	"github.com/TEENet-io/ai-env-mgr/internal/ossclient"
 )
 
-// AuditAction names one of the five account operations.
+// AuditAction names one of the account operations.
 type AuditAction string
 
 const (
@@ -20,6 +20,7 @@ const (
 	AuditQuota    AuditAction = "quota"
 	AuditModels   AuditAction = "models"
 	AuditReissue  AuditAction = "reissue"
+	AuditProfile  AuditAction = "profile"
 )
 
 // AuditEntry is one line of an employee's history.

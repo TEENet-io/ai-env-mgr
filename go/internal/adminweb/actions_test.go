@@ -45,6 +45,7 @@ func TestWritesRequireCSRFToken(t *testing.T) {
 		{"/users/quota", url.Values{"windowsUser": {"work1"}, "budget": {"20"}, "rpm": {"60"}, "tpm": {"200000"}, "parallel": {"4"}}},
 		{"/users/models", url.Values{"windowsUser": {"work1"}}},
 		{"/users/reissue", url.Values{"windowsUser": {"work1"}}},
+		{"/users/profile", url.Values{"windowsUser": {"work1"}, "name": {"Mallory"}}},
 		{"/machines/bind", url.Values{"machine": {"PC1"}, "user": {"work1"}}},
 		{"/machines/unbind", url.Values{"machine": {"PC1"}}},
 		{"/sites/mutate", url.Values{"add": {"evil.example"}}},

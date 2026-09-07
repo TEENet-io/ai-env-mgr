@@ -473,3 +473,57 @@ func TestSetModelsLeavesTheTokenAloneWhenTheUserWriteFails(t *testing.T) {
 		t.Errorf("token was updated even though the user write failed: %v", gw.updated)
 	}
 }
+
+func TestUpdateProfileWritesRosterAndMirrorsTheGatewayUser(t *testing.T) {
+	m, _, gw := onboarded(t)
+	err := m.UpdateProfile(context.Background(), gw, "alice", "Alice Wong", "运营", "alice@codex.example", "")
+	if err != nil {
+		t.Fatalf("profile: %v", err)
+	}
+	us, _ := m.LoadUsers()
+	e := us.Find("alice")
+	if e.Name != "Alice Wong" || e.Department != "运营" || e.CodexAccount != "alice@codex.example" {
+		t.Fatalf("roster not updated: %+v", e)
+	}
+	// Unlike Onboard's notes, this is the edit form: an empty field clears.
+	if e.ClaudeAccount != "" {
+		t.Errorf("an emptied field must be cleared, not kept: %+v", e)
+	}
+	u := gw.users["emp-alice"]
+	if u.Alias != "Alice Wong" || u.Department() != "运营" {
+		t.Errorf("gateway user not mirrored: %+v", u)
+	}
+	if u.Quota() != aliceSpec().Quota {
+		t.Errorf("editing labels must not touch the limits: %+v", u.Quota())
+	}
+	if len(u.Models) != 1 || u.Models[0] != "glm-5" {
+		t.Errorf("editing labels must not touch the allowlist: %v", u.Models)
+	}
+	entries, _ := m.ReadAudit("alice")
+	if entries[0].Action != AuditProfile || entries[0].Detail["department"] != "运营" {
+		t.Errorf("audit: %+v", entries[0])
+	}
+}
+
+func TestUpdateProfileWithoutAGatewayUserSavesTheRoster(t *testing.T) {
+	m, _ := newManager()
+	_ = m.SaveUsers(model.Users{Users: []model.UserEntry{{WindowsUser: "alice", Enabled: true}}})
+	gw := newFakeGateway()
+	if err := m.UpdateProfile(context.Background(), gw, "alice", "Alice Wang", "研发", "", ""); err != nil {
+		t.Fatalf("profile: %v", err)
+	}
+	us, _ := m.LoadUsers()
+	if us.Find("alice").Name != "Alice Wang" {
+		t.Error("roster not updated")
+	}
+	if len(gw.upserts) != 0 {
+		t.Errorf("no gateway user exists: creating one here would leave it unquotaed: %+v", gw.upserts)
+	}
+}
+
+func TestUpdateProfileRequiresARosterEntry(t *testing.T) {
+	m, _ := newManager()
+	if err := m.UpdateProfile(context.Background(), newFakeGateway(), "ghost", "G", "", "", ""); err == nil {
+		t.Fatal("expected an error")
+	}
+}

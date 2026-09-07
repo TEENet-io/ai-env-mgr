@@ -192,6 +192,59 @@ func (m *Manager) requireActive(windowsUser string) (model.UserEntry, error) {
 	return *e, nil
 }
 
+// UpdateProfile edits the labels an administrator keeps for an employee:
+// display name, department and the two account notes.
+//
+// Every field is written verbatim, so clearing one on the form clears it on
+// the roster. That is the opposite of Onboard, where an empty note means
+// "leave what is there" because the row buttons post no fields for them;
+// here the form is filled in from the roster and shows exactly what will be
+// saved.
+//
+// The gateway user is mirrored (alias, department) only when it exists:
+// creating one here would leave it without the limits Onboard gives it. A
+// user whose stored limits are unusable is left alone rather than being
+// written back with them, since UpsertUser would send them on as they are.
+func (m *Manager) UpdateProfile(ctx context.Context, gw Gateway, windowsUser, name, department, codexAccount, claudeAccount string) error {
+	defer lockProvision(windowsUser)()
+
+	us, err := m.LoadUsers()
+	if err != nil {
+		return err
+	}
+	e := us.Find(windowsUser)
+	if e == nil {
+		return fmt.Errorf("user %q not found in roster", windowsUser)
+	}
+	if !e.Enabled {
+		return fmt.Errorf("user %q is offboarded; reopen the account first", e.WindowsUser)
+	}
+	e.Name, e.Department = name, department
+	e.CodexAccount, e.ClaudeAccount = codexAccount, claudeAccount
+	if err := m.SaveUsers(us); err != nil {
+		return err
+	}
+	entry := *e
+	// The roster is the change being recorded and it is already durable, so
+	// the line is written here rather than after the mirror, which may fail
+	// on its own without making the record wrong.
+	m.appendAudit(entry.WindowsUser, AuditProfile, map[string]any{"name": name, "department": department})
+
+	id := KeyAlias(entry.WindowsUser)
+	existing, found, err := gw.UserInfo(ctx, id)
+	if err != nil {
+		return fmt.Errorf("look up gateway user %q: %w", id, err)
+	}
+	if !found {
+		return nil
+	}
+	q := existing.Quota()
+	if err := q.Validate(); err != nil {
+		return fmt.Errorf("profile saved, but gateway user %q has invalid limits; fix them on the account page", id)
+	}
+	return m.ensureGatewayUser(ctx, gw, entry, &q, existing.Models)
+}
+
 // SetQuota changes an employee's limits. It takes effect at the gateway
 // immediately and touches nothing on the machine.
 //

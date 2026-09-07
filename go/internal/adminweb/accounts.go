@@ -459,6 +459,24 @@ func (s *Server) actionAccountModels(sess *session, r *http.Request) error {
 	return sess.mgr.SetModels(ctx, gw, cfg, user, r.PostForm["models"])
 }
 
+// actionAccountProfile saves the detail page's 基本信息 form. Every field is
+// posted, filled in from the roster, so an emptied one is an edit and is
+// written through as such (admincore.UpdateProfile).
+func (s *Server) actionAccountProfile(sess *session, r *http.Request) error {
+	gw, _, ctx, cancel, err := s.accountContext(r)
+	if err != nil {
+		return err
+	}
+	defer cancel()
+	user := formValue(r, "windowsUser")
+	if user == "" {
+		return fmt.Errorf("a Windows user name is required")
+	}
+	return sess.mgr.UpdateProfile(ctx, gw, user,
+		formValue(r, "name"), formValue(r, "department"),
+		formValue(r, "codexAccount"), formValue(r, "claudeAccount"))
+}
+
 func (s *Server) actionAccountReissue(sess *session, r *http.Request) error {
 	gw, cfg, ctx, cancel, err := s.accountContext(r)
 	if err != nil {

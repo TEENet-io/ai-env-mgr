@@ -24,6 +24,17 @@
     <span>${{money .Spend}} / ${{money .Budget}}{{if ge (len .BudgetResetAt) 10}} · {{slice .BudgetResetAt 0 10}} 重置{{end}}</span></div>
   {{end}}
 
+  <h2>基本信息</h2>
+  <form method="post" action="/users/profile" class="form">
+    <input type="hidden" name="csrf" value="{{$.CSRF}}"><input type="hidden" name="windowsUser" value="{{.WindowsUser}}"><input type="hidden" name="back" value="detail">
+    <label>姓名<input name="name" value="{{.Name}}" placeholder="张三"></label>
+    <label>部门<input name="department" value="{{.Department}}" placeholder="研发"></label>
+    <label>Codex 账号（备注）<input name="codexAccount" value="{{.CodexAccount}}"></label>
+    <label>Claude 账号（备注）<input name="claudeAccount" value="{{.ClaudeAccount}}"></label>
+    <button type="submit"{{if not .Enabled}} disabled{{end}}>保存基本信息</button>
+  </form>
+  <p class="hint">修改姓名或部门不影响令牌与额度。留空即清空该项；姓名与部门会同步到网关用户。</p>
+
   <h2>额度</h2>
   <form method="post" action="/users/quota" class="form">
     <input type="hidden" name="csrf" value="{{$.CSRF}}"><input type="hidden" name="windowsUser" value="{{.WindowsUser}}"><input type="hidden" name="back" value="detail">
