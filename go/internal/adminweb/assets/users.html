@@ -13,7 +13,7 @@
     <tbody>
     {{range .Accounts}}
       <tr>
-        <td class="id"><a href="/users/detail?user={{.WindowsUser}}">{{.WindowsUser}}</a></td>
+        <td class="id">{{if .OnRoster}}<a href="/users/detail?user={{.WindowsUser}}">{{.WindowsUser}}</a>{{else}}<span class="id">{{.WindowsUser}}</span>{{end}}</td>
         <td>{{if .Name}}{{.Name}}{{else}}<span class="dim">—</span>{{end}}</td>
         <td class="dim">{{if .Department}}{{.Department}}{{else}}—{{end}}</td>
         <td>

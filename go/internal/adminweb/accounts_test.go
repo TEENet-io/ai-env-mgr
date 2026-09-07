@@ -32,6 +32,9 @@ func TestReconcileAccountsJoinsAllThreeSources(t *testing.T) {
 		t.Fatalf("rows: %+v", rows)
 	}
 	r := rows[0]
+	if !r.OnRoster {
+		t.Errorf("a roster-derived row must be marked as such: %+v", r)
+	}
 	if !r.HasUser || !r.HasToken || r.Spend != 4.5 || r.Budget != 20 || r.BudgetResetAt == "" {
 		t.Errorf("gateway state not joined: %+v", r)
 	}
@@ -88,6 +91,9 @@ func TestReconcileAccountsSurfacesTokensWithNoRosterEntry(t *testing.T) {
 	if got := flagLabels(rows[0]); len(got) != 1 || got[0] != "已离职仍有令牌" {
 		t.Errorf("flags: %v", got)
 	}
+	if rows[0].OnRoster {
+		t.Error("a row invented from a token alias is not on the roster; its detail page would 404")
+	}
 }
 
 func TestReconcileAccountsSortsByUser(t *testing.T) {
@@ -143,12 +149,14 @@ func TestAccountPagesRender(t *testing.T) {
 		CodexAccount: "alice@codex.example", ClaudeAccount: "alice@claude.example",
 		HasUser: true, HasToken: true, Models: []string{"glm-5.2"}, Spend: 17, Budget: 20,
 		BudgetResetAt: "2026-10-01T00:00:00Z", Quota: litellm.Quota{MonthlyBudgetUSD: 20, RPM: 60, TPM: 200000, Parallel: 4},
-		Machines: []string{"PC-1"}}
-	flagged := accountRow{WindowsUser: "carol", Enabled: false, HasToken: true,
+		Machines: []string{"PC-1"}, OnRoster: true}
+	flagged := accountRow{WindowsUser: "carol", Enabled: false, HasToken: true, OnRoster: true,
+		Flags: []accountFlag{flagDepartedToken}}
+	ghost := accountRow{WindowsUser: "ghost", Enabled: false, HasToken: true,
 		Flags: []accountFlag{flagDepartedToken}}
 	data := pageData{CSRF: "x", GatewayEnabled: true, GatewayURL: "https://gw.example",
 		GatewayModels: []litellm.Model{{Name: "glm-5.2", Info: litellm.ModelInfo{DisplayName: "GLM"}}},
-		Accounts:      []accountRow{row, flagged}, QuotaDefaults: admincore.DefaultQuota}
+		Accounts:      []accountRow{row, flagged, ghost}, QuotaDefaults: admincore.DefaultQuota}
 
 	var list strings.Builder
 	if err := s.tpl.ExecuteTemplate(&list, "users.html", data); err != nil {
@@ -159,6 +167,16 @@ func TestAccountPagesRender(t *testing.T) {
 			t.Errorf("users.html missing %q", want)
 		}
 	}
+	// ghost has a token but no roster entry: /users/detail would 404 on it,
+	// so the name must not be a link. The 修复 button stays -- offboarding
+	// is what revokes the stray token.
+	if strings.Contains(list.String(), `href="/users/detail?user=ghost"`) {
+		t.Errorf("users.html links a row that has no roster entry to a page that 404s")
+	}
+	if n := strings.Count(list.String(), `action="/users/offboard"`); n < 3 {
+		t.Errorf("users.html must keep the 修复 button on the stray-token row (%d offboard forms)", n)
+	}
+
 	// carol is departed with a lingering token (Fix "offboard"): her row must
 	// carry an offboard form of her own, not just alice's still-employed one.
 	if n := strings.Count(list.String(), `action="/users/offboard"`); n < 2 {

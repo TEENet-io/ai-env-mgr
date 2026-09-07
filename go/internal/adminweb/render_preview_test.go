@@ -73,17 +73,18 @@ func TestRenderPreview(t *testing.T) {
 		{WindowsUser: "chen", Enabled: false},
 	}
 	accountRows := []accountRow{
-		{WindowsUser: "peter", Name: "Peter", Department: "研发", Enabled: true,
+		{WindowsUser: "peter", Name: "Peter", Department: "研发", Enabled: true, OnRoster: true,
 			HasUser: true, HasToken: true, Models: []string{"grok-4.6", "glm-5"},
 			Spend: 12.4, Budget: 20, BudgetResetAt: "2026-10-01T00:00:00Z",
 			Quota:    litellm.Quota{MonthlyBudgetUSD: 20, RPM: 60, TPM: 200000, Parallel: 4},
 			Machines: []string{"hv8uqpity23nkc7"}},
-		{WindowsUser: "work1", Name: "Work One", Department: "运营", Enabled: true,
+		{WindowsUser: "work1", Name: "Work One", Department: "运营", Enabled: true, OnRoster: true,
 			HasUser: true, HasToken: true, Models: []string{"deepseek-v3.2"},
 			Spend: 18.7, Budget: 20, BudgetResetAt: "2026-10-01T00:00:00Z",
 			Quota:    litellm.Quota{MonthlyBudgetUSD: 20, RPM: 60, TPM: 200000, Parallel: 4},
 			Machines: []string{"wuying-desk-0142"}},
-		{WindowsUser: "chen", Enabled: false, HasToken: true, Flags: []accountFlag{flagDepartedToken}},
+		{WindowsUser: "chen", Enabled: false, HasToken: true, OnRoster: true, Flags: []accountFlag{flagDepartedToken}},
+		{WindowsUser: "ghost", Enabled: false, HasToken: true, Flags: []accountFlag{flagDepartedToken}},
 	}
 	base := pageData{
 		Bucket: "ai-collect-sg", Endpoint: "oss-ap-southeast-1.aliyuncs.com",

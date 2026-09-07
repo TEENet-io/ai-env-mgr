@@ -27,6 +27,11 @@ type accountRow struct {
 	Department  string
 	Enabled     bool // still employed, per the roster
 
+	// OnRoster is false for a row invented from a gateway token whose alias
+	// matches nobody. There is no roster entry behind it, so /users/detail
+	// would 404: the list renders the name as plain text, not a link.
+	OnRoster bool
+
 	// Administrator notes, carried through from the roster untouched by
 	// anything here -- see admincore.AccountSpec.
 	CodexAccount  string
@@ -80,10 +85,11 @@ func reconcileAccounts(users []model.UserEntry, keys []litellm.Key, gwUsers []li
 		machinesOf[id] = append(machinesOf[id], machine)
 	}
 
-	build := func(e model.UserEntry) accountRow {
+	build := func(e model.UserEntry, onRoster bool) accountRow {
 		id := admincore.KeyAlias(e.WindowsUser)
 		r := accountRow{
 			WindowsUser: e.WindowsUser, Name: e.Name, Department: e.Department, Enabled: e.Enabled,
+			OnRoster:     onRoster,
 			CodexAccount: e.CodexAccount, ClaudeAccount: e.ClaudeAccount,
 		}
 		if u, ok := userByID[id]; ok {
@@ -122,7 +128,7 @@ func reconcileAccounts(users []model.UserEntry, keys []litellm.Key, gwUsers []li
 	claimed := map[string]bool{}
 	for _, e := range users {
 		claimed[admincore.KeyAlias(e.WindowsUser)] = true
-		out = append(out, build(e))
+		out = append(out, build(e, true))
 	}
 	// Employee tokens whose alias matches nobody on the roster. No roster
 	// row would ever show them, and they keep working until revoked.
@@ -130,7 +136,7 @@ func reconcileAccounts(users []model.UserEntry, keys []litellm.Key, gwUsers []li
 		if claimed[alias] || !strings.HasPrefix(alias, "emp-") {
 			continue
 		}
-		out = append(out, build(model.UserEntry{WindowsUser: strings.TrimPrefix(alias, "emp-"), Enabled: false}))
+		out = append(out, build(model.UserEntry{WindowsUser: strings.TrimPrefix(alias, "emp-"), Enabled: false}, false))
 	}
 
 	sort.Slice(out, func(i, j int) bool {
