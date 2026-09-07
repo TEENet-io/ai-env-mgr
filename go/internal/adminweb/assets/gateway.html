@@ -35,46 +35,6 @@
     <code>catalog_visible: true</code>，它就会出现在这里，也会出现在员工的模型选择器里。
   </p>
 
-  <h2>员工令牌</h2>
-  <div class="panel scroll">
-  <table>
-    <thead><tr><th>WINDOWS 用户</th><th>状态</th><th>令牌</th><th>可用模型</th><th>用量</th><th></th></tr></thead>
-    <tbody>
-    {{range .GatewayHolders}}
-      <tr>
-        <td class="id">{{.WindowsUser}}</td>
-        <td>{{if .Enabled}}<span class="tag tag-ok">在职</span>{{else}}<span class="tag tag-bad">已离职</span>{{end}}</td>
-        <td>
-          {{if .Orphaned}}<span class="tag tag-bad">应吊销</span>
-          {{else if .HasToken}}<span class="tag tag-ok">已发放</span>
-          {{else}}<span class="dim">—</span>{{end}}
-        </td>
-        <td class="dim">{{if .Models}}{{range $i, $m := .Models}}{{if $i}}, {{end}}{{$m}}{{end}}{{else}}—{{end}}</td>
-        <td class="dim">{{if .HasToken}}{{printf "%.2f" .Spend}}{{else}}—{{end}}</td>
-        <td>
-          {{if .Enabled}}
-          <form method="post" action="/gateway/provision" class="inline">
-            <input type="hidden" name="csrf" value="{{$.CSRF}}">
-            <input type="hidden" name="windowsUser" value="{{.WindowsUser}}">
-            <button class="link">{{if .HasToken}}重新发放{{else}}发放{{end}}</button>
-          </form>
-          {{end}}
-          {{if .HasToken}}
-          <form method="post" action="/gateway/revoke" class="inline">
-            <input type="hidden" name="csrf" value="{{$.CSRF}}">
-            <input type="hidden" name="windowsUser" value="{{.WindowsUser}}">
-            <button class="link">吊销</button>
-          </form>
-          {{end}}
-        </td>
-      </tr>
-    {{else}}
-      <tr><td colspan="6" class="empty">名册里还没有员工。</td></tr>
-    {{end}}
-    </tbody>
-  </table>
-  </div>
-
   <h2>发放令牌</h2>
   <form method="post" action="/gateway/provision" class="form">
     <input type="hidden" name="csrf" value="{{.CSRF}}">
@@ -88,16 +48,6 @@
     </fieldset>
     <button type="submit">发放并下发配置</button>
   </form>
-
-  <p class="hint">
-    发放会先在网关建令牌，再把 <code>config.toml</code> 与 <code>models.json</code>
-    写入该员工的配置包，由 agent 在下次同步时投递。<strong>员工需要完全退出所有 Codex
-    进程再重新打开</strong>——模型目录只在 app-server 启动时加载一次。
-    <br>
-    对同一个人重新发放会<strong>先吊销旧令牌</strong>：一个人两把活令牌无法归属，旧的也会一直有效。
-    <br>
-    吊销在网关侧立即生效，<strong>不依赖员工机器在线</strong>；机器上的文件由 agent 依名册清理。
-  </p>
   {{else}}
   <p class="hint">配置好网关地址与管理密钥后，这里会显示可用模型与员工令牌。</p>
   {{end}}

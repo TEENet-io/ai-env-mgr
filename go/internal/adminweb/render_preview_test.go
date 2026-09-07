@@ -101,11 +101,6 @@ func TestRenderPreview(t *testing.T) {
 			{Name: "deepseek-v3.2", Info: litellm.ModelInfo{DisplayName: "DeepSeek V3.2", ContextWindow: 128000, ReasoningLevels: []string{"low", "high"}}},
 			{Name: "glm-5", Info: litellm.ModelInfo{DisplayName: "智谱 GLM-5", ContextWindow: 128000, ReasoningLevels: []string{"low", "high"}}},
 		},
-		GatewayHolders: []gatewayHolder{
-			{WindowsUser: "peter", Enabled: true, HasToken: true, Models: []string{"grok-4.6", "glm-5"}, Spend: 3.42},
-			{WindowsUser: "work1", Enabled: true},
-			{WindowsUser: "work9", Enabled: false, HasToken: true, Models: []string{"grok-4.6"}, Spend: 11.08, Orphaned: true},
-		},
 	}
 	for _, name := range []string{
 		"login.html", "machines.html", "users.html", "employee-login", "sites.html",

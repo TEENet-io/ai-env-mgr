@@ -63,7 +63,6 @@ type pageData struct {
 	GatewayURL      string
 	GatewayEnabled  bool
 	GatewayModels   []litellm.Model
-	GatewayHolders  []gatewayHolder
 	GatewayUnusable string // why the page cannot act, when it cannot
 
 	PendingUser string // an employee sign-in waiting for the pasted callback

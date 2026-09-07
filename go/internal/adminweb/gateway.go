@@ -5,31 +5,12 @@ import (
 	"fmt"
 	"log"
 	"net/http"
-	"sort"
 	"strconv"
-	"strings"
 	"time"
 
 	"github.com/TEENet-io/ai-env-mgr/internal/admincore"
 	"github.com/TEENet-io/ai-env-mgr/internal/litellm"
-	"github.com/TEENet-io/ai-env-mgr/internal/model"
 )
-
-// gatewayHolder is one roster entry alongside whatever token the gateway
-// holds for them.
-//
-// The gateway is the authority on tokens, not this console: the roster says
-// who should have one, the gateway says who does. Showing both side by side
-// is what makes a half-finished onboarding or offboarding visible, rather
-// than each side looking fine on its own.
-type gatewayHolder struct {
-	WindowsUser string
-	Enabled     bool     // still employed, per the roster
-	HasToken    bool     // the gateway holds a token under this user's alias
-	Models      []string // what that token may reach
-	Spend       float64
-	Orphaned    bool // a live token for someone no longer employed
-}
 
 // gatewayTimeout bounds the page's calls to the gateway.
 //
@@ -78,76 +59,7 @@ func (s *Server) handleGateway(w http.ResponseWriter, r *http.Request, sess *ses
 	}
 	data.GatewayModels = models
 
-	us, err := sess.mgr.LoadUsers()
-	if err != nil {
-		data.Error = "could not read the roster"
-		log.Printf("adminweb: LoadUsers: %v", err)
-		s.render(w, "gateway.html", http.StatusOK, data)
-		return
-	}
-
-	keys, err := gw.ListKeys(ctx)
-	if err != nil {
-		if data.GatewayUnusable == "" {
-			data.GatewayUnusable = "无法读取网关令牌清单：" + err.Error()
-		}
-		log.Printf("adminweb: gateway keys: %v", err)
-	}
-	data.GatewayHolders = reconcile(us.Users, keys)
-
 	s.render(w, "gateway.html", http.StatusOK, data)
-}
-
-// reconcile pairs the roster against the gateway's tokens.
-//
-// Two mismatches matter and both are surfaced rather than smoothed over:
-// an employee with no token (onboarding never finished, so Codex cannot
-// reach a model), and a live token whose alias matches nobody on the roster
-// or someone already disabled -- the offboarding case, where the token would
-// otherwise keep working indefinitely.
-func reconcile(users []model.UserEntry, keys []litellm.Key) []gatewayHolder {
-	byAlias := make(map[string]litellm.Key, len(keys))
-	for _, k := range keys {
-		if k.KeyAlias != "" {
-			byAlias[k.KeyAlias] = k
-		}
-	}
-
-	out := make([]gatewayHolder, 0, len(users))
-	claimed := map[string]bool{}
-	for _, u := range users {
-		alias := admincore.KeyAlias(u.WindowsUser)
-		h := gatewayHolder{WindowsUser: u.WindowsUser, Enabled: u.Enabled}
-		if k, ok := byAlias[alias]; ok {
-			claimed[alias] = true
-			h.HasToken = true
-			h.Models = k.Models
-			h.Spend = k.Spend
-			// A live token for someone marked as left is the exact state
-			// offboarding is supposed to prevent.
-			h.Orphaned = !u.Enabled
-		}
-		out = append(out, h)
-	}
-
-	// Tokens whose alias matches nobody on the roster at all. These are the
-	// ones no per-user row would ever show.
-	for alias, k := range byAlias {
-		if claimed[alias] || !strings.HasPrefix(alias, "emp-") {
-			continue
-		}
-		out = append(out, gatewayHolder{
-			WindowsUser: strings.TrimPrefix(alias, "emp-"),
-			Enabled:     false,
-			HasToken:    true,
-			Models:      k.Models,
-			Spend:       k.Spend,
-			Orphaned:    true,
-		})
-	}
-
-	sort.Slice(out, func(i, j int) bool { return out[i].WindowsUser < out[j].WindowsUser })
-	return out
 }
 
 // actionGatewayProvision issues or re-issues one employee's token and
