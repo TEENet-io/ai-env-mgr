@@ -152,3 +152,89 @@ func TestOnboardWithdrawsTokenWhenDeliveryFails(t *testing.T) {
 		t.Errorf("token minted then not withdrawn: generated=%d deleted=%v", len(gw.generated), gw.deleted)
 	}
 }
+
+func onboarded(t *testing.T) (*Manager, *fakeStore, *fakeGateway) {
+	t.Helper()
+	m, store := newManager()
+	gw := newFakeGateway()
+	if err := m.Onboard(context.Background(), gw, testGW, aliceSpec()); err != nil {
+		t.Fatalf("seed onboard: %v", err)
+	}
+	return m, store, gw
+}
+
+func TestOffboardRevokesEverythingAndKeepsHistory(t *testing.T) {
+	m, store, gw := onboarded(t)
+	if err := m.BindMachine("PC-1", "alice", ""); err != nil {
+		t.Fatalf("bind: %v", err)
+	}
+	if err := m.BindMachine("PC-2", "Alice", ""); err != nil {
+		t.Fatalf("bind: %v", err)
+	}
+
+	if err := m.Offboard(context.Background(), gw, "alice"); err != nil {
+		t.Fatalf("offboard: %v", err)
+	}
+
+	us, _ := m.LoadUsers()
+	if e := us.Find("alice"); e == nil || e.Enabled {
+		t.Errorf("roster must keep the entry, disabled: %+v", e)
+	}
+	if _, live := gw.existing["emp-alice"]; live {
+		t.Error("token still live")
+	}
+	if _, ok := store.objects[credsKey("Alice")]; ok {
+		t.Error("credentials.zip still in the store; the agent would never clear the machine")
+	}
+	bindings, _ := m.ListBindings()
+	if len(bindings) != 0 {
+		t.Errorf("machines still bound: %v", bindings)
+	}
+	if _, ok := gw.users["emp-alice"]; !ok {
+		t.Error("gateway user must be kept for its spend history")
+	}
+	entries, _ := m.ReadAudit("alice")
+	if len(entries) != 2 || entries[0].Action != AuditOffboard {
+		t.Errorf("audit: %+v", entries)
+	}
+}
+
+func TestOffboardContinuesPastGatewayFailure(t *testing.T) {
+	// The gateway being down must not leave the files on the machine.
+	m, store, gw := onboarded(t)
+	_ = m.BindMachine("PC-1", "alice", "")
+	gw.deleteAliasErr = errors.New("gateway down")
+
+	err := m.Offboard(context.Background(), gw, "alice")
+	if err == nil {
+		t.Fatal("a failed revocation must be reported")
+	}
+	us, _ := m.LoadUsers()
+	if e := us.Find("alice"); e.Enabled {
+		t.Error("roster must be disabled even when the gateway fails")
+	}
+	if _, ok := store.objects[credsKey("Alice")]; ok {
+		t.Error("credentials must be deleted even when the gateway fails")
+	}
+	if b, _ := m.ListBindings(); len(b) != 0 {
+		t.Error("machines must be unbound even when the gateway fails")
+	}
+	if _, live := gw.existing["emp-alice"]; !live {
+		t.Error("test setup: token should still be live so the list flags it")
+	}
+}
+
+func TestOffboardUnknownUserIsAnError(t *testing.T) {
+	m, _ := newManager()
+	if err := m.Offboard(context.Background(), newFakeGateway(), "ghost"); err == nil {
+		t.Fatal("offboarding someone not on the roster must be refused")
+	}
+}
+
+func TestOffboardWithoutTokenSucceeds(t *testing.T) {
+	m, _ := newManager()
+	_ = m.SaveUsers(model.Users{Users: []model.UserEntry{{WindowsUser: "alice", Enabled: true}}})
+	if err := m.Offboard(context.Background(), newFakeGateway(), "alice"); err != nil {
+		t.Fatalf("no token is not a failure: %v", err)
+	}
+}

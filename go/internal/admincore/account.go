@@ -2,10 +2,13 @@ package admincore
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"strings"
 
 	"github.com/TEENet-io/ai-env-mgr/internal/litellm"
 	"github.com/TEENet-io/ai-env-mgr/internal/model"
+	"github.com/TEENet-io/ai-env-mgr/internal/ossclient"
 )
 
 // AccountSpec is everything an administrator decides when opening an
@@ -85,4 +88,74 @@ func (m *Manager) Onboard(ctx context.Context, gw Gateway, cfg GatewayConfig, sp
 		"models": allowed,
 	})
 	return nil
+}
+
+// Offboard closes an account: roster disabled, token revoked, delivered
+// files withdrawn, machines unbound. The gateway user stays -- its spend
+// history is the record of what this person used.
+//
+// Every step runs even if an earlier one failed. The two that matter for
+// safety (disable, revoke) come first; the rest must still happen when the
+// gateway is unreachable, or a departed employee's machine keeps a working
+// configuration until someone remembers to try again. Failures are joined
+// and reported, and the account list flags whatever is left over.
+func (m *Manager) Offboard(ctx context.Context, gw Gateway, windowsUser string) error {
+	defer lockProvision(windowsUser)()
+
+	us, err := m.LoadUsers()
+	if err != nil {
+		return err
+	}
+	e := us.Find(windowsUser)
+	if e == nil {
+		return fmt.Errorf("user %q not found in roster", windowsUser)
+	}
+	// Use the roster's spelling from here on: stored objects are keyed by it.
+	name := e.WindowsUser
+	e.Enabled = false
+	if err := m.SaveUsers(us); err != nil {
+		return err
+	}
+
+	var failures []error
+	alias := KeyAlias(name)
+	if _, found, err := gw.FindKeyByAlias(ctx, alias); err != nil {
+		failures = append(failures, fmt.Errorf("look up token: %w", err))
+	} else if found {
+		if err := gw.DeleteKeyByAlias(ctx, alias); err != nil {
+			failures = append(failures, fmt.Errorf("revoke token: %w", err))
+		}
+	}
+	if err := m.Store.Delete(credsKey(name)); err != nil {
+		failures = append(failures, fmt.Errorf("withdraw delivered configuration: %w", err))
+	}
+	if _, err := m.unbindUser(name); err != nil {
+		failures = append(failures, fmt.Errorf("unbind machines: %w", err))
+	}
+
+	if len(failures) > 0 {
+		return fmt.Errorf("user %q is disabled, but: %w", name, errors.Join(failures...))
+	}
+	m.appendAudit(name, AuditOffboard, nil)
+	return nil
+}
+
+// unbindUser removes every machine binding that points at windowsUser.
+// Windows account names are case-insensitive, so the match is too.
+func (m *Manager) unbindUser(windowsUser string) (int, error) {
+	bindings, err := m.ListBindings()
+	if err != nil {
+		return 0, err
+	}
+	n := 0
+	for machine, b := range bindings {
+		if !strings.EqualFold(b.User, windowsUser) {
+			continue
+		}
+		if err := m.Store.Delete(ossclient.BindingKey(machine)); err != nil {
+			return n, fmt.Errorf("unbind %q: %w", machine, err)
+		}
+		n++
+	}
+	return n, nil
 }

@@ -27,10 +27,11 @@ type fakeGateway struct {
 	users   map[string]litellm.User
 	upserts []litellm.UserSpec
 
-	generateErr error
-	modelsErr   error
-	upsertErr   error
-	listKeysErr error
+	generateErr    error
+	modelsErr      error
+	upsertErr      error
+	listKeysErr    error
+	deleteAliasErr error
 }
 
 func newFakeGateway() *fakeGateway {
@@ -98,6 +99,9 @@ func (f *fakeGateway) DeleteKey(_ context.Context, handles ...string) error {
 
 func (f *fakeGateway) DeleteKeyByAlias(_ context.Context, alias string) error {
 	defer f.lock()()
+	if f.deleteAliasErr != nil {
+		return f.deleteAliasErr
+	}
 	k, ok := f.existing[alias]
 	if !ok {
 		return fmt.Errorf("gateway /key/delete returned 404: No keys found")
