@@ -1,6 +1,8 @@
 package admincore
 
 import (
+	"bytes"
+	"errors"
 	"strings"
 	"testing"
 )
@@ -65,4 +67,22 @@ func TestAuditWriteFailureDoesNotPanic(t *testing.T) {
 	m, store := newManager()
 	store.putErr = errNotFound
 	m.appendAudit("alice", AuditOnboard, nil) // must only log
+}
+
+func TestAuditSkipsWriteWhenReadFailsTransiently(t *testing.T) {
+	m, store := newManager()
+	key := AuditKey("alice")
+	seedLine := []byte(`{"at":"2026-01-01T00:00:00Z","action":"onboard","user":"alice"}`)
+	store.objects[key] = seedLine
+
+	// Make Get fail with a transient error for this key.
+	store.getErrFor = key
+	store.getErr = errors.New("transient network failure")
+
+	m.appendAudit("alice", AuditQuota, map[string]any{"budget": 30})
+
+	// The seeded line should be unchanged.
+	if !bytes.Equal(store.objects[key], seedLine) {
+		t.Errorf("history was modified on transient read failure: expected %q, got %q", seedLine, store.objects[key])
+	}
 }

@@ -3,6 +3,7 @@ package admincore
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"log"
 	"strings"
 	"time"
@@ -43,8 +44,10 @@ func AuditKey(windowsUser string) string {
 const auditReadLimit = 200
 
 // appendAudit records one action. It never fails the caller: the object
-// store has no append, so this is read-modify-write, and losing one audit
-// line is a better outcome than rolling back an onboarding that succeeded.
+// store has no append, so this is read-modify-write. A missing object
+// (not-found error) starts a new history. A transient read failure (network,
+// throttling) is logged and the write is skipped: losing one audit line is
+// acceptable, but silently truncating the history to one line is not.
 func (m *Manager) appendAudit(windowsUser string, action AuditAction, detail map[string]any) {
 	entry := AuditEntry{
 		At:     time.Now().UTC().Format(time.RFC3339),
@@ -58,7 +61,11 @@ func (m *Manager) appendAudit(windowsUser string, action AuditAction, detail map
 		return
 	}
 	key := AuditKey(windowsUser)
-	existing, _, _ := m.Store.Get(key) // missing is fine: first entry
+	existing, _, err := m.Store.Get(key)
+	if err != nil && !errors.Is(err, ossclient.ErrNotFound) {
+		log.Printf("admincore: audit %s for %q: read existing history: %v (entry not written)", action, windowsUser, err)
+		return
+	}
 	var buf bytes.Buffer
 	buf.Write(existing)
 	if len(existing) > 0 && !bytes.HasSuffix(existing, []byte("\n")) {

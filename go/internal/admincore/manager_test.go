@@ -2,7 +2,6 @@ package admincore
 
 import (
 	"encoding/json"
-	"errors"
 	"reflect"
 	"sort"
 	"strings"
@@ -13,16 +12,18 @@ import (
 	"github.com/TEENet-io/ai-env-mgr/internal/ossclient"
 )
 
-var errNotFound = errors.New("object not found")
+var errNotFound = ossclient.ErrNotFound
 
 // fakeStore is an in-memory Store, mirroring agentcore's test double.
 type fakeStore struct {
-	objects map[string][]byte
-	etags   map[string]string
-	mtimes  map[string]time.Time // optional per-key modification time for ListInfo
-	putErr  error
-	signed  []signRequest
-	signErr error
+	objects  map[string][]byte
+	etags    map[string]string
+	mtimes   map[string]time.Time // optional per-key modification time for ListInfo
+	putErr   error
+	getErrFor string             // if non-empty, Get returns this error for this specific key
+	getErr   error               // error to return for getErrFor key
+	signed   []signRequest
+	signErr  error
 }
 
 func newFakeStore() *fakeStore {
@@ -30,6 +31,9 @@ func newFakeStore() *fakeStore {
 }
 
 func (f *fakeStore) Get(key string) ([]byte, string, error) {
+	if f.getErrFor != "" && key == f.getErrFor {
+		return nil, "", f.getErr
+	}
 	d, ok := f.objects[key]
 	if !ok {
 		return nil, "", errNotFound
