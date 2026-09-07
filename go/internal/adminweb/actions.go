@@ -156,6 +156,16 @@ func (s *Server) actionSyncInterval(sess *session, r *http.Request) error {
 	return err
 }
 
+// actionQuotaDefaults saves the quota new accounts are pre-filled with. It
+// does not touch any existing account.
+func (s *Server) actionQuotaDefaults(sess *session, r *http.Request) error {
+	q, err := parseQuotaForm(r.PostForm)
+	if err != nil {
+		return err
+	}
+	return sess.mgr.SaveQuotaDefaults(q)
+}
+
 func (s *Server) actionCollect(sess *session, r *http.Request) error {
 	enabled := formValue(r, "enabled") == "1"
 	var since *string

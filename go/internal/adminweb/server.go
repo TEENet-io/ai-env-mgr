@@ -259,6 +259,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("/sites/enabled", s.requirePost("/sites", s.actionBlockEnabled))
 	mux.HandleFunc("/settings/interval", s.requirePost("/settings", s.actionSyncInterval))
 	mux.HandleFunc("/settings/collect", s.requirePost("/settings", s.actionCollect))
+	mux.HandleFunc("/settings/quota-defaults", s.requirePost("/settings", s.actionQuotaDefaults))
 
 	// Fleet-wide and irreversible actions. Each additionally demands the exact
 	// version or hostname typed back (see confirmMatches) and writes an audit

@@ -51,6 +51,7 @@ func TestWritesRequireCSRFToken(t *testing.T) {
 		{"/sites/enabled", url.Values{"enabled": {"0"}}},
 		{"/settings/interval", url.Values{"minutes": {"1"}}},
 		{"/settings/collect", url.Values{"enabled": {"1"}}},
+		{"/settings/quota-defaults", url.Values{"budget": {"20"}, "rpm": {"60"}, "tpm": {"200000"}, "parallel": {"4"}}},
 	}
 	for _, w := range writes {
 		fs := newFakeStore()

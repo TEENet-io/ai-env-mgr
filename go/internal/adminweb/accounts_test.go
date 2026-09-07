@@ -1,6 +1,7 @@
 package adminweb
 
 import (
+	"net/http"
 	"net/url"
 	"strings"
 	"testing"
@@ -237,5 +238,21 @@ func TestDropGatewayFlags(t *testing.T) {
 				break
 			}
 		}
+	}
+}
+
+func TestQuotaDefaultsActionPersists(t *testing.T) {
+	fs := newFakeStore()
+	s := newTestServer(t, fs)
+	cookie := signIn(t, s)
+	rec := post(t, s, "/settings/quota-defaults", cookie, url.Values{
+		"csrf": {csrfOf(t, s, cookie)}, "budget": {"33"}, "rpm": {"70"}, "tpm": {"250000"}, "parallel": {"5"},
+	})
+	if rec.Code != http.StatusSeeOther || !strings.Contains(rec.Header().Get("Location"), "ok=1") {
+		t.Fatalf("expected redirect with ok, got %d %s", rec.Code, rec.Header().Get("Location"))
+	}
+	raw, ok := fs.objects[admincore.QuotaDefaultsKey()]
+	if !ok || !strings.Contains(string(raw), `"monthlyBudgetUSD": 33`) {
+		t.Errorf("defaults not saved: %s", raw)
 	}
 }

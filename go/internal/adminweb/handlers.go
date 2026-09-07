@@ -280,6 +280,9 @@ func (s *Server) handleSettings(w http.ResponseWriter, r *http.Request, sess *se
 	if stats, _, err := sess.mgr.CollectStats(); err == nil {
 		data.Stats = stats
 	}
+	if q, err := sess.mgr.LoadQuotaDefaults(); err == nil {
+		data.QuotaDefaults = q
+	}
 	s.render(w, "settings.html", http.StatusOK, data)
 }
 

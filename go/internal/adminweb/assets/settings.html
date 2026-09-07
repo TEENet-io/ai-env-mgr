@@ -29,6 +29,17 @@
   </form>
   {{end}}
 
+  <h2>开户默认值</h2>
+  <form method="post" action="/settings/quota-defaults" class="form">
+    <input type="hidden" name="csrf" value="{{.CSRF}}">
+    <label>月预算（美元）<input name="budget" type="number" step="0.01" min="0.01" value="{{.QuotaDefaults.MonthlyBudgetUSD}}" required></label>
+    <label>每分钟请求数<input name="rpm" type="number" min="1" value="{{.QuotaDefaults.RPM}}" required></label>
+    <label>每分钟 token 数<input name="tpm" type="number" min="1" value="{{.QuotaDefaults.TPM}}" required></label>
+    <label>并发数<input name="parallel" type="number" min="1" value="{{.QuotaDefaults.Parallel}}" required></label>
+    <button type="submit">保存</button>
+  </form>
+  <p class="hint">只影响之后新开的账号；已开账号在各自详情页调整。</p>
+
   {{if .Stats}}
   <h2>已采集</h2>
   <div class="panel scroll">
