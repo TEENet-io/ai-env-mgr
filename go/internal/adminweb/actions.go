@@ -39,7 +39,7 @@ func (s *Server) requirePost(back string, next func(*session, *http.Request) err
 			s.redirectWithError(w, r, back, err.Error())
 			return
 		}
-		http.Redirect(w, r, back+"?ok=1", http.StatusSeeOther)
+		http.Redirect(w, r, withQuery(back, "ok", "1"), http.StatusSeeOther)
 	})
 }
 
@@ -67,19 +67,28 @@ func (s *Server) requirePostBack(back func(*http.Request) string, next func(*ses
 			s.redirectWithError(w, r, dest, err.Error())
 			return
 		}
-		sep := "?"
-		if strings.Contains(dest, "?") {
-			sep = "&"
-		}
-		http.Redirect(w, r, dest+sep+"ok=1", http.StatusSeeOther)
+		http.Redirect(w, r, withQuery(dest, "ok", "1"), http.StatusSeeOther)
 	})
+}
+
+// withQuery appends a key=value pair to a redirect target, using "&" instead
+// of "?" when the target already carries a query string (e.g.
+// "/users/detail?user=alice"). Getting this wrong turns the appended pair
+// into part of the previous parameter's value instead of a new one -- see
+// redirectWithError.
+func withQuery(dest, key, value string) string {
+	sep := "?"
+	if strings.Contains(dest, "?") {
+		sep = "&"
+	}
+	return dest + sep + key + "=" + url.QueryEscape(value)
 }
 
 // redirectWithError carries a message through the redirect in the query
 // string. Nothing here is secret -- these are validation messages, never the
 // credentials themselves.
 func (s *Server) redirectWithError(w http.ResponseWriter, r *http.Request, back, msg string) {
-	http.Redirect(w, r, back+"?err="+url.QueryEscape(msg), http.StatusSeeOther)
+	http.Redirect(w, r, withQuery(back, "err", msg), http.StatusSeeOther)
 }
 
 func formValue(r *http.Request, name string) string {

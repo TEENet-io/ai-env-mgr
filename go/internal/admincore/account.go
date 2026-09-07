@@ -19,6 +19,14 @@ type AccountSpec struct {
 	Department  string
 	Quota       litellm.Quota
 	Models      []string
+
+	// CodexAccount and ClaudeAccount are administrator notes -- which login
+	// this Windows account uses for each tool -- not read by anything in
+	// admincore. Empty leaves whatever is already on the roster alone, so
+	// reopening an account (adminweb's actionAccountReopen) never blanks a
+	// note nobody re-typed.
+	CodexAccount  string
+	ClaudeAccount string
 }
 
 // Onboard opens an account: roster entry, gateway user with its limits, a
@@ -55,6 +63,12 @@ func (m *Manager) Onboard(ctx context.Context, gw Gateway, cfg GatewayConfig, sp
 		e = &us.Users[len(us.Users)-1]
 	}
 	e.Name, e.Department, e.Enabled = spec.Name, spec.Department, true
+	if spec.CodexAccount != "" {
+		e.CodexAccount = spec.CodexAccount
+	}
+	if spec.ClaudeAccount != "" {
+		e.ClaudeAccount = spec.ClaudeAccount
+	}
 	if err := m.SaveUsers(us); err != nil {
 		return err
 	}

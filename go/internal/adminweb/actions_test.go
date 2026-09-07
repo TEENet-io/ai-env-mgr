@@ -6,6 +6,8 @@ import (
 	"net/url"
 	"strings"
 	"testing"
+
+	"github.com/TEENet-io/ai-env-mgr/internal/ossclient"
 )
 
 // post drives a state-changing route the way a browser would.
@@ -104,6 +106,46 @@ func TestWriteWithValidTokenApplies(t *testing.T) {
 	}
 	if p.SyncIntervalMinutes != 42 {
 		t.Fatalf("interval = %d, want 42", p.SyncIntervalMinutes)
+	}
+}
+
+// A form posted from the detail page must return to the detail page on
+// failure too, not just on success -- and it must be a page that actually
+// renders, not a 404 caused by the error query string corrupting the
+// "user" parameter already on that URL.
+func TestDetailPageErrorRedirectStaysOnDetailPage(t *testing.T) {
+	fs := newFakeStore()
+	fs.objects[ossclient.AdminKey("users.json")] = []byte(`{"users":[{"windowsUser":"work1","enabled":true}]}`)
+	s := newTestServer(t, fs)
+	cookie := signIn(t, s)
+	form := url.Values{
+		"csrf": {csrfOf(t, s, cookie)}, "windowsUser": {"work1"}, "back": {"detail"},
+		"budget": {"abc"}, "rpm": {"60"}, "tpm": {"200000"}, "parallel": {"4"},
+	}
+
+	rec := post(t, s, "/users/quota", cookie, form)
+	loc := rec.Header().Get("Location")
+	if !strings.HasPrefix(loc, "/users/detail?user=work1&err=") {
+		t.Fatalf("error redirect went to %q", loc)
+	}
+	parsed, err := url.Parse(loc)
+	if err != nil {
+		t.Fatal(err)
+	}
+	wantErr := parsed.Query().Get("err")
+	if wantErr == "" {
+		t.Fatal("redirect carried no err value")
+	}
+
+	req := httptest.NewRequest(http.MethodGet, loc, nil)
+	req.AddCookie(cookie)
+	rec2 := httptest.NewRecorder()
+	s.Handler().ServeHTTP(rec2, req)
+	if rec2.Code != http.StatusOK {
+		t.Fatalf("following the error redirect returned %d, want 200", rec2.Code)
+	}
+	if !strings.Contains(rec2.Body.String(), wantErr) {
+		t.Fatalf("the detail page did not show the error %q: %s", wantErr, rec2.Body.String())
 	}
 }
 

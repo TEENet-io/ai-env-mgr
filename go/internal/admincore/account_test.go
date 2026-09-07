@@ -88,6 +88,36 @@ func TestOnboardIsIdempotent(t *testing.T) {
 	}
 }
 
+// CodexAccount/ClaudeAccount are administrator notes, not read by admincore
+// itself: Onboard should still write them when given, and a re-onboard that
+// omits them (e.g. adminweb's actionAccountReopen, which has no form fields
+// for these) must not blank a note nobody re-typed.
+func TestOnboardWritesAndPreservesAccountNotes(t *testing.T) {
+	m, _ := newManager()
+	gw := newFakeGateway()
+	spec := aliceSpec()
+	spec.CodexAccount, spec.ClaudeAccount = "alice@codex.example", "alice@claude.example"
+	if err := m.Onboard(context.Background(), gw, testGW, spec); err != nil {
+		t.Fatalf("onboard: %v", err)
+	}
+	us, _ := m.LoadUsers()
+	e := us.Find("alice")
+	if e.CodexAccount != "alice@codex.example" || e.ClaudeAccount != "alice@claude.example" {
+		t.Fatalf("notes not written: %+v", e)
+	}
+
+	// Re-onboard without touching the notes: they must survive.
+	again := aliceSpec()
+	if err := m.Onboard(context.Background(), gw, testGW, again); err != nil {
+		t.Fatalf("re-onboard: %v", err)
+	}
+	us, _ = m.LoadUsers()
+	e = us.Find("alice")
+	if e.CodexAccount != "alice@codex.example" || e.ClaudeAccount != "alice@claude.example" {
+		t.Fatalf("re-onboard with empty notes blanked them: %+v", e)
+	}
+}
+
 func TestOnboardReenablesDepartedEmployee(t *testing.T) {
 	m, _ := newManager()
 	gw := newFakeGateway()

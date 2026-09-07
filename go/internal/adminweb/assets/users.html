@@ -25,7 +25,7 @@
         <td>
           {{if .HasUser}}
           <div class="usage"><div class="bar"><span class="{{usagesev .Spend .Budget}} w{{usagepct .Spend .Budget}}"></span></div>
-            <span class="dim">${{money .Spend}} / ${{money .Budget}}{{if .BudgetResetAt}} · {{slice .BudgetResetAt 0 10}} 重置{{end}}</span></div>
+            <span class="dim">${{money .Spend}} / ${{money .Budget}}{{if ge (len .BudgetResetAt) 10}} · {{slice .BudgetResetAt 0 10}} 重置{{end}}</span></div>
           {{else}}<span class="dim">—</span>{{end}}
         </td>
         <td class="dim">{{if .HasUser}}{{.Quota.RPM}} rpm · {{.Quota.TPM}} tpm · {{.Quota.Parallel}} 并发{{else}}—{{end}}</td>
@@ -41,12 +41,20 @@
             <button class="link"{{if not $.GatewayEnabled}} disabled{{end}}>重新开户</button>
           </form>
           {{end}}
-          {{$u := .WindowsUser}}{{range .Flags}}{{if and (eq .Fix "onboard") $.GatewayEnabled}}
+          {{$u := .WindowsUser}}{{range .Flags}}
+          {{if and (eq .Fix "onboard") $.GatewayEnabled}}
           <form method="post" action="/users/reopen" class="inline">
             <input type="hidden" name="csrf" value="{{$.CSRF}}"><input type="hidden" name="windowsUser" value="{{$u}}">
             <button class="link">修复</button>
           </form>
-          {{end}}{{end}}
+          {{end}}
+          {{if eq .Fix "offboard"}}
+          <form method="post" action="/users/offboard" class="inline">
+            <input type="hidden" name="csrf" value="{{$.CSRF}}"><input type="hidden" name="windowsUser" value="{{$u}}">
+            <button class="link danger">修复</button>
+          </form>
+          {{end}}
+          {{end}}
         </td>
       </tr>
     {{else}}
@@ -62,6 +70,8 @@
     <label>Windows 用户<input name="windowsUser" required placeholder="work1"></label>
     <label>姓名<input name="name" placeholder="张三"></label>
     <label>部门<input name="department" placeholder="研发"></label>
+    <label>Codex 账号（备注）<input name="codexAccount"></label>
+    <label>Claude 账号（备注）<input name="claudeAccount"></label>
     <label>月预算（美元）<input name="budget" type="number" step="0.01" min="0.01" value="{{.QuotaDefaults.MonthlyBudgetUSD}}" required></label>
     <label>每分钟请求数<input name="rpm" type="number" min="1" value="{{.QuotaDefaults.RPM}}" required></label>
     <label>每分钟 token 数<input name="tpm" type="number" min="1" value="{{.QuotaDefaults.TPM}}" required></label>

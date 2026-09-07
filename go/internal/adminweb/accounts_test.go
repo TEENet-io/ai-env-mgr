@@ -139,6 +139,7 @@ func TestUsageHelpers(t *testing.T) {
 func TestAccountPagesRender(t *testing.T) {
 	s := newTestServer(t, newFakeStore())
 	row := accountRow{WindowsUser: "alice", Name: "Alice", Department: "研发", Enabled: true,
+		CodexAccount: "alice@codex.example", ClaudeAccount: "alice@claude.example",
 		HasUser: true, HasToken: true, Models: []string{"glm-5.2"}, Spend: 17, Budget: 20,
 		BudgetResetAt: "2026-10-01T00:00:00Z", Quota: litellm.Quota{MonthlyBudgetUSD: 20, RPM: 60, TPM: 200000, Parallel: 4},
 		Machines: []string{"PC-1"}}
@@ -157,6 +158,11 @@ func TestAccountPagesRender(t *testing.T) {
 			t.Errorf("users.html missing %q", want)
 		}
 	}
+	// carol is departed with a lingering token (Fix "offboard"): her row must
+	// carry an offboard form of her own, not just alice's still-employed one.
+	if n := strings.Count(list.String(), `action="/users/offboard"`); n < 2 {
+		t.Errorf("users.html has %d offboard forms, want at least 2 (alice's own, carol's fix)", n)
+	}
 
 	data.Account = &row
 	data.Audit = []admincore.AuditEntry{{At: "2026-09-07T01:02:03Z", Action: admincore.AuditOnboard, User: "alice"}}
@@ -164,9 +170,72 @@ func TestAccountPagesRender(t *testing.T) {
 	if err := s.tpl.ExecuteTemplate(&detail, "user.html", data); err != nil {
 		t.Fatalf("user.html: %v", err)
 	}
-	for _, want := range []string{"/users/quota", "/users/models", "/users/reissue", "/users/offboard", "onboard", "PC-1", `value="60"`} {
+	for _, want := range []string{
+		"/users/quota", "/users/models", "/users/reissue", "/users/offboard", "onboard", "PC-1", `value="60"`,
+		"alice@codex.example", "alice@claude.example",
+	} {
 		if !strings.Contains(detail.String(), want) {
 			t.Errorf("user.html missing %q", want)
+		}
+	}
+
+	// The detail page for a departed-with-lingering-token account must also
+	// offer the offboard fix, not just the "reopen" button.
+	data.Account = &flagged
+	var flaggedDetail strings.Builder
+	if err := s.tpl.ExecuteTemplate(&flaggedDetail, "user.html", data); err != nil {
+		t.Fatalf("user.html (flagged): %v", err)
+	}
+	if !strings.Contains(flaggedDetail.String(), `action="/users/offboard"`) {
+		t.Errorf("user.html for a departed-with-token account is missing the offboard fix form")
+	}
+
+	// When the gateway is unreachable, offboarding must still work and
+	// onboarding must not be offered as if it would.
+	data.Account = nil
+	data.GatewayEnabled = false
+	var noGateway strings.Builder
+	if err := s.tpl.ExecuteTemplate(&noGateway, "users.html", data); err != nil {
+		t.Fatalf("users.html (no gateway): %v", err)
+	}
+	if !strings.Contains(noGateway.String(), `action="/users/offboard"`) {
+		t.Errorf("users.html with no gateway lost the offboard form")
+	}
+	if !strings.Contains(noGateway.String(), `开户并下发配置</button>`) ||
+		!strings.Contains(noGateway.String(), `<button type="submit" disabled>开户并下发配置</button>`) {
+		t.Errorf("users.html with no gateway must disable the onboard submit button")
+	}
+}
+
+func TestDropGatewayFlags(t *testing.T) {
+	rows := []accountRow{
+		{WindowsUser: "a", Flags: []accountFlag{flagNoToken}},
+		{WindowsUser: "b", Flags: []accountFlag{flagNoUser}},
+		{WindowsUser: "c", Flags: []accountFlag{flagDepartedToken}},
+		{WindowsUser: "d", Flags: []accountFlag{flagDepartedBound}},
+		{WindowsUser: "e", Flags: []accountFlag{flagDepartedToken, flagDepartedBound}},
+		{WindowsUser: "f", Flags: nil},
+	}
+	got := dropGatewayFlags(rows)
+	want := map[string][]accountFlag{
+		"a": nil,
+		"b": nil,
+		"c": nil,
+		"d": {flagDepartedBound},
+		"e": {flagDepartedBound},
+		"f": nil,
+	}
+	for _, r := range got {
+		w := want[r.WindowsUser]
+		if len(r.Flags) != len(w) {
+			t.Errorf("%s: flags = %+v, want %+v", r.WindowsUser, r.Flags, w)
+			continue
+		}
+		for i := range w {
+			if r.Flags[i] != w[i] {
+				t.Errorf("%s: flags = %+v, want %+v", r.WindowsUser, r.Flags, w)
+				break
+			}
 		}
 	}
 }

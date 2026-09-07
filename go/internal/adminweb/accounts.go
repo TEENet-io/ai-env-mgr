@@ -27,6 +27,11 @@ type accountRow struct {
 	Department  string
 	Enabled     bool // still employed, per the roster
 
+	// Administrator notes, carried through from the roster untouched by
+	// anything here -- see admincore.AccountSpec.
+	CodexAccount  string
+	ClaudeAccount string
+
 	HasUser  bool // the gateway has an internal user for this person
 	HasToken bool // the gateway holds a token under this person's alias
 	Models   []string
@@ -77,7 +82,10 @@ func reconcileAccounts(users []model.UserEntry, keys []litellm.Key, gwUsers []li
 
 	build := func(e model.UserEntry) accountRow {
 		id := admincore.KeyAlias(e.WindowsUser)
-		r := accountRow{WindowsUser: e.WindowsUser, Name: e.Name, Department: e.Department, Enabled: e.Enabled}
+		r := accountRow{
+			WindowsUser: e.WindowsUser, Name: e.Name, Department: e.Department, Enabled: e.Enabled,
+			CodexAccount: e.CodexAccount, ClaudeAccount: e.ClaudeAccount,
+		}
 		if u, ok := userByID[id]; ok {
 			r.HasUser = true
 			r.Models = u.Models
@@ -158,6 +166,30 @@ func usageSeverity(spend, budget float64) string {
 	}
 }
 
+// dropGatewayFlags strips the flags that reconcileAccounts derives from
+// gateway state (flagNoToken, flagNoUser, flagDepartedToken) from every row,
+// keeping only flagDepartedBound.
+//
+// When the gateway is unreachable, ListKeys/ListUsers/FindKeyByAlias/UserInfo
+// all come back nil rather than "we asked and there truly is nothing there",
+// so reconcileAccounts' "no token"/"no user" flags are an artifact of the
+// outage, not a fact about the account -- showing them would tell an
+// operator to fix something that may already be fine. flagDepartedBound
+// comes from machine bindings, which do not depend on the gateway, so it
+// stays.
+func dropGatewayFlags(rows []accountRow) []accountRow {
+	for i := range rows {
+		var kept []accountFlag
+		for _, f := range rows[i].Flags {
+			if f == flagDepartedBound {
+				kept = append(kept, f)
+			}
+		}
+		rows[i].Flags = kept
+	}
+	return rows
+}
+
 // handleUsers is the account list: the roster joined with the gateway.
 func (s *Server) handleUsers(w http.ResponseWriter, r *http.Request, sess *session) {
 	data := newPage(sess, r, "users")
@@ -204,6 +236,9 @@ func (s *Server) handleUsers(w http.ResponseWriter, r *http.Request, sess *sessi
 		}
 	}
 	data.Accounts = reconcileAccounts(us.Users, keys, gwUsers, bindings)
+	if !data.GatewayEnabled {
+		data.Accounts = dropGatewayFlags(data.Accounts)
+	}
 	s.render(w, "users.html", http.StatusOK, data)
 }
 
@@ -257,6 +292,9 @@ func (s *Server) handleUserDetail(w http.ResponseWriter, r *http.Request, sess *
 		}
 	}
 	rows := reconcileAccounts([]model.UserEntry{*e}, keys, gwUsers, bindings)
+	if !data.GatewayEnabled {
+		rows = dropGatewayFlags(rows)
+	}
 	data.Account = &rows[0]
 	s.render(w, "user.html", http.StatusOK, data)
 }
@@ -265,15 +303,32 @@ func (s *Server) handleUserDetail(w http.ResponseWriter, r *http.Request, sess *
 // litellm.Quota for why zero cannot mean unlimited.
 func parseQuotaForm(form url.Values) (litellm.Quota, error) {
 	var q litellm.Quota
+	budget := strings.TrimSpace(form.Get("budget"))
+	if budget == "" {
+		return q, fmt.Errorf("月预算不能为空")
+	}
 	var err error
-	if q.MonthlyBudgetUSD, err = strconv.ParseFloat(strings.TrimSpace(form.Get("budget")), 64); err != nil {
+	if q.MonthlyBudgetUSD, err = strconv.ParseFloat(budget, 64); err != nil {
 		return q, fmt.Errorf("月预算需要是一个数字")
 	}
-	ints := map[string]*int{"rpm": &q.RPM, "tpm": &q.TPM, "parallel": &q.Parallel}
-	labels := map[string]string{"rpm": "每分钟请求数", "tpm": "每分钟 token 数", "parallel": "并发数"}
-	for name, dst := range ints {
-		if *dst, err = strconv.Atoi(strings.TrimSpace(form.Get(name))); err != nil {
-			return q, fmt.Errorf("%s需要是一个整数", labels[name])
+	// A slice, not a map, so the first reported error is deterministic
+	// rather than depending on map iteration order.
+	ints := []struct {
+		name  string
+		label string
+		dst   *int
+	}{
+		{"rpm", "每分钟请求数", &q.RPM},
+		{"tpm", "每分钟 token 数", &q.TPM},
+		{"parallel", "并发数", &q.Parallel},
+	}
+	for _, f := range ints {
+		raw := strings.TrimSpace(form.Get(f.name))
+		if raw == "" {
+			return q, fmt.Errorf("%s不能为空", f.label)
+		}
+		if *f.dst, err = strconv.Atoi(raw); err != nil {
+			return q, fmt.Errorf("%s需要是一个整数", f.label)
 		}
 	}
 	if err := q.Validate(); err != nil {
@@ -306,11 +361,13 @@ func (s *Server) actionAccountOnboard(sess *session, r *http.Request) error {
 		return err
 	}
 	return sess.mgr.Onboard(ctx, gw, cfg, admincore.AccountSpec{
-		WindowsUser: user,
-		Name:        formValue(r, "name"),
-		Department:  formValue(r, "department"),
-		Quota:       quota,
-		Models:      r.PostForm["models"], // none selected = everything the gateway offers
+		WindowsUser:   user,
+		Name:          formValue(r, "name"),
+		Department:    formValue(r, "department"),
+		Quota:         quota,
+		Models:        r.PostForm["models"], // none selected = everything the gateway offers
+		CodexAccount:  formValue(r, "codexAccount"),
+		ClaudeAccount: formValue(r, "claudeAccount"),
 	})
 }
 

@@ -8,17 +8,20 @@
   {{if .GatewayUnusable}}<p class="note note-err">{{.GatewayUnusable}}</p>{{end}}
 
   {{with .Account}}
+  {{$u := .WindowsUser}}
   <p>
     {{if .Enabled}}<span class="tag tag-ok">在职</span>{{else}}<span class="tag tag-bad">已离职</span>{{end}}
     {{range .Flags}}<span class="tag tag-{{.Severity}}">{{.Label}}</span>{{end}}
     {{if .Name}}{{.Name}}{{end}}{{if .Department}} · {{.Department}}{{end}}
+    {{if .CodexAccount}} · Codex 账号：{{noscan .CodexAccount}}{{end}}
+    {{if .ClaudeAccount}} · Claude 账号：{{noscan .ClaudeAccount}}{{end}}
     {{if .Machines}} · 机器：{{range $i, $m := .Machines}}{{if $i}}, {{end}}<code>{{$m}}</code>{{end}}{{end}}
   </p>
 
   {{if .HasUser}}
   <h2>本月用量</h2>
   <div class="usage wide"><div class="bar"><span class="{{usagesev .Spend .Budget}} w{{usagepct .Spend .Budget}}"></span></div>
-    <span>${{money .Spend}} / ${{money .Budget}}{{if .BudgetResetAt}} · {{slice .BudgetResetAt 0 10}} 重置{{end}}</span></div>
+    <span>${{money .Spend}} / ${{money .Budget}}{{if ge (len .BudgetResetAt) 10}} · {{slice .BudgetResetAt 0 10}} 重置{{end}}</span></div>
   {{end}}
 
   <h2>额度</h2>
@@ -61,6 +64,12 @@
       <button{{if not $.GatewayEnabled}} disabled{{end}}>重新开户</button>
     </form>
     {{end}}
+    {{range .Flags}}{{if eq .Fix "offboard"}}
+    <form method="post" action="/users/offboard" class="inline">
+      <input type="hidden" name="csrf" value="{{$.CSRF}}"><input type="hidden" name="windowsUser" value="{{$u}}"><input type="hidden" name="back" value="detail">
+      <button class="link danger">修复</button>
+    </form>
+    {{end}}{{end}}
   </div>
   {{end}}
 
