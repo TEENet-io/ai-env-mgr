@@ -48,6 +48,8 @@
 
 `department` 是自由文本，不建部门表。
 
+**Windows 用户名统一按小写保存**（2026-09-07 决定）：开户与绑定机器时把输入转成小写再落名册 / 绑定；名册查找本身不区分大小写。历史上已存在的大小写混用条目不做迁移，投递与关户一律使用名册里的既有拼写。开户表单上有对应提示。
+
 ## 3. 五个管理动作
 
 全部实现在 `internal/admincore`，Web 层只做表单解析与跳转。每个动作最后一步写审计（§5）。
@@ -118,9 +120,11 @@
 行内按钮：详情；在职则「关户」，离职则「重新开户」。
 顶部「开户」表单：Windows 用户、姓名、部门、预算与速率（默认值预填）、模型多选。
 
-### 4.2 `/users/<windowsUser>` 员工详情（新）
+### 4.2 `/users/detail?user=<windowsUser>` 员工详情（新）
 
-基本信息编辑、改额度、调模型、重发令牌、关户 / 重新开户；下方该人的操作日志倒序，最多 200 条。
+> 实现时改为 query 参数（与现有 `/log?machine=` 一致，避免 `net/http` 前缀路由）。
+
+基本信息编辑（姓名、部门、Codex/Claude 账号备注，`POST /users/profile`，同步网关 user 的 alias/metadata，不动令牌与额度）、改额度、调模型、重发令牌、关户 / 重新开户；下方该人的操作日志倒序，最多 200 条。
 
 ### 4.3 `/gateway` 模型网关（瘦身）
 
@@ -138,7 +142,7 @@
 {"at":"2026-09-07T08:12:33Z","action":"onboard","user":"weipeng","detail":{"budget":20,"rpm":60,"tpm":200000,"parallel":4,"models":["glm-5.2","gpt-5.6-sol"]}}
 ```
 
-- `action` ∈ `onboard | offboard | quota | models | reissue`。
+- `action` ∈ `onboard | offboard | quota | models | reissue | profile`。关户部分失败时仍写一条，`detail.partial=true` 并附错误文本。
 - 不记操作者：控制台登录用 OSS 密钥，没有管理员身份。多管理员是另一个子系统，不在本期。
 - OSS 无原生追加，用读 → 拼一行 → 写回。控制台单实例、低频，不做并发保护。
 - 写日志在每个动作最后；**写失败只记控制台日志，不让动作报错**。丢一条审计比开户回滚可接受。
