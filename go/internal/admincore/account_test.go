@@ -51,7 +51,7 @@ func TestOnboardOpensEverythingInOneStep(t *testing.T) {
 		t.Errorf("token wrong: %+v", gw.generated)
 	}
 	// Delivery: config and catalog in the credentials archive.
-	set := deliveredSet(t, store, "Alice")
+	set := deliveredSet(t, store, "alice")
 	if !strings.Contains(string(set[model.PathCodexConfig]), "sk-emp-alice") {
 		t.Errorf("config does not carry the new token")
 	}
@@ -171,10 +171,10 @@ func TestOnboardWithdrawsTokenWhenDeliveryFails(t *testing.T) {
 	gw := newFakeGateway()
 	store.putErr = nil
 	// Fail only the credentials.zip write: let roster and audit through.
-	// credsKey preserves the caller's casing (it does not lower-case, unlike
-	// AuditKey/KeyAlias), and aliceSpec's WindowsUser is "Alice", so the key
-	// under test must match that casing or the write never actually fails.
-	store.putErrFor = credsKey("Alice")
+	// credsKey preserves the casing it is given, and Onboard gives it the
+	// roster's -- lowercase for a new entry (统一小写) -- so the key under
+	// test must match that or the write never actually fails.
+	store.putErrFor = credsKey("alice")
 	err := m.Onboard(context.Background(), gw, testGW, aliceSpec())
 	if err == nil {
 		t.Fatal("expected an error")
@@ -214,7 +214,7 @@ func TestOffboardRevokesEverythingAndKeepsHistory(t *testing.T) {
 	if _, live := gw.existing["emp-alice"]; live {
 		t.Error("token still live")
 	}
-	if _, ok := store.objects[credsKey("Alice")]; ok {
+	if _, ok := store.objects[credsKey("alice")]; ok {
 		t.Error("credentials.zip still in the store; the agent would never clear the machine")
 	}
 	bindings, _ := m.ListBindings()
@@ -244,7 +244,7 @@ func TestOffboardContinuesPastGatewayFailure(t *testing.T) {
 	if e := us.Find("alice"); e.Enabled {
 		t.Error("roster must be disabled even when the gateway fails")
 	}
-	if _, ok := store.objects[credsKey("Alice")]; ok {
+	if _, ok := store.objects[credsKey("alice")]; ok {
 		t.Error("credentials must be deleted even when the gateway fails")
 	}
 	if b, _ := m.ListBindings(); len(b) != 0 {
@@ -426,7 +426,7 @@ func TestReissueDropsStoredModelsTheGatewayNoLongerServes(t *testing.T) {
 	if len(minted.Models) != 1 || minted.Models[0] != "glm-5" {
 		t.Errorf("minted token allowlist = %v, want [glm-5]", minted.Models)
 	}
-	set := deliveredSet(t, store, "Alice")
+	set := deliveredSet(t, store, "alice")
 	if body := string(set[model.PathCodexModels]); !strings.Contains(body, `"slug": "glm-5"`) ||
 		strings.Contains(body, "gone-model") || strings.Contains(body, `"slug": "grok-4.6"`) {
 		t.Errorf("catalog should hold glm-5 alone: %s", body)
@@ -525,5 +525,29 @@ func TestUpdateProfileRequiresARosterEntry(t *testing.T) {
 	m, _ := newManager()
 	if err := m.UpdateProfile(context.Background(), newFakeGateway(), "ghost", "G", "", "", ""); err == nil {
 		t.Fatal("expected an error")
+	}
+}
+
+// 统一小写: a name typed into the onboarding form opens a lowercase account,
+// so the roster, the gateway alias and the object-store prefix all agree
+// without anyone having to remember how they capitalised it.
+func TestOnboardCreatesALowercaseRosterEntry(t *testing.T) {
+	m, store := newManager()
+	gw := newFakeGateway()
+	spec := aliceSpec()
+	spec.WindowsUser = "  NewGuy  "
+
+	if err := m.Onboard(context.Background(), gw, testGW, spec); err != nil {
+		t.Fatalf("onboard: %v", err)
+	}
+	us, _ := m.LoadUsers()
+	if len(us.Users) != 1 || us.Users[0].WindowsUser != "newguy" {
+		t.Fatalf("roster entry should be lowercase and trimmed: %+v", us.Users)
+	}
+	if _, ok := gw.users["emp-newguy"]; !ok {
+		t.Errorf("gateway user: %v", gw.users)
+	}
+	if _, ok := store.objects[credsKey("newguy")]; !ok {
+		t.Errorf("nothing delivered under %q: %v", credsKey("newguy"), store.objects)
 	}
 }

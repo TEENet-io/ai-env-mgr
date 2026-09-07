@@ -18,17 +18,25 @@ import (
 // caught once an agent failed to find its own status improving. Binding is
 // idempotent — rebinding a machine (reassignment, typo fix) simply
 // overwrites the previous binding rather than erroring.
+//
+// The binding stores the roster entry's own spelling, not the caller's: the
+// agent keys its OSS prefix and its profile lookup off binding.User, so the
+// two must agree exactly. New accounts are lowercase (统一小写, see Onboard)
+// and a legacy mixed-case entry keeps its spelling, which is why this
+// follows the roster rather than lower-casing on its own. Existing bindings
+// are left as they are.
 func (m *Manager) BindMachine(machine, user, note string) error {
 	us, err := m.LoadUsers()
 	if err != nil {
 		return err
 	}
-	if us.Find(user) == nil {
+	e := us.Find(user)
+	if e == nil {
 		return fmt.Errorf("user %q not found in roster", user)
 	}
 
 	b := model.Binding{
-		User:    user,
+		User:    e.WindowsUser,
 		BoundAt: time.Now().UTC().Format(time.RFC3339),
 		Note:    note,
 	}

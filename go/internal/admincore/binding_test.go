@@ -125,3 +125,27 @@ func TestListBindings(t *testing.T) {
 		t.Errorf("work2 -> %q, want bob", bindings["work2"].User)
 	}
 }
+
+// 统一小写: the agent keys its OSS prefix and its profile lookup off
+// binding.User, so a binding must name the employee exactly as the roster
+// does -- lowercase for anyone opened through the console.
+func TestBindMachineStoresTheRostersSpelling(t *testing.T) {
+	m, _ := newManager()
+	addTestUser(t, m, "alice", "", "")
+	if err := m.BindMachine("PC-1", "ALICE", ""); err != nil {
+		t.Fatal(err)
+	}
+	if b, _, _ := m.LoadBinding("PC-1"); b.User != "alice" {
+		t.Errorf("User = %q, want alice", b.User)
+	}
+
+	// A legacy mixed-case roster entry is not rewritten, so the binding has
+	// to follow it rather than lowercasing blindly.
+	addTestUser(t, m, "Bob", "", "")
+	if err := m.BindMachine("PC-2", "bob", ""); err != nil {
+		t.Fatal(err)
+	}
+	if b, _, _ := m.LoadBinding("PC-2"); b.User != "Bob" {
+		t.Errorf("User = %q, want Bob (the roster's own spelling)", b.User)
+	}
+}

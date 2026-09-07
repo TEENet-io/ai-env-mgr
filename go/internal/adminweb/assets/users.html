@@ -68,6 +68,7 @@
   <form method="post" action="/users/onboard" class="form">
     <input type="hidden" name="csrf" value="{{.CSRF}}">
     <label>Windows 用户<input name="windowsUser" required placeholder="work1"></label>
+    <p class="hint">Windows 用户名统一按小写保存；机器上的账号大小写无关。</p>
     <label>姓名<input name="name" placeholder="张三"></label>
     <label>部门<input name="department" placeholder="研发"></label>
     <label>Codex 账号（备注）<input name="codexAccount"></label>

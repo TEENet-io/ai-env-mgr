@@ -163,7 +163,8 @@ func TestAccountPagesRender(t *testing.T) {
 	if err := s.tpl.ExecuteTemplate(&list, "users.html", data); err != nil {
 		t.Fatalf("users.html: %v", err)
 	}
-	for _, want := range []string{"Alice", "研发", "17.00", "20.00", "s-warn w85", "已离职仍有令牌", "/users/offboard", "/users/onboard", `href="/users/detail?user=alice"`} {
+	for _, want := range []string{"Alice", "研发", "17.00", "20.00", "s-warn w85", "已离职仍有令牌", "/users/offboard", "/users/onboard", `href="/users/detail?user=alice"`,
+		"Windows 用户名统一按小写保存；机器上的账号大小写无关。"} {
 		if !strings.Contains(list.String(), want) {
 			t.Errorf("users.html missing %q", want)
 		}

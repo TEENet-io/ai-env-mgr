@@ -44,6 +44,13 @@ func (m *Manager) Onboard(ctx context.Context, gw Gateway, cfg GatewayConfig, sp
 	if spec.WindowsUser == "" {
 		return fmt.Errorf("onboard: a Windows user name is required")
 	}
+	// 统一小写: a name typed into the form opens a lowercase account, so the
+	// roster, the gateway alias and the object-store prefix agree without
+	// anyone having to remember how they capitalised it. Only new entries are
+	// affected -- Find still matches a legacy mixed-case entry, and the C1
+	// rule below keeps using that entry's own spelling. Nothing is rewritten;
+	// migrating stored objects is not worth the risk for a handful of rows.
+	spec.WindowsUser = strings.ToLower(strings.TrimSpace(spec.WindowsUser))
 	if err := spec.Quota.Validate(); err != nil {
 		return fmt.Errorf("onboard %q: %w", spec.WindowsUser, err)
 	}
