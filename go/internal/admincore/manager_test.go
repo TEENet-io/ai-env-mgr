@@ -16,14 +16,15 @@ var errNotFound = ossclient.ErrNotFound
 
 // fakeStore is an in-memory Store, mirroring agentcore's test double.
 type fakeStore struct {
-	objects  map[string][]byte
-	etags    map[string]string
-	mtimes   map[string]time.Time // optional per-key modification time for ListInfo
-	putErr   error
-	getErrFor string             // if non-empty, Get returns this error for this specific key
-	getErr   error               // error to return for getErrFor key
-	signed   []signRequest
-	signErr  error
+	objects   map[string][]byte
+	etags     map[string]string
+	mtimes    map[string]time.Time // optional per-key modification time for ListInfo
+	putErr    error
+	putErrFor string // when set, Put fails only for this exact key
+	getErrFor string // if non-empty, Get returns this error for this specific key
+	getErr    error  // error to return for getErrFor key
+	signed    []signRequest
+	signErr   error
 }
 
 func newFakeStore() *fakeStore {
@@ -44,6 +45,9 @@ func (f *fakeStore) Get(key string) ([]byte, string, error) {
 func (f *fakeStore) Put(key string, data []byte) error {
 	if f.putErr != nil {
 		return f.putErr
+	}
+	if f.putErrFor != "" && key == f.putErrFor {
+		return errNotFound
 	}
 	f.objects[key] = data
 	return nil

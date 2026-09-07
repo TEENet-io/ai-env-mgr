@@ -121,7 +121,13 @@ func (m *Manager) ensureGatewayUser(ctx context.Context, gw Gateway, e model.Use
 // valid forever.
 func (m *Manager) ProvisionCodexGateway(ctx context.Context, gw Gateway, cfg GatewayConfig, windowsUser string, models []string) error {
 	defer lockProvision(windowsUser)()
+	return m.provisionLocked(ctx, gw, cfg, windowsUser, models)
+}
 
+// provisionLocked is the body of ProvisionCodexGateway without the lock, so
+// that a caller already holding lockProvision for windowsUser (Onboard) can
+// run it without deadlocking on its own lock.
+func (m *Manager) provisionLocked(ctx context.Context, gw Gateway, cfg GatewayConfig, windowsUser string, models []string) error {
 	us, err := m.LoadUsers()
 	if err != nil {
 		return err
@@ -201,7 +207,11 @@ func (m *Manager) ProvisionCodexGateway(ctx context.Context, gw Gateway, cfg Gat
 // them reachable by typing the name.
 func (m *Manager) SetCodexGatewayModels(ctx context.Context, gw Gateway, cfg GatewayConfig, windowsUser string, models []string) error {
 	defer lockProvision(windowsUser)()
+	return m.setModelsLocked(ctx, gw, cfg, windowsUser, models)
+}
 
+// setModelsLocked is the body of SetCodexGatewayModels without the lock.
+func (m *Manager) setModelsLocked(ctx context.Context, gw Gateway, cfg GatewayConfig, windowsUser string, models []string) error {
 	us, err := m.LoadUsers()
 	if err != nil {
 		return err
