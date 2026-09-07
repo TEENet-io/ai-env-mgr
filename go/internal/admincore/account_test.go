@@ -360,3 +360,31 @@ func TestUnbindUserContinuesPastOneFailure(t *testing.T) {
 		t.Error("PC-1's binding should remain since its delete failed")
 	}
 }
+
+// The roster matches case-insensitively, but credsKey and the gateway alias
+// do not all normalise the same way: onboarding must therefore key every
+// stored object by the roster's spelling, not by whatever the administrator
+// typed into the form. Getting this wrong publishes credentials.zip under a
+// prefix the agent never reads and drops the previously merged logins.
+func TestOnboardUsesTheRostersSpellingForStoredObjects(t *testing.T) {
+	m, store := newManager()
+	gw := newFakeGateway()
+	if err := m.SaveUsers(model.Users{Users: []model.UserEntry{{WindowsUser: "alice", Enabled: true}}}); err != nil {
+		t.Fatalf("seed roster: %v", err)
+	}
+
+	spec := aliceSpec() // WindowsUser: "Alice"
+	if err := m.Onboard(context.Background(), gw, testGW, spec); err != nil {
+		t.Fatalf("onboard: %v", err)
+	}
+
+	if _, ok := store.objects[credsKey("alice")]; !ok {
+		t.Errorf("nothing delivered under the roster's spelling (%q)", credsKey("alice"))
+	}
+	if _, ok := store.objects[credsKey("Alice")]; ok {
+		t.Errorf("delivered under the typed spelling (%q) as well; the agent never reads that prefix", credsKey("Alice"))
+	}
+	if entries, _ := m.ReadAudit("alice"); len(entries) != 1 || entries[0].User != "alice" {
+		t.Errorf("audit should record the roster's spelling: %+v", entries)
+	}
+}

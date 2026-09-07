@@ -72,6 +72,11 @@ func (m *Manager) Onboard(ctx context.Context, gw Gateway, cfg GatewayConfig, sp
 	if err := m.SaveUsers(us); err != nil {
 		return err
 	}
+	// Use the roster's spelling from here on: stored objects are keyed by it.
+	// Find matches case-insensitively but credsKey and ossclient.UserPrefix
+	// preserve case, so typing "Work1" for roster entry "work1" would publish
+	// credentials.zip under a prefix the agent never reads.
+	name := e.WindowsUser
 	entry := *e
 
 	// 2. Gateway user, with the quota the administrator chose. The
@@ -91,12 +96,12 @@ func (m *Manager) Onboard(ctx context.Context, gw Gateway, cfg GatewayConfig, sp
 	}
 
 	// 3 + 4. Token and delivery, shared with re-issuing.
-	if err := m.provisionLocked(ctx, gw, cfg, spec.WindowsUser, allowed); err != nil {
+	if err := m.provisionLocked(ctx, gw, cfg, name, allowed); err != nil {
 		return err
 	}
 
 	// 5. Audit.
-	m.appendAudit(spec.WindowsUser, AuditOnboard, map[string]any{
+	m.appendAudit(name, AuditOnboard, map[string]any{
 		"name": spec.Name, "department": spec.Department,
 		"budget": quota.MonthlyBudgetUSD, "rpm": quota.RPM, "tpm": quota.TPM, "parallel": quota.Parallel,
 		"models": allowed,
