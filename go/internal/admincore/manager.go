@@ -75,30 +75,6 @@ func (m *Manager) SaveUsers(us model.Users) error {
 	return nil
 }
 
-// AddUser enrolls a Windows user, or updates their account labels if they
-// are already on the roster. Re-provisioning a machine under the same
-// Windows account is expected to happen (reimages, handovers), so this is
-// idempotent rather than erroring on a duplicate.
-func (m *Manager) AddUser(windowsUser, codexAccount, claudeAccount string) error {
-	us, err := m.LoadUsers()
-	if err != nil {
-		return err
-	}
-	if e := us.Find(windowsUser); e != nil {
-		e.CodexAccount = codexAccount
-		e.ClaudeAccount = claudeAccount
-		e.Enabled = true
-	} else {
-		us.Users = append(us.Users, model.UserEntry{
-			WindowsUser:   windowsUser,
-			CodexAccount:  codexAccount,
-			ClaudeAccount: claudeAccount,
-			Enabled:       true,
-		})
-	}
-	return m.SaveUsers(us)
-}
-
 // SetUserEnabled flips a user's enabled flag, which is how a person is taken
 // out of rotation without deleting their history.
 //

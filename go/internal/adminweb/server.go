@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strconv"
 	"sync"
 	"syscall"
 	"time"
@@ -158,6 +159,17 @@ func New(opts Options) (*Server, error) {
 		"codex":    codexNote,
 		"codexsev": codexNoteSeverity,
 		"ctxsize":  contextWindowLabel,
+		"usagepct": usagePercent,
+		"usagesev": usageSeverity,
+		"money":    func(v float64) string { return strconv.FormatFloat(v, 'f', 2, 64) },
+		"has": func(list []string, v string) bool {
+			for _, x := range list {
+				if x == v {
+					return true
+				}
+			}
+			return false
+		},
 	}).ParseFS(assetFS, "assets/*.html")
 	if err != nil {
 		return nil, fmt.Errorf("parse templates: %w", err)
@@ -225,6 +237,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("/machines", s.requireSession(s.handleMachines))
 	mux.HandleFunc("/policy", s.requireSession(s.handlePolicy))
 	mux.HandleFunc("/users", s.requireSession(s.handleUsers))
+	mux.HandleFunc("/users/detail", s.requireSession(s.handleUserDetail))
 	mux.HandleFunc("/sites", s.requireSession(s.handleSites))
 	mux.HandleFunc("/settings", s.requireSession(s.handleSettings))
 	mux.HandleFunc("/log", s.requireSession(s.handleLog))
@@ -234,8 +247,12 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("/gateway", s.requireSession(s.handleGateway))
 
 	// Every state-changing route is POST + CSRF + redirect (see requirePost).
-	mux.HandleFunc("/users/add", s.requirePost("/users", s.actionUserAdd))
-	mux.HandleFunc("/users/enabled", s.requirePost("/users", s.actionUserEnabled))
+	mux.HandleFunc("/users/onboard", s.requirePostBack(backToAccount, s.actionAccountOnboard))
+	mux.HandleFunc("/users/reopen", s.requirePostBack(backToAccount, s.actionAccountReopen))
+	mux.HandleFunc("/users/offboard", s.requirePostBack(backToAccount, s.actionAccountOffboard))
+	mux.HandleFunc("/users/quota", s.requirePostBack(backToAccount, s.actionAccountQuota))
+	mux.HandleFunc("/users/models", s.requirePostBack(backToAccount, s.actionAccountModels))
+	mux.HandleFunc("/users/reissue", s.requirePostBack(backToAccount, s.actionAccountReissue))
 	mux.HandleFunc("/machines/bind", s.requirePost("/machines", s.actionMachineBind))
 	mux.HandleFunc("/machines/unbind", s.requirePost("/machines", s.actionMachineUnbind))
 	mux.HandleFunc("/sites/mutate", s.requirePost("/sites", s.actionSites))
@@ -254,8 +271,6 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("/machines/forget", s.requirePost("/machines", s.actionMachineForget))
 	mux.HandleFunc("/files/put", s.requirePost("/files", s.actionFilePut))
 	mux.HandleFunc("/files/rm", s.requirePost("/files", s.actionFileRemove))
-	mux.HandleFunc("/gateway/provision", s.requirePost("/gateway", s.actionGatewayProvision))
-	mux.HandleFunc("/gateway/revoke", s.requirePost("/gateway", s.actionGatewayRevoke))
 	mux.HandleFunc("/employee-login/start", s.requirePost("/employee-login", s.actionEmployeeLoginStart))
 	mux.HandleFunc("/employee-login/finish", s.requirePost("/employee-login", s.actionEmployeeLoginFinish))
 	// Serve only assets/static, so the templates next to it are never handed

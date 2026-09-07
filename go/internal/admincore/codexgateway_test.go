@@ -336,32 +336,6 @@ func TestSetModelsUpdatesTokenAndCatalogTogether(t *testing.T) {
 	}
 }
 
-func TestRevokeIsQuietWhenNoTokenExists(t *testing.T) {
-	// Offboarding runs across everyone, including those never provisioned.
-	m, _ := managerWithUser(t, "alice")
-	gw := newFakeGateway()
-	if err := m.RevokeCodexGateway(context.Background(), gw, "alice"); err != nil {
-		t.Fatalf("revoke without a token should be a no-op, got %v", err)
-	}
-	if len(gw.deleted) != 0 {
-		t.Error("revocation touched the gateway when there was nothing to revoke")
-	}
-}
-
-func TestRevokeDeletesTheToken(t *testing.T) {
-	m, _ := managerWithUser(t, "alice")
-	gw := newFakeGateway()
-	if err := m.ProvisionCodexGateway(context.Background(), gw, GatewayConfig{BaseURL: "https://gw.example"}, "alice", nil); err != nil {
-		t.Fatalf("provision: %v", err)
-	}
-	if err := m.RevokeCodexGateway(context.Background(), gw, "alice"); err != nil {
-		t.Fatalf("revoke: %v", err)
-	}
-	if len(gw.deleted) != 1 || gw.deleted[0] != "alias:emp-alice" {
-		t.Errorf("token must be revoked by alias: %v", gw.deleted)
-	}
-}
-
 func TestKeyAliasIsDeterministicAndCaseInsensitive(t *testing.T) {
 	if KeyAlias("Alice") != KeyAlias("alice") {
 		t.Error("alias must not vary with the casing of the Windows user name")

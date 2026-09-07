@@ -11,9 +11,7 @@ import (
 
 func TestPublishCredentialsRoundTrips(t *testing.T) {
 	m, store := newManager()
-	if err := m.AddUser("work1", "", ""); err != nil {
-		t.Fatal(err)
-	}
+	addTestUser(t, m, "work1", "", "")
 
 	set := model.CredentialSet{model.PathCodexAuth: []byte(`{"token":"abc"}`)}
 	if err := m.PublishCredentials("work1", set); err != nil {
@@ -47,9 +45,7 @@ func TestPublishCredentialsRejectsUnknownUser(t *testing.T) {
 // published earlier for the same user.
 func TestPublishCredentialsMergesWithExisting(t *testing.T) {
 	m, store := newManager()
-	if err := m.AddUser("work1", "", ""); err != nil {
-		t.Fatal(err)
-	}
+	addTestUser(t, m, "work1", "", "")
 
 	codex := model.CredentialSet{model.PathCodexAuth: []byte("codex-token")}
 	if err := m.PublishCredentials("work1", codex); err != nil {

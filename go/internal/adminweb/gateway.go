@@ -8,7 +8,6 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/TEENet-io/ai-env-mgr/internal/admincore"
 	"github.com/TEENet-io/ai-env-mgr/internal/litellm"
 )
 
@@ -60,47 +59,6 @@ func (s *Server) handleGateway(w http.ResponseWriter, r *http.Request, sess *ses
 	data.GatewayModels = models
 
 	s.render(w, "gateway.html", http.StatusOK, data)
-}
-
-// actionGatewayProvision issues or re-issues one employee's token and
-// delivers the Codex configuration that uses it.
-func (s *Server) actionGatewayProvision(sess *session, r *http.Request) error {
-	gw, err := s.gateway()
-	if err != nil {
-		return err
-	}
-	user := formValue(r, "windowsUser")
-	if user == "" {
-		return fmt.Errorf("a Windows user name is required")
-	}
-
-	// No models selected means "everything the gateway offers", which is the
-	// common case; an explicit selection narrows it.
-	models := r.Form["models"]
-
-	ctx, cancel := context.WithTimeout(r.Context(), gatewayTimeout)
-	defer cancel()
-	return sess.mgr.ProvisionCodexGateway(ctx, gw, admincore.GatewayConfig{BaseURL: s.opts.GatewayURL}, user, models)
-}
-
-// actionGatewayRevoke withdraws one employee's token.
-//
-// It does not touch the delivered files: clearing those is the agent's job,
-// driven by the roster. Revocation is the half that works whether or not the
-// machine is ever seen again.
-func (s *Server) actionGatewayRevoke(sess *session, r *http.Request) error {
-	gw, err := s.gateway()
-	if err != nil {
-		return err
-	}
-	user := formValue(r, "windowsUser")
-	if user == "" {
-		return fmt.Errorf("a Windows user name is required")
-	}
-
-	ctx, cancel := context.WithTimeout(r.Context(), gatewayTimeout)
-	defer cancel()
-	return sess.mgr.RevokeCodexGateway(ctx, gw, user)
 }
 
 // contextWindowLabel renders a context window the way the model vendors

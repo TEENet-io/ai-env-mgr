@@ -34,20 +34,6 @@
     在网关的 <code>config.yaml</code> 里给模型加上 <code>model_info</code> 并标注
     <code>catalog_visible: true</code>，它就会出现在这里，也会出现在员工的模型选择器里。
   </p>
-
-  <h2>发放令牌</h2>
-  <form method="post" action="/gateway/provision" class="form">
-    <input type="hidden" name="csrf" value="{{.CSRF}}">
-    <label>Windows 用户<input name="windowsUser" required placeholder="work1"></label>
-    <label>预算上限（美元，留空为不限）<input name="budget" placeholder="20"></label>
-    <fieldset class="checks">
-      <legend>可用模型（全不选 = 网关上的全部）</legend>
-      {{range .GatewayModels}}
-        <label class="check"><input type="checkbox" name="models" value="{{.Name}}"> {{.Info.DisplayName}} <span class="dim">{{.Name}}</span></label>
-      {{end}}
-    </fieldset>
-    <button type="submit">发放并下发配置</button>
-  </form>
   {{else}}
   <p class="hint">配置好网关地址与管理密钥后，这里会显示可用模型与员工令牌。</p>
   {{end}}

@@ -268,29 +268,6 @@ func (m *Manager) setModelsLocked(ctx context.Context, gw Gateway, cfg GatewayCo
 	return allowed, nil
 }
 
-// RevokeCodexGateway withdraws an employee's gateway token.
-//
-// This is the half that does not depend on the machine being reachable, and
-// so it is the half that actually enforces offboarding. Clearing the local
-// files is the agent's job, driven by the object being deleted from the
-// store; the two are independent on purpose.
-//
-// A user with no token is not an error: offboarding runs against everyone
-// being removed, including those who never had Codex provisioned.
-func (m *Manager) RevokeCodexGateway(ctx context.Context, gw Gateway, windowsUser string) error {
-	defer lockProvision(windowsUser)()
-	alias := KeyAlias(windowsUser)
-	if _, found, err := gw.FindKeyByAlias(ctx, alias); err != nil {
-		return fmt.Errorf("look up token for %q: %w", windowsUser, err)
-	} else if !found {
-		return nil
-	}
-	if err := gw.DeleteKeyByAlias(ctx, alias); err != nil {
-		return fmt.Errorf("revoke token for %q: %w", windowsUser, err)
-	}
-	return nil
-}
-
 // resolveAllowlist validates the requested models against what the gateway
 // actually serves.
 //

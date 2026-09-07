@@ -4,9 +4,7 @@ import "testing"
 
 func TestBindMachineThenLoad(t *testing.T) {
 	m, _ := newManager()
-	if err := m.AddUser("alice", "", ""); err != nil {
-		t.Fatal(err)
-	}
+	addTestUser(t, m, "alice", "", "")
 	if err := m.BindMachine("work1", "alice", "reimaged 2026-08"); err != nil {
 		t.Fatal(err)
 	}
@@ -42,12 +40,8 @@ func TestBindMachineRejectsUnknownUser(t *testing.T) {
 // previous binding rather than erroring or duplicating it.
 func TestBindMachineIsIdempotent(t *testing.T) {
 	m, _ := newManager()
-	if err := m.AddUser("alice", "", ""); err != nil {
-		t.Fatal(err)
-	}
-	if err := m.AddUser("bob", "", ""); err != nil {
-		t.Fatal(err)
-	}
+	addTestUser(t, m, "alice", "", "")
+	addTestUser(t, m, "bob", "", "")
 	if err := m.BindMachine("work1", "alice", ""); err != nil {
 		t.Fatal(err)
 	}
@@ -80,9 +74,7 @@ func TestLoadBindingMissing(t *testing.T) {
 
 func TestUnbindMachine(t *testing.T) {
 	m, _ := newManager()
-	if err := m.AddUser("alice", "", ""); err != nil {
-		t.Fatal(err)
-	}
+	addTestUser(t, m, "alice", "", "")
 	if err := m.BindMachine("work1", "alice", ""); err != nil {
 		t.Fatal(err)
 	}
@@ -110,12 +102,8 @@ func TestUnbindMachineNotBoundIsNoop(t *testing.T) {
 
 func TestListBindings(t *testing.T) {
 	m, _ := newManager()
-	if err := m.AddUser("alice", "", ""); err != nil {
-		t.Fatal(err)
-	}
-	if err := m.AddUser("bob", "", ""); err != nil {
-		t.Fatal(err)
-	}
+	addTestUser(t, m, "alice", "", "")
+	addTestUser(t, m, "bob", "", "")
 	if err := m.BindMachine("work1", "alice", ""); err != nil {
 		t.Fatal(err)
 	}

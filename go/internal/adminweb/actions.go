@@ -43,6 +43,38 @@ func (s *Server) requirePost(back string, next func(*session, *http.Request) err
 	})
 }
 
+// requirePostBack is requirePost with the return page chosen by the form
+// (see backToAccount): the same action is posted from the list and from a
+// detail page, and each should land back where it started.
+func (s *Server) requirePostBack(back func(*http.Request) string, next func(*session, *http.Request) error) http.HandlerFunc {
+	return s.requireSession(func(w http.ResponseWriter, r *http.Request, sess *session) {
+		if r.Method != http.MethodPost {
+			http.Redirect(w, r, "/users", http.StatusSeeOther)
+			return
+		}
+		if err := parseUpload(r); err != nil {
+			s.redirectWithError(w, r, "/users", "could not read the form")
+			return
+		}
+		dest := back(r)
+		if subtle.ConstantTimeCompare([]byte(r.PostFormValue("csrf")), []byte(sess.csrf)) != 1 {
+			log.Printf("adminweb: rejected a POST to %s with a bad CSRF token from %s", r.URL.Path, s.clientKey(r))
+			s.redirectWithError(w, r, dest, "the form expired; reload the page and try again")
+			return
+		}
+		if err := next(sess, r); err != nil {
+			log.Printf("adminweb: %s: %v", r.URL.Path, err)
+			s.redirectWithError(w, r, dest, err.Error())
+			return
+		}
+		sep := "?"
+		if strings.Contains(dest, "?") {
+			sep = "&"
+		}
+		http.Redirect(w, r, dest+sep+"ok=1", http.StatusSeeOther)
+	})
+}
+
 // redirectWithError carries a message through the redirect in the query
 // string. Nothing here is secret -- these are validation messages, never the
 // credentials themselves.
@@ -52,24 +84,6 @@ func (s *Server) redirectWithError(w http.ResponseWriter, r *http.Request, back,
 
 func formValue(r *http.Request, name string) string {
 	return strings.TrimSpace(r.PostFormValue(name))
-}
-
-// --- users ---
-
-func (s *Server) actionUserAdd(sess *session, r *http.Request) error {
-	name := formValue(r, "windowsUser")
-	if name == "" {
-		return fmt.Errorf("a Windows user name is required")
-	}
-	return sess.mgr.AddUser(name, formValue(r, "codexAccount"), formValue(r, "claudeAccount"))
-}
-
-func (s *Server) actionUserEnabled(sess *session, r *http.Request) error {
-	name := formValue(r, "windowsUser")
-	if name == "" {
-		return fmt.Errorf("a Windows user name is required")
-	}
-	return sess.mgr.SetUserEnabled(name, formValue(r, "enabled") == "1")
 }
 
 // --- machines ---

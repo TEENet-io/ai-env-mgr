@@ -81,12 +81,8 @@ func TestSetCollectPreservesBlockPolicy(t *testing.T) {
 func TestCollectStatsCountsPerEmployeeAndTool(t *testing.T) {
 	fs := newFakeStore()
 	m := &Manager{Store: fs}
-	if err := m.AddUser("work1", "", ""); err != nil {
-		t.Fatal(err)
-	}
-	if err := m.AddUser("work2", "", ""); err != nil {
-		t.Fatal(err)
-	}
+	addTestUser(t, m, "work1", "", "")
+	addTestUser(t, m, "work2", "", "")
 
 	t0 := time.Date(2026, 8, 10, 9, 0, 0, 0, time.UTC)
 	t1 := t0.Add(30 * time.Minute) // newest
@@ -133,9 +129,7 @@ func TestCollectStatsCountsPerEmployeeAndTool(t *testing.T) {
 func TestCollectStatsIncludesNonRosterUsers(t *testing.T) {
 	fs := newFakeStore()
 	m := &Manager{Store: fs}
-	if err := m.AddUser("weipeng", "", ""); err != nil {
-		t.Fatal(err)
-	}
+	addTestUser(t, m, "weipeng", "", "")
 	// peter is NOT on the roster, but has collected data.
 	pfx := ossclient.DataCollectPrefix("peter")
 	fs.objects[pfx+".claude/projects/p/a.jsonl"] = []byte("data")
@@ -160,9 +154,7 @@ func TestCollectStatsIncludesNonRosterUsers(t *testing.T) {
 func TestCollectStatsReportsEnabledFlag(t *testing.T) {
 	fs := newFakeStore()
 	m := &Manager{Store: fs}
-	if err := m.AddUser("work1", "", ""); err != nil {
-		t.Fatal(err)
-	}
+	addTestUser(t, m, "work1", "", "")
 	if _, err := m.SetCollect(true, nil, nil); err != nil {
 		t.Fatal(err)
 	}

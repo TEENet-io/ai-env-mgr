@@ -1,8 +1,11 @@
 package adminweb
 
 import (
+	"net/url"
+	"strings"
 	"testing"
 
+	"github.com/TEENet-io/ai-env-mgr/internal/admincore"
 	"github.com/TEENet-io/ai-env-mgr/internal/litellm"
 	"github.com/TEENet-io/ai-env-mgr/internal/model"
 )
@@ -90,5 +93,80 @@ func TestReconcileAccountsSortsByUser(t *testing.T) {
 	rows := reconcileAccounts([]model.UserEntry{{WindowsUser: "zed"}, {WindowsUser: "amy"}}, nil, nil, nil)
 	if rows[0].WindowsUser != "amy" || rows[1].WindowsUser != "zed" {
 		t.Errorf("order: %v %v", rows[0].WindowsUser, rows[1].WindowsUser)
+	}
+}
+
+func TestParseQuotaForm(t *testing.T) {
+	good := url.Values{"budget": {"20.5"}, "rpm": {"60"}, "tpm": {"200000"}, "parallel": {"4"}}
+	q, err := parseQuotaForm(good)
+	if err != nil || q != (litellm.Quota{MonthlyBudgetUSD: 20.5, RPM: 60, TPM: 200000, Parallel: 4}) {
+		t.Fatalf("good form: %+v %v", q, err)
+	}
+	for name, bad := range map[string]url.Values{
+		"missing":  {"budget": {"20"}},
+		"zero":     {"budget": {"0"}, "rpm": {"60"}, "tpm": {"1"}, "parallel": {"1"}},
+		"negative": {"budget": {"20"}, "rpm": {"-1"}, "tpm": {"1"}, "parallel": {"1"}},
+		"text":     {"budget": {"abc"}, "rpm": {"1"}, "tpm": {"1"}, "parallel": {"1"}},
+	} {
+		if _, err := parseQuotaForm(bad); err == nil {
+			t.Errorf("%s form accepted", name)
+		}
+	}
+}
+
+func TestUsageHelpers(t *testing.T) {
+	for _, tc := range []struct {
+		spend, budget float64
+		pct           int
+		sev           string
+	}{
+		{0, 20, 0, "s-ok"},
+		{10, 20, 50, "s-ok"},
+		{16, 20, 80, "s-warn"},
+		{20, 20, 100, "s-bad"},
+		{35, 20, 100, "s-bad"},
+		{5, 0, 0, "s-ok"},
+	} {
+		if got := usagePercent(tc.spend, tc.budget); got != tc.pct {
+			t.Errorf("usagePercent(%v,%v) = %d, want %d", tc.spend, tc.budget, got, tc.pct)
+		}
+		if got := usageSeverity(tc.spend, tc.budget); got != tc.sev {
+			t.Errorf("usageSeverity(%v,%v) = %s, want %s", tc.spend, tc.budget, got, tc.sev)
+		}
+	}
+}
+
+func TestAccountPagesRender(t *testing.T) {
+	s := newTestServer(t, newFakeStore())
+	row := accountRow{WindowsUser: "alice", Name: "Alice", Department: "研发", Enabled: true,
+		HasUser: true, HasToken: true, Models: []string{"glm-5.2"}, Spend: 17, Budget: 20,
+		BudgetResetAt: "2026-10-01T00:00:00Z", Quota: litellm.Quota{MonthlyBudgetUSD: 20, RPM: 60, TPM: 200000, Parallel: 4},
+		Machines: []string{"PC-1"}}
+	flagged := accountRow{WindowsUser: "carol", Enabled: false, HasToken: true,
+		Flags: []accountFlag{flagDepartedToken}}
+	data := pageData{CSRF: "x", GatewayEnabled: true, GatewayURL: "https://gw.example",
+		GatewayModels: []litellm.Model{{Name: "glm-5.2", Info: litellm.ModelInfo{DisplayName: "GLM"}}},
+		Accounts:      []accountRow{row, flagged}, QuotaDefaults: admincore.DefaultQuota}
+
+	var list strings.Builder
+	if err := s.tpl.ExecuteTemplate(&list, "users.html", data); err != nil {
+		t.Fatalf("users.html: %v", err)
+	}
+	for _, want := range []string{"Alice", "研发", "17.00", "20.00", "s-warn w85", "已离职仍有令牌", "/users/offboard", "/users/onboard", `href="/users/detail?user=alice"`} {
+		if !strings.Contains(list.String(), want) {
+			t.Errorf("users.html missing %q", want)
+		}
+	}
+
+	data.Account = &row
+	data.Audit = []admincore.AuditEntry{{At: "2026-09-07T01:02:03Z", Action: admincore.AuditOnboard, User: "alice"}}
+	var detail strings.Builder
+	if err := s.tpl.ExecuteTemplate(&detail, "user.html", data); err != nil {
+		t.Fatalf("user.html: %v", err)
+	}
+	for _, want := range []string{"/users/quota", "/users/models", "/users/reissue", "/users/offboard", "onboard", "PC-1", `value="60"`} {
+		if !strings.Contains(detail.String(), want) {
+			t.Errorf("user.html missing %q", want)
+		}
 	}
 }

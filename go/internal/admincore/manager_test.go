@@ -114,6 +114,28 @@ func newManager() (*Manager, *fakeStore) {
 	return &Manager{Store: store}, store
 }
 
+// addTestUser seeds or updates one roster entry the way the now-removed
+// admincore.AddUser used to (find-or-create, mark enabled): Onboard is the
+// real entry point since Task 10, but most of the tests here only need a
+// roster row to exist and do not care how it got there.
+func addTestUser(t *testing.T, m *Manager, windowsUser, codexAccount, claudeAccount string) {
+	t.Helper()
+	us, err := m.LoadUsers()
+	if err != nil {
+		t.Fatalf("LoadUsers: %v", err)
+	}
+	if e := us.Find(windowsUser); e != nil {
+		e.CodexAccount, e.ClaudeAccount, e.Enabled = codexAccount, claudeAccount, true
+	} else {
+		us.Users = append(us.Users, model.UserEntry{
+			WindowsUser: windowsUser, CodexAccount: codexAccount, ClaudeAccount: claudeAccount, Enabled: true,
+		})
+	}
+	if err := m.SaveUsers(us); err != nil {
+		t.Fatalf("SaveUsers: %v", err)
+	}
+}
+
 func TestLoadUsersEmptyWhenMissing(t *testing.T) {
 	m, _ := newManager()
 	us, err := m.LoadUsers()
@@ -122,53 +144,6 @@ func TestLoadUsersEmptyWhenMissing(t *testing.T) {
 	}
 	if len(us.Users) != 0 {
 		t.Errorf("expected empty roster on first run, got %+v", us)
-	}
-}
-
-func TestAddUserThenLoad(t *testing.T) {
-	m, _ := newManager()
-	if err := m.AddUser("work1", "codex1", "claude1"); err != nil {
-		t.Fatalf("AddUser: %v", err)
-	}
-	us, err := m.LoadUsers()
-	if err != nil {
-		t.Fatalf("LoadUsers: %v", err)
-	}
-	e := us.Find("work1")
-	if e == nil {
-		t.Fatal("user not found after AddUser")
-	}
-	if !e.Enabled {
-		t.Error("newly added user should be enabled")
-	}
-	if e.CodexAccount != "codex1" || e.ClaudeAccount != "claude1" {
-		t.Errorf("account fields not saved: %+v", e)
-	}
-}
-
-// Re-adding the same Windows user (e.g. re-provisioning a machine) must
-// update the roster row rather than create a duplicate.
-func TestAddUserIsIdempotent(t *testing.T) {
-	m, _ := newManager()
-	if err := m.AddUser("work1", "old-codex", "old-claude"); err != nil {
-		t.Fatal(err)
-	}
-	if err := m.AddUser("work1", "new-codex", "new-claude"); err != nil {
-		t.Fatal(err)
-	}
-	us, err := m.LoadUsers()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(us.Users) != 1 {
-		t.Fatalf("expected 1 user, got %d: %+v", len(us.Users), us.Users)
-	}
-	e := us.Find("work1")
-	if e.CodexAccount != "new-codex" || e.ClaudeAccount != "new-claude" {
-		t.Errorf("re-adding should update account info, got %+v", e)
-	}
-	if !e.Enabled {
-		t.Error("re-adding should leave the user enabled")
 	}
 }
 
@@ -181,9 +156,7 @@ func TestSetUserEnabledUnknownUserErrors(t *testing.T) {
 
 func TestSetUserEnabledPersists(t *testing.T) {
 	m, _ := newManager()
-	if err := m.AddUser("work1", "c", "cl"); err != nil {
-		t.Fatal(err)
-	}
+	addTestUser(t, m, "work1", "c", "cl")
 	if err := m.SetUserEnabled("work1", false); err != nil {
 		t.Fatal(err)
 	}
@@ -201,12 +174,8 @@ func TestSetUserEnabledPersists(t *testing.T) {
 // not stop a machine from being locked down.
 func TestPolicyIsASingleObjectIndependentOfTheRoster(t *testing.T) {
 	m, store := newManager()
-	if err := m.AddUser("work1", "", ""); err != nil {
-		t.Fatal(err)
-	}
-	if err := m.AddUser("work2", "", ""); err != nil {
-		t.Fatal(err)
-	}
+	addTestUser(t, m, "work1", "", "")
+	addTestUser(t, m, "work2", "", "")
 	if err := m.SetUserEnabled("work2", false); err != nil {
 		t.Fatal(err)
 	}
@@ -257,9 +226,7 @@ func containsString(list []string, want string) bool {
 
 func TestMutateDomainsAddsRemovesDedupsAndSorts(t *testing.T) {
 	m, store := newManager()
-	if err := m.AddUser("work1", "", ""); err != nil {
-		t.Fatal(err)
-	}
+	addTestUser(t, m, "work1", "", "")
 	if err := m.PublishPolicy(model.Policy{BlockEnabled: true, BlockedDomains: []string{"B.com", "a.com"}}); err != nil {
 		t.Fatal(err)
 	}
@@ -285,9 +252,7 @@ func TestMutateDomainsAddsRemovesDedupsAndSorts(t *testing.T) {
 
 func TestSetBlockEnabledPersists(t *testing.T) {
 	m, store := newManager()
-	if err := m.AddUser("work1", "", ""); err != nil {
-		t.Fatal(err)
-	}
+	addTestUser(t, m, "work1", "", "")
 	if err := m.PublishPolicy(model.Policy{BlockEnabled: true}); err != nil {
 		t.Fatal(err)
 	}
@@ -312,9 +277,7 @@ func TestSetBlockEnabledPersists(t *testing.T) {
 
 func TestSetSyncIntervalClamps(t *testing.T) {
 	m, _ := newManager()
-	if err := m.AddUser("work1", "", ""); err != nil {
-		t.Fatal(err)
-	}
+	addTestUser(t, m, "work1", "", "")
 	if err := m.PublishPolicy(model.Policy{SyncIntervalMinutes: 30}); err != nil {
 		t.Fatal(err)
 	}
@@ -350,12 +313,8 @@ func TestCurrentPolicyDefaultsWhenNoneReadable(t *testing.T) {
 
 func TestCurrentPolicyReadsFirstEnabledUser(t *testing.T) {
 	m, store := newManager()
-	if err := m.AddUser("work1", "", ""); err != nil {
-		t.Fatal(err)
-	}
-	if err := m.AddUser("work2", "", ""); err != nil {
-		t.Fatal(err)
-	}
+	addTestUser(t, m, "work1", "", "")
+	addTestUser(t, m, "work2", "", "")
 	if err := m.SetUserEnabled("work1", false); err != nil {
 		t.Fatal(err)
 	}
@@ -402,9 +361,7 @@ func TestAdminKeysStayUnderRoot(t *testing.T) {
 // credentials is what reaches them.
 func TestDisableUserRevokesStoredCredentials(t *testing.T) {
 	m, store := newManager()
-	if err := m.AddUser("work1", "", ""); err != nil {
-		t.Fatal(err)
-	}
+	addTestUser(t, m, "work1", "", "")
 	if err := m.PublishCredentials("work1", model.CredentialSet{
 		model.PathCodexAuth: []byte(`{"tokens":{}}`),
 	}); err != nil {
@@ -427,9 +384,7 @@ func TestDisableUserRevokesStoredCredentials(t *testing.T) {
 // revocation.
 func TestEnablingAfterDisableDoesNotRestoreCredentials(t *testing.T) {
 	m, store := newManager()
-	if err := m.AddUser("work1", "", ""); err != nil {
-		t.Fatal(err)
-	}
+	addTestUser(t, m, "work1", "", "")
 	if err := m.PublishCredentials("work1", model.CredentialSet{
 		model.PathCodexAuth: []byte(`{"tokens":{}}`),
 	}); err != nil {
@@ -450,12 +405,8 @@ func TestEnablingAfterDisableDoesNotRestoreCredentials(t *testing.T) {
 // holding two entries for one person.
 func TestRosterMatchesUserNamesIgnoringCase(t *testing.T) {
 	m, _ := newManager()
-	if err := m.AddUser("work1", "a@x.com", ""); err != nil {
-		t.Fatal(err)
-	}
-	if err := m.AddUser("WORK1", "b@x.com", ""); err != nil {
-		t.Fatal(err)
-	}
+	addTestUser(t, m, "work1", "a@x.com", "")
+	addTestUser(t, m, "WORK1", "b@x.com", "")
 	us, err := m.LoadUsers()
 	if err != nil {
 		t.Fatal(err)

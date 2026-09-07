@@ -72,10 +72,28 @@ func TestRenderPreview(t *testing.T) {
 		{WindowsUser: "work1", CodexAccount: "work1@teenet.io", ClaudeAccount: "work1@teenet.io", Enabled: true},
 		{WindowsUser: "chen", Enabled: false},
 	}
+	accountRows := []accountRow{
+		{WindowsUser: "peter", Name: "Peter", Department: "研发", Enabled: true,
+			HasUser: true, HasToken: true, Models: []string{"grok-4.6", "glm-5"},
+			Spend: 12.4, Budget: 20, BudgetResetAt: "2026-10-01T00:00:00Z",
+			Quota:    litellm.Quota{MonthlyBudgetUSD: 20, RPM: 60, TPM: 200000, Parallel: 4},
+			Machines: []string{"hv8uqpity23nkc7"}},
+		{WindowsUser: "work1", Name: "Work One", Department: "运营", Enabled: true,
+			HasUser: true, HasToken: true, Models: []string{"deepseek-v3.2"},
+			Spend: 18.7, Budget: 20, BudgetResetAt: "2026-10-01T00:00:00Z",
+			Quota:    litellm.Quota{MonthlyBudgetUSD: 20, RPM: 60, TPM: 200000, Parallel: 4},
+			Machines: []string{"wuying-desk-0142"}},
+		{WindowsUser: "chen", Enabled: false, HasToken: true, Flags: []accountFlag{flagDepartedToken}},
+	}
 	base := pageData{
 		Bucket: "ai-collect-sg", Endpoint: "oss-ap-southeast-1.aliyuncs.com",
 		CSRF: "preview", Machines: machines, Fleet: summariseFleet(machines),
 		Users: users, Policy: &policy,
+		Accounts: accountRows, Account: &accountRows[0], QuotaDefaults: admincore.DefaultQuota,
+		Audit: []admincore.AuditEntry{
+			{At: "2026-09-01T02:00:00Z", Action: admincore.AuditOnboard, User: "peter"},
+			{At: "2026-09-05T08:30:00Z", Action: admincore.AuditQuota, User: "peter"},
+		},
 		Stats: []admincore.CollectStat{
 			{User: "peter", Codex: 128, Claude: 0, Total: 128, Latest: time.Now()},
 			{User: "work1", Codex: 64, Claude: 31, Total: 95, Latest: time.Now()},
@@ -103,7 +121,7 @@ func TestRenderPreview(t *testing.T) {
 		},
 	}
 	for _, name := range []string{
-		"login.html", "machines.html", "users.html", "employee-login", "sites.html",
+		"login.html", "machines.html", "users.html", "user.html", "employee-login", "sites.html",
 		"settings.html", "files.html", "rollout.html", "policy.html", "log.html",
 		"gateway.html",
 	} {
@@ -113,7 +131,7 @@ func TestRenderPreview(t *testing.T) {
 		}
 		d := base
 		d.Nav = map[string]string{
-			"machines.html": "machines", "users.html": "users",
+			"machines.html": "machines", "users.html": "users", "user.html": "users",
 			"employeelogin.html": "employee-login", "sites.html": "sites",
 			"settings.html": "settings", "files.html": "files",
 			"rollout.html": "rollout", "policy.html": "policy", "log.html": "machines",

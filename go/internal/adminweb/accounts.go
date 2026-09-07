@@ -1,7 +1,13 @@
 package adminweb
 
 import (
+	"context"
+	"fmt"
+	"log"
+	"net/http"
+	"net/url"
 	"sort"
+	"strconv"
 	"strings"
 
 	"github.com/TEENet-io/ai-env-mgr/internal/admincore"
@@ -123,4 +129,291 @@ func reconcileAccounts(users []model.UserEntry, keys []litellm.Key, gwUsers []li
 		return strings.ToLower(out[i].WindowsUser) < strings.ToLower(out[j].WindowsUser)
 	})
 	return out
+}
+
+// usagePercent is spend as a share of budget, clamped to 0..100 so it can
+// select one of the .w0-.w100 width classes (inline styles are not allowed
+// by the console's CSP).
+func usagePercent(spend, budget float64) int {
+	if budget <= 0 || spend <= 0 {
+		return 0
+	}
+	pct := int(spend / budget * 100)
+	if pct > 100 {
+		return 100
+	}
+	return pct
+}
+
+// usageSeverity colours the bar: green under 80%, amber to 99%, red at or
+// over budget -- the gateway is refusing requests at that point.
+func usageSeverity(spend, budget float64) string {
+	switch pct := usagePercent(spend, budget); {
+	case pct >= 100:
+		return "s-bad"
+	case pct >= 80:
+		return "s-warn"
+	default:
+		return "s-ok"
+	}
+}
+
+// handleUsers is the account list: the roster joined with the gateway.
+func (s *Server) handleUsers(w http.ResponseWriter, r *http.Request, sess *session) {
+	data := newPage(sess, r, "users")
+	data.GatewayURL = s.opts.GatewayURL
+
+	us, err := sess.mgr.LoadUsers()
+	if err != nil {
+		data.Error = "could not read the roster"
+		log.Printf("adminweb: LoadUsers: %v", err)
+		s.render(w, "users.html", http.StatusOK, data)
+		return
+	}
+	bindings, err := sess.mgr.ListBindings()
+	if err != nil {
+		log.Printf("adminweb: ListBindings: %v", err)
+	}
+	if q, err := sess.mgr.LoadQuotaDefaults(); err == nil {
+		data.QuotaDefaults = q
+	}
+
+	var keys []litellm.Key
+	var gwUsers []litellm.User
+	gw, err := s.gateway()
+	if err != nil {
+		data.GatewayUnusable = err.Error()
+	} else {
+		data.GatewayEnabled = true
+		ctx, cancel := context.WithTimeout(r.Context(), gatewayTimeout)
+		defer cancel()
+		// Each failure is reported once and the page still renders the
+		// roster: knowing the gateway is down is the point, not a blocker.
+		if data.GatewayModels, err = gw.Models(ctx); err != nil {
+			data.GatewayUnusable = "无法读取网关模型清单：" + err.Error()
+		}
+		if keys, err = gw.ListKeys(ctx); err != nil && data.GatewayUnusable == "" {
+			data.GatewayUnusable = "无法读取网关令牌清单：" + err.Error()
+		}
+		if gwUsers, err = gw.ListUsers(ctx); err != nil && data.GatewayUnusable == "" {
+			data.GatewayUnusable = "无法读取网关用户清单：" + err.Error()
+		}
+		if data.GatewayUnusable != "" {
+			log.Printf("adminweb: accounts: %s", data.GatewayUnusable)
+			data.GatewayEnabled = false
+		}
+	}
+	data.Accounts = reconcileAccounts(us.Users, keys, gwUsers, bindings)
+	s.render(w, "users.html", http.StatusOK, data)
+}
+
+// handleUserDetail is one account: editing forms and history.
+func (s *Server) handleUserDetail(w http.ResponseWriter, r *http.Request, sess *session) {
+	user := strings.TrimSpace(r.URL.Query().Get("user"))
+	if user == "" {
+		http.Redirect(w, r, "/users", http.StatusSeeOther)
+		return
+	}
+	data := newPage(sess, r, "users")
+	data.GatewayURL = s.opts.GatewayURL
+
+	us, err := sess.mgr.LoadUsers()
+	if err != nil {
+		data.Error = "could not read the roster"
+		s.render(w, "user.html", http.StatusOK, data)
+		return
+	}
+	e := us.Find(user)
+	if e == nil {
+		http.NotFound(w, r)
+		return
+	}
+	bindings, _ := sess.mgr.ListBindings()
+	data.Audit, _ = sess.mgr.ReadAudit(e.WindowsUser)
+
+	var keys []litellm.Key
+	var gwUsers []litellm.User
+	if gw, err := s.gateway(); err != nil {
+		data.GatewayUnusable = err.Error()
+	} else {
+		data.GatewayEnabled = true
+		ctx, cancel := context.WithTimeout(r.Context(), gatewayTimeout)
+		defer cancel()
+		if data.GatewayModels, err = gw.Models(ctx); err != nil {
+			data.GatewayUnusable = "无法读取网关模型清单：" + err.Error()
+		}
+		if k, found, err := gw.FindKeyByAlias(ctx, admincore.KeyAlias(e.WindowsUser)); err != nil {
+			data.GatewayUnusable = "无法读取网关令牌：" + err.Error()
+		} else if found {
+			keys = []litellm.Key{k}
+		}
+		if u, found, err := gw.UserInfo(ctx, admincore.KeyAlias(e.WindowsUser)); err != nil {
+			data.GatewayUnusable = "无法读取网关用户：" + err.Error()
+		} else if found {
+			gwUsers = []litellm.User{u}
+		}
+		if data.GatewayUnusable != "" {
+			data.GatewayEnabled = false
+		}
+	}
+	rows := reconcileAccounts([]model.UserEntry{*e}, keys, gwUsers, bindings)
+	data.Account = &rows[0]
+	s.render(w, "user.html", http.StatusOK, data)
+}
+
+// parseQuotaForm reads the four quota fields. All are required: see
+// litellm.Quota for why zero cannot mean unlimited.
+func parseQuotaForm(form url.Values) (litellm.Quota, error) {
+	var q litellm.Quota
+	var err error
+	if q.MonthlyBudgetUSD, err = strconv.ParseFloat(strings.TrimSpace(form.Get("budget")), 64); err != nil {
+		return q, fmt.Errorf("月预算需要是一个数字")
+	}
+	ints := map[string]*int{"rpm": &q.RPM, "tpm": &q.TPM, "parallel": &q.Parallel}
+	labels := map[string]string{"rpm": "每分钟请求数", "tpm": "每分钟 token 数", "parallel": "并发数"}
+	for name, dst := range ints {
+		if *dst, err = strconv.Atoi(strings.TrimSpace(form.Get(name))); err != nil {
+			return q, fmt.Errorf("%s需要是一个整数", labels[name])
+		}
+	}
+	if err := q.Validate(); err != nil {
+		return q, fmt.Errorf("额度必须都大于 0")
+	}
+	return q, nil
+}
+
+func (s *Server) accountContext(r *http.Request) (*litellm.Client, admincore.GatewayConfig, context.Context, context.CancelFunc, error) {
+	gw, err := s.gateway()
+	if err != nil {
+		return nil, admincore.GatewayConfig{}, nil, nil, err
+	}
+	ctx, cancel := context.WithTimeout(r.Context(), gatewayTimeout)
+	return gw, admincore.GatewayConfig{BaseURL: s.opts.GatewayURL}, ctx, cancel, nil
+}
+
+func (s *Server) actionAccountOnboard(sess *session, r *http.Request) error {
+	gw, cfg, ctx, cancel, err := s.accountContext(r)
+	if err != nil {
+		return err
+	}
+	defer cancel()
+	user := formValue(r, "windowsUser")
+	if user == "" {
+		return fmt.Errorf("a Windows user name is required")
+	}
+	quota, err := parseQuotaForm(r.PostForm)
+	if err != nil {
+		return err
+	}
+	return sess.mgr.Onboard(ctx, gw, cfg, admincore.AccountSpec{
+		WindowsUser: user,
+		Name:        formValue(r, "name"),
+		Department:  formValue(r, "department"),
+		Quota:       quota,
+		Models:      r.PostForm["models"], // none selected = everything the gateway offers
+	})
+}
+
+// actionAccountReopen is onboarding from a row button: no form fields
+// beyond the user, so labels and quota come from the roster and the
+// existing gateway user (or the defaults when there is none).
+func (s *Server) actionAccountReopen(sess *session, r *http.Request) error {
+	gw, cfg, ctx, cancel, err := s.accountContext(r)
+	if err != nil {
+		return err
+	}
+	defer cancel()
+	user := formValue(r, "windowsUser")
+	if user == "" {
+		return fmt.Errorf("a Windows user name is required")
+	}
+	us, err := sess.mgr.LoadUsers()
+	if err != nil {
+		return err
+	}
+	e := us.Find(user)
+	if e == nil {
+		return fmt.Errorf("user %q not found in roster", user)
+	}
+	quota, err := sess.mgr.LoadQuotaDefaults()
+	if err != nil {
+		return err
+	}
+	var models []string
+	if u, found, err := gw.UserInfo(ctx, admincore.KeyAlias(e.WindowsUser)); err != nil {
+		return fmt.Errorf("look up gateway user: %w", err)
+	} else if found {
+		if q := u.Quota(); q.Validate() == nil {
+			quota = q
+		}
+		models = u.Models
+	}
+	return sess.mgr.Onboard(ctx, gw, cfg, admincore.AccountSpec{
+		WindowsUser: e.WindowsUser, Name: e.Name, Department: e.Department, Quota: quota, Models: models,
+	})
+}
+
+func (s *Server) actionAccountOffboard(sess *session, r *http.Request) error {
+	gw, _, ctx, cancel, err := s.accountContext(r)
+	if err != nil {
+		return err
+	}
+	defer cancel()
+	user := formValue(r, "windowsUser")
+	if user == "" {
+		return fmt.Errorf("a Windows user name is required")
+	}
+	return sess.mgr.Offboard(ctx, gw, user)
+}
+
+func (s *Server) actionAccountQuota(sess *session, r *http.Request) error {
+	gw, _, ctx, cancel, err := s.accountContext(r)
+	if err != nil {
+		return err
+	}
+	defer cancel()
+	user := formValue(r, "windowsUser")
+	if user == "" {
+		return fmt.Errorf("a Windows user name is required")
+	}
+	quota, err := parseQuotaForm(r.PostForm)
+	if err != nil {
+		return err
+	}
+	return sess.mgr.SetQuota(ctx, gw, user, quota)
+}
+
+func (s *Server) actionAccountModels(sess *session, r *http.Request) error {
+	gw, cfg, ctx, cancel, err := s.accountContext(r)
+	if err != nil {
+		return err
+	}
+	defer cancel()
+	user := formValue(r, "windowsUser")
+	if user == "" {
+		return fmt.Errorf("a Windows user name is required")
+	}
+	return sess.mgr.SetModels(ctx, gw, cfg, user, r.PostForm["models"])
+}
+
+func (s *Server) actionAccountReissue(sess *session, r *http.Request) error {
+	gw, cfg, ctx, cancel, err := s.accountContext(r)
+	if err != nil {
+		return err
+	}
+	defer cancel()
+	user := formValue(r, "windowsUser")
+	if user == "" {
+		return fmt.Errorf("a Windows user name is required")
+	}
+	return sess.mgr.Reissue(ctx, gw, cfg, user)
+}
+
+// backToAccount sends a detail-page form back to the detail page, and a
+// list-page form back to the list. The form says which with a hidden field.
+func backToAccount(r *http.Request) string {
+	if r.PostFormValue("back") == "detail" {
+		return "/users/detail?user=" + url.QueryEscape(r.PostFormValue("windowsUser"))
+	}
+	return "/users"
 }

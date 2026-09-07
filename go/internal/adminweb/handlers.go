@@ -48,7 +48,7 @@ type pageData struct {
 
 	Machines []admincore.MachineState
 	Fleet    *fleetSummary
-	Users    []model.UserEntry
+	Users    []model.UserEntry // the roster, for the bind forms on other pages
 	Policy   *model.Policy
 	Stats    []admincore.CollectStat
 	Machine  string // the machine a log belongs to
@@ -59,7 +59,13 @@ type pageData struct {
 	Link     string // a freshly minted download link
 	LinkName string
 
-	// Gateway page: what the gateway offers, and who currently holds a token.
+	// Account pages.
+	Accounts      []accountRow
+	Account       *accountRow            // the detail page's subject
+	Audit         []admincore.AuditEntry // that account's history, newest first
+	QuotaDefaults litellm.Quota          // pre-fills the onboarding form
+
+	// Gateway page: what the gateway offers.
 	GatewayURL      string
 	GatewayEnabled  bool
 	GatewayModels   []litellm.Model
@@ -246,18 +252,6 @@ func (s *Server) handlePolicy(w http.ResponseWriter, r *http.Request, sess *sess
 		data.Policy = &p
 	}
 	s.render(w, "policy.html", http.StatusOK, data)
-}
-
-func (s *Server) handleUsers(w http.ResponseWriter, r *http.Request, sess *session) {
-	data := newPage(sess, r, "users")
-	us, err := sess.mgr.LoadUsers()
-	if err != nil {
-		data.Error = "could not read the roster"
-		log.Printf("adminweb: LoadUsers: %v", err)
-	} else {
-		data.Users = us.Users
-	}
-	s.render(w, "users.html", http.StatusOK, data)
 }
 
 func (s *Server) handleSites(w http.ResponseWriter, r *http.Request, sess *session) {

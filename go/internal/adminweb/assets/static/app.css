@@ -465,107 +465,107 @@ ol li { margin: 7px 0; }
    browser -- the console logged three 'Applying inline style violates ...'
    refusals and getBoundingClientRect returned 0. One class per percent keeps
    the policy intact. */
-.fleet .bar .w0 { width: 0%; }
-.fleet .bar .w1 { width: 1%; }
-.fleet .bar .w2 { width: 2%; }
-.fleet .bar .w3 { width: 3%; }
-.fleet .bar .w4 { width: 4%; }
-.fleet .bar .w5 { width: 5%; }
-.fleet .bar .w6 { width: 6%; }
-.fleet .bar .w7 { width: 7%; }
-.fleet .bar .w8 { width: 8%; }
-.fleet .bar .w9 { width: 9%; }
-.fleet .bar .w10 { width: 10%; }
-.fleet .bar .w11 { width: 11%; }
-.fleet .bar .w12 { width: 12%; }
-.fleet .bar .w13 { width: 13%; }
-.fleet .bar .w14 { width: 14%; }
-.fleet .bar .w15 { width: 15%; }
-.fleet .bar .w16 { width: 16%; }
-.fleet .bar .w17 { width: 17%; }
-.fleet .bar .w18 { width: 18%; }
-.fleet .bar .w19 { width: 19%; }
-.fleet .bar .w20 { width: 20%; }
-.fleet .bar .w21 { width: 21%; }
-.fleet .bar .w22 { width: 22%; }
-.fleet .bar .w23 { width: 23%; }
-.fleet .bar .w24 { width: 24%; }
-.fleet .bar .w25 { width: 25%; }
-.fleet .bar .w26 { width: 26%; }
-.fleet .bar .w27 { width: 27%; }
-.fleet .bar .w28 { width: 28%; }
-.fleet .bar .w29 { width: 29%; }
-.fleet .bar .w30 { width: 30%; }
-.fleet .bar .w31 { width: 31%; }
-.fleet .bar .w32 { width: 32%; }
-.fleet .bar .w33 { width: 33%; }
-.fleet .bar .w34 { width: 34%; }
-.fleet .bar .w35 { width: 35%; }
-.fleet .bar .w36 { width: 36%; }
-.fleet .bar .w37 { width: 37%; }
-.fleet .bar .w38 { width: 38%; }
-.fleet .bar .w39 { width: 39%; }
-.fleet .bar .w40 { width: 40%; }
-.fleet .bar .w41 { width: 41%; }
-.fleet .bar .w42 { width: 42%; }
-.fleet .bar .w43 { width: 43%; }
-.fleet .bar .w44 { width: 44%; }
-.fleet .bar .w45 { width: 45%; }
-.fleet .bar .w46 { width: 46%; }
-.fleet .bar .w47 { width: 47%; }
-.fleet .bar .w48 { width: 48%; }
-.fleet .bar .w49 { width: 49%; }
-.fleet .bar .w50 { width: 50%; }
-.fleet .bar .w51 { width: 51%; }
-.fleet .bar .w52 { width: 52%; }
-.fleet .bar .w53 { width: 53%; }
-.fleet .bar .w54 { width: 54%; }
-.fleet .bar .w55 { width: 55%; }
-.fleet .bar .w56 { width: 56%; }
-.fleet .bar .w57 { width: 57%; }
-.fleet .bar .w58 { width: 58%; }
-.fleet .bar .w59 { width: 59%; }
-.fleet .bar .w60 { width: 60%; }
-.fleet .bar .w61 { width: 61%; }
-.fleet .bar .w62 { width: 62%; }
-.fleet .bar .w63 { width: 63%; }
-.fleet .bar .w64 { width: 64%; }
-.fleet .bar .w65 { width: 65%; }
-.fleet .bar .w66 { width: 66%; }
-.fleet .bar .w67 { width: 67%; }
-.fleet .bar .w68 { width: 68%; }
-.fleet .bar .w69 { width: 69%; }
-.fleet .bar .w70 { width: 70%; }
-.fleet .bar .w71 { width: 71%; }
-.fleet .bar .w72 { width: 72%; }
-.fleet .bar .w73 { width: 73%; }
-.fleet .bar .w74 { width: 74%; }
-.fleet .bar .w75 { width: 75%; }
-.fleet .bar .w76 { width: 76%; }
-.fleet .bar .w77 { width: 77%; }
-.fleet .bar .w78 { width: 78%; }
-.fleet .bar .w79 { width: 79%; }
-.fleet .bar .w80 { width: 80%; }
-.fleet .bar .w81 { width: 81%; }
-.fleet .bar .w82 { width: 82%; }
-.fleet .bar .w83 { width: 83%; }
-.fleet .bar .w84 { width: 84%; }
-.fleet .bar .w85 { width: 85%; }
-.fleet .bar .w86 { width: 86%; }
-.fleet .bar .w87 { width: 87%; }
-.fleet .bar .w88 { width: 88%; }
-.fleet .bar .w89 { width: 89%; }
-.fleet .bar .w90 { width: 90%; }
-.fleet .bar .w91 { width: 91%; }
-.fleet .bar .w92 { width: 92%; }
-.fleet .bar .w93 { width: 93%; }
-.fleet .bar .w94 { width: 94%; }
-.fleet .bar .w95 { width: 95%; }
-.fleet .bar .w96 { width: 96%; }
-.fleet .bar .w97 { width: 97%; }
-.fleet .bar .w98 { width: 98%; }
-.fleet .bar .w99 { width: 99%; }
-.fleet .bar .w100 { width: 100%; }
+.fleet .bar .w0, .usage .bar .w0 { width: 0%; }
+.fleet .bar .w1, .usage .bar .w1 { width: 1%; }
+.fleet .bar .w2, .usage .bar .w2 { width: 2%; }
+.fleet .bar .w3, .usage .bar .w3 { width: 3%; }
+.fleet .bar .w4, .usage .bar .w4 { width: 4%; }
+.fleet .bar .w5, .usage .bar .w5 { width: 5%; }
+.fleet .bar .w6, .usage .bar .w6 { width: 6%; }
+.fleet .bar .w7, .usage .bar .w7 { width: 7%; }
+.fleet .bar .w8, .usage .bar .w8 { width: 8%; }
+.fleet .bar .w9, .usage .bar .w9 { width: 9%; }
+.fleet .bar .w10, .usage .bar .w10 { width: 10%; }
+.fleet .bar .w11, .usage .bar .w11 { width: 11%; }
+.fleet .bar .w12, .usage .bar .w12 { width: 12%; }
+.fleet .bar .w13, .usage .bar .w13 { width: 13%; }
+.fleet .bar .w14, .usage .bar .w14 { width: 14%; }
+.fleet .bar .w15, .usage .bar .w15 { width: 15%; }
+.fleet .bar .w16, .usage .bar .w16 { width: 16%; }
+.fleet .bar .w17, .usage .bar .w17 { width: 17%; }
+.fleet .bar .w18, .usage .bar .w18 { width: 18%; }
+.fleet .bar .w19, .usage .bar .w19 { width: 19%; }
+.fleet .bar .w20, .usage .bar .w20 { width: 20%; }
+.fleet .bar .w21, .usage .bar .w21 { width: 21%; }
+.fleet .bar .w22, .usage .bar .w22 { width: 22%; }
+.fleet .bar .w23, .usage .bar .w23 { width: 23%; }
+.fleet .bar .w24, .usage .bar .w24 { width: 24%; }
+.fleet .bar .w25, .usage .bar .w25 { width: 25%; }
+.fleet .bar .w26, .usage .bar .w26 { width: 26%; }
+.fleet .bar .w27, .usage .bar .w27 { width: 27%; }
+.fleet .bar .w28, .usage .bar .w28 { width: 28%; }
+.fleet .bar .w29, .usage .bar .w29 { width: 29%; }
+.fleet .bar .w30, .usage .bar .w30 { width: 30%; }
+.fleet .bar .w31, .usage .bar .w31 { width: 31%; }
+.fleet .bar .w32, .usage .bar .w32 { width: 32%; }
+.fleet .bar .w33, .usage .bar .w33 { width: 33%; }
+.fleet .bar .w34, .usage .bar .w34 { width: 34%; }
+.fleet .bar .w35, .usage .bar .w35 { width: 35%; }
+.fleet .bar .w36, .usage .bar .w36 { width: 36%; }
+.fleet .bar .w37, .usage .bar .w37 { width: 37%; }
+.fleet .bar .w38, .usage .bar .w38 { width: 38%; }
+.fleet .bar .w39, .usage .bar .w39 { width: 39%; }
+.fleet .bar .w40, .usage .bar .w40 { width: 40%; }
+.fleet .bar .w41, .usage .bar .w41 { width: 41%; }
+.fleet .bar .w42, .usage .bar .w42 { width: 42%; }
+.fleet .bar .w43, .usage .bar .w43 { width: 43%; }
+.fleet .bar .w44, .usage .bar .w44 { width: 44%; }
+.fleet .bar .w45, .usage .bar .w45 { width: 45%; }
+.fleet .bar .w46, .usage .bar .w46 { width: 46%; }
+.fleet .bar .w47, .usage .bar .w47 { width: 47%; }
+.fleet .bar .w48, .usage .bar .w48 { width: 48%; }
+.fleet .bar .w49, .usage .bar .w49 { width: 49%; }
+.fleet .bar .w50, .usage .bar .w50 { width: 50%; }
+.fleet .bar .w51, .usage .bar .w51 { width: 51%; }
+.fleet .bar .w52, .usage .bar .w52 { width: 52%; }
+.fleet .bar .w53, .usage .bar .w53 { width: 53%; }
+.fleet .bar .w54, .usage .bar .w54 { width: 54%; }
+.fleet .bar .w55, .usage .bar .w55 { width: 55%; }
+.fleet .bar .w56, .usage .bar .w56 { width: 56%; }
+.fleet .bar .w57, .usage .bar .w57 { width: 57%; }
+.fleet .bar .w58, .usage .bar .w58 { width: 58%; }
+.fleet .bar .w59, .usage .bar .w59 { width: 59%; }
+.fleet .bar .w60, .usage .bar .w60 { width: 60%; }
+.fleet .bar .w61, .usage .bar .w61 { width: 61%; }
+.fleet .bar .w62, .usage .bar .w62 { width: 62%; }
+.fleet .bar .w63, .usage .bar .w63 { width: 63%; }
+.fleet .bar .w64, .usage .bar .w64 { width: 64%; }
+.fleet .bar .w65, .usage .bar .w65 { width: 65%; }
+.fleet .bar .w66, .usage .bar .w66 { width: 66%; }
+.fleet .bar .w67, .usage .bar .w67 { width: 67%; }
+.fleet .bar .w68, .usage .bar .w68 { width: 68%; }
+.fleet .bar .w69, .usage .bar .w69 { width: 69%; }
+.fleet .bar .w70, .usage .bar .w70 { width: 70%; }
+.fleet .bar .w71, .usage .bar .w71 { width: 71%; }
+.fleet .bar .w72, .usage .bar .w72 { width: 72%; }
+.fleet .bar .w73, .usage .bar .w73 { width: 73%; }
+.fleet .bar .w74, .usage .bar .w74 { width: 74%; }
+.fleet .bar .w75, .usage .bar .w75 { width: 75%; }
+.fleet .bar .w76, .usage .bar .w76 { width: 76%; }
+.fleet .bar .w77, .usage .bar .w77 { width: 77%; }
+.fleet .bar .w78, .usage .bar .w78 { width: 78%; }
+.fleet .bar .w79, .usage .bar .w79 { width: 79%; }
+.fleet .bar .w80, .usage .bar .w80 { width: 80%; }
+.fleet .bar .w81, .usage .bar .w81 { width: 81%; }
+.fleet .bar .w82, .usage .bar .w82 { width: 82%; }
+.fleet .bar .w83, .usage .bar .w83 { width: 83%; }
+.fleet .bar .w84, .usage .bar .w84 { width: 84%; }
+.fleet .bar .w85, .usage .bar .w85 { width: 85%; }
+.fleet .bar .w86, .usage .bar .w86 { width: 86%; }
+.fleet .bar .w87, .usage .bar .w87 { width: 87%; }
+.fleet .bar .w88, .usage .bar .w88 { width: 88%; }
+.fleet .bar .w89, .usage .bar .w89 { width: 89%; }
+.fleet .bar .w90, .usage .bar .w90 { width: 90%; }
+.fleet .bar .w91, .usage .bar .w91 { width: 91%; }
+.fleet .bar .w92, .usage .bar .w92 { width: 92%; }
+.fleet .bar .w93, .usage .bar .w93 { width: 93%; }
+.fleet .bar .w94, .usage .bar .w94 { width: 94%; }
+.fleet .bar .w95, .usage .bar .w95 { width: 95%; }
+.fleet .bar .w96, .usage .bar .w96 { width: 96%; }
+.fleet .bar .w97, .usage .bar .w97 { width: 97%; }
+.fleet .bar .w98, .usage .bar .w98 { width: 98%; }
+.fleet .bar .w99, .usage .bar .w99 { width: 99%; }
+.fleet .bar .w100, .usage .bar .w100 { width: 100%; }
 
 /* Model checkboxes on the gateway page.
  *
@@ -606,3 +606,15 @@ ol li { margin: 7px 0; }
   margin: 0;
   flex: none;
 }
+
+/* ---------- account usage bars: share .fleet's width classes ---------- */
+.usage { display: flex; flex-direction: column; gap: 4px; min-width: 160px; }
+.usage.wide { max-width: 480px; margin-bottom: 16px; }
+.usage .bar {
+  display: flex; height: 8px; border-radius: 4px; overflow: hidden;
+  background: var(--panel-sunk); border: 1px solid var(--rule);
+}
+.usage .bar span { display: block; }
+.usage .bar .s-ok { background: var(--ok); }
+.usage .bar .s-warn { background: var(--warn); }
+.usage .bar .s-bad { background: var(--bad); }

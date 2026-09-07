@@ -1,48 +1,83 @@
-{{define "users.html"}}{{template "head" "员工"}}
+{{define "users.html"}}{{template "head" "员工账号"}}
 <body>
 <div class="app">
 {{template "nav" .}}
 <main class="sheet">
-  <header class="pagehead"><h1>员工</h1></header>
+  <header class="pagehead"><h1>员工账号</h1></header>
   {{template "notices" .}}
+  {{if .GatewayUnusable}}<p class="note note-err">{{.GatewayUnusable}}<br><span class="dim">额度与令牌列暂不可用；关户仍可执行。</span></p>{{end}}
 
   <div class="panel scroll">
   <table>
-    <thead><tr><th>WINDOWS 用户</th><th>CODEX 账号</th><th>CLAUDE 账号</th><th>状态</th><th></th></tr></thead>
+    <thead><tr><th>WINDOWS 用户</th><th>姓名</th><th>部门</th><th>状态</th><th>令牌</th><th>可用模型</th><th>本月花费 / 预算</th><th>速率</th><th></th></tr></thead>
     <tbody>
-    {{range .Users}}
+    {{range .Accounts}}
       <tr>
-        <td class="id">{{.WindowsUser}}</td>
-        <td class="dim">{{if .CodexAccount}}{{noscan .CodexAccount}}{{else}}—{{end}}</td>
-        <td class="dim">{{if .ClaudeAccount}}{{noscan .ClaudeAccount}}{{else}}—{{end}}</td>
-        <td>{{if .Enabled}}<span class="tag tag-ok">在职</span>{{else}}<span class="tag tag-bad">已离职</span>{{end}}</td>
+        <td class="id"><a href="/users/detail?user={{.WindowsUser}}">{{.WindowsUser}}</a></td>
+        <td>{{if .Name}}{{.Name}}{{else}}<span class="dim">—</span>{{end}}</td>
+        <td class="dim">{{if .Department}}{{.Department}}{{else}}—{{end}}</td>
         <td>
-          <form method="post" action="/users/enabled" class="inline">
-            <input type="hidden" name="csrf" value="{{$.CSRF}}">
-            <input type="hidden" name="windowsUser" value="{{.WindowsUser}}">
-            <input type="hidden" name="enabled" value="{{if .Enabled}}0{{else}}1{{end}}">
-            <button class="link">{{if .Enabled}}停用{{else}}启用{{end}}</button>
+          {{if .Enabled}}<span class="tag tag-ok">在职</span>{{else}}<span class="tag tag-bad">已离职</span>{{end}}
+          {{range .Flags}}<span class="tag tag-{{.Severity}}">{{.Label}}</span>{{end}}
+        </td>
+        <td>{{if .HasToken}}<span class="tag tag-ok">已发放</span>{{else}}<span class="dim">—</span>{{end}}</td>
+        <td class="dim">{{if .Models}}{{range $i, $m := .Models}}{{if $i}}, {{end}}{{$m}}{{end}}{{else}}—{{end}}</td>
+        <td>
+          {{if .HasUser}}
+          <div class="usage"><div class="bar"><span class="{{usagesev .Spend .Budget}} w{{usagepct .Spend .Budget}}"></span></div>
+            <span class="dim">${{money .Spend}} / ${{money .Budget}}{{if .BudgetResetAt}} · {{slice .BudgetResetAt 0 10}} 重置{{end}}</span></div>
+          {{else}}<span class="dim">—</span>{{end}}
+        </td>
+        <td class="dim">{{if .HasUser}}{{.Quota.RPM}} rpm · {{.Quota.TPM}} tpm · {{.Quota.Parallel}} 并发{{else}}—{{end}}</td>
+        <td>
+          {{if .Enabled}}
+          <form method="post" action="/users/offboard" class="inline">
+            <input type="hidden" name="csrf" value="{{$.CSRF}}"><input type="hidden" name="windowsUser" value="{{.WindowsUser}}">
+            <button class="link danger">关户</button>
           </form>
+          {{else}}
+          <form method="post" action="/users/reopen" class="inline">
+            <input type="hidden" name="csrf" value="{{$.CSRF}}"><input type="hidden" name="windowsUser" value="{{.WindowsUser}}">
+            <button class="link"{{if not $.GatewayEnabled}} disabled{{end}}>重新开户</button>
+          </form>
+          {{end}}
+          {{$u := .WindowsUser}}{{range .Flags}}{{if and (eq .Fix "onboard") $.GatewayEnabled}}
+          <form method="post" action="/users/reopen" class="inline">
+            <input type="hidden" name="csrf" value="{{$.CSRF}}"><input type="hidden" name="windowsUser" value="{{$u}}">
+            <button class="link">修复</button>
+          </form>
+          {{end}}{{end}}
         </td>
       </tr>
     {{else}}
-      <tr><td colspan="5" class="empty">还没有员工。</td></tr>
+      <tr><td colspan="9" class="empty">还没有员工。</td></tr>
     {{end}}
     </tbody>
   </table>
   </div>
 
-  <h2>新增员工</h2>
-  <form method="post" action="/users/add" class="form">
+  <h2>开户</h2>
+  <form method="post" action="/users/onboard" class="form">
     <input type="hidden" name="csrf" value="{{.CSRF}}">
     <label>Windows 用户<input name="windowsUser" required placeholder="work1"></label>
-    <label>Codex 账号<input name="codexAccount"></label>
-    <label>Claude 账号<input name="claudeAccount"></label>
-    <button type="submit">新增</button>
+    <label>姓名<input name="name" placeholder="张三"></label>
+    <label>部门<input name="department" placeholder="研发"></label>
+    <label>月预算（美元）<input name="budget" type="number" step="0.01" min="0.01" value="{{.QuotaDefaults.MonthlyBudgetUSD}}" required></label>
+    <label>每分钟请求数<input name="rpm" type="number" min="1" value="{{.QuotaDefaults.RPM}}" required></label>
+    <label>每分钟 token 数<input name="tpm" type="number" min="1" value="{{.QuotaDefaults.TPM}}" required></label>
+    <label>并发数<input name="parallel" type="number" min="1" value="{{.QuotaDefaults.Parallel}}" required></label>
+    <fieldset class="checks">
+      <legend>可用模型（全不选 = 网关上的全部）</legend>
+      {{range .GatewayModels}}
+        <label class="check"><input type="checkbox" name="models" value="{{.Name}}"> {{.Info.DisplayName}} <span class="dim">{{.Name}}</span></label>
+      {{end}}
+    </fieldset>
+    <button type="submit"{{if not .GatewayEnabled}} disabled{{end}}>开户并下发配置</button>
   </form>
   <p class="hint">
-    账号栏只是给管理员看的备注。停用会在下次同步时移除该员工机器上的凭证；
-    要发放登录态请到<a href="/employee-login">代员工登录</a>。
+    开户一次完成：入名册、在网关建用户与令牌、生成并下发 Codex 配置。机器绑定在<a href="/machines">机器</a>页。
+    <strong>员工需要完全退出所有 Codex 进程再重新打开</strong>——模型目录只在启动时加载一次。<br>
+    预算按自然月重置；超额后网关直接拒绝请求。关户会即时吊销令牌、撤回配置、解绑机器，名册与用量历史保留。
   </p>
 </main>
 </div>

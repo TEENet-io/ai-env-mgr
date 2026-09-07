@@ -414,17 +414,18 @@ func TestAccountsAreExcludedFromEmailObfuscation(t *testing.T) {
 		t.Fatalf("markup passed through unescaped: %q", esc)
 	}
 
-	// And the markers must reach the rendered page: html/template drops HTML
-	// comments, which is why they are emitted as trusted HTML at all.
+	// The account list (Task 10) no longer shows CodexAccount/ClaudeAccount,
+	// so noscan has no caller left in any template; this only confirms the
+	// page still renders with the accountRow-shaped data it gets today.
 	s := newTestServer(t, newFakeStore())
 	var buf strings.Builder
 	if err := s.tpl.ExecuteTemplate(&buf, "users.html", pageData{
-		Users: []model.UserEntry{{WindowsUser: "peter", CodexAccount: "peter@teenet.io", Enabled: true}},
+		Accounts: []accountRow{{WindowsUser: "work1", Enabled: true}},
 	}); err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(buf.String(), "<!--email_off-->peter@teenet.io<!--email_on-->") {
-		t.Fatal("the rendered roster lost its email_off markers")
+	if !strings.Contains(buf.String(), "work1") {
+		t.Fatal("the rendered roster lost the account row")
 	}
 }
 

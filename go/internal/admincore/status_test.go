@@ -22,9 +22,7 @@ func statusBytes(t *testing.T, s model.Status) []byte {
 // bound, has reported recently, and whose report matches the binding.
 func TestCollectMachinesHealthy(t *testing.T) {
 	m, store := newManager()
-	if err := m.AddUser("alice", "", ""); err != nil {
-		t.Fatal(err)
-	}
+	addTestUser(t, m, "alice", "", "")
 	if err := m.BindMachine("work1", "alice", ""); err != nil {
 		t.Fatal(err)
 	}
@@ -68,9 +66,7 @@ func TestCollectMachinesHealthy(t *testing.T) {
 
 func TestCollectMachinesStale(t *testing.T) {
 	m, store := newManager()
-	if err := m.AddUser("alice", "", ""); err != nil {
-		t.Fatal(err)
-	}
+	addTestUser(t, m, "alice", "", "")
 	if err := m.BindMachine("work1", "alice", ""); err != nil {
 		t.Fatal(err)
 	}
@@ -97,9 +93,7 @@ func TestCollectMachinesStale(t *testing.T) {
 // reported: either it is not on yet, or the agent was never installed.
 func TestCollectMachinesMissing(t *testing.T) {
 	m, _ := newManager()
-	if err := m.AddUser("alice", "", ""); err != nil {
-		t.Fatal(err)
-	}
+	addTestUser(t, m, "alice", "", "")
 	if err := m.BindMachine("work1", "alice", ""); err != nil {
 		t.Fatal(err)
 	}
@@ -151,9 +145,7 @@ func TestCollectMachinesUnbound(t *testing.T) {
 // binding is wrong, or that the machine has not been logged into yet.
 func TestCollectMachinesUserMissing(t *testing.T) {
 	m, store := newManager()
-	if err := m.AddUser("alice", "", ""); err != nil {
-		t.Fatal(err)
-	}
+	addTestUser(t, m, "alice", "", "")
 	if err := m.BindMachine("work1", "alice", ""); err != nil {
 		t.Fatal(err)
 	}
@@ -176,9 +168,7 @@ func TestCollectMachinesUserMissing(t *testing.T) {
 // unexpected accounts the admin should know about.
 func TestCollectMachinesExtraUsers(t *testing.T) {
 	m, store := newManager()
-	if err := m.AddUser("alice", "", ""); err != nil {
-		t.Fatal(err)
-	}
+	addTestUser(t, m, "alice", "", "")
 	if err := m.BindMachine("work1", "alice", ""); err != nil {
 		t.Fatal(err)
 	}
@@ -201,9 +191,7 @@ func TestCollectMachinesExtraUsers(t *testing.T) {
 // renders them directly.
 func TestCollectMachinesSortedByHostname(t *testing.T) {
 	m, store := newManager()
-	if err := m.AddUser("alice", "", ""); err != nil {
-		t.Fatal(err)
-	}
+	addTestUser(t, m, "alice", "", "")
 	if err := m.BindMachine("zebra", "alice", ""); err != nil {
 		t.Fatal(err)
 	}
@@ -235,9 +223,7 @@ func TestCollectMachinesSortedByHostname(t *testing.T) {
 // vanish from the view.
 func TestCollectMachinesFlagsDisabledUsers(t *testing.T) {
 	m, store := newManager()
-	if err := m.AddUser("work1", "", ""); err != nil {
-		t.Fatal(err)
-	}
+	addTestUser(t, m, "work1", "", "")
 	if err := m.BindMachine("DESKTOP-A", "work1", ""); err != nil {
 		t.Fatal(err)
 	}

@@ -37,8 +37,12 @@ func TestWritesRequireCSRFToken(t *testing.T) {
 		path string
 		form url.Values
 	}{
-		{"/users/add", url.Values{"windowsUser": {"mallory"}}},
-		{"/users/enabled", url.Values{"windowsUser": {"work1"}, "enabled": {"0"}}},
+		{"/users/onboard", url.Values{"windowsUser": {"mallory"}, "budget": {"20"}, "rpm": {"60"}, "tpm": {"200000"}, "parallel": {"4"}}},
+		{"/users/reopen", url.Values{"windowsUser": {"work1"}}},
+		{"/users/offboard", url.Values{"windowsUser": {"work1"}}},
+		{"/users/quota", url.Values{"windowsUser": {"work1"}, "budget": {"20"}, "rpm": {"60"}, "tpm": {"200000"}, "parallel": {"4"}}},
+		{"/users/models", url.Values{"windowsUser": {"work1"}}},
+		{"/users/reissue", url.Values{"windowsUser": {"work1"}}},
 		{"/machines/bind", url.Values{"machine": {"PC1"}, "user": {"work1"}}},
 		{"/machines/unbind", url.Values{"machine": {"PC1"}}},
 		{"/sites/mutate", url.Values{"add": {"evil.example"}}},
@@ -78,7 +82,7 @@ func TestWritesRequireCSRFToken(t *testing.T) {
 
 func TestWritesRequireSession(t *testing.T) {
 	s := newTestServer(t, newFakeStore())
-	rec := post(t, s, "/users/add", nil, url.Values{"windowsUser": {"mallory"}})
+	rec := post(t, s, "/users/onboard", nil, url.Values{"windowsUser": {"mallory"}})
 	if rec.Code != http.StatusSeeOther || rec.Header().Get("Location") != "/" {
 		t.Fatalf("an unauthenticated write returned %d -> %q", rec.Code, rec.Header().Get("Location"))
 	}
@@ -111,7 +115,7 @@ func TestWriteRoutesIgnoreGET(t *testing.T) {
 	cookie := signIn(t, s)
 	before := len(fs.objects)
 
-	req := httptest.NewRequest(http.MethodGet, "/users/add?windowsUser=mallory", nil)
+	req := httptest.NewRequest(http.MethodGet, "/users/onboard?windowsUser=mallory", nil)
 	req.AddCookie(cookie)
 	rec := httptest.NewRecorder()
 	s.Handler().ServeHTTP(rec, req)
