@@ -9,6 +9,7 @@ package admincore
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"sort"
 	"strings"
@@ -50,10 +51,18 @@ func credsKey(user string) string { return ossclient.UserKey(user, "credentials.
 // LoadUsers reads the roster. A bucket with no roster yet is simply the
 // admin's first run, not an error, so a missing object yields an empty one
 // rather than failing.
+//
+// Only a definitive not-found means that. Any other read failure is
+// reported: callers that go on to SaveUsers (Onboard, UpdateProfile) would
+// otherwise overwrite a roster they merely failed to read with a single
+// entry, quietly deleting everyone else.
 func (m *Manager) LoadUsers() (model.Users, error) {
 	data, _, err := m.Store.Get(ossclient.AdminKey("users.json"))
 	if err != nil {
-		return model.Users{}, nil
+		if errors.Is(err, ossclient.ErrNotFound) {
+			return model.Users{}, nil
+		}
+		return model.Users{}, fmt.Errorf("read users: %w", err)
 	}
 	var us model.Users
 	if err := json.Unmarshal(data, &us); err != nil {

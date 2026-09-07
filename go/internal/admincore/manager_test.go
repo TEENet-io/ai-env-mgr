@@ -421,3 +421,25 @@ func TestRosterMatchesUserNamesIgnoringCase(t *testing.T) {
 		t.Errorf("SetUserEnabled should find the user regardless of case: %v", err)
 	}
 }
+
+// A missing roster is the administrator's first run; anything else is a
+// failure to read one that may well exist. Treating the two alike lets a
+// transient OSS error during Onboard save a roster holding one person.
+func TestLoadUsersReportsReadFailures(t *testing.T) {
+	m, store := newManager()
+	store.objects[ossclient.AdminKey("users.json")] = []byte(`{"users":[{"windowsUser":"alice","enabled":true}]}`)
+	store.getErrFor = ossclient.AdminKey("users.json")
+	store.getErr = errors.New("transient network failure")
+
+	if _, err := m.LoadUsers(); err == nil {
+		t.Fatal("a transient read failure must be reported, not read as an empty roster")
+	}
+}
+
+func TestLoadUsersTreatsAMissingRosterAsEmpty(t *testing.T) {
+	m, _ := newManager()
+	us, err := m.LoadUsers()
+	if err != nil || len(us.Users) != 0 {
+		t.Fatalf("first run: %+v %v", us, err)
+	}
+}

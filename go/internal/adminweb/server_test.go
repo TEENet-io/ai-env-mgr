@@ -38,7 +38,10 @@ func (f *fakeStore) Verify() error {
 func (f *fakeStore) Get(key string) ([]byte, string, error) {
 	b, ok := f.objects[key]
 	if !ok {
-		return nil, "", &notFound{}
+		// The real store answers a missing object with ossclient.ErrNotFound,
+		// and admincore tells "there is nothing yet" from "we could not read
+		// it" by that sentinel alone (see LoadUsers).
+		return nil, "", ossclient.ErrNotFound
 	}
 	return b, "etag", nil
 }
@@ -51,10 +54,6 @@ func (f *fakeStore) Delete(key string) error { delete(f.objects, key); return ni
 func (f *fakeStore) SignedURL(string, time.Duration) (string, error) {
 	return "https://example.invalid/x", nil
 }
-
-type notFound struct{}
-
-func (n *notFound) Error() string { return "not found" }
 
 func newTestServer(t *testing.T, fs *fakeStore) *Server {
 	t.Helper()
