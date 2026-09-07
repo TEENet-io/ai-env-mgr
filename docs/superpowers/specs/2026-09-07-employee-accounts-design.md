@@ -31,7 +31,7 @@
 | 现有记账数据 | `/spend/logs` 每次请求记录 token 数；配了单价的模型算出美元，glm-5.2 / deepseek-v4-flash 未配单价、花费恒为 0 |
 | 现状问题 | 花费挂在令牌上，weipeng 重发后显示 0；现有 weipeng 令牌没有挂任何 user |
 
-**未实测**：user 级 `rpm_limit` 是否对子令牌执行（预算测试先于速率触发 429）。列入验收清单 §8。
+**user 级 `rpm_limit` 对子令牌执行**：2026-09-07 补测，`rpm_limit=1` 的探针用户下的子令牌，第 1 次 200，第 2、3 次 `429 throttling_error`。已验证。
 
 ## 2. 数据模型与归属
 
@@ -179,7 +179,7 @@
 - 模板渲染冒烟测试：`/users`、`/users/<u>`、瘦身后的 `/gateway`。
 
 **上线验收**
-1. 真机验证 user 级 `rpm_limit` 对子令牌执行（§1 未实测项）。
+1. ~~真机验证 user 级 `rpm_limit` 对子令牌执行~~ 已于 2026-09-07 在网关侧验证（见 §1）。
 2. weipeng 通过「重新开户」迁移到 user 下，列表显示预算与本月花费。
 3. 超额后在 Codex 里看到的报错文案可读（网关返回 `429 budget_exceeded`）。
 4. 关户后：令牌立即 401；agent 下次同步机器上 `config.toml` / `models.json` 被清；机器页无该用户绑定。
