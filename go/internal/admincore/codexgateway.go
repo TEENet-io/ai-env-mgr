@@ -254,10 +254,9 @@ func (m *Manager) setModelsLocked(ctx context.Context, gw Gateway, cfg GatewayCo
 	if err != nil {
 		return nil, err
 	}
-	if err := gw.UpdateKey(ctx, key.Handle(), allowed); err != nil {
-		return nil, fmt.Errorf("update token for %q: %w", windowsUser, err)
-	}
-
+	// The user first, then the token: a failing user write then leaves the
+	// token exactly as it was, so the employee keeps the access they had
+	// instead of being narrowed to a list the user record never received.
 	if existingUser, found, err := gw.UserInfo(ctx, alias); err != nil {
 		return nil, fmt.Errorf("look up gateway user %q: %w", alias, err)
 	} else if found {
@@ -265,6 +264,9 @@ func (m *Manager) setModelsLocked(ctx context.Context, gw Gateway, cfg GatewayCo
 		if err := m.ensureGatewayUser(ctx, gw, *us.Find(windowsUser), &q, allowed); err != nil {
 			return nil, err
 		}
+	}
+	if err := gw.UpdateKey(ctx, key.Handle(), allowed); err != nil {
+		return nil, fmt.Errorf("update token for %q: %w", windowsUser, err)
 	}
 
 	catalogJSON, err := catalog.Build(available, allowed)

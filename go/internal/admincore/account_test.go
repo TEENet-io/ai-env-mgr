@@ -441,3 +441,35 @@ func TestSetModelsStillRejectsAnUnknownModel(t *testing.T) {
 		t.Fatal("a model the gateway does not serve must be reported, not dropped")
 	}
 }
+
+// Offboarding revokes the token on purpose. Re-issuing one for a departed
+// employee would undo that without ever passing through 重新开户, which is
+// the step that re-enables them on the roster.
+func TestReissueRefusesAnOffboardedEmployee(t *testing.T) {
+	m, _, gw := onboarded(t)
+	if err := m.Offboard(context.Background(), gw, "Alice"); err != nil {
+		t.Fatalf("offboard: %v", err)
+	}
+	before := len(gw.generated)
+	err := m.Reissue(context.Background(), gw, testGW, "Alice")
+	if err == nil || !strings.Contains(err.Error(), "offboarded") {
+		t.Fatalf("expected an offboarded error, got %v", err)
+	}
+	if len(gw.generated) != before {
+		t.Error("no token may be minted for a departed employee")
+	}
+}
+
+// The token is what an employee actually holds. A failing user write must
+// leave it alone, so that the account keeps working exactly as it did
+// rather than being narrowed to an allowlist the user record never got.
+func TestSetModelsLeavesTheTokenAloneWhenTheUserWriteFails(t *testing.T) {
+	m, _, gw := onboarded(t)
+	gw.upsertErr = errors.New("gateway down")
+	if err := m.SetModels(context.Background(), gw, testGW, "Alice", []string{"grok-4.6"}); err == nil {
+		t.Fatal("expected an error")
+	}
+	if len(gw.updated) != 0 {
+		t.Errorf("token was updated even though the user write failed: %v", gw.updated)
+	}
+}

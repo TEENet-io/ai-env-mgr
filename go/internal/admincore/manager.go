@@ -87,6 +87,9 @@ func (m *Manager) SaveUsers(us model.Users) error {
 // SetUserEnabled flips a user's enabled flag, which is how a person is taken
 // out of rotation without deleting their history.
 //
+// Prefer Offboard: this only removes stored credentials and does not revoke
+// the gateway token.
+//
 // Disabling also deletes the employee's stored credentials. That deletion is
 // what actually reaches the machine: an agent that gets a definitive 404 for
 // its employee's credentials.zip removes the local copies. Flipping a flag in

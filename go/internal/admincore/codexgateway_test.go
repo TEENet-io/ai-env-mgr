@@ -172,12 +172,13 @@ func (f *fakeGateway) ListUsers(context.Context) ([]litellm.User, error) {
 	return out, nil
 }
 
-// managerWithUser returns a manager whose roster already contains user,
-// which every provisioning path requires before it will issue anything.
+// managerWithUser returns a manager whose roster already contains user, in
+// service: every provisioning path requires an entry before it will issue
+// anything, and refuses one that has been offboarded.
 func managerWithUser(t *testing.T, user string) (*Manager, *fakeStore) {
 	t.Helper()
 	m, store := newManager()
-	if err := m.SaveUsers(model.Users{Users: []model.UserEntry{{WindowsUser: user}}}); err != nil {
+	if err := m.SaveUsers(model.Users{Users: []model.UserEntry{{WindowsUser: user, Enabled: true}}}); err != nil {
 		t.Fatalf("seed roster: %v", err)
 	}
 	return m, store

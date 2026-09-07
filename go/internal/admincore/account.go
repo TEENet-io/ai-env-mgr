@@ -169,6 +169,29 @@ func (m *Manager) Offboard(ctx context.Context, gw Gateway, windowsUser string) 
 	return nil
 }
 
+// requireActive returns the roster entry for windowsUser, refusing one that
+// has been offboarded.
+//
+// Offboarding revokes the token and withdraws the delivered files on
+// purpose. Re-issuing a token, or editing limits, models or labels for a
+// departed employee would undo part of that silently; 重新开户 (Onboard) is
+// the one path that puts somebody back in service, and it says so in the
+// history.
+func (m *Manager) requireActive(windowsUser string) (model.UserEntry, error) {
+	us, err := m.LoadUsers()
+	if err != nil {
+		return model.UserEntry{}, err
+	}
+	e := us.Find(windowsUser)
+	if e == nil {
+		return model.UserEntry{}, fmt.Errorf("user %q not found in roster", windowsUser)
+	}
+	if !e.Enabled {
+		return model.UserEntry{}, fmt.Errorf("user %q is offboarded; reopen the account first", e.WindowsUser)
+	}
+	return *e, nil
+}
+
 // SetQuota changes an employee's limits. It takes effect at the gateway
 // immediately and touches nothing on the machine.
 //
@@ -182,13 +205,9 @@ func (m *Manager) SetQuota(ctx context.Context, gw Gateway, windowsUser string, 
 	}
 	defer lockProvision(windowsUser)()
 
-	us, err := m.LoadUsers()
+	e, err := m.requireActive(windowsUser)
 	if err != nil {
 		return err
-	}
-	e := us.Find(windowsUser)
-	if e == nil {
-		return fmt.Errorf("user %q not found in roster", windowsUser)
 	}
 	id := KeyAlias(e.WindowsUser)
 	existing, found, err := gw.UserInfo(ctx, id)
@@ -198,7 +217,7 @@ func (m *Manager) SetQuota(ctx context.Context, gw Gateway, windowsUser string, 
 	if !found {
 		return fmt.Errorf("user %q has no gateway account yet; open one first", e.WindowsUser)
 	}
-	if err := m.ensureGatewayUser(ctx, gw, *e, &q, existing.Models); err != nil {
+	if err := m.ensureGatewayUser(ctx, gw, e, &q, existing.Models); err != nil {
 		return err
 	}
 	m.appendAudit(e.WindowsUser, AuditQuota, map[string]any{
@@ -212,6 +231,9 @@ func (m *Manager) SetQuota(ctx context.Context, gw Gateway, windowsUser string, 
 // token govern what they can reach, the catalog what they can see.
 func (m *Manager) SetModels(ctx context.Context, gw Gateway, cfg GatewayConfig, windowsUser string, models []string) error {
 	defer lockProvision(windowsUser)()
+	if _, err := m.requireActive(windowsUser); err != nil {
+		return err
+	}
 	allowed, err := m.setModelsLocked(ctx, gw, cfg, windowsUser, models)
 	if err != nil {
 		return err
@@ -224,6 +246,9 @@ func (m *Manager) SetModels(ctx context.Context, gw Gateway, cfg GatewayConfig, 
 // The quota is the user's and is untouched.
 func (m *Manager) Reissue(ctx context.Context, gw Gateway, cfg GatewayConfig, windowsUser string) error {
 	defer lockProvision(windowsUser)()
+	if _, err := m.requireActive(windowsUser); err != nil {
+		return err
+	}
 	if err := m.provisionLocked(ctx, gw, cfg, windowsUser, nil); err != nil {
 		return err
 	}
