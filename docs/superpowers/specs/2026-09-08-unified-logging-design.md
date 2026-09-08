@@ -62,23 +62,66 @@
 
 ## 2.5 日志流转（端到端）
 
-```
-   产生                      本地落盘 / 缓冲                 传输                       SLS                      消费
- ─────────                ─────────────────            ──────────────           ─────────────            ──────────────
- 网关 LiteLLM ──每次调用──▶ OTel 批处理器（内存，5s/512条）──OTLP/HTTPS──▶ audit(llm_call) ──┐
-     │                                                                                     │
-     ├──进程 stdout──▶ Docker json-file（20MB×3）──Logtail 增量采集(≤3s)──▶ ops(gateway) ──┤
-     └──nginx stdout──▶ Docker json-file ─────────Logtail ──────────────▶ ops(nginx)  ──┤
-                                                                                       │      ┌─ 查询页（按 windows_user / host / request_id）
- 控制台 admin ──slog JSON──▶ stdout → journald（≤1GB）                                   ├─────▶┼─ 仪表盘（花费按人/部门/模型，错误率，机器在线）
-     │                    └──SLS writer：内存队列 1000 条，2s 或 100 条批发──HTTPS──▶ ops(console)  │      └─ 告警规则（分钟级评估）──▶ 企业微信群机器人
-     └──[audit] / 账号动作──▶ 同上，双写 ──────────────────────────────────────▶ audit(admin_action / account_action)
-                              └──同时写 OSS admin/audit/<user>.jsonl（底稿，先写 OSS 再写 SLS）
-                                                                                       │
- Agent（阶段二）──slog JSON──▶ 本地 agent.log（4MB 滚动）                                 │
-     │                    └──每个同步周期：读上次位点之后的新行──HTTPS──▶ ops(agent) ──┤
-     ├──四类事件──────────────────────────────────────────────────────▶ audit(agent_event)┘
-     └──64KB 尾巴──▶ OSS _logs/<机器>.log（照旧，控制台「日志」页读这份）
+```mermaid
+flowchart LR
+  %% ───────── 产生与本地缓冲 ─────────
+  subgraph GW["网关 · LiteLLM（AWS 新加坡）"]
+    direction TB
+    gw_call["每次模型调用"] --> otel["OTel 批处理器<br/>内存 · 5s 或 512 条"]
+    gw_out["进程 stdout"] --> dj["Docker json-file<br/>20MB × 3"]
+    ng_out["nginx 访问日志"] --> dj
+    dj --> lt["Logtail 增量采集<br/>≤3s · 断点续传"]
+  end
+
+  subgraph CS["控制台 · agent-admin（阿里云新加坡）"]
+    direction TB
+    cs_log["slog JSON 日志"] --> jd["journald<br/>≤1GB"]
+    cs_log --> q["SLS writer<br/>内存队列 1000 条<br/>2s 或 100 条批发"]
+    cs_audit["管理员动作 / 员工账号动作"] --> ossa[("OSS 底稿<br/>admin/audit/*.jsonl")]
+    ossa --> q
+  end
+
+  subgraph AG["Agent · 员工机器（阶段二）"]
+    direction TB
+    ag_log["slog JSON 日志"] --> af["本地 agent.log<br/>4MB 滚动"]
+    af --> pos["按位点上传<br/>每个同步周期 · 失败不前进"]
+    af --> tail["64KB 尾巴"] --> osst[("OSS _logs/机器.log<br/>控制台「日志」页读这份")]
+    ag_ev["凭证投递 / 撤回 / 强关 Codex"] --> pos
+  end
+
+  %% ───────── SLS ─────────
+  subgraph SLS["阿里云 SLS · 项目 windows-control-logs"]
+    direction TB
+    audit[("audit · 365 天<br/>llm_call · admin_action<br/>account_action · agent_event")]
+    ops[("ops · 30 天<br/>gateway · nginx · console · agent")]
+    audit -. 到期按月投递 .-> arch[("OSS 归档<br/>admin/log-archive/audit/")]
+  end
+
+  otel -- "OTLP/HTTPS" --> audit
+  lt -- "HTTPS" --> ops
+  q -- "HTTPS" --> ops
+  q -- "HTTPS" --> audit
+  pos -- "HTTPS" --> ops
+  pos -- "HTTPS" --> audit
+
+  %% ───────── 消费 ─────────
+  subgraph USE["消费"]
+    direction TB
+    query["查询页<br/>按 windows_user / host / request_id"]
+    dash["仪表盘<br/>花费 · 错误率 · 机器在线"]
+    alert["告警规则<br/>分钟级评估"] --> wecom["企业微信群机器人"]
+  end
+  audit --> query
+  ops --> query
+  audit --> dash
+  ops --> dash
+  audit --> alert
+  ops --> alert
+
+  %% ───────── 入口 ─────────
+  pg[("Postgres SpendLogs<br/>网关计费底稿")] -.可回补.-> audit
+  link1["控制台页面预填链接"] --> query
+  link2["告警里的链接"] --> query
 ```
 
 **各段的行为约定**
