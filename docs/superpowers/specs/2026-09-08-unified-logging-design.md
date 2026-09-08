@@ -64,64 +64,66 @@
 
 ```mermaid
 flowchart LR
-  %% ───────── 产生与本地缓冲 ─────────
-  subgraph GW["网关 · LiteLLM（AWS 新加坡）"]
+  classDef mod fill:#eef4ff,stroke:#6b8fd6,color:#1a2b4c
+  classDef store fill:#fff7e0,stroke:#d6a23a,color:#4c3a10
+  classDef oss fill:#f2f2f2,stroke:#9a9a9a,color:#333
+  classDef use fill:#eaf7ee,stroke:#5aa76b,color:#183d24
+  classDef wecom fill:#d9f0dc,stroke:#2f8a4a,color:#0f3d1c
+
+  subgraph GW["① 网关 · LiteLLM（AWS 新加坡）"]
     direction TB
-    gw_call["每次模型调用"] --> otel["OTel 批处理器<br/>内存 · 5s 或 512 条"]
-    gw_out["进程 stdout"] --> dj["Docker json-file<br/>20MB × 3"]
-    ng_out["nginx 访问日志"] --> dj
-    dj --> lt["Logtail 增量采集<br/>≤3s · 断点续传"]
+    g1["每次模型调用"] --> g2["OTel 批处理器<br/>内存 · 5s / 512 条"]
+    g3["进程 stdout · nginx 访问日志"] --> g4["Docker json-file<br/>20MB × 3"] --> g5["Logtail<br/>≤3s · 断点续传"]
+    g6[("Postgres SpendLogs<br/>计费底稿")]
   end
 
-  subgraph CS["控制台 · agent-admin（阿里云新加坡）"]
+  subgraph CS["② 控制台 · agent-admin（阿里云新加坡）"]
     direction TB
-    cs_log["slog JSON 日志"] --> jd["journald<br/>≤1GB"]
-    cs_log --> q["SLS writer<br/>内存队列 1000 条<br/>2s 或 100 条批发"]
-    cs_audit["管理员动作 / 员工账号动作"] --> ossa[("OSS 底稿<br/>admin/audit/*.jsonl")]
-    ossa --> q
+    c1["运行日志 · slog JSON"] --> c2["journald ≤1GB"]
+    c1 --> c3["SLS writer<br/>队列 1000 条 · 2s / 100 条批发"]
+    c4["管理员动作 · 员工账号动作"] --> c5[("OSS 底稿<br/>admin/audit/*.jsonl")] --> c3
   end
 
-  subgraph AG["Agent · 员工机器（阶段二）"]
+  subgraph AG["③ Agent · 员工机器（阶段二）"]
     direction TB
-    ag_log["slog JSON 日志"] --> af["本地 agent.log<br/>4MB 滚动"]
-    af --> pos["按位点上传<br/>每个同步周期 · 失败不前进"]
-    af --> tail["64KB 尾巴"] --> osst[("OSS _logs/机器.log<br/>控制台「日志」页读这份")]
-    ag_ev["凭证投递 / 撤回 / 强关 Codex"] --> pos
+    a1["运行日志 · slog JSON"] --> a2["本地 agent.log · 4MB 滚动"]
+    a2 --> a3["按位点上传<br/>每同步周期 · 失败不前进"]
+    a2 --> a4["64KB 尾巴"] --> a5[("OSS _logs/机器.log<br/>控制台「日志」页")]
+    a6["凭证投递 / 撤回 / 强关 Codex"] --> a3
   end
 
-  %% ───────── SLS ─────────
   subgraph SLS["阿里云 SLS · 项目 windows-control-logs"]
     direction TB
-    audit[("audit · 365 天<br/>llm_call · admin_action<br/>account_action · agent_event")]
-    ops[("ops · 30 天<br/>gateway · nginx · console · agent")]
-    audit -. 到期按月投递 .-> arch[("OSS 归档<br/>admin/log-archive/audit/")]
+    audit[("audit · 保留 365 天<br/>llm_call · admin_action<br/>account_action · agent_event")]
+    ops[("ops · 保留 30 天<br/>gateway · nginx · console · agent")]
+    audit -. 到期按月投递 .-> arch[("OSS 归档<br/>admin/log-archive/")]
   end
 
-  otel -- "OTLP/HTTPS" --> audit
-  lt -- "HTTPS" --> ops
-  q -- "HTTPS" --> ops
-  q -- "HTTPS" --> audit
-  pos -- "HTTPS" --> ops
-  pos -- "HTTPS" --> audit
-
-  %% ───────── 消费 ─────────
   subgraph USE["消费"]
     direction TB
-    query["查询页<br/>按 windows_user / host / request_id"]
-    dash["仪表盘<br/>花费 · 错误率 · 机器在线"]
-    alert["告警规则<br/>分钟级评估"] --> wecom["企业微信群机器人"]
+    q["查询页<br/>按 windows_user / host / request_id"]
+    d["仪表盘<br/>花费 · 错误率 · 机器在线"]
+    al["告警规则 · 分钟级"] --> w["企业微信群机器人"]
+    l1["控制台页面预填链接"] --> q
+    l2["告警里的链接"] --> q
   end
-  audit --> query
-  ops --> query
-  audit --> dash
-  ops --> dash
-  audit --> alert
-  ops --> alert
 
-  %% ───────── 入口 ─────────
-  pg[("Postgres SpendLogs<br/>网关计费底稿")] -.可回补.-> audit
-  link1["控制台页面预填链接"] --> query
-  link2["告警里的链接"] --> query
+  g2 -- OTLP --> audit
+  g5 --> ops
+  g6 -. 可回补 .-> audit
+  c3 --> ops
+  c3 --> audit
+  a3 --> ops
+  a3 --> audit
+  SLS --> q
+  SLS --> d
+  SLS --> al
+
+  class GW,CS,AG mod
+  class audit,ops store
+  class g6,c5,a5,arch oss
+  class q,d,al,l1,l2 use
+  class w wecom
 ```
 
 **各段的行为约定**
