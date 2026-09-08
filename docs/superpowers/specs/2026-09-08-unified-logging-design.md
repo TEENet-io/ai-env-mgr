@@ -87,9 +87,9 @@ flowchart LR
   subgraph AG["③ Agent · 员工机器（阶段二）"]
     direction TB
     a1["运行日志 · slog JSON"] --> a2["本地 agent.log · 4MB 滚动"]
-    a2 --> a3["按位点上传<br/>每同步周期 · 失败不前进"]
-    a2 --> a4["64KB 尾巴"] --> a5[("OSS _logs/机器.log<br/>控制台「日志」页")]
-    a6["凭证投递 / 撤回 / 强关 Codex"] --> a3
+    a6["凭证投递 / 撤回 / 强关 Codex"] --> a3["按位点上传<br/>每同步周期 · 失败不前进"]
+    a2 --> a3
+    a2 --> a4["64KB 尾巴 · 每同步周期"] --> a5[("OSS _logs/机器.log<br/>控制台「日志」页")]
   end
 
   subgraph SLS["阿里云 SLS · 项目 windows-control-logs"]
