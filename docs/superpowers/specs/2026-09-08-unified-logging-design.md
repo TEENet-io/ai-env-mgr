@@ -13,6 +13,7 @@
 - **一条请求一个 ID**：`request_id` 把网关的计费记录、容器日志、Bedrock 调用串起来；Agent 不在请求路径上，用 `windows_user + 时间` 与网关记录关联（§2.4）。
 - **告警四条起步**，发企业微信群机器人。
 - **分两阶段**：阶段一网关 + 控制台 + 告警（不动员工机器，2–3 天）；阶段二 Agent 结构化日志直写 SLS（随下一版 agent 发布）。
+- **流转与丢失边界**见 §2.5：审计先写底稿再写 SLS，SLS 不是唯一真相。
 - **OSS 不退场**：员工账号审计文件、agent 日志尾巴照旧，作为不依赖 SLS 的底稿；SLS 是查询与告警面。
 
 ## 1. 已确认的事实（设计依据）
@@ -58,6 +59,43 @@
 - Codex 请求到网关时，LiteLLM 生成 `litellm_call_id`；hook 把它写进响应头 `x-litellm-call-id`（LiteLLM 已有此行为，实施时核对）。
 - 阶段二 agent 不参与请求路径（它不代理 Codex 流量），所以 agent 日志用 `windows_user + 时间` 与网关记录关联，不用 request_id。request_id 只在网关内部串 OTel 记录与容器日志。
 - 排障路径：员工报问题 → 控制台「员工账号」详情页加一个「最近 24 小时调用」链接，跳到 SLS 查询页按 `windows_user` 过滤 → 看 `llm_call` 的 status / error_type → 需要时按 request_id 查 `ops` 里网关那一刻的日志。
+
+## 2.5 日志流转（端到端）
+
+```
+   产生                      本地落盘 / 缓冲                 传输                       SLS                      消费
+ ─────────                ─────────────────            ──────────────           ─────────────            ──────────────
+ 网关 LiteLLM ──每次调用──▶ OTel 批处理器（内存，5s/512条）──OTLP/HTTPS──▶ audit(llm_call) ──┐
+     │                                                                                     │
+     ├──进程 stdout──▶ Docker json-file（20MB×3）──Logtail 增量采集(≤3s)──▶ ops(gateway) ──┤
+     └──nginx stdout──▶ Docker json-file ─────────Logtail ──────────────▶ ops(nginx)  ──┤
+                                                                                       │      ┌─ 查询页（按 windows_user / host / request_id）
+ 控制台 admin ──slog JSON──▶ stdout → journald（≤1GB）                                   ├─────▶┼─ 仪表盘（花费按人/部门/模型，错误率，机器在线）
+     │                    └──SLS writer：内存队列 1000 条，2s 或 100 条批发──HTTPS──▶ ops(console)  │      └─ 告警规则（分钟级评估）──▶ 企业微信群机器人
+     └──[audit] / 账号动作──▶ 同上，双写 ──────────────────────────────────────▶ audit(admin_action / account_action)
+                              └──同时写 OSS admin/audit/<user>.jsonl（底稿，先写 OSS 再写 SLS）
+                                                                                       │
+ Agent（阶段二）──slog JSON──▶ 本地 agent.log（4MB 滚动）                                 │
+     │                    └──每个同步周期：读上次位点之后的新行──HTTPS──▶ ops(agent) ──┤
+     ├──四类事件──────────────────────────────────────────────────────▶ audit(agent_event)┘
+     └──64KB 尾巴──▶ OSS _logs/<机器>.log（照旧，控制台「日志」页读这份）
+```
+
+**各段的行为约定**
+
+| 段 | 延迟 | 断网 / SLS 不可用时 | 丢失边界 |
+|---|---|---|---|
+| 网关 OTel → audit | 秒级 | 导出器重试 3 次后丢弃该批；Postgres SpendLogs 仍有完整记录 | 最多丢一批（≤512 条）的 SLS 副本，可从 SpendLogs 回补 |
+| Logtail → ops | ≤3 秒 | Logtail 本地断点续传，Docker 文件轮转前（60MB）都能补 | 超过轮转窗口才丢 |
+| 控制台 → ops/audit | 秒级 | 队列满 1000 条后丢弃最旧的运行日志；审计写失败记一条 ops 错误，动作不回滚；OSS 底稿已写 | 审计不丢（OSS 有），运行日志可能丢 |
+| Agent → ops | 一个同步周期（默认 15 分钟） | 位点不前进，下周期补发；本地 4MB 滚过则丢 | 离线超过约 4MB 日志量才丢 |
+| Agent → OSS 尾巴 | 一个同步周期 | 照旧 | 只保留最近 64KB |
+
+**写入顺序原则**：凡是审计类记录，先写不依赖 SLS 的底稿（网关是 Postgres，控制台是 OSS 文件），再写 SLS。SLS 是查询与告警面，不是唯一真相。
+
+**读取路径**：管理员只从三个入口进 SLS——控制台页面上的预填链接、企业微信告警里的链接、SLS 控制台的保存查询。不直接登服务器看文件。
+
+**归档**：`audit` 365 天到期后由 SLS 数据投递任务按月导出到 OSS（`admin/log-archive/audit/YYYY-MM.jsonl.gz`），再保留视合规要求；`ops` 到期直接清理。
 
 ## 3. 三个模块各改什么
 
