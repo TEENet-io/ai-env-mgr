@@ -266,6 +266,50 @@ func TestMutateAppLockerAllowPathsValidatesAndNormalises(t *testing.T) {
 	}
 }
 
+// The mode is a fleet-wide switch on a security control, so it is published
+// like everything else and only in the three spellings the agent knows.
+func TestSetAppLockerModePublishesAndValidates(t *testing.T) {
+	m, store := newManager()
+	p, err := m.SetAppLockerMode(model.AppLockerModeAudit)
+	if err != nil || p.AppLockerMode != model.AppLockerModeAudit {
+		t.Fatalf("got %q %v", p.AppLockerMode, err)
+	}
+	var stored model.Policy
+	if err := json.Unmarshal(store.objects[ossclient.PolicyKey()], &stored); err != nil {
+		t.Fatal(err)
+	}
+	if stored.AppLockerMode != model.AppLockerModeAudit {
+		t.Errorf("stored AppLockerMode = %q, want %q", stored.AppLockerMode, model.AppLockerModeAudit)
+	}
+
+	// Back to enforce, and the allow list must survive the switch: turning
+	// enforcement off and on again must not disturb what is allowed.
+	if _, err := m.MutateAppLockerAllowPaths([]string{`C:\tools\Codex\*`}, nil); err != nil {
+		t.Fatal(err)
+	}
+	p, err = m.SetAppLockerMode(model.AppLockerModeEnforce)
+	if err != nil || p.AppLockerMode != model.AppLockerModeEnforce {
+		t.Fatalf("got %q %v", p.AppLockerMode, err)
+	}
+	if len(p.AppLockerAllowPaths) != 1 {
+		t.Errorf("the allow list must be untouched by a mode switch: %v", p.AppLockerAllowPaths)
+	}
+
+	// An unmanaged policy is a valid state: it hands the machine back to the
+	// image.
+	if p, err = m.SetAppLockerMode(""); err != nil || p.AppLockerMode != "" {
+		t.Fatalf("got %q %v", p.AppLockerMode, err)
+	}
+
+	before := len(store.objects)
+	if _, err := m.SetAppLockerMode("AuditOnly"); err == nil {
+		t.Error("an AppLocker EnforcementMode spelling is not a policy mode; it must be refused")
+	}
+	if len(store.objects) != before {
+		t.Error("a refused mode must not publish anything")
+	}
+}
+
 // A stored policy can hold an entry that no longer validates -- written
 // before the rules tightened, or by a hand-edit / compromised publisher.
 // One unrelated edit is a chance to heal that: the bad entry is dropped

@@ -251,6 +251,30 @@ func (m *Manager) MutateAppLockerAllowPaths(add, remove []string) (model.Policy,
 	return m.publishPolicy(p)
 }
 
+// SetAppLockerMode holds every machine's configured AppLocker rule
+// collections in one enforcement mode, fleet-wide, at the next sync.
+//
+// "audit" is the off switch the administrator needs while testing: the rules
+// stay exactly where they are and AppLocker keeps logging, it just stops
+// blocking, so "enforce" puts the fleet back the way it was. Nothing here
+// deletes a rule, and the allow list is not touched.
+//
+// "" hands the enforcement mode back to the image: the agent stops managing
+// it and leaves whatever each machine has. The value is validated here as
+// well as in the agent -- policy.json is not a trust boundary -- so a
+// spelling no agent understands never reaches the fleet.
+func (m *Manager) SetAppLockerMode(mode string) (model.Policy, error) {
+	if err := model.ValidateAppLockerMode(mode); err != nil {
+		return model.Policy{}, err
+	}
+	p, err := m.CurrentPolicy()
+	if err != nil {
+		return model.Policy{}, err
+	}
+	p.AppLockerMode = mode
+	return m.publishPolicy(p)
+}
+
 // SetBlockEnabled flips the global block switch and publishes the change.
 func (m *Manager) SetBlockEnabled(enabled bool) (model.Policy, error) {
 	p, err := m.CurrentPolicy()
