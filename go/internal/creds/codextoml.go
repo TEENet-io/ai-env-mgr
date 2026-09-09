@@ -5,7 +5,6 @@ import (
 	"bytes"
 	"fmt"
 	"os"
-	"regexp"
 	"strings"
 )
 
@@ -93,14 +92,74 @@ func mergeCodexConfig(target string, incoming []byte) ([]byte, error) {
 	return out.Bytes(), nil
 }
 
-// tomlHeaderRe matches a `[table]` or `[[array-of-tables]]` header, with an
-// optional trailing comment, and nothing else on the line. It is only ever
-// applied to a line the scanner already knows is not inside a multi-line
-// string or an open array -- see scanTomlLines -- so it does not need to (and
-// must not try to) rule out those cases itself: `[not a header]` in the
-// middle of a multi-line array reads as a syntactically perfect header if
-// judged on its text alone.
-var tomlHeaderRe = regexp.MustCompile(`^\[\[?([^\]]+)\]\]?\s*(#.*)?$`)
+// matchTomlHeader reports whether trimmed is a `[table]` or
+// `[[array-of-tables]]` header, with an optional trailing comment and
+// nothing else on the line, and returns the name inside the brackets. It is
+// only ever applied to a line the scanner already knows is not inside a
+// multi-line string or an open array -- see scanTomlLines -- so it does not
+// need to (and must not try to) rule out those cases itself: `[not a
+// header]` in the middle of a multi-line array reads as a syntactically
+// perfect header if judged on its text alone.
+//
+// This is a small hand-rolled scanner rather than a regexp because a TOML
+// table name segment can be a quoted string (`[servers."a]b"]`), and a
+// quoted string is free to contain a literal `]` -- a naive
+// `\[\[?([^\]]+)\]\]?` stops at that first `]`, well short of the real one,
+// and the header goes unrecognized (with the same consequences as any other
+// missed header: its whole table reads as leftover content of whatever
+// came before it).
+func matchTomlHeader(trimmed string) (name string, ok bool) {
+	if len(trimmed) == 0 || trimmed[0] != '[' {
+		return "", false
+	}
+	i := 1
+	double := false
+	if i < len(trimmed) && trimmed[i] == '[' {
+		double = true
+		i++
+	}
+
+	nameStart := i
+	closeIdx := -1
+	for i < len(trimmed) {
+		switch trimmed[i] {
+		case '"':
+			i = skipSingleLineString(trimmed, i+1, '"', true)
+			continue
+		case '\'':
+			i = skipSingleLineString(trimmed, i+1, '\'', false)
+			continue
+		case ']':
+			closeIdx = i
+		}
+		if closeIdx != -1 {
+			break
+		}
+		i++
+	}
+	if closeIdx == -1 {
+		return "", false
+	}
+
+	name = strings.TrimSpace(trimmed[nameStart:closeIdx])
+	if name == "" {
+		return "", false
+	}
+
+	after := closeIdx + 1
+	if double {
+		if after >= len(trimmed) || trimmed[after] != ']' {
+			return "", false
+		}
+		after++
+	}
+
+	tail := strings.TrimSpace(trimmed[after:])
+	if tail != "" && !strings.HasPrefix(tail, "#") {
+		return "", false
+	}
+	return name, true
+}
 
 // tomlLine is one physical line of a config.toml file, classified by
 // scanTomlLines using real scanner state rather than the line's own text in
@@ -156,22 +215,88 @@ func (s tomlScanState) fresh() bool {
 // header-mimicking line prematurely end the "still inside the managed
 // table" state and leak the rest of the table (including a stale bearer
 // token) through as ordinary content.
+//
+// A genuine multi-line array always closes eventually (that is what makes
+// it valid TOML), so after one pass over the whole file, depth should be
+// back to zero. If it is not, an array opened somewhere and never closed --
+// almost always a stray `[` typo, not a real array that just happens to
+// run to end of file. Once that is known, per-line depth tracking cannot be
+// trusted for anything after the point it got stuck: a second pass
+// re-classifies with recovery enabled, promoting any header-shaped line
+// encountered while depth is still open into a real header after all and
+// resyncing depth to zero there, rather than continuing to treat everything
+// after it as unclosed-array content. Left unrecovered, that stuck depth
+// either swallows the rest of the file (a managed root key's value that
+// never closes drops everything after it, since nothing downstream is ever
+// recognized as the header that would stop the drop) or, on a later merge,
+// duplicates the delivered table (the real header becomes unrecognizable
+// too, so the old one is never stripped before the new one is added). This
+// is best-effort recovery for already-malformed input, not a fix for it --
+// content that genuinely belonged to the unterminated array is not
+// recoverable by a line-oriented scanner and may still end up misplaced.
 func scanTomlLines(src []byte) ([]tomlLine, error) {
-	var lines []tomlLine
+	rawLines, err := splitTomlPhysicalLines(src)
+	if err != nil {
+		return nil, err
+	}
+
+	lines, finalDepth := classifyTomlLines(rawLines, false)
+	if finalDepth > 0 {
+		lines, _ = classifyTomlLines(rawLines, true)
+	}
+	return lines, nil
+}
+
+// splitTomlPhysicalLines splits src into its physical lines (scanTomlLines'
+// only pass over the raw bytes; classifyTomlLines runs against the result,
+// possibly more than once).
+func splitTomlPhysicalLines(src []byte) ([]string, error) {
+	var rawLines []string
 	scanner := bufio.NewScanner(bytes.NewReader(src))
 	scanner.Buffer(make([]byte, 0, 64*1024), 4*1024*1024)
-
-	var st tomlScanState
 	for scanner.Scan() {
-		line := scanner.Text()
+		rawLines = append(rawLines, scanner.Text())
+	}
+	if err := scanner.Err(); err != nil {
+		return nil, fmt.Errorf("scan config.toml: %w", err)
+	}
+	return rawLines, nil
+}
+
+// classifyTomlLines is scanTomlLines' classification pass, run once with
+// recoverUnterminated false and, only if that leaves depth open at EOF, run
+// again with it true. With it false this is exactly the state machine
+// described on scanTomlLines. With it true, a line encountered while depth
+// is greater than zero (and the scanner is not inside a multi-line string)
+// that matches a table header is promoted to a real header and depth is
+// reset to zero, instead of being treated as more content of an array that,
+// this second time around, is already known to never close.
+//
+// It also returns the depth the scan ends on, which is how scanTomlLines
+// decides whether a second, recovering pass is warranted at all: for a
+// well-formed file it always comes back zero, so recovery is never invoked
+// and behavior is unchanged from a single, non-recovering pass.
+func classifyTomlLines(rawLines []string, recoverUnterminated bool) ([]tomlLine, int) {
+	lines := make([]tomlLine, 0, len(rawLines))
+	var st tomlScanState
+
+	for _, line := range rawLines {
 		entering := st
+		trimmed := strings.TrimSpace(line)
 
 		isHeader := false
 		header := ""
-		if entering.fresh() {
-			if m := tomlHeaderRe.FindStringSubmatch(strings.TrimSpace(line)); m != nil {
+		switch {
+		case entering.fresh():
+			if name, ok := matchTomlHeader(trimmed); ok {
 				isHeader = true
-				header = strings.TrimSpace(m[1])
+				header = name
+			}
+		case recoverUnterminated && entering.depth > 0 && !entering.inTripleDouble && !entering.inTripleSingle:
+			if name, ok := matchTomlHeader(trimmed); ok {
+				isHeader = true
+				header = name
+				st.depth = 0
 			}
 		}
 
@@ -186,10 +311,7 @@ func scanTomlLines(src []byte) ([]tomlLine, error) {
 			continuation: !isHeader && !entering.fresh(),
 		})
 	}
-	if err := scanner.Err(); err != nil {
-		return nil, fmt.Errorf("scan config.toml: %w", err)
-	}
-	return lines, nil
+	return lines, st.depth
 }
 
 // advanceTomlScanState scans one line's characters, given the state on
@@ -277,15 +399,30 @@ func skipSingleLineString(line string, start int, quote byte, escapes bool) int 
 // A run of comment and/or blank lines immediately preceding a header
 // belongs to that header's section, not to whatever table (or the root)
 // came before it: such lines read as documenting the table that follows.
-// This is applied uniformly to every header, not just the first, which is
-// what makes stripCodexManaged and splitTomlRootAndTables agree on where a
-// table "starts" -- without it, a comment that this merge itself moved
-// next to a later table (round one) would, on being merged again (round
-// two), land back inside whatever the immediately preceding table happens
-// to be, which is how the merge lost its idempotency: a comment
-// documenting `[mcp_servers.foo]` got dropped as if it were still part of
-// the managed gateway table above it, because only a header line reset
-// "still inside the managed table" -- a trailing comment never did.
+// This is applied to every header except the managed gateway table, not
+// just the first, which is what makes stripCodexManaged and
+// splitTomlRootAndTables agree on where a table "starts" -- without it, a
+// comment that this merge itself moved next to a later table (round one)
+// would, on being merged again (round two), land back inside whatever the
+// immediately preceding table happens to be, which is how the merge lost
+// its idempotency: a comment documenting `[mcp_servers.foo]` got dropped as
+// if it were still part of the managed gateway table above it, because only
+// a header line reset "still inside the managed table" -- a trailing
+// comment never did.
+//
+// The managed gateway table is deliberately excluded from this reassignment
+// (see the check inside the loop below). stripCodexManaged uses this same
+// map to decide what counts as "inside" the managed table and gets dropped
+// wholesale, and a comment or blank run immediately above that header must
+// never be swept into it: it may be the employee's own note about their
+// existing gateway config, or it may simply be preserved root content that
+// a previous merge's own assembly happened to place right before the
+// delivered header. Either way, deleting it because it merely sits next to
+// a table this tool is about to replace is a second, independent way this
+// merge would otherwise leak content on every re-merge -- not the ordering
+// bug the general rule above exists to fix, but the same shape of bug.
+// Comments preceding every other header are unaffected: they still move
+// with that header.
 func tomlSectionOwners(lines []tomlLine) []int {
 	owner := make([]int, len(lines))
 	current := -1
@@ -297,7 +434,7 @@ func tomlSectionOwners(lines []tomlLine) []int {
 	}
 
 	for h, ln := range lines {
-		if !ln.isHeader {
+		if !ln.isHeader || ln.header == codexManagedTable {
 			continue
 		}
 		for j := h - 1; j >= 0; j-- {

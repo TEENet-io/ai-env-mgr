@@ -567,6 +567,289 @@ command = "foo.exe"
 	}
 }
 
+// --- round 3: scoped re-review findings ---
+
+// TestStripKeepsCommentImmediatelyAboveGatewayHeaderAtRoot is F1(a): a
+// comment with nothing following it in the existing file ends up, after
+// merge 1's own assembly, sitting directly above the delivered gateway
+// header (there being no other table for it to be ordered before). Merge 2
+// must not then delete it as if it were inside the managed table it merely
+// happens to precede.
+func TestStripKeepsCommentImmediatelyAboveGatewayHeaderAtRoot(t *testing.T) {
+	target := writeTemp(t, `approval_policy = "never"
+# my personal note
+`)
+
+	first, err := mergeCodexConfig(target, []byte(deliveredConfig))
+	if err != nil {
+		t.Fatalf("first merge: %v", err)
+	}
+	if !strings.Contains(string(first), "# my personal note") {
+		t.Fatalf("comment lost on first merge:\n%s", first)
+	}
+
+	target2 := writeTemp(t, string(first))
+	second, err := mergeCodexConfig(target2, []byte(deliveredConfig))
+	if err != nil {
+		t.Fatalf("second merge: %v", err)
+	}
+	if !strings.Contains(string(second), "# my personal note") {
+		t.Errorf("comment lost on second merge:\n%s", second)
+	}
+	if string(first) != string(second) {
+		t.Fatalf("merge is not idempotent:\n--- first ---\n%s\n--- second ---\n%s", first, second)
+	}
+}
+
+// TestStripKeepsCommentAboveExistingGatewayTable is F1(b): a comment already
+// sitting above the employee's OWN existing gateway table (which is about
+// to be wholesale-replaced) must survive the very first merge, not just a
+// second one.
+func TestStripKeepsCommentAboveExistingGatewayTable(t *testing.T) {
+	target := writeTemp(t, `approval_policy = "never"
+
+# unrelated note about proxies
+
+[model_providers.gateway]
+base_url = "https://old/v1"
+`)
+
+	got, err := mergeCodexConfig(target, []byte(deliveredConfig))
+	if err != nil {
+		t.Fatalf("merge: %v", err)
+	}
+	out := string(got)
+
+	if !strings.Contains(out, "# unrelated note about proxies") {
+		t.Errorf("comment above the (replaced) gateway table was deleted:\n%s", out)
+	}
+	if strings.Contains(out, "https://old/v1") {
+		t.Errorf("stale gateway base_url survived:\n%s", out)
+	}
+	if strings.Count(out, "[model_providers.gateway]") != 1 {
+		t.Errorf("gateway table must appear exactly once:\n%s", out)
+	}
+}
+
+// TestSplitDoesNotSeverMultiLineArrayContainingBlankLine and
+// TestSplitDoesNotSeverMultiLineStringContainingBlankLine are the safety net
+// for F2/F3's recovery pass: a blank line inside a genuine, properly closed
+// multi-line array or string must never trigger recovery -- recovery only
+// ever runs at all when the file, scanned once straight through, ends with
+// an array still open, which a properly closed one never does.
+func TestSplitDoesNotSeverMultiLineArrayContainingBlankLine(t *testing.T) {
+	block := `multi = [
+  "a",
+
+  "b"
+]
+`
+	target := writeTemp(t, block)
+
+	got, err := mergeCodexConfig(target, []byte(deliveredConfig))
+	if err != nil {
+		t.Fatalf("merge: %v", err)
+	}
+	out := string(got)
+
+	if !strings.Contains(out, block) {
+		t.Errorf("multi-line array with an interior blank line was severed:\n%s", out)
+	}
+	if strings.Count(out, "[model_providers.gateway]") != 1 {
+		t.Errorf("gateway table must appear exactly once:\n%s", out)
+	}
+}
+
+func TestSplitDoesNotSeverMultiLineStringContainingBlankLine(t *testing.T) {
+	block := `notes = """
+line one
+
+line two
+"""
+`
+	target := writeTemp(t, block)
+
+	got, err := mergeCodexConfig(target, []byte(deliveredConfig))
+	if err != nil {
+		t.Fatalf("merge: %v", err)
+	}
+	out := string(got)
+
+	if !strings.Contains(out, block) {
+		t.Errorf("multi-line string with an interior blank line was severed:\n%s", out)
+	}
+	if strings.Count(out, "[model_providers.gateway]") != 1 {
+		t.Errorf("gateway table must appear exactly once:\n%s", out)
+	}
+}
+
+// TestMergeTwiceRecoversFromUnterminatedArrayWithoutDuplicatingGateway is
+// F2: an unterminated `[` makes depth stick for the rest of the file, so on
+// the first merge the real header inside it goes unrecognized (harmless: it
+// just ends up as leftover root text, "best effort" per the review). But
+// the SECOND merge re-scans that same still-unterminated fragment, which
+// this time also hides the real, now-present `[model_providers.gateway]`
+// header from being stripped -- without recovery, the delivered table would
+// be appended on top of the surviving old one, duplicating it, and every
+// further merge would add one more copy.
+func TestMergeTwiceRecoversFromUnterminatedArrayWithoutDuplicatingGateway(t *testing.T) {
+	target := writeTemp(t, "a = [\n1,\n[mcp_servers.foo]\ncommand = \"keepme3\"\n")
+
+	first, err := mergeCodexConfig(target, []byte(deliveredConfig))
+	if err != nil {
+		t.Fatalf("first merge: %v", err)
+	}
+
+	target2 := writeTemp(t, string(first))
+	second, err := mergeCodexConfig(target2, []byte(deliveredConfig))
+	if err != nil {
+		t.Fatalf("second merge: %v", err)
+	}
+	out := string(second)
+
+	if strings.Count(out, "[model_providers.gateway]") != 1 {
+		t.Fatalf("gateway table must appear exactly once after merging twice, got:\n%s", out)
+	}
+}
+
+// TestMergeRecoversTableAfterUnterminatedManagedRootValue is F3: a managed
+// root key (`model`) opening a value that never closes used to delete
+// everything after it -- dropRootContinuation, once set when the managed
+// key's opening line was dropped, was only ever cleared by a recognized
+// header, and the unterminated array hid every later header from being
+// recognized at all. The recovery pass added for F2 fixes this the same
+// way: once a later line is recovered as a real header, the drop is over.
+func TestMergeRecoversTableAfterUnterminatedManagedRootValue(t *testing.T) {
+	target := writeTemp(t, "model = [\napproval_policy = \"never\"\n[mcp_servers.foo]\ncommand = \"keepme4\"\n")
+
+	got, err := mergeCodexConfig(target, []byte(deliveredConfig))
+	if err != nil {
+		t.Fatalf("merge: %v", err)
+	}
+	out := string(got)
+
+	if !strings.Contains(out, "[mcp_servers.foo]") {
+		t.Errorf("table after the unterminated managed value was lost:\n%s", out)
+	}
+	if !strings.Contains(out, `command = "keepme4"`) {
+		t.Errorf("content of the table after the unterminated managed value was lost:\n%s", out)
+	}
+	if strings.Count(out, "[model_providers.gateway]") != 1 {
+		t.Errorf("gateway table must appear exactly once:\n%s", out)
+	}
+	// approval_policy is inside the unterminated `model = [` value and may
+	// legitimately be lost as part of it (this input is malformed); the
+	// requirement is only that losing it does not take the rest of the
+	// file down too, and that nothing panics.
+}
+
+// TestHeaderMatchTakesBracketInsideQuotedKeySegment is F4: a table name
+// segment can be a quoted string, and a quoted string is allowed to contain
+// a literal `]` -- `[servers."a]b"]` is a real header whose quoted key
+// happens to contain one. A header matcher that stops at the first `]`
+// regardless of quoting misses it, and everything from there on reads as
+// leftover content of whatever table came before (here, the very table
+// being wholesale-replaced), losing both the header and its body.
+func TestHeaderMatchTakesBracketInsideQuotedKeySegment(t *testing.T) {
+	target := writeTemp(t, `[model_providers.gateway]
+base_url = "old"
+
+[servers."a]b"]
+command = "keepme"
+`)
+
+	got, err := mergeCodexConfig(target, []byte(deliveredConfig))
+	if err != nil {
+		t.Fatalf("merge: %v", err)
+	}
+	out := string(got)
+
+	if !strings.Contains(out, `[servers."a]b"]`) {
+		t.Errorf("header with a bracket inside a quoted key segment was lost:\n%s", out)
+	}
+	if !strings.Contains(out, `command = "keepme"`) {
+		t.Errorf("content of the table with a bracketed quoted key was lost:\n%s", out)
+	}
+	if strings.Contains(out, `base_url = "old"`) {
+		t.Errorf("stale gateway base_url survived:\n%s", out)
+	}
+	if strings.Count(out, "[model_providers.gateway]") != 1 {
+		t.Errorf("gateway table must appear exactly once:\n%s", out)
+	}
+}
+
+// TestHeaderMatchStillHandlesQuotedKeysWithoutBrackets pins the two quoted-
+// key forms the review called out as already working: a quoted string
+// without a `]` inside it, and a literal (single-quoted) string.
+func TestHeaderMatchStillHandlesQuotedKeysWithoutBrackets(t *testing.T) {
+	target := writeTemp(t, `[mcp_servers."my server"]
+command = "a"
+
+[mcp_servers.'lit']
+command = "b"
+`)
+
+	got, err := mergeCodexConfig(target, []byte(deliveredConfig))
+	if err != nil {
+		t.Fatalf("merge: %v", err)
+	}
+	out := string(got)
+
+	for _, want := range []string{
+		`[mcp_servers."my server"]`,
+		`command = "a"`,
+		`[mcp_servers.'lit']`,
+		`command = "b"`,
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("quoted-key table content missing %q:\n%s", want, out)
+		}
+	}
+}
+
+// TestMergeIsIdempotentUnderCommentsBlankRunsAndInteriorArrayBlank is F5: a
+// stress case combining several formatting quirks in one preserved root --
+// a trailing comment with no following table, blank runs longer than one
+// line, a multi-line array with a blank line inside it, and (as a
+// consequence of there being no table at all in the input) a comment
+// directly above the delivered gateway header after merge 1. Merging twice
+// must still be byte-identical.
+func TestMergeIsIdempotentUnderCommentsBlankRunsAndInteriorArrayBlank(t *testing.T) {
+	target := writeTemp(t, `# leading comment
+approval_policy = "never"
+
+
+multi = [
+  "a",
+
+  "b",
+]
+
+# trailing comment with no following table
+`)
+
+	first, err := mergeCodexConfig(target, []byte(deliveredConfig))
+	if err != nil {
+		t.Fatalf("first merge: %v", err)
+	}
+	if !strings.Contains(string(first), "# trailing comment with no following table") {
+		t.Fatalf("trailing comment lost on first merge:\n%s", first)
+	}
+
+	target2 := writeTemp(t, string(first))
+	second, err := mergeCodexConfig(target2, []byte(deliveredConfig))
+	if err != nil {
+		t.Fatalf("second merge: %v", err)
+	}
+
+	if string(first) != string(second) {
+		t.Fatalf("merge is not idempotent:\n--- first ---\n%s\n--- second ---\n%s", first, second)
+	}
+	if !strings.Contains(string(second), "# trailing comment with no following table") {
+		t.Errorf("trailing comment above the gateway header was lost on re-merge:\n%s", second)
+	}
+}
+
 // countRootAssignments counts `key = ...` lines that sit at the root of the
 // document, ignoring occurrences inside table headers or other tables.
 func countRootAssignments(doc, key string) int {
