@@ -61,15 +61,79 @@ func mergeCodexConfig(target string, incoming []byte) ([]byte, error) {
 		return incoming, nil
 	}
 
+	// Both the delivered fragment and what survived stripping split into a
+	// root-level part (before the first [table] header) and a tables part
+	// (that header onward). Interleaving them as
+	// deliveredRoot, keptRoot, deliveredTables, keptTables keeps every
+	// preserved root key ahead of the delivered [model_providers.gateway]
+	// header. Concatenating the delivered fragment then the preserved
+	// remainder verbatim -- the previous approach -- put the employee's
+	// root keys after that header, where TOML silently treats a
+	// `key = value` line as belonging to the preceding table: their
+	// settings quietly became fields of the gateway provider instead of
+	// staying root-level, and Codex simply ignored them.
+	deliveredRoot, deliveredTables, err := splitTomlRootAndTables(incoming)
+	if err != nil {
+		return incoming, nil
+	}
+	keptRoot, keptTables, err := splitTomlRootAndTables(kept)
+	if err != nil {
+		return incoming, nil
+	}
+
 	var out bytes.Buffer
-	out.Write(bytes.TrimRight(incoming, "\n"))
-	out.WriteString("\n")
-	if trimmed := bytes.TrimSpace(kept); len(trimmed) > 0 {
-		out.WriteString("\n")
-		out.Write(bytes.TrimRight(kept, "\n"))
+	appendTomlSection(&out, deliveredRoot)
+	appendTomlSection(&out, keptRoot)
+	appendTomlSection(&out, deliveredTables)
+	appendTomlSection(&out, keptTables)
+	return out.Bytes(), nil
+}
+
+// splitTomlRootAndTables splits src at its first [table] header: everything
+// before that header is root-level content, and the header plus everything
+// after it (including all further tables) is returned as tables. A src with
+// no header at all comes back entirely as root, with tables empty.
+func splitTomlRootAndTables(src []byte) (root, tables []byte, err error) {
+	var rootBuf, tablesBuf bytes.Buffer
+	scanner := bufio.NewScanner(bytes.NewReader(src))
+	scanner.Buffer(make([]byte, 0, 64*1024), 4*1024*1024)
+
+	inTables := false
+	for scanner.Scan() {
+		line := scanner.Text()
+		if !inTables {
+			if _, ok := tomlTableHeader(strings.TrimSpace(line)); ok {
+				inTables = true
+			}
+		}
+		if inTables {
+			tablesBuf.WriteString(line)
+			tablesBuf.WriteString("\n")
+		} else {
+			rootBuf.WriteString(line)
+			rootBuf.WriteString("\n")
+		}
+	}
+	if err := scanner.Err(); err != nil {
+		return nil, nil, fmt.Errorf("split config.toml: %w", err)
+	}
+	return rootBuf.Bytes(), tablesBuf.Bytes(), nil
+}
+
+// appendTomlSection appends section to out, trimmed of its trailing
+// newline(s), followed by a single newline. A blank line is inserted first
+// to separate it from whatever out already holds. A section that is empty
+// or all-whitespace is skipped entirely, so it contributes neither content
+// nor a spurious separating blank line.
+func appendTomlSection(out *bytes.Buffer, section []byte) {
+	if len(bytes.TrimSpace(section)) == 0 {
+		return
+	}
+	if out.Len() > 0 {
 		out.WriteString("\n")
 	}
-	return out.Bytes(), nil
+	out.Write(bytes.TrimRight(section, "\n"))
+	out.WriteString("\n")
 }
 
 // stripCodexManaged returns src with the managed root keys and the managed
