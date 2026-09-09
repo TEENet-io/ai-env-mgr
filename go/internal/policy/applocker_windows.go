@@ -19,6 +19,20 @@ import (
 // as a warning, not a failure.
 var ErrAppLockerNotDeployed = errors.New("AppLocker is not deployed on this machine")
 
+// readLocalAppLockerXML runs Get-AppLockerPolicy -Local -Xml and returns the
+// document with any UTF-8 BOM and surrounding whitespace stripped. This is
+// the only place that shells out to read the local AppLocker policy; both
+// ApplyAppLocker and Current (registry_windows.go) call it, so there is a
+// single spot that knows how the policy is actually read off the machine.
+func readLocalAppLockerXML() (string, error) {
+	out, err := exec.Command("powershell.exe", "-NoProfile", "-NonInteractive",
+		"-Command", "Import-Module AppLocker; Get-AppLockerPolicy -Local -Xml").Output()
+	if err != nil {
+		return "", err
+	}
+	return strings.TrimSpace(strings.TrimPrefix(string(out), "\ufeff")), nil
+}
+
 // ApplyAppLocker brings the machine's LOCAL AppLocker policy in line with
 // paths (see RewriteAppLockerXML).
 //
@@ -30,8 +44,7 @@ var ErrAppLockerNotDeployed = errors.New("AppLocker is not deployed on this mach
 // nothing has drifted: one read, and a write only when the XML actually
 // changes.
 func ApplyAppLocker(paths []string) error {
-	out, err := exec.Command("powershell.exe", "-NoProfile", "-NonInteractive",
-		"-Command", "Import-Module AppLocker; Get-AppLockerPolicy -Local -Xml").Output()
+	xml, err := readLocalAppLockerXML()
 	if err != nil {
 		if len(paths) == 0 {
 			// Nothing to manage and nothing readable: not worth a status line.
@@ -39,7 +52,6 @@ func ApplyAppLocker(paths []string) error {
 		}
 		return fmt.Errorf("read local AppLocker policy: %w", err)
 	}
-	xml := strings.TrimSpace(strings.TrimPrefix(string(out), "\ufeff"))
 	if !AppLockerDeployed(xml) {
 		if len(paths) == 0 {
 			return nil

@@ -44,12 +44,68 @@ var managedRule = regexp.MustCompile(`(?s)[ \t]*<FilePathRule\b[^>]*\b(?:Id="` +
 
 var exeCollectionOpen = regexp.MustCompile(`<RuleCollection\s+Type="Exe"[^>]*>`)
 
+// filePathConditionPath extracts the Path attribute of the (first)
+// FilePathCondition inside a matched FilePathRule element.
+var filePathConditionPath = regexp.MustCompile(`<FilePathCondition\s+Path="([^"]*)"`)
+
 // AppLockerDeployed reports whether xml is a policy the agent may add rules
 // to: an AppLocker document that already has an Exe collection. A machine
 // without one has AppLocker undeployed or cleared, and the agent must not
 // be the thing that switches it on.
 func AppLockerDeployed(xml string) bool {
 	return strings.Contains(xml, "<AppLockerPolicy") && exeCollectionOpen.MatchString(xml)
+}
+
+// sliceExeCollection splits xml around the body of its Exe rule collection:
+// before is everything up to and including the opening tag, body is the
+// collection's contents, and after is everything from the closing tag
+// onward. ok is false when xml has no Exe collection or that collection is
+// never closed. Both RewriteAppLockerXML and ManagedPaths use this so there
+// is exactly one place that locates the Exe collection's boundaries.
+func sliceExeCollection(xml string) (before, body, after string, ok bool) {
+	if !AppLockerDeployed(xml) {
+		return "", "", "", false
+	}
+	openLoc := exeCollectionOpen.FindStringIndex(xml)
+	closeRel := strings.Index(xml[openLoc[1]:], "</RuleCollection>")
+	if closeRel < 0 {
+		return "", "", "", false
+	}
+	closeAt := openLoc[1] + closeRel
+	return xml[:openLoc[1]], xml[openLoc[1]:closeAt], xml[closeAt:], true
+}
+
+// ManagedPaths returns the Path values of the agent's own managed rules in
+// xml's Exe rule collection, XML-unescaped, in document order. It returns
+// nil when the document has no Exe collection, is unparseable, or simply has
+// no managed rules -- there is no error return because this reads back what
+// is already on disk for a status report, and a malformed document is worth
+// reporting as "no paths known", not worth crashing over.
+//
+// Scoping is identical to RewriteAppLockerXML: only the Exe collection body
+// is searched, so a rule that merely looks like ours (matching Id or Name
+// prefix) but sits in another collection is never returned.
+func ManagedPaths(xml string) []string {
+	_, body, _, ok := sliceExeCollection(xml)
+	if !ok {
+		return nil
+	}
+	matches := managedRule.FindAllString(body, -1)
+	if len(matches) == 0 {
+		return nil
+	}
+	paths := make([]string, 0, len(matches))
+	for _, m := range matches {
+		sub := filePathConditionPath.FindStringSubmatch(m)
+		if sub == nil {
+			continue
+		}
+		paths = append(paths, html.UnescapeString(sub[1]))
+	}
+	if len(paths) == 0 {
+		return nil
+	}
+	return paths
 }
 
 // RewriteAppLockerXML returns xml with the agent's managed rules replaced by
@@ -74,16 +130,10 @@ func RewriteAppLockerXML(xml string, paths []string) (string, bool, error) {
 		return "", false, fmt.Errorf("found %d Exe rule collections; refusing to edit", n)
 	}
 
-	openLoc := exeCollectionOpen.FindStringIndex(xml)
-	closeRel := strings.Index(xml[openLoc[1]:], "</RuleCollection>")
-	if closeRel < 0 {
+	before, exeBody, after, ok := sliceExeCollection(xml)
+	if !ok {
 		return "", false, fmt.Errorf("Exe rule collection is not closed")
 	}
-	closeAt := openLoc[1] + closeRel
-
-	before := xml[:openLoc[1]]
-	exeBody := xml[openLoc[1]:closeAt]
-	after := xml[closeAt:]
 
 	// Only ever touch FilePathRule elements inside the Exe collection body:
 	// that is the only place the agent ever writes a managed rule, and it

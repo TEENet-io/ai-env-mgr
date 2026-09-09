@@ -116,3 +116,54 @@ func TestRewriteRefusesTwoExeCollections(t *testing.T) {
 		t.Errorf("expected no output on refusal, got %q", out)
 	}
 }
+
+func TestManagedPathsReturnsInOrderAndUnescaped(t *testing.T) {
+	out, _, err := RewriteAppLockerXML(fixture(t), []string{`C:\tools\Codex\*`, `C:\tools\A&B\*`})
+	if err != nil {
+		t.Fatalf("err=%v", err)
+	}
+	got := ManagedPaths(out)
+	want := []string{`C:\tools\Codex\*`, `C:\tools\A&B\*`}
+	if len(got) != len(want) {
+		t.Fatalf("ManagedPaths = %v, want %v", got, want)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Errorf("path %d = %q, want %q", i, got[i], want[i])
+		}
+	}
+}
+
+func TestManagedPathsNilWhenNoneManaged(t *testing.T) {
+	if got := ManagedPaths(fixture(t)); got != nil {
+		t.Errorf("expected nil for the plain image XML (no managed rules), got %v", got)
+	}
+}
+
+func TestManagedPathsNilWithoutExeCollection(t *testing.T) {
+	if got := ManagedPaths(`<AppLockerPolicy Version="1"></AppLockerPolicy>`); got != nil {
+		t.Errorf("expected nil without an Exe collection, got %v", got)
+	}
+	if got := ManagedPaths(``); got != nil {
+		t.Errorf("expected nil for an empty/malformed document, got %v", got)
+	}
+}
+
+// A rule that merely matches the managed Id/Name prefixes but sits in a
+// different rule collection must not be reported: ManagedPaths is scoped to
+// the Exe collection exactly like RewriteAppLockerXML.
+func TestManagedPathsIgnoresAManagedLookingRuleInAnotherCollection(t *testing.T) {
+	fx := fixture(t)
+	planted := `    <FilePathRule Id="e0000000-0000-0000-0000-000000000099" Name="AIEnvMgr-allow-99" Description="planted" UserOrGroupSid="S-1-1-0" Action="Allow">
+      <Conditions><FilePathCondition Path="C:\should\not\appear\*" /></Conditions>
+    </FilePathRule>
+`
+	marker := `<RuleCollection Type="Msi" EnforcementMode="Enabled">`
+	doc := strings.Replace(fx, marker, marker+"\n"+planted, 1)
+	if !strings.Contains(doc, "should\\not\\appear") {
+		t.Fatal("test setup broken: planted rule not found in the Msi collection")
+	}
+	if got := ManagedPaths(doc); got != nil {
+		t.Errorf("a managed-looking rule outside the Exe collection must not be returned, got %v", got)
+	}
+}
