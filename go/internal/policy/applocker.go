@@ -11,6 +11,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"sort"
 	"strings"
 	"sync"
 
@@ -92,7 +93,30 @@ var managedRule = regexp.MustCompile(`(?s)[ \t]*<FilePathRule\b[^>]*\b(?:Id="` +
 	regexp.QuoteMeta(ManagedRuleIDPrefix) + `[^"]*"|Name="` +
 	regexp.QuoteMeta(ManagedRuleNamePrefix) + `[^"]*")[^>]*>.*?</FilePathRule>\r?\n?`)
 
-var exeCollectionOpen = regexp.MustCompile(`<RuleCollection\s+Type="Exe"[^>]*>`)
+// exeCollectionTag matches an Exe rule-collection tag, self-closing or not.
+var exeCollectionTag = regexp.MustCompile(`<RuleCollection\s+Type="Exe"[^>]*>`)
+
+// exeCollectionOpens returns the locations of the Exe rule-collection tags
+// that actually open a collection.
+//
+// Get-AppLockerPolicy -Local -Xml always returns a document containing all
+// five rule collections; the ones that were never configured come back
+// self-closing (`<RuleCollection Type="Exe" EnforcementMode="NotConfigured" />`).
+// `[^>]*` happily eats the `/`, so a machine with no AppLocker at all used to
+// look deployed: every cycle then failed with "Exe rule collection is not
+// closed" (even with zero allow paths published), and a document whose Exe
+// collection was empty but whose Msi collection was not had rules inserted
+// *outside* any collection. A self-closing tag opens nothing.
+func exeCollectionOpens(xml string) [][]int {
+	var out [][]int
+	for _, loc := range exeCollectionTag.FindAllStringIndex(xml, -1) {
+		if strings.HasSuffix(xml[loc[0]:loc[1]], "/>") {
+			continue
+		}
+		out = append(out, loc)
+	}
+	return out
+}
 
 // filePathConditionPath extracts the Path attribute of the (first)
 // FilePathCondition inside a matched FilePathRule element.
@@ -103,27 +127,40 @@ var filePathConditionPath = regexp.MustCompile(`<FilePathCondition\s+Path="([^"]
 // without one has AppLocker undeployed or cleared, and the agent must not
 // be the thing that switches it on.
 func AppLockerDeployed(xml string) bool {
-	return strings.Contains(xml, "<AppLockerPolicy") && exeCollectionOpen.MatchString(xml)
+	return strings.Contains(xml, "<AppLockerPolicy") && len(exeCollectionOpens(xml)) > 0
 }
 
 // sliceExeCollection splits xml around the body of its Exe rule collection:
 // before is everything up to and including the opening tag, body is the
 // collection's contents, and after is everything from the closing tag
-// onward. ok is false when xml has no Exe collection or that collection is
-// never closed. Both RewriteAppLockerXML and ManagedPaths use this so there
-// is exactly one place that locates the Exe collection's boundaries.
-func sliceExeCollection(xml string) (before, body, after string, ok bool) {
+// onward. Both RewriteAppLockerXML and ManagedPaths use this so there is
+// exactly one place that locates the Exe collection's boundaries.
+//
+// The error says why the document cannot be sliced: no open Exe collection,
+// no closing tag, or another rule collection starting before that closing
+// tag -- which means the `</RuleCollection>` found belongs to a later
+// collection and the "body" would not be the Exe collection's at all.
+// Editing that body would insert rules outside any collection, so refuse.
+func sliceExeCollection(xml string) (before, body, after string, err error) {
 	if !AppLockerDeployed(xml) {
-		return "", "", "", false
+		return "", "", "", errNoExeCollection
 	}
-	openLoc := exeCollectionOpen.FindStringIndex(xml)
+	openLoc := exeCollectionOpens(xml)[0]
 	closeRel := strings.Index(xml[openLoc[1]:], "</RuleCollection>")
 	if closeRel < 0 {
-		return "", "", "", false
+		return "", "", "", fmt.Errorf("Exe rule collection is not closed")
 	}
 	closeAt := openLoc[1] + closeRel
-	return xml[:openLoc[1]], xml[openLoc[1]:closeAt], xml[closeAt:], true
+	body = xml[openLoc[1]:closeAt]
+	if strings.Contains(body, "<RuleCollection") {
+		return "", "", "", fmt.Errorf("another rule collection starts before the Exe rule collection is closed")
+	}
+	return xml[:openLoc[1]], body, xml[closeAt:], nil
 }
+
+// errNoExeCollection is what sliceExeCollection reports for a document the
+// agent must not edit at all: no Exe rule collection to add rules to.
+var errNoExeCollection = fmt.Errorf("no AppLocker policy with an Exe rule collection; refusing to create one")
 
 // ManagedPaths returns the Path values of the agent's own managed rules in
 // xml's Exe rule collection, XML-unescaped, in document order. It returns
@@ -136,26 +173,62 @@ func sliceExeCollection(xml string) (before, body, after string, ok bool) {
 // is searched, so a rule that merely looks like ours (matching Id or Name
 // prefix) but sits in another collection is never returned.
 func ManagedPaths(xml string) []string {
-	_, body, _, ok := sliceExeCollection(xml)
-	if !ok {
+	_, body, _, err := sliceExeCollection(xml)
+	if err != nil {
 		return nil
 	}
-	matches := managedRule.FindAllString(body, -1)
-	if len(matches) == 0 {
-		return nil
-	}
-	paths := make([]string, 0, len(matches))
-	for _, m := range matches {
-		sub := filePathConditionPath.FindStringSubmatch(m)
-		if sub == nil {
-			continue
-		}
-		paths = append(paths, html.UnescapeString(sub[1]))
-	}
+	paths, _, _ := managedRulesIn(body)
 	if len(paths) == 0 {
 		return nil
 	}
 	return paths
+}
+
+// managedRulesIn reads the agent's managed rules out of one Exe collection
+// body: their paths (XML-unescaped, in document order), how many managed
+// rules were found, and whether every one still has the shape the agent
+// writes -- Everyone/Allow with a readable FilePathCondition.
+//
+// The count and the intact flag exist for RewriteAppLockerXML's idempotence
+// check: they are what tells "the machine already carries exactly these
+// paths" from "one of our rules has been edited or cannot be read", which
+// the text comparison they replaced used to catch for free.
+func managedRulesIn(body string) (paths []string, count int, intact bool) {
+	matches := managedRule.FindAllString(body, -1)
+	intact = true
+	paths = make([]string, 0, len(matches))
+	for _, m := range matches {
+		if !strings.Contains(m, `UserOrGroupSid="S-1-1-0"`) || !strings.Contains(m, `Action="Allow"`) {
+			intact = false
+			continue
+		}
+		sub := filePathConditionPath.FindStringSubmatch(m)
+		if sub == nil {
+			intact = false
+			continue
+		}
+		paths = append(paths, html.UnescapeString(sub[1]))
+	}
+	return paths, len(matches), intact
+}
+
+// sameAppLockerPaths reports whether two path lists allow the same set of
+// directories. Order does not matter: AppLocker unions allow rules, and a
+// re-serialised policy may hand the rules back in a different order, which
+// is not a reason to rewrite the machine's security policy.
+func sameAppLockerPaths(a, b []string) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	x, y := append([]string(nil), a...), append([]string(nil), b...)
+	sort.Strings(x)
+	sort.Strings(y)
+	for i := range x {
+		if x[i] != y[i] {
+			return false
+		}
+	}
+	return true
 }
 
 // FilterAllowPaths re-validates the paths a published policy carries against
@@ -196,13 +269,20 @@ func rejectedErr(rejected []string) error {
 }
 
 // RewriteAppLockerXML returns xml with the agent's managed rules replaced by
-// one Everyone/Allow path rule per entry in paths, appended at the end of
-// the Exe collection. Nothing else in the document is changed, including
-// EnforcementMode and rules in other rule collections. changed is false
-// when the result equals the input.
+// one Everyone/Allow path rule per entry in paths, inserted at the end of the
+// Exe collection. Nothing else in the document is changed, including
+// EnforcementMode and rules in other rule collections.
+//
+// changed is decided semantically, not textually: if the Exe collection
+// already allows exactly these paths, it is false and xml comes back
+// untouched. It has to be. AppLocker stores rules per registry value and
+// re-serialises them on read, so the newlines and indentation this function
+// writes are gone by the next Get-AppLockerPolicy; comparing the rewritten
+// text with the input would report a change every single cycle and rewrite
+// every machine's security policy once a minute, forever.
 func RewriteAppLockerXML(xml string, paths []string) (string, bool, error) {
 	if !AppLockerDeployed(xml) {
-		return "", false, fmt.Errorf("no AppLocker policy with an Exe rule collection; refusing to create one")
+		return "", false, errNoExeCollection
 	}
 	if strings.Count(xml, "<FilePathRule") != strings.Count(xml, "</FilePathRule>") {
 		return "", false, fmt.Errorf("unbalanced FilePathRule elements; refusing to edit")
@@ -213,13 +293,18 @@ func RewriteAppLockerXML(xml string, paths []string) (string, bool, error) {
 	// sitting in the second -- an invalid AppLocker policy. This is
 	// unreachable against our own image, but this code edits a security
 	// policy on employee machines, so refuse rather than corrupt.
-	if n := len(exeCollectionOpen.FindAllStringIndex(xml, -1)); n > 1 {
+	if n := len(exeCollectionOpens(xml)); n > 1 {
 		return "", false, fmt.Errorf("found %d Exe rule collections; refusing to edit", n)
 	}
 
-	before, exeBody, after, ok := sliceExeCollection(xml)
-	if !ok {
-		return "", false, fmt.Errorf("Exe rule collection is not closed")
+	before, exeBody, after, err := sliceExeCollection(xml)
+	if err != nil {
+		return "", false, err
+	}
+
+	if current, count, intact := managedRulesIn(exeBody); intact &&
+		count == len(paths) && sameAppLockerPaths(current, paths) {
+		return xml, false, nil
 	}
 
 	// Only ever touch FilePathRule elements inside the Exe collection body:
@@ -229,17 +314,36 @@ func RewriteAppLockerXML(xml string, paths []string) (string, bool, error) {
 	strippedBody := managedRule.ReplaceAllString(exeBody, "")
 
 	if len(paths) > 0 {
+		// Insert at the end of the collection, in the shape of the document
+		// being edited. An indented document (what the image writes) ends its
+		// collection body with the closing tag's own indentation on its own
+		// line, so insert before that and keep the layout; the single-line
+		// document Get-AppLockerPolicy returns has no layout to keep, and
+		// writing indented rules into it would leave whitespace behind when
+		// they are later removed. Removal must restore the document exactly.
+		insertAt, indented := len(strippedBody), false
+		if i := strings.LastIndex(strippedBody, "\n"); i >= 0 && strings.TrimSpace(strippedBody[i+1:]) == "" {
+			insertAt, indented = i+1, true
+		}
 		var b strings.Builder
 		for i, p := range paths {
-			fmt.Fprintf(&b, "    <FilePathRule Id=\"%s%012d\" Name=\"%s%d\" Description=\"managed by ai-env-mgr policy.json appLockerAllowPaths\" UserOrGroupSid=\"S-1-1-0\" Action=\"Allow\">\n      <Conditions><FilePathCondition Path=\"%s\" /></Conditions>\n    </FilePathRule>\n",
-				ManagedRuleIDPrefix, i+1, ManagedRuleNamePrefix, i+1, html.EscapeString(p))
+			format := compactManagedRule
+			if indented {
+				format = indentedManagedRule
+			}
+			fmt.Fprintf(&b, format, ManagedRuleIDPrefix, i+1, ManagedRuleNamePrefix, i+1, html.EscapeString(p))
 		}
-		// Insert before the indentation of the closing tag so the result
-		// keeps the image's layout.
-		lineStart := strings.LastIndex(strippedBody, "\n") + 1
-		strippedBody = strippedBody[:lineStart] + b.String() + strippedBody[lineStart:]
+		strippedBody = strippedBody[:insertAt] + b.String() + strippedBody[insertAt:]
 	}
 
 	result := before + strippedBody + after
 	return result, result != xml, nil
 }
+
+// The two shapes of a managed rule. They differ only in whitespace; the
+// attributes, their order and their values are identical, so a machine can
+// be read and rewritten in either shape without the rule itself changing.
+const (
+	indentedManagedRule = "    <FilePathRule Id=\"%s%012d\" Name=\"%s%d\" Description=\"managed by ai-env-mgr policy.json appLockerAllowPaths\" UserOrGroupSid=\"S-1-1-0\" Action=\"Allow\">\n      <Conditions><FilePathCondition Path=\"%s\" /></Conditions>\n    </FilePathRule>\n"
+	compactManagedRule  = "<FilePathRule Id=\"%s%012d\" Name=\"%s%d\" Description=\"managed by ai-env-mgr policy.json appLockerAllowPaths\" UserOrGroupSid=\"S-1-1-0\" Action=\"Allow\"><Conditions><FilePathCondition Path=\"%s\" /></Conditions></FilePathRule>"
+)
