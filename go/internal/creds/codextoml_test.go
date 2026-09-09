@@ -317,6 +317,256 @@ base_url = "https://old-gateway.example/v1"
 	}
 }
 
+// --- second-round regressions found in review ---
+
+// TestSplitDoesNotSeverMultiLineArray reproduces the review's first finding:
+// a naive per-line "starts with [ and ends with ]" header check misreads a
+// line inside a multi-line array, such as the `[1, 2]` element below, as a
+// table header and injects the delivered gateway table in the middle of it.
+func TestSplitDoesNotSeverMultiLineArray(t *testing.T) {
+	block := `multi = [
+  "a",
+  [1, 2]
+]
+`
+	target := writeTemp(t, block)
+
+	got, err := mergeCodexConfig(target, []byte(deliveredConfig))
+	if err != nil {
+		t.Fatalf("merge: %v", err)
+	}
+	out := string(got)
+
+	// A contiguous, unbroken match of the whole block is the point: if the
+	// delivered table had been injected in the middle of the array (between
+	// "a", and [1, 2], as the bug reproduced), this substring would not be
+	// found at all.
+	if !strings.Contains(out, block) {
+		t.Errorf("multi-line array was severed by the merge:\n%s", out)
+	}
+	if strings.Count(out, "[model_providers.gateway]") != 1 {
+		t.Errorf("gateway table must appear exactly once:\n%s", out)
+	}
+}
+
+// TestSplitDoesNotSeverMultiLineString reproduces the review's second
+// finding: a line inside a triple-quoted string that happens to look like a
+// header (`[not a table]`) must not be treated as one -- doing so let the
+// delivered gateway table (including its bearer token) get swallowed into
+// the string instead of being written as an actual table.
+func TestSplitDoesNotSeverMultiLineString(t *testing.T) {
+	block := `notes = """
+line one
+[not a table]
+line two
+"""
+`
+	target := writeTemp(t, block)
+
+	got, err := mergeCodexConfig(target, []byte(deliveredConfig))
+	if err != nil {
+		t.Fatalf("merge: %v", err)
+	}
+	out := string(got)
+
+	if !strings.Contains(out, block) {
+		t.Errorf("multi-line string was severed or swallowed the delivered content:\n%s", out)
+	}
+	if strings.Count(out, "[model_providers.gateway]") != 1 {
+		t.Errorf("gateway table must appear exactly once (not swallowed into the string):\n%s", out)
+	}
+	if !strings.Contains(out, `base_url = "https://litellm.teenet.app/v1"`) {
+		t.Errorf("delivered gateway settings missing, likely swallowed into the string:\n%s", out)
+	}
+}
+
+// TestSplitStillHandlesArrayOfTablesHeader confirms the TOML-aware scanner
+// still recognizes a genuine [[array-of-tables]] header as a header.
+func TestSplitStillHandlesArrayOfTablesHeader(t *testing.T) {
+	target := writeTemp(t, `[[array_of_tables]]
+name = "one"
+`)
+
+	got, err := mergeCodexConfig(target, []byte(deliveredConfig))
+	if err != nil {
+		t.Fatalf("merge: %v", err)
+	}
+	out := string(got)
+
+	if !strings.Contains(out, "[[array_of_tables]]") || !strings.Contains(out, `name = "one"`) {
+		t.Errorf("array-of-tables header/content missing:\n%s", out)
+	}
+	gatewayIdx := strings.Index(out, "[model_providers.gateway]")
+	arrayIdx := strings.Index(out, "[[array_of_tables]]")
+	if gatewayIdx == -1 || arrayIdx == -1 || gatewayIdx > arrayIdx {
+		t.Errorf("delivered table must precede the preserved array-of-tables:\n%s", out)
+	}
+}
+
+// TestSplitIgnoresHeaderLookingCommentLine confirms a comment that merely
+// contains bracket text (`#[not a header]`) is never mistaken for a header.
+func TestSplitIgnoresHeaderLookingCommentLine(t *testing.T) {
+	target := writeTemp(t, `#[not a header]
+approval_policy = "never"
+`)
+
+	got, err := mergeCodexConfig(target, []byte(deliveredConfig))
+	if err != nil {
+		t.Fatalf("merge: %v", err)
+	}
+	out := string(got)
+
+	gatewayIdx := strings.Index(out, "[model_providers.gateway]")
+	commentIdx := strings.Index(out, "#[not a header]")
+	apIdx := strings.Index(out, `approval_policy = "never"`)
+	if gatewayIdx == -1 || commentIdx == -1 || apIdx == -1 {
+		t.Fatalf("missing expected content:\n%s", out)
+	}
+	if commentIdx > gatewayIdx || apIdx > gatewayIdx {
+		t.Errorf("comment/root key that only look like a header must stay at root, before the delivered table:\n%s", out)
+	}
+}
+
+// TestStripDoesNotLeakManagedTableThroughNestedArray reproduces the review's
+// "minor": a nested array inside the managed gateway table's own fields used
+// to be misread as the start of the next table, ending the "still stripping
+// the managed table" state early and letting the rest of the table -- the
+// stale base_url and bearer token included -- leak through as if it were
+// preserved content.
+func TestStripDoesNotLeakManagedTableThroughNestedArray(t *testing.T) {
+	target := writeTemp(t, `[model_providers.gateway]
+base_url = "https://old-gateway.example/v1"
+extra = [
+  "x",
+  [1, 2]
+]
+experimental_bearer_token = "sk-OLD-LEAKED"
+
+[model_providers.other]
+base_url = "https://other/v1"
+`)
+
+	got, err := mergeCodexConfig(target, []byte(deliveredConfig))
+	if err != nil {
+		t.Fatalf("merge: %v", err)
+	}
+	out := string(got)
+
+	if strings.Contains(out, "sk-OLD-LEAKED") {
+		t.Errorf("stale bearer token leaked past the strip via a nested array:\n%s", out)
+	}
+	if strings.Contains(out, "old-gateway.example") {
+		t.Errorf("stale gateway base_url leaked past the strip via a nested array:\n%s", out)
+	}
+	if strings.Count(out, "[model_providers.gateway]") != 1 {
+		t.Errorf("gateway table must appear exactly once:\n%s", out)
+	}
+	if !strings.Contains(out, "[model_providers.other]") || !strings.Contains(out, "https://other/v1") {
+		t.Errorf("the following table must survive the strip intact:\n%s", out)
+	}
+}
+
+// TestSplitAttachesImmediatePrecedingCommentToTable reproduces the review's
+// third finding: a comment documenting the table right below it must move
+// with that table, not stay behind in the root section above the delivered
+// gateway table.
+func TestSplitAttachesImmediatePrecedingCommentToTable(t *testing.T) {
+	target := writeTemp(t, `approval_policy = "never"
+
+# notes about foo
+[mcp_servers.foo]
+command = "foo.exe"
+`)
+
+	got, err := mergeCodexConfig(target, []byte(deliveredConfig))
+	if err != nil {
+		t.Fatalf("merge: %v", err)
+	}
+	out := string(got)
+
+	if !strings.Contains(out, "# notes about foo\n[mcp_servers.foo]") {
+		t.Errorf("comment must stay directly attached to its table:\n%s", out)
+	}
+	gatewayIdx := strings.Index(out, "[model_providers.gateway]")
+	commentIdx := strings.Index(out, "# notes about foo")
+	apIdx := strings.Index(out, `approval_policy = "never"`)
+	if gatewayIdx == -1 || commentIdx == -1 || apIdx == -1 {
+		t.Fatalf("missing expected content:\n%s", out)
+	}
+	if apIdx > gatewayIdx {
+		t.Errorf("preserved root key must stay before the delivered table:\n%s", out)
+	}
+	if commentIdx < gatewayIdx {
+		t.Errorf("comment must move with its table, after the delivered table, not stay at root:\n%s", out)
+	}
+}
+
+// TestSplitAttachesTrailingCommentAndBlankRunToTable covers the root section
+// ending in a trailing comment followed by a blank line and then the header:
+// both the comment and the blank line must move with the table.
+func TestSplitAttachesTrailingCommentAndBlankRunToTable(t *testing.T) {
+	target := writeTemp(t, `approval_policy = "never"
+# trailing comment
+
+[mcp_servers.foo]
+command = "foo.exe"
+`)
+
+	got, err := mergeCodexConfig(target, []byte(deliveredConfig))
+	if err != nil {
+		t.Fatalf("merge: %v", err)
+	}
+	out := string(got)
+
+	gatewayIdx := strings.Index(out, "[model_providers.gateway]")
+	commentIdx := strings.Index(out, "# trailing comment")
+	mcpIdx := strings.Index(out, "[mcp_servers.foo]")
+	apIdx := strings.Index(out, `approval_policy = "never"`)
+	if gatewayIdx == -1 || commentIdx == -1 || mcpIdx == -1 || apIdx == -1 {
+		t.Fatalf("missing expected content:\n%s", out)
+	}
+	if apIdx > gatewayIdx {
+		t.Errorf("preserved root key must stay before the delivered table:\n%s", out)
+	}
+	if !(gatewayIdx < commentIdx && commentIdx < mcpIdx) {
+		t.Errorf("trailing comment (and its blank line) must move with the table it precedes:\n%s", out)
+	}
+}
+
+// TestMergeIsIdempotent is the regression case for the review's third
+// finding: merging an already-merged file with the same delivered fragment
+// again must produce byte-identical output, or deploy.go's
+// bytes.Equal(previous, payload) check never holds and every delivery
+// rewrites config.toml -- and grows it by one blank line -- forever.
+func TestMergeIsIdempotent(t *testing.T) {
+	target := writeTemp(t, `# leading comment
+approval_policy = "never"
+multi = [
+  "a",
+  "b",
+]
+
+# table comment
+[mcp_servers.foo]
+command = "foo.exe"
+`)
+
+	first, err := mergeCodexConfig(target, []byte(deliveredConfig))
+	if err != nil {
+		t.Fatalf("first merge: %v", err)
+	}
+
+	target2 := writeTemp(t, string(first))
+	second, err := mergeCodexConfig(target2, []byte(deliveredConfig))
+	if err != nil {
+		t.Fatalf("second merge: %v", err)
+	}
+
+	if string(first) != string(second) {
+		t.Fatalf("merge is not idempotent:\n--- first ---\n%s\n--- second ---\n%s", first, second)
+	}
+}
+
 // countRootAssignments counts `key = ...` lines that sit at the root of the
 // document, ignoring occurrences inside table headers or other tables.
 func countRootAssignments(doc, key string) int {
