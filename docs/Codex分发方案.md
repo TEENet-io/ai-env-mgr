@@ -7,6 +7,11 @@
 （可用环境变量 `AIENVMGR_CODEX_ROOT` 覆盖），更新时用 `/DIR=` 原地安装，
 不会把应用挪走。
 
+该目录不在镜像 AppLocker 的白名单内。agent 1.2.13 起由 policy.json 的
+`appLockerAllowPaths` 放行（控制台「封禁策略」页），装机脚本无需改。注意真正的可执行
+文件是 `_internal\app\ChatGPT.exe`，且默认快捷方式经 `wscript.exe` 中转——后者会被
+AppLocker 拦下，见 [`docs/AppLocker与Codex启动.md`](AppLocker与Codex启动.md)。
+
 **核心原则:构建 ≠ 发布。**
 CI 构建成功只说明补丁应用正确，不代表这个包可以给员工用
 （是否真的去掉了 ChatGPT 入口、Computer Use 是否可用，只有 Windows 真机能验证）。
