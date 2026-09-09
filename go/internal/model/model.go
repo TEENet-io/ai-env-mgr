@@ -10,8 +10,8 @@ import (
 // Policy is stored at agent_workdir/{user}/policy.json and drives both the browser
 // blocklist and the agent's sync cadence.
 type Policy struct {
-	BlockEnabled        bool     `json:"blockEnabled"`
-	BlockedDomains      []string `json:"blockedDomains"`
+	BlockEnabled   bool     `json:"blockEnabled"`
+	BlockedDomains []string `json:"blockedDomains"`
 	// AppLockerAllowPaths are program directories every user may execute
 	// from, in AppLocker path syntax (`C:\tools\Codex\*`). The image ships
 	// AppLocker allowing only Windows and Program Files; anything installed

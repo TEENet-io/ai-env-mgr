@@ -100,3 +100,19 @@ func TestRewriteEscapesXMLInPaths(t *testing.T) {
 		t.Errorf("ampersand must be escaped: %v\n%s", err, out)
 	}
 }
+
+func TestRewriteRefusesTwoExeCollections(t *testing.T) {
+	fx := fixture(t)
+	start := strings.Index(fx, `<RuleCollection Type="Exe"`)
+	end := strings.Index(fx, `</RuleCollection>`) + len(`</RuleCollection>`)
+	exeCollection := fx[start:end]
+	doc := `<AppLockerPolicy Version="1">` + exeCollection + exeCollection + `</AppLockerPolicy>`
+
+	out, changed, err := RewriteAppLockerXML(doc, []string{`C:\tools\Codex\*`})
+	if err == nil {
+		t.Fatalf("expected an error for a document with two Exe rule collections, got changed=%v out=%q", changed, out)
+	}
+	if out != "" {
+		t.Errorf("expected no output on refusal, got %q", out)
+	}
+}

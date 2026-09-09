@@ -64,6 +64,15 @@ func RewriteAppLockerXML(xml string, paths []string) (string, bool, error) {
 	if strings.Count(xml, "<FilePathRule") != strings.Count(xml, "</FilePathRule>") {
 		return "", false, fmt.Errorf("unbalanced FilePathRule elements; refusing to edit")
 	}
+	// A document with more than one Exe rule collection is not one the image
+	// ever produces (it writes exactly one). Rewriting only the first, as the
+	// code below does, would leave a stale managed rule with a duplicate Id
+	// sitting in the second -- an invalid AppLocker policy. This is
+	// unreachable against our own image, but this code edits a security
+	// policy on employee machines, so refuse rather than corrupt.
+	if n := len(exeCollectionOpen.FindAllStringIndex(xml, -1)); n > 1 {
+		return "", false, fmt.Errorf("found %d Exe rule collections; refusing to edit", n)
+	}
 
 	openLoc := exeCollectionOpen.FindStringIndex(xml)
 	closeRel := strings.Index(xml[openLoc[1]:], "</RuleCollection>")
