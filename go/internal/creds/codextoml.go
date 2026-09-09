@@ -216,32 +216,41 @@ func (s tomlScanState) fresh() bool {
 // table" state and leak the rest of the table (including a stale bearer
 // token) through as ordinary content.
 //
-// A genuine multi-line array always closes eventually (that is what makes
-// it valid TOML), so after one pass over the whole file, depth should be
-// back to zero. If it is not, an array opened somewhere and never closed --
-// almost always a stray `[` typo, not a real array that just happens to
-// run to end of file. Once that is known, per-line depth tracking cannot be
-// trusted for anything after the point it got stuck: a second pass
-// re-classifies with recovery enabled, promoting any header-shaped line
-// encountered while depth is still open into a real header after all and
-// resyncing depth to zero there, rather than continuing to treat everything
-// after it as unclosed-array content. Left unrecovered, that stuck depth
-// either swallows the rest of the file (a managed root key's value that
-// never closes drops everything after it, since nothing downstream is ever
-// recognized as the header that would stop the drop) or, on a later merge,
-// duplicates the delivered table (the real header becomes unrecognizable
-// too, so the old one is never stripped before the new one is added). This
-// is best-effort recovery for already-malformed input, not a fix for it --
-// content that genuinely belonged to the unterminated array is not
-// recoverable by a line-oriented scanner and may still end up misplaced.
+// A genuine multi-line array or multi-line string always closes eventually
+// (that is what makes it valid TOML), so after one pass over the whole file
+// the scanner should be back in its fresh state: bracket depth zero and no
+// triple-quoted string open. If it is not, something opened and never
+// closed -- a stray `[`, or a `"""` or triple-apostrophe delimiter that
+// runs to end of file -- almost always a typo rather than content that
+// genuinely extends that far.
+// Once that is known, the per-line state cannot be trusted for anything
+// after the point it got stuck: a second pass re-classifies with recovery
+// enabled, promoting any header-shaped line encountered while the scanner is
+// still stuck -- inside the unclosed array *or* the unclosed string -- into
+// a real header after all and resyncing the state to fresh there, rather
+// than continuing to treat everything after it as the body of a value that
+// is already known never to end.
+//
+// Left unrecovered, that stuck state either swallows the rest of the file (a
+// managed root key's value that never closes drops everything after it,
+// since nothing downstream is ever recognized as the header that would stop
+// the drop) or, on a later merge, duplicates the delivered table: the real
+// `[model_providers.gateway]` header is hidden inside the value that never
+// closes, so it is never stripped before the new one is appended. That
+// duplication is unbounded -- one more gateway table, and one more stale
+// `experimental_bearer_token`, per delivery -- and the file never converges,
+// so deploy.go rewrites config.toml forever. This is best-effort recovery
+// for already-malformed input, not a fix for it -- content that genuinely
+// belonged to the unterminated value is not recoverable by a line-oriented
+// scanner and may still end up misplaced.
 func scanTomlLines(src []byte) ([]tomlLine, error) {
 	rawLines, err := splitTomlPhysicalLines(src)
 	if err != nil {
 		return nil, err
 	}
 
-	lines, finalDepth := classifyTomlLines(rawLines, false)
-	if finalDepth > 0 {
+	lines, end := classifyTomlLines(rawLines, false)
+	if !end.fresh() {
 		lines, _ = classifyTomlLines(rawLines, true)
 	}
 	return lines, nil
@@ -264,19 +273,23 @@ func splitTomlPhysicalLines(src []byte) ([]string, error) {
 }
 
 // classifyTomlLines is scanTomlLines' classification pass, run once with
-// recoverUnterminated false and, only if that leaves depth open at EOF, run
-// again with it true. With it false this is exactly the state machine
-// described on scanTomlLines. With it true, a line encountered while depth
-// is greater than zero (and the scanner is not inside a multi-line string)
-// that matches a table header is promoted to a real header and depth is
-// reset to zero, instead of being treated as more content of an array that,
-// this second time around, is already known to never close.
+// recoverUnterminated false and, only if that leaves the scanner mid-value
+// at EOF, run again with it true. With it false this is exactly the state
+// machine described on scanTomlLines. With it true, a header-shaped line
+// encountered while the scanner is not fresh -- inside an unclosed array
+// *or* inside an unclosed multi-line string -- is promoted to a real
+// header and the scanner is resynced to fresh, instead of being treated as
+// more content of a value that, this second time around, is already known
+// never to close. The unclosed-string case matters as much as the unclosed
+// bracket: without it a `notes = """` with no closing delimiter hides every
+// later header, the delivered gateway table is appended once per merge, and
+// the file grows without bound.
 //
-// It also returns the depth the scan ends on, which is how scanTomlLines
+// It also returns the state the scan ends on, which is how scanTomlLines
 // decides whether a second, recovering pass is warranted at all: for a
-// well-formed file it always comes back zero, so recovery is never invoked
+// well-formed file it always comes back fresh, so recovery is never invoked
 // and behavior is unchanged from a single, non-recovering pass.
-func classifyTomlLines(rawLines []string, recoverUnterminated bool) ([]tomlLine, int) {
+func classifyTomlLines(rawLines []string, recoverUnterminated bool) ([]tomlLine, tomlScanState) {
 	lines := make([]tomlLine, 0, len(rawLines))
 	var st tomlScanState
 
@@ -292,11 +305,15 @@ func classifyTomlLines(rawLines []string, recoverUnterminated bool) ([]tomlLine,
 				isHeader = true
 				header = name
 			}
-		case recoverUnterminated && entering.depth > 0 && !entering.inTripleDouble && !entering.inTripleSingle:
+		case recoverUnterminated:
+			// entering is not fresh: an array bracket, a triple-quoted
+			// string, or both are still open from a line above. This pass
+			// only runs when the file, scanned straight through, never
+			// closed them, so treat the header as real and resync.
 			if name, ok := matchTomlHeader(trimmed); ok {
 				isHeader = true
 				header = name
-				st.depth = 0
+				st = tomlScanState{}
 			}
 		}
 
@@ -311,7 +328,7 @@ func classifyTomlLines(rawLines []string, recoverUnterminated bool) ([]tomlLine,
 			continuation: !isHeader && !entering.fresh(),
 		})
 	}
-	return lines, st.depth
+	return lines, st
 }
 
 // advanceTomlScanState scans one line's characters, given the state on
@@ -410,19 +427,29 @@ func skipSingleLineString(line string, start int, quote byte, escapes bool) int 
 // a header line reset "still inside the managed table" -- a trailing
 // comment never did.
 //
-// The managed gateway table is deliberately excluded from this reassignment
-// (see the check inside the loop below). stripCodexManaged uses this same
-// map to decide what counts as "inside" the managed table and gets dropped
-// wholesale, and a comment or blank run immediately above that header must
-// never be swept into it: it may be the employee's own note about their
-// existing gateway config, or it may simply be preserved root content that
-// a previous merge's own assembly happened to place right before the
-// delivered header. Either way, deleting it because it merely sits next to
-// a table this tool is about to replace is a second, independent way this
-// merge would otherwise leak content on every re-merge -- not the ordering
-// bug the general rule above exists to fix, but the same shape of bug.
-// Comments preceding every other header are unaffected: they still move
-// with that header.
+// The managed gateway table follows a narrower rule (see the loop below): it
+// takes only a comment run written *directly* against its header, and a
+// blank line ends the run rather than being absorbed into it.
+//
+// Blank-separated runs must stay where they are. stripCodexManaged uses this
+// same map to decide what gets dropped wholesale with the managed table, and
+// in an existing config.toml a blank-separated comment above that header is
+// always the employee's: either their own note about their existing gateway
+// config, or preserved root content that a previous merge's own assembly
+// placed right before the delivered header -- appendTomlSection separates
+// every section it writes with exactly one blank line, so anything this tool
+// itself put there is blank-separated by construction. Deleting it because
+// it merely sits next to a table about to be replaced is a second,
+// independent way this merge would otherwise leak content on every re-merge.
+//
+// A directly adjacent run, by that same construction, can only have come
+// from the delivered fragment, where it documents the managed table itself.
+// Keeping it with that table is what stops it from accumulating: it is
+// re-emitted from the fragment on every merge, so it must also be stripped
+// with the table on every merge, exactly like the table's own body. Were it
+// instead left in the preserved root, each delivery would add one more copy.
+// Comments preceding every other header are unaffected: the whole
+// comment/blank run still moves with that header.
 func tomlSectionOwners(lines []tomlLine) []int {
 	owner := make([]int, len(lines))
 	current := -1
@@ -434,12 +461,20 @@ func tomlSectionOwners(lines []tomlLine) []int {
 	}
 
 	for h, ln := range lines {
-		if !ln.isHeader || ln.header == codexManagedTable {
+		if !ln.isHeader {
 			continue
 		}
+		managed := ln.header == codexManagedTable
 		for j := h - 1; j >= 0; j-- {
 			trimmed := strings.TrimSpace(lines[j].text)
-			if trimmed != "" && !strings.HasPrefix(trimmed, "#") {
+			if trimmed == "" {
+				if managed {
+					break // a blank line ends the managed table's run
+				}
+				owner[j] = h
+				continue
+			}
+			if !strings.HasPrefix(trimmed, "#") {
 				break
 			}
 			owner[j] = h

@@ -870,3 +870,176 @@ func countRootAssignments(doc, key string) int {
 	}
 	return n
 }
+
+// --- round 4: unterminated triple-quoted strings, fragment comments ---
+
+// tripleQuoteStyles are the two multi-line string delimiters TOML defines.
+// Every unterminated-string case below must behave identically for both:
+// the scanner tracks them with separate state flags, so a fix applied to
+// only one of them is a fix for neither.
+var tripleQuoteStyles = []struct {
+	name  string
+	delim string
+}{
+	{"basic", `"""`},
+	{"literal", `'''`},
+}
+
+// mergeNTimes merges fragment into body n times, feeding each merge's output
+// to the next, and returns every intermediate result.
+func mergeNTimes(t *testing.T, body, fragment string, n int) []string {
+	t.Helper()
+	outs := make([]string, 0, n)
+	current := body
+	for i := 0; i < n; i++ {
+		target := writeTemp(t, current)
+		got, err := mergeCodexConfig(target, []byte(fragment))
+		if err != nil {
+			t.Fatalf("merge %d: %v", i+1, err)
+		}
+		current = string(got)
+		outs = append(outs, current)
+	}
+	return outs
+}
+
+// TestMergeRepeatedlyWithUnterminatedTripleQuotedString is round 4's finding
+// A(1): the round-3 recovery pass was triggered on leftover bracket depth
+// alone, so a value opened with `"""` (or triple apostrophes) and never
+// closed was never recovered from. Every later header -- including the
+// `[model_providers.gateway]` header a previous merge itself wrote -- stayed
+// hidden inside that string, so stripCodexManaged never removed the old
+// table before the new one was appended: one more gateway table, and one
+// more stale experimental_bearer_token, per delivery, forever.
+func TestMergeRepeatedlyWithUnterminatedTripleQuotedString(t *testing.T) {
+	for _, style := range tripleQuoteStyles {
+		t.Run(style.name, func(t *testing.T) {
+			body := "notes = " + style.delim + "\nunterminated\n"
+
+			outs := mergeNTimes(t, body, deliveredConfig, 3)
+			for i, out := range outs {
+				if n := strings.Count(out, "[model_providers.gateway]"); n != 1 {
+					t.Fatalf("merge %d produced %d gateway headers, want exactly 1:\n%s", i+1, n, out)
+				}
+			}
+			if outs[0] != outs[1] {
+				t.Errorf("merge 2 changed the file again:\n--- 1 ---\n%s\n--- 2 ---\n%s", outs[0], outs[1])
+			}
+			if outs[1] != outs[2] {
+				t.Fatalf("merge is not idempotent:\n--- 2 ---\n%s\n--- 3 ---\n%s", outs[1], outs[2])
+			}
+			if !strings.Contains(outs[2], "notes = "+style.delim) {
+				t.Errorf("the employee's (malformed) value was dropped entirely:\n%s", outs[2])
+			}
+		})
+	}
+}
+
+// TestMergeRecoversTableAfterUnterminatedTripleQuotedManagedRootValue is
+// round 4's finding A(2): a *managed* root key whose value opens a
+// triple-quoted string that never closes used to take the whole rest of the
+// file down with it -- stripCodexManaged's dropRootContinuation is cleared
+// only by a recognized header, and no header downstream was recognized. The
+// key's own value is malformed and may be lost; unrelated tables after it
+// must not be.
+func TestMergeRecoversTableAfterUnterminatedTripleQuotedManagedRootValue(t *testing.T) {
+	for _, style := range tripleQuoteStyles {
+		t.Run(style.name, func(t *testing.T) {
+			body := "model = " + style.delim + "\napproval_policy = \"never\"\n[mcp_servers.foo]\ncommand = \"keepme\"\n"
+
+			outs := mergeNTimes(t, body, deliveredConfig, 3)
+			for i, out := range outs {
+				if n := strings.Count(out, "[model_providers.gateway]"); n != 1 {
+					t.Fatalf("merge %d produced %d gateway headers, want exactly 1:\n%s", i+1, n, out)
+				}
+				if !strings.Contains(out, "[mcp_servers.foo]") {
+					t.Fatalf("merge %d lost the table after the unterminated value:\n%s", i+1, out)
+				}
+				if !strings.Contains(out, `command = "keepme"`) {
+					t.Fatalf("merge %d lost the body of the table after the unterminated value:\n%s", i+1, out)
+				}
+			}
+			if outs[1] != outs[2] {
+				t.Fatalf("merge is not idempotent:\n--- 2 ---\n%s\n--- 3 ---\n%s", outs[1], outs[2])
+			}
+			// approval_policy sits inside the unterminated value and may
+			// legitimately go with it; the requirement is only that its
+			// loss does not extend to the rest of the file.
+		})
+	}
+}
+
+// TestValidTripleQuotedStringWithHeaderLookingLineIsNotRecovered is the
+// safety net for the widened recovery trigger: a *valid* file whose
+// multi-line string legitimately contains a header-shaped line still scans
+// clean to EOF, so recovery never runs and `[not a table]` stays what it is
+// -- string content, not a header.
+func TestValidTripleQuotedStringWithHeaderLookingLineIsNotRecovered(t *testing.T) {
+	for _, style := range tripleQuoteStyles {
+		t.Run(style.name, func(t *testing.T) {
+			block := "notes = " + style.delim + "\n[not a table]\n" + style.delim + "\n[mcp_servers.foo]\ncommand = \"x\"\n"
+
+			lines, err := scanTomlLines([]byte(block))
+			if err != nil {
+				t.Fatalf("scan: %v", err)
+			}
+			for _, ln := range lines {
+				if strings.TrimSpace(ln.text) == "[not a table]" && ln.isHeader {
+					t.Fatalf("a header-shaped line inside a closed multi-line string was classified as a header:\n%s", block)
+				}
+			}
+			if !lines[3].isHeader || lines[3].header != "mcp_servers.foo" {
+				t.Fatalf("the real header after the string was not classified as one: %+v", lines[3])
+			}
+
+			target := writeTemp(t, block)
+			got, err := mergeCodexConfig(target, []byte(deliveredConfig))
+			if err != nil {
+				t.Fatalf("merge: %v", err)
+			}
+			out := string(got)
+			// Contiguity is the point: had `[not a table]` been promoted,
+			// the string would have been split around it.
+			if !strings.Contains(out, "notes = "+style.delim+"\n[not a table]\n"+style.delim) {
+				t.Errorf("the multi-line string was severed around its header-shaped line:\n%s", out)
+			}
+			if n := strings.Count(out, "[model_providers.gateway]"); n != 1 {
+				t.Errorf("gateway table must appear exactly once, got %d:\n%s", n, out)
+			}
+			if !strings.Contains(out, "[mcp_servers.foo]") || !strings.Contains(out, `command = "x"`) {
+				t.Errorf("the real table after the string was lost:\n%s", out)
+			}
+		})
+	}
+}
+
+// TestFragmentCommentAboveManagedHeaderDoesNotAccumulate is round 4's
+// finding B: a comment the *delivered fragment* writes directly above
+// `[model_providers.gateway]` documents the managed table, so it must be
+// stripped and re-delivered with that table like the table's own body. If
+// it were instead treated as preserved employee content (as the blanket
+// round-3 exemption did), every delivery would leave one more copy behind.
+// The renderer emits no comments today, so this is a pin, not a bug fix.
+func TestFragmentCommentAboveManagedHeaderDoesNotAccumulate(t *testing.T) {
+	fragment := strings.Replace(deliveredConfig,
+		"[model_providers.gateway]",
+		"# Managed by IT -- do not edit\n[model_providers.gateway]", 1)
+
+	body := `approval_policy = "never"
+`
+	outs := mergeNTimes(t, body, fragment, 3)
+	for i, out := range outs {
+		if n := strings.Count(out, "# Managed by IT -- do not edit"); n != 1 {
+			t.Fatalf("merge %d left %d copies of the fragment's comment, want exactly 1:\n%s", i+1, n, out)
+		}
+		if !strings.Contains(out, "# Managed by IT -- do not edit\n[model_providers.gateway]") {
+			t.Errorf("merge %d detached the fragment's comment from its table:\n%s", i+1, out)
+		}
+		if !strings.Contains(out, `approval_policy = "never"`) {
+			t.Errorf("merge %d dropped preserved employee content:\n%s", i+1, out)
+		}
+	}
+	if outs[0] != outs[1] || outs[1] != outs[2] {
+		t.Fatalf("merge is not idempotent:\n--- 1 ---\n%s\n--- 2 ---\n%s\n--- 3 ---\n%s", outs[0], outs[1], outs[2])
+	}
+}
