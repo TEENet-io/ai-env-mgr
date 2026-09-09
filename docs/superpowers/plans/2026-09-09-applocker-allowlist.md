@@ -16,8 +16,8 @@
 - Safety lines the agent must enforce in code, not by administrator care: never remove or alter any rule it does not own; never change `EnforcementMode`; never create an AppLocker policy where none exists; refuse paths under user-writable roots (see validation rules); on any parse/validation failure leave the machine's policy untouched and return an error.
 - Validation rules for an allow path (shared by console and agent, `model.ValidateAppLockerPath`): must match `^[A-Za-z]:\\` or start with `%PROGRAMFILES%\`, `%PROGRAMDATA%\`, `%OSDRIVE%\`; must end with `\*`; the only `*` is the trailing one; no `..`; length ≤ 200; case-insensitive reject when the path (after variable expansion of `%OSDRIVE%`→`C:`) equals or is under any of: `C:\*`, `C:\Users\*`, `C:\Windows\Temp\*`, `%USERPROFILE%`, `%LOCALAPPDATA%`, `%APPDATA%`, `%TEMP%`, `%TMP%`, `%PUBLIC%`; also reject `%PROGRAMDATA%\*` (whole ProgramData is user-writable in parts) but allow subfolders of it.
 - Managed rule shape (exact): `<FilePathRule Id="c0000000-0000-0000-0000-{index:012d}" Name="AIEnvMgr-allow-{index}" Description="managed by ai-env-mgr policy.json appLockerAllowPaths" UserOrGroupSid="S-1-1-0" Action="Allow"><Conditions><FilePathCondition Path="{path}" /></Conditions></FilePathRule>` inserted as the last children of `<RuleCollection Type="Exe" …>`.
-- Commit messages: imperative, package-prefixed (`model:`, `policy:`, `agent:`, `console:`, `docs:`), ending with `Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>`; no Claude-Session line.
-- English code comments; Chinese UI copy. Nothing under `internal/agentcore` changes (the `Applier` interface is untouched: the AppLocker step lives inside `policy.Apply`).
+- Commit messages: imperative, package-prefixed (`model:`, `policy:`, `agent:`, `console:`, `docs:`), ending with `Co-Authored-By: Claude Opus 5 (1M context) <noreply@anthropic.com>`; no Claude-Session line.
+- English code comments; Chinese UI copy. The `Applier` interface DOES gain one method (`ApplyAppLocker`) — see Task 3 for why the allow list cannot sit behind `ApplyPolicy`'s ETag gate.
 - `go vet ./... && go test ./...` must pass before each commit; Windows-only files carry `//go:build windows` and must compile with `GOOS=windows go build ./...`.
 
 ---
@@ -416,17 +416,75 @@ Note: `html.EscapeString` escapes `& < > " '` which is what XML attribute values
 
 ---
 
-### Task 3: Windows apply step and status count
+### Task 3: Apply the allow list every sync cycle (Windows + agentcore)
 
 **Files:**
-- Create: `internal/policy/applocker_windows.go`
-- Modify: `internal/policy/registry_windows.go` (`Apply`), `cmd/agent/machine.go` (status), `cmd/agent/main.go` (status print)
+- Create: `internal/policy/applocker_windows.go`, `internal/policy/applocker_stub.go`
+- Modify: `internal/agentcore/sync.go` (`Applier` interface + call site), `internal/agentcore/sync_test.go` (fake + tests), `cmd/agent/machine.go` (`localApplier`, status), `cmd/agent/main.go` (status print)
+
+**Why this is not inside `policy.Apply`:** the browser keys are behind an ETag gate in
+`sync.go` — when the policy object has not changed, `ApplyPolicy` is skipped entirely.
+The allow list must NOT be behind that gate. `ApplyAppLocker` already reads the machine's
+own XML and no-ops when it matches, so the gate would buy nothing while stopping the
+machine from ever self-healing: if the image script is re-run, a GPO refresh replaces the
+local policy, or an administrator edits rules by hand, the allow rule would stay gone until
+somebody happened to edit the policy object. So it becomes its own `Applier` method,
+called on every cycle.
 
 **Interfaces:**
-- Produces (windows): `func applyAppLocker(paths []string) error`
-- `policy.Apply(p)` calls `applyAppLocker(p.AppLockerAllowPaths)` after the browser keys succeed, when `p.BlockEnabled` is true **or** false (the allow list is independent of the browser toggle).
+- Produces: `func ApplyAppLocker(paths []string) error` in `internal/policy` (exported; Windows real, non-Windows no-op).
+- Produces: `var ErrAppLockerNotDeployed = errors.New(...)` in `internal/policy` — returned when the machine has no AppLocker policy to add rules to, so the caller can report it as a warning instead of an error.
+- Produces: `Applier` interface gains `ApplyAppLocker(paths []string) error`.
+- Produces: `Status.AppLockerAllowPaths int` is filled from the policy the agent just read.
 
-- [ ] **Step 1: Implement `applyAppLocker`**
+- [ ] **Step 1: Write the failing agentcore tests**
+
+In `internal/agentcore/sync_test.go`, add to `fakeApplier`:
+
+```go
+	appLockerPaths [][]string
+	appLockerErr   error
+```
+
+and the method:
+
+```go
+func (a *fakeApplier) ApplyAppLocker(paths []string) error {
+	a.appLockerPaths = append(a.appLockerPaths, paths)
+	return a.appLockerErr
+}
+```
+
+Then the tests (use whatever helper the file already has for building a Syncer and seeding
+a policy object — follow the existing tests in this file, do not invent a new harness):
+
+```go
+func TestAppLockerAllowListIsAppliedEvenWhenThePolicyIsUnchanged(t *testing.T) {
+	// The browser keys are skipped on an unchanged ETag. The allow list must
+	// not be: it is the only thing that lets an employee launch Codex, and a
+	// machine whose local policy was replaced has to converge on its own.
+	// (Seed a policy with AppLockerAllowPaths, run two cycles, assert
+	// ApplyPolicy ran once and ApplyAppLocker ran twice with the same paths.)
+}
+
+func TestAppLockerNotDeployedIsAWarningNotAnError(t *testing.T) {
+	// A machine that never had AppLocker is a normal state, not a failure.
+	// (fake returns policy.ErrAppLockerNotDeployed; assert the status carries
+	// it in Warns and NOT in Errors.)
+}
+
+func TestAppLockerApplyFailureIsReportedAsAnError(t *testing.T) {
+	// Any other failure means the machine is not in the state we published.
+	// (fake returns errors.New("boom"); assert it lands in Errors.)
+}
+```
+
+Write the bodies to match this file's existing style. If the file's Warns plumbing differs
+from what these names suggest, follow the file and say so in your report.
+
+- [ ] **Step 2: Run to verify failure** — `go test ./internal/agentcore/ -run AppLocker -v` → fake does not satisfy `Applier` / undefined.
+
+- [ ] **Step 3: Implement `internal/policy/applocker_windows.go`**
 
 ```go
 //go:build windows
@@ -435,6 +493,7 @@ package policy
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -443,19 +502,29 @@ import (
 	"unicode/utf16"
 )
 
-// applyAppLocker brings the machine's LOCAL AppLocker policy in line with
-// paths (see RewriteAppLockerXML). It reads the local policy -- not the
-// effective one, which would fold in domain GPOs the agent must not copy
-// into the local store -- and writes back only when something changed.
+// ErrAppLockerNotDeployed means this machine has no AppLocker policy with an
+// Exe rule collection. The agent never creates one -- whether AppLocker is
+// deployed at all is the image's decision -- so callers should report this
+// as a warning, not a failure.
+var ErrAppLockerNotDeployed = errors.New("AppLocker is not deployed on this machine")
+
+// ApplyAppLocker brings the machine's LOCAL AppLocker policy in line with
+// paths (see RewriteAppLockerXML).
 //
-// A machine with no AppLocker policy is left alone: the image decides
-// whether AppLocker exists; this only adjusts the allow list inside it.
-func applyAppLocker(paths []string) error {
+// It reads the LOCAL policy rather than the effective one: the effective
+// policy folds in domain GPOs, and writing that back would copy someone
+// else's rules into our local store, where they would then outlive the GPO.
+//
+// It is called on every sync cycle, so it must stay cheap and quiet when
+// nothing has drifted: one read, and a write only when the XML actually
+// changes.
+func ApplyAppLocker(paths []string) error {
 	out, err := exec.Command("powershell.exe", "-NoProfile", "-NonInteractive",
 		"-Command", "Import-Module AppLocker; Get-AppLockerPolicy -Local -Xml").Output()
 	if err != nil {
 		if len(paths) == 0 {
-			return nil // nothing to manage and nothing readable: not an error worth a status line
+			// Nothing to manage and nothing readable: not worth a status line.
+			return nil
 		}
 		return fmt.Errorf("read local AppLocker policy: %w", err)
 	}
@@ -464,7 +533,7 @@ func applyAppLocker(paths []string) error {
 		if len(paths) == 0 {
 			return nil
 		}
-		return fmt.Errorf("AppLocker is not deployed on this machine (no Exe rule collection); %d allow path(s) not applied", len(paths))
+		return fmt.Errorf("%w; %d allow path(s) not applied", ErrAppLockerNotDeployed, len(paths))
 	}
 	next, changed, err := RewriteAppLockerXML(xml, paths)
 	if err != nil {
@@ -500,24 +569,70 @@ func utf16LEWithBOM(s string) []byte {
 }
 ```
 
-In `registry_windows.go` `Apply`: after the browser-key loop (both branches), add:
+Note: in the real file the BOM strip must be the actual U+FEFF rune literal, not the
+escaped text shown above.
+
+- [ ] **Step 4: Implement `internal/policy/applocker_stub.go`**
 
 ```go
-	// The allow list is independent of the browser toggle: turning the
-	// blocklist off must not strip Codex's execution permission.
-	if err := applyAppLocker(p.AppLockerAllowPaths); err != nil {
-		return fmt.Errorf("apply AppLocker allow list: %w", err)
-	}
-	return nil
+//go:build !windows
+
+package policy
+
+import "errors"
+
+// ErrAppLockerNotDeployed mirrors the Windows sentinel so callers compile
+// and switch on it everywhere.
+var ErrAppLockerNotDeployed = errors.New("AppLocker is not deployed on this machine")
+
+// ApplyAppLocker is a no-op off Windows.
+//
+// Unlike Apply, which returns an error because calling it off Windows is a
+// programming mistake, this one is invoked unconditionally on every sync
+// cycle; erroring would turn every cycle of a non-Windows build into a
+// status full of noise for a machine that has no AppLocker to manage.
+func ApplyAppLocker(paths []string) error { return nil }
 ```
 
-(Restructure so both the `!p.BlockEnabled` early return and the normal path reach this call.)
+- [ ] **Step 5: Wire it into the cycle**
 
-- [ ] **Step 2: Status** — in `cmd/agent/machine.go` where `Status` is filled, add `AppLockerAllowPaths: len(pol.AppLockerAllowPaths)` (the policy value in scope there; if only a summary struct is in scope, add the field to it the same way `AppLockerMode` travels). In `cmd/agent/main.go` status prints, append ` applocker_allow=%d`.
+`internal/agentcore/sync.go`: add to the `Applier` interface, with a comment saying why it
+is separate from `ApplyPolicy` (self-healing, not ETag-gated). At the call site, after the
+policy is parsed successfully — inside the `else` that currently splits into
+"unchanged"/"apply" — restructure so the AppLocker call happens in BOTH paths, e.g. parse
+once, then:
 
-- [ ] **Step 3: Cross-compile and test** — `GOOS=windows GOARCH=amd64 go build ./... && go vet ./... && go test ./...` → PASS (Windows file is compile-checked only; behaviour is covered by Task 2's pure tests).
+```go
+		} else {
+			if etag != "" && etag == s.readMarker(policyMarkerFile) {
+				// Unchanged since the last cycle; skip the registry writes.
+			} else if err := s.Applier.ApplyPolicy(pol); err != nil {
+				errs = append(errs, fmt.Sprintf("policy apply: %v", err))
+			} else {
+				s.writeMarker(policyMarkerFile, etag)
+			}
+			// Not gated by the ETag: see the Applier comment.
+			if err := s.Applier.ApplyAppLocker(pol.AppLockerAllowPaths); err != nil {
+				if errors.Is(err, policy.ErrAppLockerNotDeployed) {
+					warns = append(warns, fmt.Sprintf("applocker: %v", err))
+				} else {
+					errs = append(errs, fmt.Sprintf("applocker: %v", err))
+				}
+			}
+		}
+```
 
-- [ ] **Step 4: Commit** — `agent: apply the policy's AppLocker allow list to the local policy`
+Use the file's actual warning slice name and its existing import of `internal/policy` (add
+the import if absent — check first that this does not create an import cycle; `agentcore`
+importing `policy` is fine, `policy` must not import `agentcore`).
+
+`cmd/agent/machine.go`: `func (localApplier) ApplyAppLocker(paths []string) error { return policy.ApplyAppLocker(paths) }`, and fill `AppLockerAllowPaths: len(pol.AppLockerAllowPaths)` where the status is built (follow how `AppLockerMode` gets there).
+
+`cmd/agent/main.go`: append ` applocker_allow=%d` to the two status prints that already show `applocker=%s`.
+
+- [ ] **Step 6: Run** — `go vet ./... && go test ./...` → PASS; `GOOS=windows GOARCH=amd64 go build ./...` → PASS.
+
+- [ ] **Step 7: Commit** — `agent: apply the AppLocker allow list on every sync cycle`
 
 ---
 
