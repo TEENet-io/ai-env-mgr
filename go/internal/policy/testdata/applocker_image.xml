@@ -1,0 +1,54 @@
+<AppLockerPolicy Version="1">
+  <RuleCollection Type="Exe" EnforcementMode="Enabled">
+    <FilePathRule Id="a0000000-0000-0000-0000-000000000001" Name="Admins-allow-all" Description="admin safety valve" UserOrGroupSid="S-1-5-32-544" Action="Allow">
+      <Conditions><FilePathCondition Path="*" /></Conditions>
+    </FilePathRule>
+    <FilePathRule Id="a0000000-0000-0000-0000-000000000002" Name="Everyone-allow-Windows" Description="allow Windows dir, exclude registry/script hosts" UserOrGroupSid="S-1-1-0" Action="Allow">
+      <Conditions><FilePathCondition Path="%WINDIR%\*" /></Conditions>
+      <Exceptions>
+        <FilePathCondition Path="%WINDIR%\regedit.exe" />
+        <FilePathCondition Path="%SYSTEM32%\reg.exe" />
+        <FilePathCondition Path="%SYSTEM32%\cmd.exe" />
+        <FilePathCondition Path="%SYSTEM32%\WindowsPowerShell\v1.0\powershell.exe" />
+        <FilePathCondition Path="%SYSTEM32%\WindowsPowerShell\v1.0\powershell_ise.exe" />
+        <FilePathCondition Path="%SYSTEM32%\wscript.exe" />
+        <FilePathCondition Path="%SYSTEM32%\cscript.exe" />
+        <FilePathCondition Path="%SYSTEM32%\mshta.exe" />
+        <FilePathCondition Path="%WINDIR%\SysWOW64\reg.exe" />
+        <FilePathCondition Path="%WINDIR%\SysWOW64\cmd.exe" />
+        <FilePathCondition Path="%WINDIR%\SysWOW64\WindowsPowerShell\v1.0\powershell.exe" />
+        <FilePathCondition Path="%WINDIR%\SysWOW64\wscript.exe" />
+        <FilePathCondition Path="%WINDIR%\SysWOW64\cscript.exe" />
+        <FilePathCondition Path="%WINDIR%\SysWOW64\mshta.exe" />
+      </Exceptions>
+    </FilePathRule>
+    <FilePathRule Id="a0000000-0000-0000-0000-000000000003" Name="Everyone-allow-ProgramFiles" Description="allow installed programs" UserOrGroupSid="S-1-1-0" Action="Allow">
+      <Conditions><FilePathCondition Path="%PROGRAMFILES%\*" /></Conditions>
+    </FilePathRule>
+  </RuleCollection>
+  <RuleCollection Type="Script" EnforcementMode="Enabled">
+    <FilePathRule Id="b0000000-0000-0000-0000-000000000001" Name="Admins-allow-all-scripts" Description="" UserOrGroupSid="S-1-5-32-544" Action="Allow">
+      <Conditions><FilePathCondition Path="*" /></Conditions>
+    </FilePathRule>
+    <FilePathRule Id="b0000000-0000-0000-0000-000000000002" Name="Everyone-allow-Windows-scripts" Description="" UserOrGroupSid="S-1-1-0" Action="Allow">
+      <Conditions><FilePathCondition Path="%WINDIR%\*" /></Conditions>
+    </FilePathRule>
+    <FilePathRule Id="b0000000-0000-0000-0000-000000000003" Name="Everyone-allow-ProgramFiles-scripts" Description="" UserOrGroupSid="S-1-1-0" Action="Allow">
+      <Conditions><FilePathCondition Path="%PROGRAMFILES%\*" /></Conditions>
+    </FilePathRule>
+  </RuleCollection>
+  <RuleCollection Type="Msi" EnforcementMode="Enabled">
+    <FilePathRule Id="c0000000-0000-0000-0000-000000000001" Name="Admins-allow-all-msi" Description="only admins install MSI" UserOrGroupSid="S-1-5-32-544" Action="Allow">
+      <Conditions><FilePathCondition Path="*" /></Conditions>
+    </FilePathRule>
+  </RuleCollection>
+  <RuleCollection Type="Appx" EnforcementMode="Enabled">
+    <FilePublisherRule Id="d0000000-0000-0000-0000-000000000001" Name="Everyone-allow-signed-appx" Description="allow signed packaged apps" UserOrGroupSid="S-1-1-0" Action="Allow">
+      <Conditions>
+        <FilePublisherCondition PublisherName="*" ProductName="*" BinaryName="*">
+          <BinaryVersionRange LowSection="*" HighSection="*" />
+        </FilePublisherCondition>
+      </Conditions>
+    </FilePublisherRule>
+  </RuleCollection>
+</AppLockerPolicy>
