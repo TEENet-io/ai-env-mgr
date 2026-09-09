@@ -4,11 +4,13 @@ package policy
 
 import (
 	"bytes"
+	"context"
 	"errors"
 	"fmt"
 	"os"
 	"os/exec"
 	"strings"
+	"time"
 	"unicode/utf16"
 )
 
@@ -18,14 +20,48 @@ import (
 // as a warning, not a failure.
 var ErrAppLockerNotDeployed = errors.New("AppLocker is not deployed on this machine")
 
+// powerShellTimeout bounds each powershell.exe call. ApplyAppLocker runs on
+// every sync cycle, and on the write path it spawns twice; a hung
+// powershell.exe would otherwise block the whole sync loop indefinitely.
+const powerShellTimeout = 60 * time.Second
+
+// utf8Output forces the console output code page to UTF-8 for the rest of the
+// command. Without it PowerShell encodes stdout with the machine's console
+// code page -- GBK on these Chinese-locale machines -- and Go reads the bytes
+// as UTF-8: any non-ASCII anywhere in the policy (a Chinese allow path, which
+// ValidateAppLockerPath permits, or a rule Description) would come back
+// mojibake and then be written straight back into the machine's live security
+// policy.
+const utf8Output = "[Console]::OutputEncoding=[Text.Encoding]::UTF8; "
+
+// runPowerShell runs one PowerShell command, UTF-8 encoded and time-bounded,
+// and returns its standard output. A failure carries the command's stderr:
+// without it the operator-facing line was "exit status 1" and nothing else.
+func runPowerShell(script string) ([]byte, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), powerShellTimeout)
+	defer cancel()
+	out, err := exec.CommandContext(ctx, "powershell.exe", "-NoProfile", "-NonInteractive",
+		"-Command", utf8Output+script).Output()
+	if ctx.Err() == context.DeadlineExceeded {
+		return nil, fmt.Errorf("powershell.exe did not finish within %s", powerShellTimeout)
+	}
+	if err != nil {
+		var ee *exec.ExitError
+		if errors.As(err, &ee) && len(bytes.TrimSpace(ee.Stderr)) > 0 {
+			return nil, fmt.Errorf("%v: %s", err, strings.TrimSpace(string(ee.Stderr)))
+		}
+		return nil, err
+	}
+	return out, nil
+}
+
 // readLocalAppLockerXML runs Get-AppLockerPolicy -Local -Xml and returns the
 // document with any UTF-8 BOM and surrounding whitespace stripped. This is
 // the only place that shells out to read the local AppLocker policy; both
 // ApplyAppLocker and LocalAppLockerPaths call it, so there is a single spot
 // that knows how the policy is actually read off the machine.
 func readLocalAppLockerXML() (string, error) {
-	out, err := exec.Command("powershell.exe", "-NoProfile", "-NonInteractive",
-		"-Command", "Import-Module AppLocker; Get-AppLockerPolicy -Local -Xml").Output()
+	out, err := runPowerShell("Import-Module AppLocker; Get-AppLockerPolicy -Local -Xml")
 	if err != nil {
 		return "", err
 	}
@@ -113,10 +149,9 @@ func ApplyAppLocker(paths []string) error {
 	if cerr := f.Close(); cerr != nil {
 		return fmt.Errorf("write staged AppLocker policy: %w", cerr)
 	}
-	cmd := exec.Command("powershell.exe", "-NoProfile", "-NonInteractive",
-		"-Command", fmt.Sprintf("Import-Module AppLocker; Set-AppLockerPolicy -XmlPolicy '%s' -ErrorAction Stop", tmp))
-	if msg, err := cmd.CombinedOutput(); err != nil {
-		return fmt.Errorf("Set-AppLockerPolicy: %v: %s", err, strings.TrimSpace(string(msg)))
+	if _, err := runPowerShell(fmt.Sprintf(
+		"Import-Module AppLocker; Set-AppLockerPolicy -XmlPolicy '%s' -ErrorAction Stop", tmp)); err != nil {
+		return fmt.Errorf("Set-AppLockerPolicy: %w", err)
 	}
 	return rejectedErr(rejected)
 }

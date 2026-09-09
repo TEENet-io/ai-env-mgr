@@ -3,9 +3,16 @@
 package status
 
 import (
+	"context"
 	"os/exec"
 	"strings"
+	"time"
 )
+
+// modeTimeout bounds the powershell.exe call. This runs on every sync cycle
+// (status.Build calls it), so a hung powershell.exe would block the sync loop
+// indefinitely; an unknown mode is a far better outcome than a stuck agent.
+const modeTimeout = 60 * time.Second
 
 // AppLockerMode reports the effective AppLocker enforcement mode.
 //
@@ -13,9 +20,10 @@ import (
 // the agent only observes it. Reporting the mode lets the admin spot machines
 // still in audit mode, where portable browsers would not be blocked.
 func AppLockerMode() string {
-	cmd := exec.Command("powershell.exe", "-NoProfile", "-NonInteractive",
-		"-Command", "Get-AppLockerPolicy -Effective -Xml")
-	out, err := cmd.Output()
+	ctx, cancel := context.WithTimeout(context.Background(), modeTimeout)
+	defer cancel()
+	out, err := exec.CommandContext(ctx, "powershell.exe", "-NoProfile", "-NonInteractive",
+		"-Command", "Get-AppLockerPolicy -Effective -Xml").Output()
 	if err != nil {
 		return "Unknown"
 	}
