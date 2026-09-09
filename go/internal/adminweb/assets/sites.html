@@ -40,6 +40,34 @@
     <button type="submit">提交</button>
   </form>
 
+  <h2>AppLocker 执行模式</h2>
+  {{with .Policy}}
+  {{if eq .AppLockerMode "audit"}}<p class="note note-err">AppLocker 已全网切为审计模式：规则仍在，但不再拦截。员工可以运行任意程序，包括绿色版浏览器。测试完成后请立即恢复强制。</p>{{end}}
+  <p>
+    {{if eq .AppLockerMode "enforce"}}<span class="tag tag-ok">强制中</span>
+    {{else if eq .AppLockerMode "audit"}}<span class="tag tag-bad">已关闭</span>
+    {{else}}<span class="tag tag-warn">未接管</span> AppLocker 执行模式由镜像决定，控制台不干预。{{end}}
+  </p>
+  <form method="post" action="/sites/applocker-mode" class="inline">
+    <input type="hidden" name="csrf" value="{{$.CSRF}}">
+    {{if eq .AppLockerMode "enforce"}}
+      <input type="hidden" name="mode" value="audit">
+      <button type="submit" class="danger">关闭 AppLocker（切审计）</button>
+    {{else if eq .AppLockerMode "audit"}}
+      <input type="hidden" name="mode" value="enforce">
+      <button type="submit">恢复强制</button>
+    {{else}}
+      <input type="hidden" name="mode" value="enforce">
+      <button type="submit">接管并强制</button>
+    {{end}}
+  </form>
+  {{end}}
+  <p class="hint">
+    这里改的是「拦不拦」，不是「允许哪些目录」：切换后所有机器在下次同步时把已配置的规则集改成对应模式，
+    <strong>不会删除任何规则</strong>，审计模式下 AppLocker 照常记录事件、只是不再阻止运行，恢复强制即回到原样。
+    每台机器实际生效的模式见「机器」页的 APPLOCKER 列。
+  </p>
+
   <h2>AppLocker 放行目录</h2>
   {{with .Policy}}
   <div class="panel scroll">

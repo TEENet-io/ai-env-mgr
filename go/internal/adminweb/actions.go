@@ -161,6 +161,14 @@ func (s *Server) actionAppLocker(sess *session, r *http.Request) error {
 	return err
 }
 
+// actionAppLockerMode switches AppLocker enforcement on every machine. The
+// value is passed through unchanged so the manager's validation is the only
+// gate; a spelling it does not know is refused rather than guessed at.
+func (s *Server) actionAppLockerMode(sess *session, r *http.Request) error {
+	_, err := sess.mgr.SetAppLockerMode(formValue(r, "mode"))
+	return err
+}
+
 func (s *Server) actionBlockEnabled(sess *session, r *http.Request) error {
 	_, err := sess.mgr.SetBlockEnabled(formValue(r, "enabled") == "1")
 	return err

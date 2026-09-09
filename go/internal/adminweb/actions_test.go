@@ -51,6 +51,7 @@ func TestWritesRequireCSRFToken(t *testing.T) {
 		{"/sites/mutate", url.Values{"add": {"evil.example"}}},
 		{"/sites/enabled", url.Values{"enabled": {"0"}}},
 		{"/sites/applocker", url.Values{"add": {`C:\tools\Codex\*`}}},
+		{"/sites/applocker-mode", url.Values{"mode": {"audit"}}},
 		{"/settings/interval", url.Values{"minutes": {"1"}}},
 		{"/settings/collect", url.Values{"enabled": {"1"}}},
 		{"/settings/quota-defaults", url.Values{"budget": {"20"}, "rpm": {"60"}, "tpm": {"200000"}, "parallel": {"4"}}},
@@ -125,6 +126,36 @@ func TestWriteWithValidTokenApplies(t *testing.T) {
 	}
 	if p.SyncIntervalMinutes != 42 {
 		t.Fatalf("interval = %d, want 42", p.SyncIntervalMinutes)
+	}
+}
+
+// The button an administrator presses to take AppLocker out of enforcement
+// must publish the mode, and a value the agent would not understand must be
+// refused before it reaches the fleet.
+func TestAppLockerModeButtonPublishesTheMode(t *testing.T) {
+	fs := newFakeStore()
+	s := newTestServer(t, fs)
+	cookie := signIn(t, s)
+	token := csrfOf(t, s, cookie)
+
+	rec := post(t, s, "/sites/applocker-mode", cookie, url.Values{"csrf": {token}, "mode": {"audit"}})
+	if loc := rec.Header().Get("Location"); !strings.HasSuffix(loc, "?ok=1") {
+		t.Fatalf("valid switch redirected to %q", loc)
+	}
+	p, err := (&testManager{fs}).policy()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if p.AppLockerMode != "audit" {
+		t.Fatalf("AppLockerMode = %q, want audit", p.AppLockerMode)
+	}
+
+	rec = post(t, s, "/sites/applocker-mode", cookie, url.Values{"csrf": {token}, "mode": {"AuditOnly"}})
+	if loc := rec.Header().Get("Location"); !strings.Contains(loc, "err=") {
+		t.Fatalf("an unknown mode was accepted (Location %q)", loc)
+	}
+	if p, err = (&testManager{fs}).policy(); err != nil || p.AppLockerMode != "audit" {
+		t.Fatalf("a refused mode must leave the published policy alone: %q %v", p.AppLockerMode, err)
 	}
 }
 

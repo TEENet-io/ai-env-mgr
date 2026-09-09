@@ -505,3 +505,45 @@ func TestMachinesPageRendersCodexColumn(t *testing.T) {
 		t.Fatalf("待更新 appears %d times, want 1", n)
 	}
 }
+
+// The AppLocker switch turns a security control off for the whole fleet, so
+// the page must say which of the three states it is in, offer exactly one
+// way out of it, and shout while enforcement is off. A template error here
+// surfaces only when the page is executed.
+func TestSitesPageRendersTheAppLockerModeSwitch(t *testing.T) {
+	s := newTestServer(t, newFakeStore())
+	render := func(mode string) string {
+		t.Helper()
+		p := model.Policy{BlockEnabled: true, AppLockerMode: mode}
+		var buf bytes.Buffer
+		if err := s.tpl.ExecuteTemplate(&buf, "sites.html", pageData{CSRF: "t", Nav: "sites", Policy: &p}); err != nil {
+			t.Fatalf("sites.html (mode %q): %v", mode, err)
+		}
+		return buf.String()
+	}
+
+	cases := []struct {
+		mode           string
+		want, unwanted []string
+	}{
+		{"", []string{"未接管", "接管并强制", `value="enforce"`}, []string{"note-err", "关闭 AppLocker"}},
+		{model.AppLockerModeEnforce, []string{"强制中", `value="audit"`, `class="danger">关闭 AppLocker`}, []string{"note-err"}},
+		{model.AppLockerModeAudit, []string{"已关闭", "恢复强制", `value="enforce"`, "note note-err", "不再拦截"}, []string{"关闭 AppLocker"}},
+	}
+	for _, c := range cases {
+		body := render(c.mode)
+		if !strings.Contains(body, `action="/sites/applocker-mode"`) {
+			t.Errorf("mode %q: the switch does not post to /sites/applocker-mode", c.mode)
+		}
+		for _, w := range c.want {
+			if !strings.Contains(body, w) {
+				t.Errorf("mode %q: page is missing %q", c.mode, w)
+			}
+		}
+		for _, u := range c.unwanted {
+			if strings.Contains(body, u) {
+				t.Errorf("mode %q: page must not contain %q", c.mode, u)
+			}
+		}
+	}
+}
