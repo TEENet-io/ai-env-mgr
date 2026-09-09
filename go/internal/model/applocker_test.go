@@ -30,6 +30,46 @@ func TestValidateAppLockerPathRejectsUserWritableAndMalformed(t *testing.T) {
 	}
 }
 
+// The one-directional prefix test this replaces refused C:\Windows\Temp\* but
+// accepted its parent C:\Windows\*, which adds an Everyone/Allow rule with no
+// <Exceptions> block and hands wscript.exe, cmd.exe and powershell.exe back to
+// every standard user -- the exact bypass the image's exception list closes.
+// C:\ProgramData\* is the drive-letter spelling of %PROGRAMDATA%\*, which was
+// already refused explicitly.
+func TestValidateAppLockerPathRefusesTreesContainingAForbiddenLocation(t *testing.T) {
+	cases := []struct {
+		path string
+		want bool // true = must be rejected
+	}{
+		{`C:\Windows\*`, true},
+		{`C:\windows\system32\*`, true},
+		{`%OSDRIVE%\Windows\*`, true},
+		{`%WINDIR%\*`, true},
+		{`C:\ProgramData\*`, true},
+		{`%OSDRIVE%\ProgramData\*`, true},
+		{`C:\Users/alice\*`, true},
+		{`C:\WINDOWS\System32\*`, true},
+		{`%OSDRIVE%\*`, true},
+		{"C:\\a\nb\\*", true},
+		{"C:\\a\tb\\*", true},
+
+		{`C:\tools\Codex\*`, false},
+		{`D:\Apps\Foo\*`, false},
+		{`%PROGRAMFILES%\Vendor\*`, false},
+		{`%PROGRAMDATA%\Vendor\App\*`, false},
+		{`%OSDRIVE%\tools\Codex\*`, false},
+	}
+	for _, c := range cases {
+		err := ValidateAppLockerPath(c.path)
+		if c.want && err == nil {
+			t.Errorf("%q must be rejected, got nil", c.path)
+		}
+		if !c.want && err != nil {
+			t.Errorf("%q must be accepted, got %v", c.path, err)
+		}
+	}
+}
+
 func TestNormalizeAppLockerPaths(t *testing.T) {
 	got := NormalizeAppLockerPaths([]string{` C:\tools\Codex\* `, `c:\TOOLS\codex\*`, ``, `C:\Apps\Foo\*`})
 	if len(got) != 2 || got[0] != `C:\Apps\Foo\*` || got[1] != `C:\tools\Codex\*` {
