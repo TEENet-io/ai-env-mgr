@@ -61,7 +61,11 @@ type Applier interface {
 	// and the machine's own AppLocker XML can drift out from under the policy
 	// object at any time (a re-run image script, a GPO refresh, a hand edit).
 	// It is called on every cycle so the machine can self-heal on its own.
-	ApplyAppLocker(paths []string) error
+	//
+	// mode is the enforcement mode from the same policy object ("enforce",
+	// "audit", or empty for unmanaged), applied in the same pass so the
+	// fleet-wide off switch costs no extra work on the machine.
+	ApplyAppLocker(paths []string, mode string) error
 }
 
 // Machine describes what the agent can learn about the box it runs on.
@@ -239,7 +243,7 @@ func (s *Syncer) RunOnce() (model.Status, error) {
 				s.writeMarker(policyMarkerFile, etag)
 			}
 			// Not gated by the ETag: see the Applier.ApplyAppLocker comment.
-			if err := s.Applier.ApplyAppLocker(pol.AppLockerAllowPaths); err != nil {
+			if err := s.Applier.ApplyAppLocker(pol.AppLockerAllowPaths, pol.AppLockerMode); err != nil {
 				if errors.Is(err, policy.ErrAppLockerNotDeployed) {
 					warns = append(warns, fmt.Sprintf("applocker: %v", err))
 				} else {

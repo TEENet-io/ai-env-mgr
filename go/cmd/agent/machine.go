@@ -127,7 +127,9 @@ type localApplier struct{}
 
 func (localApplier) ApplyPolicy(p model.Policy) error { return policy.Apply(p) }
 
-func (localApplier) ApplyAppLocker(paths []string) error { return policy.ApplyAppLocker(paths) }
+func (localApplier) ApplyAppLocker(paths []string, mode string) error {
+	return policy.ApplyAppLocker(paths, mode)
+}
 
 func (localApplier) DeployCreds(profileDir string, set model.CredentialSet) (int, map[string]string, []string, error) {
 	rep, err := creds.WriteToProfileReport(profileDir, set)

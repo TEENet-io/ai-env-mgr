@@ -14,7 +14,7 @@ var ErrAppLockerNotDeployed = errors.New("AppLocker is not deployed on this mach
 // programming mistake, this one is invoked unconditionally on every sync
 // cycle; erroring would turn every cycle of a non-Windows build into a
 // status full of noise for a machine that has no AppLocker to manage.
-func ApplyAppLocker(paths []string) error { return nil }
+func ApplyAppLocker(paths []string, mode string) error { return nil }
 
 // LocalAppLockerPaths is the non-Windows stand-in for reading the local
 // AppLocker policy back out. There is nothing to read here, and unlike a

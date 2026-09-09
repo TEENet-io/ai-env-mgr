@@ -94,7 +94,13 @@ func LocalAppLockerPaths() ([]string, error) {
 }
 
 // ApplyAppLocker brings the machine's LOCAL AppLocker policy in line with
-// paths (see RewriteAppLockerXML).
+// paths (see RewriteAppLockerXML) and with mode (see SetEnforcementMode).
+//
+// Both edits ride the same read and the same write: the mode switch is a
+// fleet-wide control the administrator flips during testing, and giving it a
+// PowerShell round trip of its own would double the cost of a cycle that
+// already runs on every machine, every interval, to discover that nothing
+// has changed. An empty mode leaves the machine's enforcement mode alone.
 //
 // It reads the LOCAL policy rather than the effective one: the effective
 // policy folds in domain GPOs, and writing that back would copy someone
@@ -103,7 +109,7 @@ func LocalAppLockerPaths() ([]string, error) {
 // It is called on every sync cycle, so it must stay cheap and quiet when
 // nothing has drifted: one read, and a write only when the XML actually
 // changes.
-func ApplyAppLocker(paths []string) error {
+func ApplyAppLocker(paths []string, mode string) error {
 	// policy.json is written on the publishing side, not here, and this
 	// agent runs as SYSTEM: re-validate before anything reaches the
 	// rewriter rather than trusting whatever OSS happened to hand back. See
@@ -129,7 +135,14 @@ func ApplyAppLocker(paths []string) error {
 	if err != nil {
 		return fmt.Errorf("rewrite AppLocker policy: %w", err)
 	}
-	if !changed {
+	next, modeChanged, err := SetEnforcementMode(next, mode)
+	if err != nil {
+		return fmt.Errorf("set AppLocker enforcement mode: %w", err)
+	}
+	// One write, and only when something actually differs: AppLocker
+	// re-serialises the policy on every read, so writing unconditionally
+	// would rewrite every machine's security policy once per cycle.
+	if !changed && !modeChanged {
 		return rejectedErr(rejected)
 	}
 	// Staged in a directory only SYSTEM and Administrators can write, under

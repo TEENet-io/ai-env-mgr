@@ -271,6 +271,7 @@ type fakeApplier struct {
 	removeErr   error
 
 	appLockerPaths [][]string
+	appLockerModes []string
 	appLockerErr   error
 }
 
@@ -290,8 +291,9 @@ func (a *fakeApplier) ApplyPolicy(p model.Policy) error {
 	return nil
 }
 
-func (a *fakeApplier) ApplyAppLocker(paths []string) error {
+func (a *fakeApplier) ApplyAppLocker(paths []string, mode string) error {
 	a.appLockerPaths = append(a.appLockerPaths, paths)
+	a.appLockerModes = append(a.appLockerModes, mode)
 	return a.appLockerErr
 }
 
@@ -478,6 +480,50 @@ func TestAppLockerAllowListIsAppliedEvenWhenThePolicyIsUnchanged(t *testing.T) {
 		if len(got) != 1 || got[0] != `C:\tools\Codex\*` {
 			t.Errorf("call %d: ApplyAppLocker paths = %v, want [C:\\tools\\Codex\\*]", i, got)
 		}
+	}
+}
+
+// The enforcement mode is the fleet-wide off switch, and it rides the same
+// every-cycle path as the allow list: a machine that was switched to audit
+// while it was asleep must pick the change up without the policy ETag moving.
+func TestAppLockerModeReachesTheApplier(t *testing.T) {
+	store := newFakeStore()
+	bind(t, store, "DESKTOP-A", "work1")
+	pol := model.Policy{BlockEnabled: true, AppLockerMode: model.AppLockerModeAudit}
+	store.set(ossclient.PolicyKey(), policyBytes(t, pol), "same")
+
+	app := &fakeApplier{}
+	s := newSyncer(t, store, app)
+	if _, err := s.RunOnce(); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.RunOnce(); err != nil {
+		t.Fatal(err)
+	}
+	if len(app.appLockerModes) != 2 {
+		t.Fatalf("ApplyAppLocker called %d times, want 2", len(app.appLockerModes))
+	}
+	for i, got := range app.appLockerModes {
+		if got != model.AppLockerModeAudit {
+			t.Errorf("call %d: mode = %q, want %q", i, got, model.AppLockerModeAudit)
+		}
+	}
+}
+
+// A policy that says nothing about the mode must reach the applier as the
+// unmanaged default, so the machine's own enforcement mode is left alone.
+func TestAppLockerModeIsUnmanagedByDefault(t *testing.T) {
+	store := newFakeStore()
+	bind(t, store, "DESKTOP-A", "work1")
+	store.set(ossclient.PolicyKey(), policyBytes(t, model.DefaultPolicy()), "p")
+
+	app := &fakeApplier{}
+	s := newSyncer(t, store, app)
+	if _, err := s.RunOnce(); err != nil {
+		t.Fatal(err)
+	}
+	if len(app.appLockerModes) != 1 || app.appLockerModes[0] != "" {
+		t.Errorf("modes = %q, want one unmanaged (empty) call", app.appLockerModes)
 	}
 }
 

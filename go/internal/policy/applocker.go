@@ -118,6 +118,74 @@ func exeCollectionOpens(xml string) [][]int {
 	return out
 }
 
+// ruleCollectionTag matches one <RuleCollection ...> tag, self-closing or
+// not. Unlike exeCollectionTag it is not tied to a Type, because the
+// enforcement switch applies to every collection the machine has configured.
+var ruleCollectionTag = regexp.MustCompile(`<RuleCollection\b[^>]*>`)
+
+// enforcementModeAttr matches the EnforcementMode attribute inside such a
+// tag. It is matched inside the tag rather than across the document so that
+// attribute order does not matter and nothing outside a rule collection tag
+// can be rewritten by accident.
+var enforcementModeAttr = regexp.MustCompile(`(EnforcementMode\s*=\s*")([^"]*)(")`)
+
+// appLockerEnforcementValue maps a policy mode onto the EnforcementMode
+// value AppLocker itself understands.
+var appLockerEnforcementValue = map[string]string{
+	model.AppLockerModeEnforce: "Enabled",
+	model.AppLockerModeAudit:   "AuditOnly",
+}
+
+// errNotAppLockerPolicy is what SetEnforcementMode reports for a document
+// that is not an AppLocker policy at all. Rewriting enforcement attributes in
+// something we cannot identify would be writing a security policy blind.
+var errNotAppLockerPolicy = fmt.Errorf("not an AppLocker policy document; refusing to edit")
+
+// SetEnforcementMode returns xml with every CONFIGURED rule collection held
+// in mode: "enforce" -> Enabled, "audit" -> AuditOnly. It is the fleet-wide
+// off switch: audit keeps every rule and keeps AppLocker logging, it just
+// stops blocking, so it is reversible and preserves what the image installed.
+//
+// mode "" is unmanaged and returns the document untouched. That is the
+// default every policy object in the field carries, and the agent must not
+// change a machine's enforcement mode unless the administrator asked.
+//
+// A collection reading NotConfigured is left exactly as it is: it holds no
+// rules, and switching it on -- in either direction -- would be a change to
+// the machine's policy nobody asked for.
+//
+// Nothing else in the document is touched: no rule is added, removed or
+// reordered, and every byte outside the EnforcementMode attribute values is
+// preserved. changed is the plain text comparison, which also makes the
+// function idempotent -- the agent calls it every cycle and a machine already
+// in the target mode must not be rewritten.
+func SetEnforcementMode(xml, mode string) (string, bool, error) {
+	if mode == "" {
+		return xml, false, nil
+	}
+	want, ok := appLockerEnforcementValue[mode]
+	if !ok {
+		return "", false, fmt.Errorf("AppLocker enforcement mode: %w", model.ValidateAppLockerMode(mode))
+	}
+	if !strings.Contains(xml, "<AppLockerPolicy") {
+		return "", false, errNotAppLockerPolicy
+	}
+	out := ruleCollectionTag.ReplaceAllStringFunc(xml, func(tag string) string {
+		return enforcementModeAttr.ReplaceAllStringFunc(tag, func(attr string) string {
+			m := enforcementModeAttr.FindStringSubmatch(attr)
+			// Only a collection that is already configured is switched;
+			// anything else (NotConfigured, or a value we do not recognise)
+			// stays as the machine has it.
+			switch m[2] {
+			case "Enabled", "AuditOnly":
+				return m[1] + want + m[3]
+			}
+			return attr
+		})
+	})
+	return out, out != xml, nil
+}
+
 // filePathConditionPath extracts the Path attribute of the (first)
 // FilePathCondition inside a matched FilePathRule element.
 var filePathConditionPath = regexp.MustCompile(`<FilePathCondition\s+Path="([^"]*)"`)
