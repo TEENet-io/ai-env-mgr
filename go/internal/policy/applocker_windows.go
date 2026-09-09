@@ -32,7 +32,12 @@ const powerShellTimeout = 60 * time.Second
 // ValidateAppLockerPath permits, or a rule Description) would come back
 // mojibake and then be written straight back into the machine's live security
 // policy.
-const utf8Output = "[Console]::OutputEncoding=[Text.Encoding]::UTF8; "
+//
+// It is wrapped in try/catch because it is a nicety, not the command: on a
+// host where setting it throws (no console attached, a redirected host), the
+// .NET exception would land on stderr and turn a read that otherwise worked
+// into an error line the operator has to explain away.
+const utf8Output = "try{[Console]::OutputEncoding=[Text.Encoding]::UTF8}catch{}; "
 
 // runPowerShell runs one PowerShell command, UTF-8 encoded and time-bounded,
 // and returns its standard output. A failure carries the command's stderr:
@@ -149,8 +154,13 @@ func ApplyAppLocker(paths []string) error {
 	if cerr := f.Close(); cerr != nil {
 		return fmt.Errorf("write staged AppLocker policy: %w", cerr)
 	}
+	// Single-quoted PowerShell string: an apostrophe in the path would end it
+	// early, so double it. CreateTemp's names never contain one and neither
+	// does today's %ProgramData%, but the path is configurable and this is the
+	// one string on the write path that reaches a shell.
+	quoted := strings.ReplaceAll(tmp, "'", "''")
 	if _, err := runPowerShell(fmt.Sprintf(
-		"Import-Module AppLocker; Set-AppLockerPolicy -XmlPolicy '%s' -ErrorAction Stop", tmp)); err != nil {
+		"Import-Module AppLocker; Set-AppLockerPolicy -XmlPolicy '%s' -ErrorAction Stop", quoted)); err != nil {
 		return fmt.Errorf("Set-AppLockerPolicy: %w", err)
 	}
 	return rejectedErr(rejected)
