@@ -127,6 +127,8 @@ type localApplier struct{}
 
 func (localApplier) ApplyPolicy(p model.Policy) error { return policy.Apply(p) }
 
+func (localApplier) ApplyAppLocker(paths []string) error { return policy.ApplyAppLocker(paths) }
+
 func (localApplier) DeployCreds(profileDir string, set model.CredentialSet) (int, map[string]string, []string, error) {
 	rep, err := creds.WriteToProfileReport(profileDir, set)
 	if err != nil {
@@ -217,14 +219,15 @@ func localState(m *localMachine, version string) localReport {
 	}
 
 	return localReport{
-		Machine:        m.Name(),
-		LocalUsers:     users,
-		UsersWithCreds: withCreds,
-		AgentVersion:   version,
-		BlockEnabled:   pol.BlockEnabled,
-		BlockedDomains: pol.BlockedDomains,
-		AppLockerMode:  status.AppLockerMode(),
-		Errors:         errs,
+		Machine:             m.Name(),
+		LocalUsers:          users,
+		UsersWithCreds:      withCreds,
+		AgentVersion:        version,
+		BlockEnabled:        pol.BlockEnabled,
+		BlockedDomains:      pol.BlockedDomains,
+		AppLockerMode:       status.AppLockerMode(),
+		AppLockerAllowPaths: len(pol.AppLockerAllowPaths),
+		Errors:              errs,
 	}
 }
 
@@ -234,12 +237,13 @@ func localState(m *localMachine, version string) localReport {
 // way to know, and reporting them as empty would read as "not bound" and
 // "never synced" rather than "not known from here".
 type localReport struct {
-	Machine        string
-	LocalUsers     []string
-	UsersWithCreds []string
-	AgentVersion   string
-	BlockEnabled   bool
-	BlockedDomains []string
-	AppLockerMode  string
-	Errors         []string
+	Machine             string
+	LocalUsers          []string
+	UsersWithCreds      []string
+	AgentVersion        string
+	BlockEnabled        bool
+	BlockedDomains      []string
+	AppLockerMode       string
+	AppLockerAllowPaths int
+	Errors              []string
 }

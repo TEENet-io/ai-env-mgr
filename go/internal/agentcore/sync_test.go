@@ -17,6 +17,7 @@ import (
 	"github.com/TEENet-io/ai-env-mgr/internal/creds"
 	"github.com/TEENet-io/ai-env-mgr/internal/model"
 	"github.com/TEENet-io/ai-env-mgr/internal/ossclient"
+	"github.com/TEENet-io/ai-env-mgr/internal/policy"
 )
 
 // fakeUpdater records the binaries it was asked to apply.
@@ -268,6 +269,9 @@ type fakeApplier struct {
 	removedFrom []string
 	removeN     int
 	removeErr   error
+
+	appLockerPaths [][]string
+	appLockerErr   error
 }
 
 func (a *fakeApplier) RemoveCreds(profileDir string) (int, error) {
@@ -284,6 +288,11 @@ func (a *fakeApplier) ApplyPolicy(p model.Policy) error {
 	}
 	a.applied = append(a.applied, p)
 	return nil
+}
+
+func (a *fakeApplier) ApplyAppLocker(paths []string) error {
+	a.appLockerPaths = append(a.appLockerPaths, paths)
+	return a.appLockerErr
 }
 
 func (a *fakeApplier) DeployCreds(profileDir string, set model.CredentialSet) (int, map[string]string, []string, error) {
@@ -437,6 +446,94 @@ func TestRunOnceSkipsWhenETagUnchanged(t *testing.T) {
 	}
 	if len(app.deployed) != 1 {
 		t.Errorf("creds deployed %d times, want 1", len(app.deployed))
+	}
+}
+
+// The browser keys are skipped on an unchanged ETag. The allow list must
+// not be: it is the only thing that lets an employee launch Codex, and a
+// machine whose local policy was replaced has to converge on its own.
+func TestAppLockerAllowListIsAppliedEvenWhenThePolicyIsUnchanged(t *testing.T) {
+	store := newFakeStore()
+	bind(t, store, "DESKTOP-A", "work1")
+	pol := model.Policy{BlockEnabled: true, AppLockerAllowPaths: []string{`C:\tools\Codex\*`}}
+	store.set(ossclient.PolicyKey(), policyBytes(t, pol), "same")
+	store.set(ossclient.UserKey("work1", "credentials.zip"), credsBytes(t), "csame")
+
+	app := &fakeApplier{}
+	s := newSyncer(t, store, app)
+
+	if _, err := s.RunOnce(); err != nil {
+		t.Fatalf("first RunOnce: %v", err)
+	}
+	if _, err := s.RunOnce(); err != nil {
+		t.Fatalf("second RunOnce: %v", err)
+	}
+	if len(app.applied) != 1 {
+		t.Errorf("policy applied %d times, want 1 (unchanged ETag)", len(app.applied))
+	}
+	if len(app.appLockerPaths) != 2 {
+		t.Fatalf("ApplyAppLocker called %d times, want 2 (not gated by the ETag)", len(app.appLockerPaths))
+	}
+	for i, got := range app.appLockerPaths {
+		if len(got) != 1 || got[0] != `C:\tools\Codex\*` {
+			t.Errorf("call %d: ApplyAppLocker paths = %v, want [C:\\tools\\Codex\\*]", i, got)
+		}
+	}
+}
+
+// A machine that never had AppLocker is a normal state, not a failure.
+func TestAppLockerNotDeployedIsAWarningNotAnError(t *testing.T) {
+	store := newFakeStore()
+	bind(t, store, "DESKTOP-A", "work1")
+	pol := model.Policy{BlockEnabled: true, AppLockerAllowPaths: []string{`C:\tools\Codex\*`}}
+	store.set(ossclient.PolicyKey(), policyBytes(t, pol), "p1")
+
+	app := &fakeApplier{appLockerErr: policy.ErrAppLockerNotDeployed}
+	s := newSyncer(t, store, app)
+
+	st, err := s.RunOnce()
+	if err != nil {
+		t.Fatalf("RunOnce: %v", err)
+	}
+	found := false
+	for _, w := range st.Warnings {
+		if strings.Contains(w, "AppLocker is not deployed") {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("expected ErrAppLockerNotDeployed to be reported as a warning; got %v", st.Warnings)
+	}
+	for _, e := range st.Errors {
+		if strings.Contains(e, "AppLocker") {
+			t.Errorf("ErrAppLockerNotDeployed must not be reported as an error: %v", st.Errors)
+		}
+	}
+}
+
+// Any other ApplyAppLocker failure means the machine is not in the state we
+// published, so it must surface as an error.
+func TestAppLockerApplyFailureIsReportedAsAnError(t *testing.T) {
+	store := newFakeStore()
+	bind(t, store, "DESKTOP-A", "work1")
+	pol := model.Policy{BlockEnabled: true, AppLockerAllowPaths: []string{`C:\tools\Codex\*`}}
+	store.set(ossclient.PolicyKey(), policyBytes(t, pol), "p1")
+
+	app := &fakeApplier{appLockerErr: errors.New("boom")}
+	s := newSyncer(t, store, app)
+
+	st, err := s.RunOnce()
+	if err != nil {
+		t.Fatalf("RunOnce: %v", err)
+	}
+	found := false
+	for _, e := range st.Errors {
+		if strings.Contains(e, "boom") {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("expected the ApplyAppLocker failure to be reported as an error; got %v", st.Errors)
 	}
 }
 

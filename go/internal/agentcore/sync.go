@@ -9,6 +9,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
 	"os"
@@ -20,6 +21,7 @@ import (
 	"github.com/TEENet-io/ai-env-mgr/internal/creds"
 	"github.com/TEENet-io/ai-env-mgr/internal/model"
 	"github.com/TEENet-io/ai-env-mgr/internal/ossclient"
+	"github.com/TEENet-io/ai-env-mgr/internal/policy"
 	"github.com/TEENet-io/ai-env-mgr/internal/status"
 )
 
@@ -51,6 +53,15 @@ type Applier interface {
 	// delivered file from one that was skipped or has since been removed.
 	DeployCreds(profileDir string, set model.CredentialSet) (int, map[string]string, []string, error)
 	RemoveCreds(profileDir string) (int, error)
+	// ApplyAppLocker brings the machine's local AppLocker policy in line with
+	// paths. It is a separate method rather than folded into ApplyPolicy
+	// because it must NOT be gated by the policy ETag: ApplyPolicy is skipped
+	// whenever the policy object has not changed, but the allow list is what
+	// lets an employee launch tools installed outside %WINDIR%/%PROGRAMFILES%,
+	// and the machine's own AppLocker XML can drift out from under the policy
+	// object at any time (a re-run image script, a GPO refresh, a hand edit).
+	// It is called on every cycle so the machine can self-heal on its own.
+	ApplyAppLocker(paths []string) error
 }
 
 // Machine describes what the agent can learn about the box it runs on.
@@ -219,12 +230,22 @@ func (s *Syncer) RunOnce() (model.Status, error) {
 		policyETag = etag
 		if err := json.Unmarshal(data, &pol); err != nil {
 			errs = append(errs, fmt.Sprintf("policy parse: %v", err))
-		} else if etag != "" && etag == s.readMarker(policyMarkerFile) {
-			// Unchanged since the last cycle; skip the registry writes.
-		} else if err := s.Applier.ApplyPolicy(pol); err != nil {
-			errs = append(errs, fmt.Sprintf("policy apply: %v", err))
 		} else {
-			s.writeMarker(policyMarkerFile, etag)
+			if etag != "" && etag == s.readMarker(policyMarkerFile) {
+				// Unchanged since the last cycle; skip the registry writes.
+			} else if err := s.Applier.ApplyPolicy(pol); err != nil {
+				errs = append(errs, fmt.Sprintf("policy apply: %v", err))
+			} else {
+				s.writeMarker(policyMarkerFile, etag)
+			}
+			// Not gated by the ETag: see the Applier.ApplyAppLocker comment.
+			if err := s.Applier.ApplyAppLocker(pol.AppLockerAllowPaths); err != nil {
+				if errors.Is(err, policy.ErrAppLockerNotDeployed) {
+					warns = append(warns, fmt.Sprintf("applocker: %v", err))
+				} else {
+					errs = append(errs, fmt.Sprintf("applocker: %v", err))
+				}
+			}
 		}
 	}
 

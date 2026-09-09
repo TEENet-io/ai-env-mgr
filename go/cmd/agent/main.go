@@ -115,8 +115,8 @@ func printStatus(st model.Status, verbose bool) {
 		fmt.Printf("bound to: %s (%s)\n", st.BoundUser, exists)
 	}
 	fmt.Printf("local users: %s\n", strings.Join(st.LocalUsers, ", "))
-	fmt.Printf("block=%v domains=%d interval=%dm creds=%v applocker=%s\n",
-		st.BlockEnabled, st.BlockedDomains, st.SyncIntervalMinutes, st.CredsApplied, st.AppLockerMode)
+	fmt.Printf("block=%v domains=%d interval=%dm creds=%v applocker=%s applocker_allow=%d\n",
+		st.BlockEnabled, st.BlockedDomains, st.SyncIntervalMinutes, st.CredsApplied, st.AppLockerMode, st.AppLockerAllowPaths)
 	fmt.Printf("collect=%v uploaded=%d\n", st.CollectEnabled, st.CollectUploaded)
 	if verbose {
 		fmt.Printf("policyEtag=%s credsEtag=%s\n", orDash(st.PolicyETag), orDash(st.CredsETag))
@@ -193,8 +193,8 @@ func printLocalState(r localReport) {
 		fmt.Printf("AI credentials in place for: %s\n", strings.Join(r.UsersWithCreds, ", "))
 	}
 
-	fmt.Printf("block=%v domains=%d applocker=%s\n",
-		r.BlockEnabled, len(r.BlockedDomains), r.AppLockerMode)
+	fmt.Printf("block=%v domains=%d applocker=%s applocker_allow=%d\n",
+		r.BlockEnabled, len(r.BlockedDomains), r.AppLockerMode, r.AppLockerAllowPaths)
 	for _, d := range r.BlockedDomains {
 		fmt.Println("  -", d)
 	}

@@ -61,6 +61,7 @@ func Build(r Report) model.Status {
 		CredsETag:           r.CredsETag,
 		BlockEnabled:        r.Policy.BlockEnabled,
 		BlockedDomains:      len(r.Policy.BlockedDomains),
+		AppLockerAllowPaths: len(r.Policy.AppLockerAllowPaths),
 		SyncIntervalMinutes: r.Interval,
 		CredsApplied:        r.CredsApplied,
 		AppLockerMode:       AppLockerMode(),
