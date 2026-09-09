@@ -53,11 +53,36 @@ func TestValidateAppLockerPathRefusesTreesContainingAForbiddenLocation(t *testin
 		{"C:\\a\nb\\*", true},
 		{"C:\\a\tb\\*", true},
 
+		// Spellings the Win32 path parser folds away: a doubled separator, a
+		// trailing dot or space in a component. If AppLocker normalises a rule
+		// path the way the file system does -- and that is the way to bet --
+		// each of these is an Everyone/Allow rule over the Windows tree with
+		// no exceptions on it.
+		{`C:\\Windows\*`, true},
+		{`C:\Windows.\*`, true},
+		{`C:\Windows \*`, true},
+		{`C:\ProgramData\\*`, true},
+		{`C:\\Users\\alice\\*`, true},
+		{`%OSDRIVE%\\Windows\*`, true},
+
+		// The forbidden locations are names, not volumes: redirected profiles
+		// or a second system volume make these live.
+		{`D:\Windows\*`, true},
+		{`E:\Users\*`, true},
+		{`D:\ProgramData\*`, true},
+
 		{`C:\tools\Codex\*`, false},
 		{`D:\Apps\Foo\*`, false},
 		{`%PROGRAMFILES%\Vendor\*`, false},
 		{`%PROGRAMDATA%\Vendor\App\*`, false},
 		{`%OSDRIVE%\tools\Codex\*`, false},
+
+		// ...and the drive-agnostic test must not over-reject: these are
+		// prefix tests on \-terminated segments, so a directory that merely
+		// starts with a forbidden name is fine.
+		{`D:\Users2\*`, false},
+		{`D:\Windows Apps\*`, false},
+		{`C:\WindowsTools\*`, false},
 	}
 	for _, c := range cases {
 		err := ValidateAppLockerPath(c.path)

@@ -24,6 +24,10 @@ var appLockerDriveRoot = regexp.MustCompile(`^[A-Za-z]:\\`)
 // canonicalWholeDrive matches a canonicalised whole-drive rule (`c:\*`).
 var canonicalWholeDrive = regexp.MustCompile(`^[a-z]:\\\*$`)
 
+// appLockerAnyDriveRoot matches the drive letter of an already-lower-cased
+// path, so canonicalAppLockerPath can fold every drive onto one letter.
+var appLockerAnyDriveRoot = regexp.MustCompile(`^[a-z]:\\`)
+
 // appLockerAllowedVars are the AppLocker path variables that expand to
 // machine-level, administrator-writable locations.
 var appLockerAllowedVars = []string{`%PROGRAMFILES%\`, `%PROGRAMDATA%\`, `%OSDRIVE%\`}
@@ -44,10 +48,15 @@ var appLockerVarExpansions = [][2]string{
 	{`%osdrive%\`, `c:\`},
 }
 
-// forbiddenLocation is a canonicalised directory no allow rule may cover,
-// with the reason, so the rationale lives next to the data.
+// forbiddenLocation is a canonicalised directory no allow rule may cover:
+// prefix is what the test matches, name is how it is named back to the
+// operator, and why keeps the rationale next to the data.
+//
+// A drive-letter prefix is written c:\ because canonicalAppLockerPath maps
+// every drive onto that one letter -- see the comment there.
 type forbiddenLocation struct {
 	prefix string
+	name   string
 	why    string
 }
 
@@ -65,14 +74,14 @@ type forbiddenLocation struct {
 // exactly the bypass the image's exception list exists to close. Nothing
 // legitimate needs allow-listing under Windows.
 var appLockerForbiddenLocations = []forbiddenLocation{
-	{`c:\users\`, "user profiles are writable by the employee"},
-	{`c:\windows\`, "the image already allows %WINDIR%\\* with the script-host exception list; a rule here would carry no exceptions and would re-enable wscript.exe, cmd.exe and powershell.exe for standard users"},
-	{`%userprofile%`, "writable by the employee"},
-	{`%localappdata%`, "writable by the employee"},
-	{`%appdata%`, "writable by the employee"},
-	{`%temp%`, "writable by the employee"},
-	{`%tmp%`, "writable by the employee"},
-	{`%public%`, "writable by every user"},
+	{`c:\users\`, `\Users (on any drive)`, "user profiles are writable by the employee"},
+	{`c:\windows\`, `\Windows (on any drive)`, "the image already allows %WINDIR%\\* with the script-host exception list; a rule here would carry no exceptions and would re-enable wscript.exe, cmd.exe and powershell.exe for standard users"},
+	{`%userprofile%`, `%USERPROFILE%`, "writable by the employee"},
+	{`%localappdata%`, `%LOCALAPPDATA%`, "writable by the employee"},
+	{`%appdata%`, `%APPDATA%`, "writable by the employee"},
+	{`%temp%`, `%TEMP%`, "writable by the employee"},
+	{`%tmp%`, `%TMP%`, "writable by the employee"},
+	{`%public%`, `%PUBLIC%`, "writable by every user"},
 }
 
 // canonicalAppLockerPath lower-cases p, normalises `/` to `\` and expands the
@@ -83,8 +92,35 @@ func canonicalAppLockerPath(p string) string {
 	s := strings.ReplaceAll(strings.ToLower(p), "/", `\`)
 	for _, e := range appLockerVarExpansions {
 		if strings.HasPrefix(s, e[0]) {
-			return e[1] + s[len(e[0]):]
+			s = e[1] + s[len(e[0]):]
+			break
 		}
+	}
+
+	// Collapse repeated separators and strip the trailing dots and spaces the
+	// Win32 path parser ignores, so one location has exactly one spelling
+	// here: `C:\\Windows\*`, `C:\Windows.\*` and `C:\Windows \*` all name the
+	// Windows tree. We cannot see from here how AppLocker itself normalises a
+	// rule path; if it normalises like the file system -- which is the way to
+	// bet -- then leaving these spellings through is the C1 bypass again, with
+	// an Everyone/Allow rule over Windows and no exceptions on it.
+	parts := strings.Split(s, `\`)
+	kept := parts[:0]
+	for i, c := range parts {
+		c = strings.TrimRight(c, " .")
+		if c == "" && i > 0 {
+			continue
+		}
+		kept = append(kept, c)
+	}
+	s = strings.Join(kept, `\`)
+
+	// Map every drive onto one letter. The forbidden locations are decisions
+	// about *names*, not about which volume they happen to sit on: a machine
+	// with redirected profiles or a second system volume makes D:\Users and
+	// D:\Windows just as live as the ones on C:.
+	if appLockerAnyDriveRoot.MatchString(s) {
+		s = "c:" + s[2:]
 	}
 	return s
 }
@@ -156,10 +192,10 @@ func ValidateAppLockerPath(p string) error {
 	tree := strings.TrimSuffix(canon, `*`)
 	for _, f := range appLockerForbiddenLocations {
 		if strings.HasPrefix(canon, f.prefix) {
-			return fmt.Errorf("path %q is under %s (%s)", p, strings.TrimSuffix(f.prefix, `\`), f.why)
+			return fmt.Errorf("path %q is under %s (%s)", p, f.name, f.why)
 		}
 		if strings.HasPrefix(f.prefix, tree) {
-			return fmt.Errorf("path %q covers %s (%s)", p, strings.TrimSuffix(f.prefix, `\`), f.why)
+			return fmt.Errorf("path %q covers %s (%s)", p, f.name, f.why)
 		}
 	}
 	return nil
