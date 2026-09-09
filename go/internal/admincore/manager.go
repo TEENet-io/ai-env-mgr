@@ -242,6 +242,12 @@ func (m *Manager) MutateAppLockerAllowPaths(add, remove []string) (model.Policy,
 		}
 	}
 	p.AppLockerAllowPaths = model.NormalizeAppLockerPaths(keep)
+	// Cap the list here as well as in the agent (policy.FilterAllowPaths):
+	// each rule is a rule on every employee machine, and a few tool
+	// directories is what this exists for.
+	if n := len(p.AppLockerAllowPaths); n > model.AppLockerMaxAllowPaths {
+		return model.Policy{}, fmt.Errorf("%d allow paths: at most %d are allowed", n, model.AppLockerMaxAllowPaths)
+	}
 	return m.publishPolicy(p)
 }
 

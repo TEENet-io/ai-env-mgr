@@ -1,12 +1,15 @@
 package policy
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"reflect"
 	"regexp"
 	"strings"
 	"testing"
+
+	"github.com/TEENet-io/ai-env-mgr/internal/model"
 )
 
 // Two shapes of the same policy, and they are not interchangeable:
@@ -431,5 +434,40 @@ func TestAppLockerStagingDirIsNeverATempDirectory(t *testing.T) {
 	t.Setenv("ProgramData", "")
 	if got, err := appLockerStagingDir(); err == nil {
 		t.Errorf("with no configured directory and no %%ProgramData%%, want an error, got %q", got)
+	}
+}
+
+// A padded entry validated fine (validation trims) but the untrimmed string
+// was appended, so the leading whitespace reached the rule's Path attribute.
+func TestFilterAllowPathsAppendsTheTrimmedForm(t *testing.T) {
+	keep, rejected := FilterAllowPaths([]string{"  C:\\tools\\Codex\\*\t"})
+	if len(rejected) != 0 {
+		t.Fatalf("rejected = %v, want none", rejected)
+	}
+	if !reflect.DeepEqual(keep, []string{`C:\tools\Codex\*`}) {
+		t.Fatalf("keep = %q, want the trimmed path", keep)
+	}
+	out, _, err := RewriteAppLockerXML(getShapeFixture(t), keep)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out, `Path="C:\tools\Codex\*"`) {
+		t.Errorf("padded entry reached the XML:\n%s", exeCollection(t, out))
+	}
+}
+
+// policy.json is a file in the store, not a trust boundary: a hand-edit must
+// not be able to apply hundreds of rules to every machine.
+func TestFilterAllowPathsCapsTheListLength(t *testing.T) {
+	var many []string
+	for i := 0; i < model.AppLockerMaxAllowPaths+5; i++ {
+		many = append(many, fmt.Sprintf(`C:\tools\t%d\*`, i))
+	}
+	keep, rejected := FilterAllowPaths(many)
+	if len(keep) != model.AppLockerMaxAllowPaths {
+		t.Errorf("keep = %d entries, want %d", len(keep), model.AppLockerMaxAllowPaths)
+	}
+	if len(rejected) != 5 {
+		t.Errorf("rejected = %d entries, want 5", len(rejected))
 	}
 }

@@ -9,8 +9,7 @@ import (
 )
 
 func TestBuildPopulatesFields(t *testing.T) {
-	p := model.Policy{BlockEnabled: true, BlockedDomains: []string{"a.com", "b.com"},
-		AppLockerAllowPaths: []string{`C:\tools\Codex\*`}}
+	p := model.Policy{BlockEnabled: true, BlockedDomains: []string{"a.com", "b.com"}}
 	s := Build(Report{
 		Machine: "DESKTOP-A", BoundUser: "work1",
 		LocalUsers: []string{"Administrator", "work1"}, BoundUserExists: true,
@@ -30,9 +29,6 @@ func TestBuildPopulatesFields(t *testing.T) {
 	}
 	if !s.BlockEnabled || s.BlockedDomains != 2 {
 		t.Errorf("policy summary wrong: %+v", s)
-	}
-	if s.AppLockerAllowPaths != 1 {
-		t.Errorf("AppLockerAllowPaths = %d, want 1", s.AppLockerAllowPaths)
 	}
 	if s.SyncIntervalMinutes != 15 {
 		t.Errorf("SyncIntervalMinutes = %d, want 15", s.SyncIntervalMinutes)

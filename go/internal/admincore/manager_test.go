@@ -3,6 +3,7 @@ package admincore
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"reflect"
 	"sort"
 	"strings"
@@ -285,6 +286,24 @@ func TestMutateAppLockerAllowPathsDropsPreExistingInvalidEntry(t *testing.T) {
 	if !reflect.DeepEqual(p.AppLockerAllowPaths, want) {
 		t.Errorf("AppLockerAllowPaths = %v, want %v (pre-existing invalid entry must be dropped)",
 			p.AppLockerAllowPaths, want)
+	}
+}
+
+// The console form is the usability gate, but it publishes the same file the
+// agent enforces: a bulk paste must not be able to put hundreds of rules on
+// every machine either.
+func TestMutateAppLockerAllowPathsCapsTheListLength(t *testing.T) {
+	m, _ := newManager()
+	var many []string
+	for i := 0; i < model.AppLockerMaxAllowPaths+1; i++ {
+		many = append(many, fmt.Sprintf(`C:\tools\t%d\*`, i))
+	}
+	if _, err := m.MutateAppLockerAllowPaths(many, nil); err == nil {
+		t.Fatal("more than the cap must be refused and nothing published")
+	}
+	p, err := m.MutateAppLockerAllowPaths(many[:model.AppLockerMaxAllowPaths], nil)
+	if err != nil || len(p.AppLockerAllowPaths) != model.AppLockerMaxAllowPaths {
+		t.Fatalf("exactly the cap must be accepted: %d entries, %v", len(p.AppLockerAllowPaths), err)
 	}
 }
 

@@ -123,8 +123,11 @@ func printStatus(st model.Status, verbose bool) {
 		fmt.Printf("bound to: %s (%s)\n", st.BoundUser, exists)
 	}
 	fmt.Printf("local users: %s\n", strings.Join(st.LocalUsers, ", "))
-	fmt.Printf("block=%v domains=%d interval=%dm creds=%v applocker=%s applocker_allow=%d\n",
-		st.BlockEnabled, st.BlockedDomains, st.SyncIntervalMinutes, st.CredsApplied, st.AppLockerMode, st.AppLockerAllowPaths)
+	// No count of published allow paths here: that is intent, not machine
+	// truth. `agent.exe status` reads the machine's own AppLocker policy
+	// instead (see printLocalState / formatAppLockerAllow).
+	fmt.Printf("block=%v domains=%d interval=%dm creds=%v applocker=%s\n",
+		st.BlockEnabled, st.BlockedDomains, st.SyncIntervalMinutes, st.CredsApplied, st.AppLockerMode)
 	fmt.Printf("collect=%v uploaded=%d\n", st.CollectEnabled, st.CollectUploaded)
 	if verbose {
 		fmt.Printf("policyEtag=%s credsEtag=%s\n", orDash(st.PolicyETag), orDash(st.CredsETag))

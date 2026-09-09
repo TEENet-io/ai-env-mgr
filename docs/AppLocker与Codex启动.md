@@ -93,6 +93,21 @@ agent 每个同步周期都会用它重写本机的 AppLocker Exe 规则集（�
 
 这一步解决"目录不在白名单"，**不解决 `wscript.exe` 被拦**。
 
+**放行目录有硬性限制，控制台和 agent 两道关都会拒。** 除了用户可写的位置
+（`C:\Users\`、`%USERPROFILE%`、`%LOCALAPPDATA%`、`%APPDATA%`、`%TEMP%`、`%PUBLIC%`……）
+之外，**整个 Windows 目录树也一律拒绝**——`C:\Windows\*`、`C:\Windows\System32\*`、
+`%OSDRIVE%\Windows\*` 都不行。原因是 AppLocker 的放行规则是**并集**，而
+`<Exceptions>` 只约束它所挂的那一条规则：镜像里的 `%WINDIR%\*` 是**带例外名单**的
+（排除了 wscript.exe / cmd.exe / powershell.exe / cscript.exe / mshta.exe），一旦再加一条
+覆盖 Windows 目录的放行规则，那条新规则**没有任何例外**，上面那份例外名单就等于作废，
+上一节讲的"脚本宿主 + 用户可写目录"口子立刻重新打开。Windows 目录下没有任何东西需要
+额外放行。
+
+同理，`C:\*`（整盘）和 `C:\ProgramData\*`（等价于 `%PROGRAMDATA%\*`）也会被拒：
+放行目录必须具体到某个厂商/工具目录，例如 `%PROGRAMDATA%\Vendor\App\*`。判断是双向的
+——既拒绝"落在禁止位置里面"的路径，也拒绝"把禁止位置包在自己树里"的路径。条数也有上限（64 条）：
+这份名单是给几个工具目录用的，不是给批量粘贴用的。
+
 **2. 让启动不经过脚本宿主**
 
 `Codex.vbs` 做的两件事都可以不靠脚本完成：
@@ -121,9 +136,13 @@ agent 每个同步周期都会用它重写本机的 AppLocker Exe 规则集（�
    （放行目录条数，与控制台发布的条数一致）
 
    **`applocker_allow=?` 不等于 `0`**：`?` 表示 agent 这次没能读到本机的 AppLocker
-   本地策略（比如 AppLocker 服务没起来），是"不知道"；`0` 是"确认读到了，但目前没有
-   任何放行目录"。两者处理方式不同——看到 `?` 应该去查 AppIDSvc 服务状态和
-   agent 日志，而不是当作"没配置"重新下发一遍。
+   本地策略，是"不知道"；`0` 是"确认读到了，但目前没有任何放行目录"。两者处理方式
+   不同——看到 `?` 不要当作"没配置"重新下发一遍，去看 agent 日志里那一行读取失败的
+   具体原因（agent 会把 PowerShell 的 stderr 一并带出来，超时也会明说）。
+
+   **`?` 不代表 AppIDSvc 没起来。** agent 读的是 `Get-AppLockerPolicy -Local`，
+   它从本机策略存储里取，不依赖 AppIDSvc；AppIDSvc 决定的是策略**是否被执行**，不是
+   能否被读出来。所以服务没起来时，`applocker_allow` 照样读得到数字，只是规则不生效。
 
 2. 应用第 2 步的启动改法之后，员工重新打开 Codex，不再弹出「系统管理员已阻止这个应用」。
 

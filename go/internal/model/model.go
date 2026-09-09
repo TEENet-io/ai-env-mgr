@@ -126,7 +126,6 @@ type Status struct {
 	SyncIntervalMinutes int      `json:"syncIntervalMinutes"`
 	CredsApplied        bool     `json:"credsApplied"`
 	AppLockerMode       string   `json:"appLockerMode"`
-	AppLockerAllowPaths int      `json:"appLockerAllowPaths"`
 	CollectEnabled      bool     `json:"collectEnabled"`
 	CollectUploaded     int      `json:"collectUploaded"`
 

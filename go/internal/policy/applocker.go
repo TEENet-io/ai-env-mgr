@@ -242,17 +242,29 @@ func sameAppLockerPaths(a, b []string) bool {
 // checking it itself, or a single bad entry (e.g. C:\Users\*) would void the
 // whole AppLocker whitelist.
 //
+// The list is also capped at model.AppLockerMaxAllowPaths, so a hand-edited
+// policy.json cannot push hundreds of rules into every machine's security
+// policy.
+//
 // Invalid entries are dropped rather than refusing the whole list: the valid
 // paths are what let an employee actually launch a tool like Codex, and one
 // bad entry must not hold the rest hostage. rejected names each dropped
 // entry and why, in input order, for the caller to report.
 func FilterAllowPaths(paths []string) (keep []string, rejected []string) {
 	for _, p := range paths {
-		if err := model.ValidateAppLockerPath(strings.TrimSpace(p)); err != nil {
+		trimmed := strings.TrimSpace(p)
+		if err := model.ValidateAppLockerPath(trimmed); err != nil {
 			rejected = append(rejected, fmt.Sprintf("%q: %v", p, err))
 			continue
 		}
-		keep = append(keep, p)
+		if len(keep) >= model.AppLockerMaxAllowPaths {
+			rejected = append(rejected, fmt.Sprintf("%q: more than %d allow paths", p, model.AppLockerMaxAllowPaths))
+			continue
+		}
+		// The trimmed form is what was validated, so it is the form that may
+		// be written: appending the original would put a padded path -- with
+		// leading whitespace -- into the rule's Path attribute.
+		keep = append(keep, trimmed)
 	}
 	return keep, rejected
 }
