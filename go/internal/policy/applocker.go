@@ -10,6 +10,8 @@ import (
 	"html"
 	"regexp"
 	"strings"
+
+	"github.com/TEENet-io/ai-env-mgr/internal/model"
 )
 
 // Managed AppLocker rules are the only ones the agent writes or removes.
@@ -106,6 +108,43 @@ func ManagedPaths(xml string) []string {
 		return nil
 	}
 	return paths
+}
+
+// FilterAllowPaths re-validates the paths a published policy carries against
+// model.ValidateAppLockerPath before any of them can reach RewriteAppLockerXML.
+//
+// policy.json is written on the publishing side -- the console, or anyone
+// who can write to that OSS object, whether through a leaked admin key, a
+// compromised console, or a hand-edit "just to test something". The console
+// form is a usability gate, not a security boundary: this agent runs as
+// SYSTEM and must not apply whatever the policy object contains without
+// checking it itself, or a single bad entry (e.g. C:\Users\*) would void the
+// whole AppLocker whitelist.
+//
+// Invalid entries are dropped rather than refusing the whole list: the valid
+// paths are what let an employee actually launch a tool like Codex, and one
+// bad entry must not hold the rest hostage. rejected names each dropped
+// entry and why, in input order, for the caller to report.
+func FilterAllowPaths(paths []string) (keep []string, rejected []string) {
+	for _, p := range paths {
+		if err := model.ValidateAppLockerPath(strings.TrimSpace(p)); err != nil {
+			rejected = append(rejected, fmt.Sprintf("%q: %v", p, err))
+			continue
+		}
+		keep = append(keep, p)
+	}
+	return keep, rejected
+}
+
+// rejectedErr summarises the paths FilterAllowPaths dropped, or nil when it
+// dropped nothing. ApplyAppLocker returns it even when every valid path was
+// applied successfully, so a dropped entry is visible on the machine's
+// status line instead of silently vanishing.
+func rejectedErr(rejected []string) error {
+	if len(rejected) == 0 {
+		return nil
+	}
+	return fmt.Errorf("dropped %d invalid AppLocker allow path(s): %s", len(rejected), strings.Join(rejected, "; "))
 }
 
 // RewriteAppLockerXML returns xml with the agent's managed rules replaced by

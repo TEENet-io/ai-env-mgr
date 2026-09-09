@@ -2,6 +2,7 @@ package policy
 
 import (
 	"os"
+	"reflect"
 	"strings"
 	"testing"
 )
@@ -152,6 +153,67 @@ func TestManagedPathsNilWithoutExeCollection(t *testing.T) {
 // A rule that merely matches the managed Id/Name prefixes but sits in a
 // different rule collection must not be reported: ManagedPaths is scoped to
 // the Exe collection exactly like RewriteAppLockerXML.
+// FilterAllowPaths is the agent-side re-validation of whatever policy.json
+// carried: the console form is a usability gate, not a security boundary,
+// so the enforcing side must not trust it blindly.
+
+func TestFilterAllowPathsDropsInvalidAndNamesThem(t *testing.T) {
+	keep, rejected := FilterAllowPaths([]string{
+		`C:\tools\Codex\*`, `C:\Users\Evil\*`, `D:\Apps\Foo\*`, `%LOCALAPPDATA%\x\*`,
+	})
+	want := []string{`C:\tools\Codex\*`, `D:\Apps\Foo\*`}
+	if !reflect.DeepEqual(keep, want) {
+		t.Errorf("keep = %v, want %v", keep, want)
+	}
+	if len(rejected) != 2 {
+		t.Fatalf("rejected = %v, want 2 entries", rejected)
+	}
+	// %q-quoting escapes the backslashes, so look for a substring that
+	// survives that rather than the raw path.
+	for _, want := range []string{`Users`, `LOCALAPPDATA`} {
+		found := false
+		for _, r := range rejected {
+			if strings.Contains(r, want) {
+				found = true
+			}
+		}
+		if !found {
+			t.Errorf("rejected = %v, none names the dropped path containing %q", rejected, want)
+		}
+	}
+}
+
+func TestFilterAllowPathsAllInvalidKeepsNoneNotAFreeForAll(t *testing.T) {
+	keep, rejected := FilterAllowPaths([]string{`C:\Users\*`, `%TEMP%\evil\*`})
+	if len(keep) != 0 {
+		t.Errorf("keep = %v, want none", keep)
+	}
+	if len(rejected) != 2 {
+		t.Errorf("rejected = %v, want 2", rejected)
+	}
+	// Feeding the filtered result to the rewriter must land as "no managed
+	// rules", not smuggle the invalid paths through as an allow-everything
+	// rule.
+	out, _, err := RewriteAppLockerXML(fixture(t), keep)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := ManagedPaths(out); got != nil {
+		t.Errorf("expected no managed rules from an all-invalid list, got %v", got)
+	}
+}
+
+func TestFilterAllowPathsAllValidKeepsEverything(t *testing.T) {
+	in := []string{`C:\tools\Codex\*`, `D:\Apps\Foo\*`}
+	keep, rejected := FilterAllowPaths(in)
+	if !reflect.DeepEqual(keep, in) {
+		t.Errorf("keep = %v, want %v", keep, in)
+	}
+	if len(rejected) != 0 {
+		t.Errorf("rejected = %v, want none", rejected)
+	}
+}
+
 func TestManagedPathsIgnoresAManagedLookingRuleInAnotherCollection(t *testing.T) {
 	fx := fixture(t)
 	planted := `    <FilePathRule Id="e0000000-0000-0000-0000-000000000099" Name="AIEnvMgr-allow-99" Description="planted" UserOrGroupSid="S-1-1-0" Action="Allow">

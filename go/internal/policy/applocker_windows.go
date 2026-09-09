@@ -64,17 +64,24 @@ func LocalAppLockerPaths() ([]string, error) {
 // nothing has drifted: one read, and a write only when the XML actually
 // changes.
 func ApplyAppLocker(paths []string) error {
+	// policy.json is written on the publishing side, not here, and this
+	// agent runs as SYSTEM: re-validate before anything reaches the
+	// rewriter rather than trusting whatever OSS happened to hand back. See
+	// FilterAllowPaths.
+	paths, rejected := FilterAllowPaths(paths)
+
 	xml, err := readLocalAppLockerXML()
 	if err != nil {
 		if len(paths) == 0 {
-			// Nothing to manage and nothing readable: not worth a status line.
-			return nil
+			// Nothing valid to manage and nothing readable: not worth a
+			// status line of its own, but a dropped entry still is.
+			return rejectedErr(rejected)
 		}
 		return fmt.Errorf("read local AppLocker policy: %w", err)
 	}
 	if !AppLockerDeployed(xml) {
 		if len(paths) == 0 {
-			return nil
+			return rejectedErr(rejected)
 		}
 		return fmt.Errorf("%w; %d allow path(s) not applied", ErrAppLockerNotDeployed, len(paths))
 	}
@@ -83,7 +90,7 @@ func ApplyAppLocker(paths []string) error {
 		return fmt.Errorf("rewrite AppLocker policy: %w", err)
 	}
 	if !changed {
-		return nil
+		return rejectedErr(rejected)
 	}
 	tmp := filepath.Join(os.TempDir(), "aienvmgr-applocker.xml")
 	if err := os.WriteFile(tmp, utf16LEWithBOM(next), 0o600); err != nil {
@@ -95,7 +102,7 @@ func ApplyAppLocker(paths []string) error {
 	if msg, err := cmd.CombinedOutput(); err != nil {
 		return fmt.Errorf("Set-AppLockerPolicy: %v: %s", err, strings.TrimSpace(string(msg)))
 	}
-	return nil
+	return rejectedErr(rejected)
 }
 
 // utf16LEWithBOM encodes the way the image script writes the policy file
