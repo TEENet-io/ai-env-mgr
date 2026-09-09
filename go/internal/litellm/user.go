@@ -41,9 +41,9 @@ const budgetDuration = "1mo"
 
 // UserSpec is what the console wants a gateway user to look like.
 type UserSpec struct {
-	UserID     string   // admincore.KeyAlias(windowsUser)
-	Alias      string   // display name, shown in the gateway UI
-	Department string   // stored as metadata.department
+	UserID     string // admincore.KeyAlias(windowsUser)
+	Alias      string // display name, shown in the gateway UI
+	Department string // stored as metadata.department
 	Quota      Quota
 	Models     []string // allowlist; nil means every model the gateway routes
 }
