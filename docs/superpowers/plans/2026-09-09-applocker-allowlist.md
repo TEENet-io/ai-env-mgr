@@ -755,16 +755,72 @@ func (s *Server) actionAppLocker(sess *session, r *http.Request) error {
 
 ---
 
-### Task 5: Docs, release, remediation
+### Task 5: Docs and release
 
 **Files:**
-- Modify: `docs/Codex分发方案.md` (note that `C:\tools\Codex` needs the allow rule), `dist/部署说明.md` (new field + symptom), `README.md` (feature line).
+- Modify: `docs/Codex分发方案.md`, `dist/部署说明.md`, `README.md`
+- Create: `docs/AppLocker与Codex启动.md`
 
-- [ ] **Step 1: Docs** — add to `dist/部署说明.md` symptom table: `员工打开 Codex 提示“系统管理员已阻止这个应用” → AppLocker 强制模式且 Codex 不在 Program Files；在控制台「封禁策略」页放行 C:\tools\Codex\*，等一个同步周期。` Add to `Codex分发方案.md` after the `C:\tools\Codex` paragraph: `该目录不在镜像 AppLocker 的白名单内；agent 1.2.13 起由 policy.json 的 appLockerAllowPaths 放行（控制台「封禁策略」页），装机脚本无需改。`
+**What changed since this plan was written.** The incident was diagnosed on a real machine
+on 2026-09-09 and the root cause is NOT what the plan's header assumed. Codex is launched
+as `C:\Windows\system32\wscript.exe "C:\Tools\Codex\Codex.vbs"`. The image's Exe rule
+allows `%WINDIR%\*` but **excepts `%SYSTEM32%\wscript.exe`** (alongside cmd, powershell,
+cscript, mshta) precisely to stop script hosts being used to bypass the policy — see
+`scripts/02-Manage-AIAccess.ps1:114-132`. So the launch is refused at `wscript.exe`, before
+Codex is reached. `Codex.vbs` would then also fail the Script collection, which allows only
+`%WINDIR%\*` and `%PROGRAMFILES%\*` scripts. The allow list this branch adds is still
+necessary — the real binary is `C:\Tools\Codex\_internal\app\ChatGPT.exe`, outside the
+image's whitelist — but it is not sufficient on its own. Document both halves; do not
+soften the image's exception list.
 
-- [ ] **Step 2: Merge, tag, release** — merge `applocker-allowlist` into `main` (ff), tag `v1.2.13` and push (release.yml builds agent.exe), tag console `web-32`, build and deploy console (same procedure as web-31: scp to `/opt/ai-env-mgr/web-32`, repoint `admin` symlink, `systemctl restart ai-env-mgr-admin`).
+`Codex.vbs` does only two things (read off the machine): it sets
+`CODEX_ELECTRON_ENABLE_WINDOWS_COMPUTER_USE=1` and starts `_internal\app\ChatGPT.exe` with
+that directory as the working directory. Both are reproducible without a script host.
 
-- [ ] **Step 3: Remediate** — administrator: publish agent 1.2.13 from the console rollout page; on 封禁策略 add `C:\tools\Codex\*`; after one sync cycle on the affected machine, Codex launches. Verify: `agent status` shows `applocker_allow=1`; Event Viewer AppLocker log shows no new 8004 for CODEX.EXE.
+- [ ] **Step 1: Write `docs/AppLocker与Codex启动.md`**
+
+A short Chinese document, structured as: 现象 (what the employee sees) → 根因 (the two
+blocks in series, with the file:line reference into the image script) → 为什么不放行
+wscript (`C:\Windows\Temp` is user-writable and the Script collection allows `%WINDIR%\*`,
+so re-enabling wscript reopens exactly the bypass the exception list exists to prevent) →
+正确做法 (machine-level environment variable + shortcut straight to `ChatGPT.exe`, plus the
+allow path `C:\tools\Codex\*` published from the console) → 验证 (`agent status` shows
+`applocker_allow=1`, and no new AppLocker 8004 event for the launch). Record that
+`applocker_allow=?` means the agent could not read the local policy, which is a different
+state from `0`.
+
+End with a 遗留 section naming the two things this branch does NOT do, so they are not
+forgotten:
+1. The machine-level environment variable is set by hand today. The agent already writes
+   HKLM policy keys, so managing a small set of machine environment variables from
+   `policy.json` is the natural home for it. Not in this branch.
+2. The codex-kiosk installer still creates a `wscript.exe` + `.vbs` shortcut. The durable
+   fix is for it to create a shortcut to `ChatGPT.exe` directly. That is a change in the
+   `TEENet-io/codex-kiosk` repository, not this one.
+
+- [ ] **Step 2: `dist/部署说明.md`** — add to the symptom table:
+`员工打开 Codex 提示"系统管理员已阻止这个应用" → 见 docs/AppLocker与Codex启动.md。两个原因要一起解决：启动走 wscript.exe（被镜像 AppLocker 故意排除），且 Codex 目录不在白名单内。`
+Also document the new `policy.json` field `appLockerAllowPaths` alongside the existing
+fields, and the `applocker_allow=N|?` line in `agent status`.
+
+- [ ] **Step 3: `docs/Codex分发方案.md`** — after the `C:\tools\Codex` paragraph, add:
+`该目录不在镜像 AppLocker 的白名单内。agent 1.2.13 起由 policy.json 的 appLockerAllowPaths 放行（控制台「封禁策略」页），装机脚本无需改。注意真正的可执行文件是 _internal\app\ChatGPT.exe，且默认快捷方式经 wscript.exe 中转——后者会被 AppLocker 拦下，见 docs/AppLocker与Codex启动.md。`
+
+- [ ] **Step 4: `README.md`** — one line in the feature list: 控制台可下发 AppLocker 放行目录，agent 每个同步周期校对一次。
+
+- [ ] **Step 5: Commit** — `docs: record why Codex is blocked and how the allow list fixes it`
+
+- [ ] **Step 6: Merge and release** (controller performs; do not do this as the task implementer)
+Merge `applocker-allowlist` into `main` (fast-forward), run the full suite on the merged
+tree, tag `v1.2.13` and push (release.yml builds agent.exe), then build and deploy the
+console as `web-32` following the web-31 procedure: `scp` the binary to
+`/opt/ai-env-mgr/web-32` on 47.236.115.50, repoint the `/opt/ai-env-mgr/admin` symlink,
+`systemctl restart ai-env-mgr-admin`.
+
+- [ ] **Step 7: Remediate the fleet** (administrator)
+Publish agent 1.2.13 from the console rollout page; on 封禁策略 add `C:\tools\Codex\*`;
+apply the launcher fix (machine environment variable + shortcut to `ChatGPT.exe`); have the
+employee sign out and back in. Verify with `agent status`: `applocker_allow=1`.
 
 ---
 
