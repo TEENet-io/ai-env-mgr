@@ -258,6 +258,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("/machines/unbind", s.requirePost("/machines", s.actionMachineUnbind))
 	mux.HandleFunc("/sites/mutate", s.requirePost("/sites", s.actionSites))
 	mux.HandleFunc("/sites/enabled", s.requirePost("/sites", s.actionBlockEnabled))
+	mux.HandleFunc("/sites/applocker", s.requirePost("/sites", s.actionAppLocker))
 	mux.HandleFunc("/settings/interval", s.requirePost("/settings", s.actionSyncInterval))
 	mux.HandleFunc("/settings/collect", s.requirePost("/settings", s.actionCollect))
 	mux.HandleFunc("/settings/quota-defaults", s.requirePost("/settings", s.actionQuotaDefaults))

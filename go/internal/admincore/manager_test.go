@@ -250,6 +250,21 @@ func TestMutateDomainsAddsRemovesDedupsAndSorts(t *testing.T) {
 	}
 }
 
+func TestMutateAppLockerAllowPathsValidatesAndNormalises(t *testing.T) {
+	m, _ := newManager()
+	p, err := m.MutateAppLockerAllowPaths([]string{`c:\TOOLS\codex\*`, `C:\tools\Codex\*`, `D:\Apps\Foo\*`}, nil)
+	if err != nil || len(p.AppLockerAllowPaths) != 2 {
+		t.Fatalf("got %v %v", p.AppLockerAllowPaths, err)
+	}
+	if _, err := m.MutateAppLockerAllowPaths([]string{`%LOCALAPPDATA%\x\*`}, nil); err == nil {
+		t.Fatal("user-writable path must be refused and nothing published")
+	}
+	p, _ = m.MutateAppLockerAllowPaths(nil, []string{`C:\TOOLS\CODEX\*`})
+	if len(p.AppLockerAllowPaths) != 1 || p.AppLockerAllowPaths[0] != `D:\Apps\Foo\*` {
+		t.Errorf("remove must be case-insensitive: %v", p.AppLockerAllowPaths)
+	}
+}
+
 func TestSetBlockEnabledPersists(t *testing.T) {
 	m, store := newManager()
 	addTestUser(t, m, "work1", "", "")

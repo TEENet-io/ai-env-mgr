@@ -206,6 +206,33 @@ func (m *Manager) MutateDomains(add, remove []string) (model.Policy, error) {
 	return m.publishPolicy(p)
 }
 
+// MutateAppLockerAllowPaths edits the directories AppLocker must allow for
+// every user. Invalid additions abort the whole change: a half-applied
+// allow list is exactly the kind of drift the validation exists to stop.
+func (m *Manager) MutateAppLockerAllowPaths(add, remove []string) (model.Policy, error) {
+	p, err := m.CurrentPolicy()
+	if err != nil {
+		return model.Policy{}, err
+	}
+	for _, a := range add {
+		if err := model.ValidateAppLockerPath(strings.TrimSpace(a)); err != nil {
+			return model.Policy{}, fmt.Errorf("allow path %q: %w", a, err)
+		}
+	}
+	drop := map[string]bool{}
+	for _, r := range remove {
+		drop[strings.ToLower(strings.TrimSpace(r))] = true
+	}
+	var keep []string
+	for _, existing := range append(append([]string{}, p.AppLockerAllowPaths...), add...) {
+		if !drop[strings.ToLower(strings.TrimSpace(existing))] {
+			keep = append(keep, existing)
+		}
+	}
+	p.AppLockerAllowPaths = model.NormalizeAppLockerPaths(keep)
+	return m.publishPolicy(p)
+}
+
 // SetBlockEnabled flips the global block switch and publishes the change.
 func (m *Manager) SetBlockEnabled(enabled bool) (model.Policy, error) {
 	p, err := m.CurrentPolicy()

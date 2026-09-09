@@ -140,6 +140,27 @@ func splitDomains(s string) []string {
 	return out
 }
 
+// splitPaths splits on line and list separators only; Windows paths may
+// contain spaces, so unlike domains a space is not a separator.
+func splitPaths(s string) []string {
+	var out []string
+	for _, f := range strings.FieldsFunc(s, func(r rune) bool { return r == '\n' || r == '\r' || r == ',' || r == ';' }) {
+		if f = strings.TrimSpace(f); f != "" {
+			out = append(out, f)
+		}
+	}
+	return out
+}
+
+func (s *Server) actionAppLocker(sess *session, r *http.Request) error {
+	add, remove := splitPaths(formValue(r, "add")), splitPaths(formValue(r, "remove"))
+	if len(add) == 0 && len(remove) == 0 {
+		return fmt.Errorf("nothing to add or remove")
+	}
+	_, err := sess.mgr.MutateAppLockerAllowPaths(add, remove)
+	return err
+}
+
 func (s *Server) actionBlockEnabled(sess *session, r *http.Request) error {
 	_, err := sess.mgr.SetBlockEnabled(formValue(r, "enabled") == "1")
 	return err

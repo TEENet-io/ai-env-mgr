@@ -39,6 +39,30 @@
     <label class="wide">移除<textarea name="remove" rows="2"></textarea></label>
     <button type="submit">提交</button>
   </form>
+
+  <h2>AppLocker 放行目录</h2>
+  {{with .Policy}}
+  <div class="panel scroll">
+  <table>
+    <tbody>
+    {{range .AppLockerAllowPaths}}<tr><td class="id">{{.}}</td></tr>
+    {{else}}<tr><td class="empty">没有额外放行目录；员工只能运行 Windows 与 Program Files 下的程序。</td></tr>{{end}}
+    </tbody>
+  </table>
+  </div>
+  {{end}}
+  <form method="post" action="/sites/applocker" class="form">
+    <input type="hidden" name="csrf" value="{{.CSRF}}">
+    <label class="wide">新增<textarea name="add" rows="2" placeholder="每行一个，如 C:\tools\Codex\*"></textarea></label>
+    <label class="wide">移除<textarea name="remove" rows="2"></textarea></label>
+    <button type="submit">提交</button>
+  </form>
+  <p class="hint">
+    镜像里的 AppLocker 只允许员工运行 Windows 与 Program Files 下的程序；装在别处的程序（如 <code>C:\tools\Codex</code>）
+    在强制模式下会提示「系统管理员已阻止这个应用」。这里的目录由 agent 在下次同步时写成 AppLocker 放行规则，
+    对机器上所有用户生效。<strong>只接受机器级目录</strong>：用户目录、AppData、Temp、整盘一律拒绝，否则白名单形同虚设。
+    目录必须以 <code>\*</code> 结尾。没有部署 AppLocker 的机器不受影响。
+  </p>
 </main>
 </div>
 </body>

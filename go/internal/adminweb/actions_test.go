@@ -50,6 +50,7 @@ func TestWritesRequireCSRFToken(t *testing.T) {
 		{"/machines/unbind", url.Values{"machine": {"PC1"}}},
 		{"/sites/mutate", url.Values{"add": {"evil.example"}}},
 		{"/sites/enabled", url.Values{"enabled": {"0"}}},
+		{"/sites/applocker", url.Values{"add": {`C:\tools\Codex\*`}}},
 		{"/settings/interval", url.Values{"minutes": {"1"}}},
 		{"/settings/collect", url.Values{"enabled": {"1"}}},
 		{"/settings/quota-defaults", url.Values{"budget": {"20"}, "rpm": {"60"}, "tpm": {"200000"}, "parallel": {"4"}}},
@@ -80,6 +81,22 @@ func TestWritesRequireCSRFToken(t *testing.T) {
 		}
 		if len(fs.objects) != before {
 			t.Fatalf("%s with a wrong CSRF token still wrote to the store", w.path)
+		}
+	}
+}
+
+// splitPaths must not treat a space as a separator: Windows paths routinely
+// contain them (C:\Program Files\...), unlike the domains splitDomains
+// handles.
+func TestSplitPathsPreservesSpacesSplitsOnLinesCommasSemicolons(t *testing.T) {
+	got := splitPaths("C:\\a b\\*\nC:\\c\\*, D:\\d\\*")
+	want := []string{`C:\a b\*`, `C:\c\*`, `D:\d\*`}
+	if len(got) != len(want) {
+		t.Fatalf("splitPaths = %v, want %v", got, want)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Fatalf("splitPaths = %v, want %v", got, want)
 		}
 	}
 }
