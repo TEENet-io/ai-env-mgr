@@ -8,11 +8,59 @@ package policy
 import (
 	"fmt"
 	"html"
+	"os"
+	"path/filepath"
 	"regexp"
 	"strings"
+	"sync"
 
 	"github.com/TEENet-io/ai-env-mgr/internal/model"
 )
+
+// Set-AppLockerPolicy takes the new policy as a file path, and the agent
+// runs as LocalSystem: where that file is staged is a security decision, not
+// a detail. os.TempDir() for LocalSystem is C:\Windows\Temp -- a directory
+// this very branch's validator classifies as user-writable -- and the file
+// was written under a fixed name. SYSTEM wrote it and a separate process
+// (powershell.exe) read it back, so a standard user who pre-created or held
+// that name, or put a link there, could swap the contents in between and get
+// SYSTEM to install an AppLocker policy of their choosing. 0o600 buys
+// nothing against that on Windows.
+//
+// The staging directory must therefore be writable by SYSTEM and
+// Administrators only; the agent's own state directory (%ProgramData%\AIEnvMgr,
+// created by the agent as SYSTEM) is exactly that. The policy package cannot
+// import cmd/agent, so the agent supplies it here at startup; the default is
+// derived the same way, and when even that cannot be determined ApplyAppLocker
+// refuses rather than falling back somewhere world-writable.
+var (
+	stagingMu     sync.RWMutex
+	stagingDirSet string
+)
+
+// SetAppLockerStagingDir tells ApplyAppLocker which directory to stage the
+// policy XML in. Call it once at startup, before any sync cycle runs.
+func SetAppLockerStagingDir(dir string) {
+	stagingMu.Lock()
+	defer stagingMu.Unlock()
+	stagingDirSet = dir
+}
+
+// appLockerStagingDir returns the directory to stage the policy XML in: what
+// SetAppLockerStagingDir was given, else %ProgramData%\AIEnvMgr, else an
+// error. It never returns a temp directory: see the comment above.
+func appLockerStagingDir() (string, error) {
+	stagingMu.RLock()
+	dir := stagingDirSet
+	stagingMu.RUnlock()
+	if dir != "" {
+		return dir, nil
+	}
+	if pd := os.Getenv("ProgramData"); pd != "" {
+		return filepath.Join(pd, "AIEnvMgr"), nil
+	}
+	return "", fmt.Errorf("no directory to stage the AppLocker policy in: %%ProgramData%% is unset and no staging directory was set")
+}
 
 // Managed AppLocker rules are the only ones the agent writes or removes.
 // Both prefixes are checked so a rule renamed by hand is still recognised

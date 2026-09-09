@@ -16,6 +16,7 @@ import (
 	"github.com/TEENet-io/ai-env-mgr/internal/config"
 	"github.com/TEENet-io/ai-env-mgr/internal/model"
 	"github.com/TEENet-io/ai-env-mgr/internal/ossclient"
+	"github.com/TEENet-io/ai-env-mgr/internal/policy"
 	"github.com/TEENet-io/ai-env-mgr/internal/winsvc"
 )
 
@@ -39,6 +40,12 @@ func stateDir() string {
 }
 
 func main() {
+	// The AppLocker policy handed to Set-AppLockerPolicy is staged here, not
+	// in os.TempDir() -- which for a service running as LocalSystem is
+	// C:\Windows\Temp, a directory standard users can write to. See
+	// policy.SetAppLockerStagingDir.
+	policy.SetAppLockerStagingDir(stateDir())
+
 	if len(os.Args) < 2 {
 		usage()
 		return

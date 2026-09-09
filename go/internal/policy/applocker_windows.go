@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
-	"path/filepath"
 	"strings"
 	"unicode/utf16"
 )
@@ -92,11 +91,28 @@ func ApplyAppLocker(paths []string) error {
 	if !changed {
 		return rejectedErr(rejected)
 	}
-	tmp := filepath.Join(os.TempDir(), "aienvmgr-applocker.xml")
-	if err := os.WriteFile(tmp, utf16LEWithBOM(next), 0o600); err != nil {
-		return fmt.Errorf("write AppLocker policy temp file: %w", err)
+	// Staged in a directory only SYSTEM and Administrators can write, under
+	// an unpredictable name created with O_EXCL: see SetAppLockerStagingDir.
+	dir, err := appLockerStagingDir()
+	if err != nil {
+		return err
 	}
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		return fmt.Errorf("create AppLocker staging directory %s: %w", dir, err)
+	}
+	f, err := os.CreateTemp(dir, "applocker-*.xml")
+	if err != nil {
+		return fmt.Errorf("stage AppLocker policy: %w", err)
+	}
+	tmp := f.Name()
 	defer os.Remove(tmp)
+	if _, werr := f.Write(utf16LEWithBOM(next)); werr != nil {
+		f.Close()
+		return fmt.Errorf("write staged AppLocker policy: %w", werr)
+	}
+	if cerr := f.Close(); cerr != nil {
+		return fmt.Errorf("write staged AppLocker policy: %w", cerr)
+	}
 	cmd := exec.Command("powershell.exe", "-NoProfile", "-NonInteractive",
 		"-Command", fmt.Sprintf("Import-Module AppLocker; Set-AppLockerPolicy -XmlPolicy '%s' -ErrorAction Stop", tmp))
 	if msg, err := cmd.CombinedOutput(); err != nil {

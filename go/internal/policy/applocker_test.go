@@ -2,6 +2,7 @@ package policy
 
 import (
 	"os"
+	"path/filepath"
 	"reflect"
 	"strings"
 	"testing"
@@ -227,5 +228,33 @@ func TestManagedPathsIgnoresAManagedLookingRuleInAnotherCollection(t *testing.T)
 	}
 	if got := ManagedPaths(doc); got != nil {
 		t.Errorf("a managed-looking rule outside the Exe collection must not be returned, got %v", got)
+	}
+}
+
+// The policy XML must never be staged in a temp directory: for a service
+// running as LocalSystem os.TempDir() is C:\Windows\Temp, which a standard
+// user can write to, and SYSTEM then hands that file to Set-AppLockerPolicy.
+func TestAppLockerStagingDirIsNeverATempDirectory(t *testing.T) {
+	t.Cleanup(func() { SetAppLockerStagingDir("") })
+
+	SetAppLockerStagingDir("")
+	t.Setenv("ProgramData", `C:\ProgramData`)
+	got, err := appLockerStagingDir()
+	if err != nil || got != filepath.Join(`C:\ProgramData`, "AIEnvMgr") {
+		t.Errorf("default staging dir = %q, %v; want %%ProgramData%%\\AIEnvMgr", got, err)
+	}
+	if strings.EqualFold(got, os.TempDir()) {
+		t.Errorf("staging dir must not be the temp directory, got %q", got)
+	}
+
+	SetAppLockerStagingDir(`C:\ProgramData\AIEnvMgr`)
+	if got, err := appLockerStagingDir(); err != nil || got != `C:\ProgramData\AIEnvMgr` {
+		t.Errorf("configured staging dir = %q, %v", got, err)
+	}
+
+	SetAppLockerStagingDir("")
+	t.Setenv("ProgramData", "")
+	if got, err := appLockerStagingDir(); err == nil {
+		t.Errorf("with no configured directory and no %%ProgramData%%, want an error, got %q", got)
 	}
 }
