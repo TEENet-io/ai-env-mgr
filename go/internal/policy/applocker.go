@@ -16,15 +16,20 @@ import (
 // Both prefixes are checked so a rule renamed by hand is still recognised
 // as ours.
 //
-// Matching (and therefore removal) is scoped to the Exe rule collection
-// only -- see RewriteAppLockerXML. The image's own Msi collection happens
-// to use the same "c0000000-0000-0000-0000-" Id prefix for its
-// admin-safety-valve rule (see scripts/02-Manage-AIAccess.ps1), so a
-// document-wide Id match would incorrectly treat that rule as ours. The
-// agent never creates or removes rules outside the Exe collection anyway,
-// so scoping the match there is both correct and sufficient.
+// The image's four rule collections use Id prefixes a/b/c/d, one per
+// collection (Exe/Script/Msi/Appx -- see scripts/02-Manage-AIAccess.ps1).
+// ManagedRuleIDPrefix uses "e" precisely because it is not one of those:
+// the agent's Id can never collide with an image-written rule's Id, in the
+// Exe collection or in any collection a future change might touch.
+//
+// That uniqueness is belt; matching (and therefore removal) is also scoped
+// to the Exe rule collection only -- see RewriteAppLockerXML -- which is
+// braces: the agent never creates or removes rules outside the Exe
+// collection anyway, so even a prefix collision could not reach another
+// collection's rules. Neither defence alone should be relied on to the
+// exclusion of the other.
 const (
-	ManagedRuleIDPrefix   = "c0000000-0000-0000-0000-"
+	ManagedRuleIDPrefix   = "e0000000-0000-0000-0000-"
 	ManagedRuleNamePrefix = "AIEnvMgr-allow-"
 )
 

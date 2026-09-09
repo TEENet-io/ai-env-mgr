@@ -24,7 +24,7 @@ func TestRewriteAddsManagedRulesToExeCollectionOnly(t *testing.T) {
 	if strings.Count(exe, ManagedRuleNamePrefix) != 2 {
 		t.Errorf("expected 2 managed rules in Exe collection:\n%s", exe)
 	}
-	if !strings.Contains(exe, `Id="c0000000-0000-0000-0000-000000000001" Name="AIEnvMgr-allow-1"`) ||
+	if !strings.Contains(exe, `Id="e0000000-0000-0000-0000-000000000001" Name="AIEnvMgr-allow-1"`) ||
 		!strings.Contains(exe, `<FilePathCondition Path="C:\tools\Codex\*" />`) ||
 		!strings.Contains(exe, `UserOrGroupSid="S-1-1-0" Action="Allow"`) {
 		t.Errorf("managed rule shape wrong:\n%s", exe)
@@ -77,6 +77,20 @@ func TestRewriteRefusesForeignOrMissingPolicy(t *testing.T) {
 	}
 	if AppLockerDeployed(`<AppLockerPolicy Version="1"></AppLockerPolicy>`) || !AppLockerDeployed(fixture(t)) {
 		t.Error("AppLockerDeployed wrong")
+	}
+}
+
+func TestRewriteLeavesTheImagesMsiRuleAlone(t *testing.T) {
+	out, _, err := RewriteAppLockerXML(fixture(t), []string{`C:\tools\Codex\*`})
+	if err != nil {
+		t.Fatalf("err=%v", err)
+	}
+	if !strings.Contains(out, `Id="c0000000-0000-0000-0000-000000000001" Name="Admins-allow-all-msi"`) {
+		t.Errorf("image's Msi rule (and its original id) must survive untouched:\n%s", out)
+	}
+	msi := out[strings.Index(out, `<RuleCollection Type="Msi"`):strings.Index(out, `<RuleCollection Type="Appx"`)]
+	if strings.Contains(msi, ManagedRuleNamePrefix) {
+		t.Errorf("managed rules must not leak into the Msi collection:\n%s", msi)
 	}
 }
 
