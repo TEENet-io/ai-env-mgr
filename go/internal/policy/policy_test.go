@@ -87,3 +87,28 @@ func TestFirefoxEntries_EmptyAndNil(t *testing.T) {
 		t.Errorf("FirefoxEntries([]string{}) = %v, want empty", got)
 	}
 }
+
+// Off Windows there is no AppLocker to read; the stub must report "nothing
+// applied" (nil, nil) rather than an error, mirroring Current().
+func TestLocalAppLockerPathsOffWindows(t *testing.T) {
+	got, err := LocalAppLockerPaths()
+	if err != nil {
+		t.Fatalf("LocalAppLockerPaths() error = %v, want nil off Windows", err)
+	}
+	if got != nil {
+		t.Errorf("LocalAppLockerPaths() = %v, want nil off Windows", got)
+	}
+}
+
+// Current() no longer reads AppLocker at all: callers that need that answer
+// use LocalAppLockerPaths directly. This just locks in that Current()'s
+// policy carries no AppLocker paths on this platform.
+func TestCurrentDoesNotPopulateAppLockerAllowPaths(t *testing.T) {
+	pol, err := Current()
+	if err != nil {
+		t.Fatalf("Current() error = %v", err)
+	}
+	if pol.AppLockerAllowPaths != nil {
+		t.Errorf("Current().AppLockerAllowPaths = %v, want nil (not populated)", pol.AppLockerAllowPaths)
+	}
+}

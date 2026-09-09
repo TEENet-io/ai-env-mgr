@@ -4,8 +4,28 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"strings"
 	"testing"
 )
+
+// Off Windows, policy.LocalAppLockerPaths is a no-op stub that never fails,
+// so localState must report a confirmed 0 rather than "unknown" and must not
+// invent an AppLocker error out of nothing.
+func TestLocalStateAppLockerAllowIsZeroNotUnknownOffWindows(t *testing.T) {
+	fakeUsersRoot(t)
+	m := &localMachine{name: "TEST"}
+
+	rep := localState(m, "test")
+
+	if rep.AppLockerAllowPaths != 0 {
+		t.Errorf("AppLockerAllowPaths = %d, want 0 (confirmed empty, not %d/unknown)", rep.AppLockerAllowPaths, appLockerAllowUnknown)
+	}
+	for _, e := range rep.Errors {
+		if strings.Contains(e, "AppLocker") {
+			t.Errorf("unexpected AppLocker error off Windows: %q", e)
+		}
+	}
+}
 
 func TestNewLocalMachineHasAName(t *testing.T) {
 	m, err := newLocalMachine()
@@ -94,6 +114,22 @@ func TestProfileDir(t *testing.T) {
 func TestStateDirIsAbsolute(t *testing.T) {
 	if got := stateDir(); !filepath.IsAbs(got) {
 		t.Errorf("stateDir() = %q, want an absolute path", got)
+	}
+}
+
+// A read failure must print visibly differently from a confirmed empty
+// list: "?" is not "0". This is the pure decision logic behind
+// applocker_allow=... in `agent.exe status`; the actual PowerShell read it
+// is fed from is Windows-only and covered separately.
+func TestFormatAppLockerAllow(t *testing.T) {
+	if got := formatAppLockerAllow(0); got != "0" {
+		t.Errorf("formatAppLockerAllow(0) = %q, want \"0\" (a confirmed empty list)", got)
+	}
+	if got := formatAppLockerAllow(3); got != "3" {
+		t.Errorf("formatAppLockerAllow(3) = %q, want \"3\"", got)
+	}
+	if got := formatAppLockerAllow(appLockerAllowUnknown); got != "?" {
+		t.Errorf("formatAppLockerAllow(appLockerAllowUnknown) = %q, want \"?\" (could not be read)", got)
 	}
 }
 

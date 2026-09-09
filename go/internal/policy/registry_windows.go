@@ -135,53 +135,36 @@ func deleteKeyTree(keyPath string) error {
 	return nil
 }
 
-// currentAppLockerPaths reads the machine's local AppLocker policy and
-// returns the paths of the rules the agent manages there (see ManagedPaths),
-// or nil if the policy cannot be read at all.
-//
-// A read failure here (AppLocker service not running, powershell missing,
-// etc.) is not fatal to Current(): this is a diagnostic read, not something
-// the agent depends on to act, so it leaves the field nil -- "not known from
-// here" -- rather than failing the whole call over what the rest of Current()
-// has nothing to do with.
-func currentAppLockerPaths() []string {
-	xml, err := readLocalAppLockerXML()
-	if err != nil {
-		return nil
-	}
-	return ManagedPaths(xml)
-}
-
-// Current reads back the policy this machine currently has applied.
+// Current reads back the browser block policy this machine currently has
+// applied.
 //
 // It exists so `agent.exe status` can report local state without running a
 // sync: an operator inspecting a machine must not, as a side effect, rewrite
 // the registry and restart the employee's AI tools.
 //
-// The registry is the source of truth for the browser block list, not any
-// cached marker file: what matters is what the browsers will actually
-// enforce. An absent Chrome key means unmanaged, which is reported as
-// BlockEnabled == false. AppLockerAllowPaths is read the same way -- from
-// the machine's actual local AppLocker policy, not from any published
-// policy.json -- because this function answers "what is really applied
-// here", and a diagnostic that echoed back the last-fetched policy object
-// instead would report an allow rule as missing on a machine where it is
-// correctly in force.
+// The registry is the source of truth here, not any cached marker file: what
+// matters is what the browsers will actually enforce. An absent Chrome key
+// means unmanaged, which is reported as BlockEnabled == false.
+//
+// This does not read the AppLocker allow list: unlike the Chrome block list,
+// a policy value here cannot be "the desired state" -- an operator asking
+// "what is really applied" needs a positive success/failure signal (0 rules
+// confirmed vs. could not read), which a plain int field on this policy
+// object cannot carry. See policy.LocalAppLockerPaths, which callers that
+// need that answer call directly instead.
 func Current() (model.Policy, error) {
-	allowPaths := currentAppLockerPaths()
-
 	k, err := registry.OpenKey(registry.LOCAL_MACHINE, ChromeKey, registry.QUERY_VALUE)
 	if err != nil {
 		if errors.Is(err, registry.ErrNotExist) {
-			return model.Policy{BlockEnabled: false, AppLockerAllowPaths: allowPaths}, nil
+			return model.Policy{BlockEnabled: false}, nil
 		}
-		return model.Policy{AppLockerAllowPaths: allowPaths}, fmt.Errorf("read Chrome policy: %w", err)
+		return model.Policy{}, fmt.Errorf("read Chrome policy: %w", err)
 	}
 	defer k.Close()
 
 	names, err := k.ReadValueNames(0)
 	if err != nil {
-		return model.Policy{AppLockerAllowPaths: allowPaths}, fmt.Errorf("list Chrome policy values: %w", err)
+		return model.Policy{}, fmt.Errorf("list Chrome policy values: %w", err)
 	}
 
 	// Values are named "1", "2", ... so read them back in numeric order to
@@ -207,5 +190,5 @@ func Current() (model.Policy, error) {
 			domains = append(domains, v)
 		}
 	}
-	return model.Policy{BlockEnabled: len(domains) > 0, BlockedDomains: domains, AppLockerAllowPaths: allowPaths}, nil
+	return model.Policy{BlockEnabled: len(domains) > 0, BlockedDomains: domains}, nil
 }

@@ -22,8 +22,8 @@ var ErrAppLockerNotDeployed = errors.New("AppLocker is not deployed on this mach
 // readLocalAppLockerXML runs Get-AppLockerPolicy -Local -Xml and returns the
 // document with any UTF-8 BOM and surrounding whitespace stripped. This is
 // the only place that shells out to read the local AppLocker policy; both
-// ApplyAppLocker and Current (registry_windows.go) call it, so there is a
-// single spot that knows how the policy is actually read off the machine.
+// ApplyAppLocker and LocalAppLockerPaths call it, so there is a single spot
+// that knows how the policy is actually read off the machine.
 func readLocalAppLockerXML() (string, error) {
 	out, err := exec.Command("powershell.exe", "-NoProfile", "-NonInteractive",
 		"-Command", "Import-Module AppLocker; Get-AppLockerPolicy -Local -Xml").Output()
@@ -31,6 +31,26 @@ func readLocalAppLockerXML() (string, error) {
 		return "", err
 	}
 	return strings.TrimSpace(strings.TrimPrefix(string(out), "\ufeff")), nil
+}
+
+// LocalAppLockerPaths returns the paths of the AppLocker rules the agent
+// currently manages on this machine, read directly from its local AppLocker
+// policy (see ManagedPaths) -- not from any published policy.json. It
+// returns an error only when the local policy could not be read at all; a
+// machine with no AppLocker deployment, or a deployed policy with no managed
+// rules, both report (nil, nil), because "zero rules" is a fact this
+// function was able to establish, not a failure.
+//
+// Callers that need to know what is actually applied -- as opposed to
+// ApplyAppLocker, which already knows the desired paths from the policy
+// object it was given -- must be able to tell "confirmed zero" from "could
+// not read" apart, which is exactly what the error return is for.
+func LocalAppLockerPaths() ([]string, error) {
+	xml, err := readLocalAppLockerXML()
+	if err != nil {
+		return nil, fmt.Errorf("read local AppLocker policy: %w", err)
+	}
+	return ManagedPaths(xml), nil
 }
 
 // ApplyAppLocker brings the machine's LOCAL AppLocker policy in line with

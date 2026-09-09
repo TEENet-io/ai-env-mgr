@@ -207,6 +207,20 @@ func localState(m *localMachine, version string) localReport {
 		errs = append(errs, fmt.Sprintf("read applied policy: %v", err))
 	}
 
+	// AppLockerAllowPaths is read separately from Current(): it is not "the
+	// browser block list applied", it is "what is really on this machine's
+	// AppLocker policy right now", and it needs to say so when the read
+	// itself fails rather than quietly reporting zero. appLockerAllowUnknown
+	// distinguishes "confirmed empty" (0) from "could not read" -- the very
+	// distinction the operator who diagnosed this incident needed and did
+	// not have, from pasting exactly this line of `agent status` output.
+	appLockerAllow := appLockerAllowUnknown
+	if paths, err := policy.LocalAppLockerPaths(); err != nil {
+		errs = append(errs, fmt.Sprintf("read local AppLocker policy: %v", err))
+	} else {
+		appLockerAllow = len(paths)
+	}
+
 	// Which local profiles actually hold AI logins. Local inspection cannot
 	// know which employee this machine is assigned to -- that lives in the
 	// store -- but it can say who on this box has credentials in place.
@@ -226,10 +240,16 @@ func localState(m *localMachine, version string) localReport {
 		BlockEnabled:        pol.BlockEnabled,
 		BlockedDomains:      pol.BlockedDomains,
 		AppLockerMode:       status.AppLockerMode(),
-		AppLockerAllowPaths: len(pol.AppLockerAllowPaths),
+		AppLockerAllowPaths: appLockerAllow,
 		Errors:              errs,
 	}
 }
+
+// appLockerAllowUnknown marks localReport.AppLockerAllowPaths as "the local
+// AppLocker policy could not be read" rather than a confirmed empty list.
+// See formatAppLockerAllow in main.go, which turns this into "?" for
+// display.
+const appLockerAllowUnknown = -1
 
 // localReport is what can be learned from the machine alone. It is
 // deliberately not model.Status: that type describes a completed sync and
@@ -237,13 +257,16 @@ func localState(m *localMachine, version string) localReport {
 // way to know, and reporting them as empty would read as "not bound" and
 // "never synced" rather than "not known from here".
 type localReport struct {
-	Machine             string
-	LocalUsers          []string
-	UsersWithCreds      []string
-	AgentVersion        string
-	BlockEnabled        bool
-	BlockedDomains      []string
-	AppLockerMode       string
+	Machine        string
+	LocalUsers     []string
+	UsersWithCreds []string
+	AgentVersion   string
+	BlockEnabled   bool
+	BlockedDomains []string
+	AppLockerMode  string
+	// AppLockerAllowPaths is the count of managed AppLocker rules actually
+	// read off this machine, or appLockerAllowUnknown if the read failed
+	// (the reason lands in Errors). Format with formatAppLockerAllow.
 	AppLockerAllowPaths int
 	Errors              []string
 }

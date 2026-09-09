@@ -8,6 +8,7 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
@@ -136,6 +137,19 @@ func orDash(s string) string {
 	return s
 }
 
+// formatAppLockerAllow renders localReport.AppLockerAllowPaths for
+// `agent.exe status` output. appLockerAllowUnknown (the local AppLocker
+// policy could not be read) must print visibly differently from a confirmed
+// empty list -- "?" rather than "0" -- so an operator reading this line does
+// not mistake "we don't know" for "confirmed nothing applied". The reason
+// for the unknown state lands separately in localReport.Errors.
+func formatAppLockerAllow(n int) string {
+	if n == appLockerAllowUnknown {
+		return "?"
+	}
+	return strconv.Itoa(n)
+}
+
 // newSyncer wires the real OSS store and the real local applier together.
 func newSyncer() (*agentcore.Syncer, error) {
 	cfg, _, err := config.Resolve(builtIn(), config.DefaultAgentPath())
@@ -193,8 +207,8 @@ func printLocalState(r localReport) {
 		fmt.Printf("AI credentials in place for: %s\n", strings.Join(r.UsersWithCreds, ", "))
 	}
 
-	fmt.Printf("block=%v domains=%d applocker=%s applocker_allow=%d\n",
-		r.BlockEnabled, len(r.BlockedDomains), r.AppLockerMode, r.AppLockerAllowPaths)
+	fmt.Printf("block=%v domains=%d applocker=%s applocker_allow=%s\n",
+		r.BlockEnabled, len(r.BlockedDomains), r.AppLockerMode, formatAppLockerAllow(r.AppLockerAllowPaths))
 	for _, d := range r.BlockedDomains {
 		fmt.Println("  -", d)
 	}
