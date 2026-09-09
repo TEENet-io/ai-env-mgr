@@ -37,16 +37,19 @@ func TestRenderPreview(t *testing.T) {
 	}
 	machines := []admincore.MachineState{
 		mk("hv8uqpity23nkc7", "peter", admincore.MachineState{UserMissing: true,
-			Status: model.Status{LastSync: ago(50 * time.Minute), AgentVersion: "1.2.4"}}),
+			Status: model.Status{LastSync: ago(50 * time.Minute), AgentVersion: "1.2.4",
+				AppLockerMode: "Enforce"}}),
 		mk("wuying-desk-0142", "work1", admincore.MachineState{
 			Status: model.Status{LastSync: time.Now().Add(-time.Minute).UTC().Format(time.RFC3339),
-				AgentVersion: "1.2.7", CodexVersion: "26.810.52044-b1"}}),
+				AgentVersion: "1.2.7", CodexVersion: "26.810.52044-b1",
+				AppLockerMode: "Audit"}}),
 		mk("wuying-desk-0143", "work2", admincore.MachineState{
 			Status: model.Status{LastSync: ago(90 * time.Second),
 				AgentVersion: "1.2.7", CodexVersion: "26.803.81509-b1",
-				CodexState: agentcore.CodexFailed}}),
+				CodexState: agentcore.CodexFailed, AppLockerMode: "Enforce"}}),
 		mk("wuying-desk-0144", "lena", admincore.MachineState{Stale: true,
-			Status: model.Status{LastSync: ago(5 * 24 * time.Hour), AgentVersion: "1.2.3"}}),
+			Status: model.Status{LastSync: ago(5 * 24 * time.Hour), AgentVersion: "1.2.3",
+				AppLockerMode: "None"}}),
 		mk("wuying-desk-0145", "", admincore.MachineState{Unbound: true,
 			Status: model.Status{LastSync: ago(2 * time.Minute), AgentVersion: "1.2.4"}}),
 		mk("wuying-desk-0146", "chen", admincore.MachineState{Missing: true}),
@@ -60,6 +63,7 @@ func TestRenderPreview(t *testing.T) {
 	policy := model.Policy{
 		SyncIntervalMinutes: 15, BlockEnabled: true,
 		BlockedDomains:     []string{"chat.openai.com", "gemini.google.com", "poe.com"},
+		AppLockerMode:      model.AppLockerModeAudit,
 		CollectEnabled:     true,
 		CollectSince:       "2026-08-01",
 		AgentUpdateVersion: "1.2.4",

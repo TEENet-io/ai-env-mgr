@@ -158,6 +158,7 @@ func New(opts Options) (*Server, error) {
 		"noscan":   noEmailScan,
 		"codex":    codexNote,
 		"codexsev": codexNoteSeverity,
+		"alsev":    appLockerSeverity,
 		"ctxsize":  contextWindowLabel,
 		"usagepct": usagePercent,
 		"usagesev": usageSeverity,

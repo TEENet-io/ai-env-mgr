@@ -10,7 +10,7 @@
   <div class="panel scroll">
   <table>
     <thead>
-      <tr><th>主机名</th><th>员工</th><th>状态</th><th>最后同步</th><th>AGENT</th><th>CODEX</th><th></th></tr>
+      <tr><th>主机名</th><th>员工</th><th>状态</th><th>最后同步</th><th>AGENT</th><th>APPLOCKER</th><th>CODEX</th><th></th></tr>
     </thead>
     <tbody>
     {{$target := ""}}{{if .Policy}}{{$target = .Policy.CodexVersion}}{{end}}
@@ -21,6 +21,7 @@
         <td><span class="tag tag-{{classify .}}">{{state .}}</span></td>
         <td class="dim" title="{{.Status.LastSync}}">{{age .Status.LastSync}}</td>
         <td class="num dim">{{.Status.AgentVersion}}</td>
+        <td>{{$al := alsev .Status.AppLockerMode}}{{if $al}}<span class="tag tag-{{$al}}">{{.Status.AppLockerMode}}</span>{{else}}<span class="muted">—</span>{{end}}</td>
         <td class="num dim" title="目标 {{if $target}}{{$target}}{{else}}未设置{{end}}">
           {{if .Status.CodexVersion}}{{.Status.CodexVersion}}{{else}}<span class="muted">—</span>{{end}}
           {{$note := codex . $target}}{{if $note}}<span class="tag tag-{{codexsev $note}}">{{$note}}</span>{{end}}
@@ -37,7 +38,7 @@
         </td>
       </tr>
     {{else}}
-      <tr><td colspan="7" class="empty">还没有机器上报。</td></tr>
+      <tr><td colspan="8" class="empty">还没有机器上报。</td></tr>
     {{end}}
     </tbody>
   </table>

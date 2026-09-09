@@ -547,3 +547,52 @@ func TestSitesPageRendersTheAppLockerModeSwitch(t *testing.T) {
 		}
 	}
 }
+
+// The console can turn AppLocker enforcement off for the whole fleet, so it
+// has to show which machines actually took the change: without this column
+// "nothing happened" and "it worked" look identical from the 机器 page.
+func TestMachinesPageRendersAppLockerColumn(t *testing.T) {
+	s := newTestServer(t, newFakeStore())
+	fresh := time.Now().UTC().Format(time.RFC3339)
+	mk := func(name, mode string) admincore.MachineState {
+		return admincore.MachineState{Machine: name, Bound: true, Binding: model.Binding{User: "u"},
+			Status: model.Status{Machine: name, LastSync: fresh, AgentVersion: "1.2.7", AppLockerMode: mode}}
+	}
+	machines := []admincore.MachineState{
+		mk("pc1", "Enforce"), mk("pc2", "Audit"), mk("pc3", "None"),
+		mk("pc4", "Unknown"), mk("pc5", ""),
+	}
+	data := pageData{CSRF: "t", Nav: "machines", Machines: machines,
+		Fleet: summariseFleet(machines), Policy: &model.Policy{}}
+
+	var buf bytes.Buffer
+	if err := s.tpl.ExecuteTemplate(&buf, "machines.html", data); err != nil {
+		t.Fatalf("machines.html: %v", err)
+	}
+	body := buf.String()
+	if !strings.Contains(body, "<th>APPLOCKER</th>") {
+		t.Fatal("the machines table has no APPLOCKER column")
+	}
+	// The column sits between AGENT and CODEX, so an operator reads the
+	// agent's own state next to what it reports about the machine.
+	if strings.Index(body, "<th>AGENT</th>") > strings.Index(body, "<th>APPLOCKER</th>") ||
+		strings.Index(body, "<th>APPLOCKER</th>") > strings.Index(body, "<th>CODEX</th>") {
+		t.Error("APPLOCKER must sit between AGENT and CODEX")
+	}
+	for _, want := range []string{
+		`<span class="tag tag-ok">Enforce</span>`,
+		// Audit means the whitelist is off on that machine: the same red the
+		// rest of the console uses for a state that needs attention.
+		`<span class="tag tag-bad">Audit</span>`,
+		`<span class="tag tag-warn">None</span>`,
+	} {
+		if !strings.Contains(body, want) {
+			t.Errorf("machines page is missing %s", want)
+		}
+	}
+	// Unknown and "never reported" are the same thing to an operator, and the
+	// other columns already render that as a dim dash.
+	if strings.Contains(body, "Unknown") {
+		t.Error("an unreadable mode must render as the dim dash, not as Unknown")
+	}
+}

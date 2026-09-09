@@ -125,6 +125,15 @@ func ApplyAppLocker(paths []string, mode string) error {
 		}
 		return fmt.Errorf("read local AppLocker policy: %w", err)
 	}
+	// AppLockerDeployed looks at the Exe collection alone, while
+	// SetEnforcementMode spans every collection the machine has configured.
+	// A machine whose Exe collection is NotConfigured but whose Script or Msi
+	// collection is enabled would therefore skip the mode switch silently.
+	// That is left as it is: the image provisions all four collections in one
+	// script, so the state does not arise in this fleet, and widening the gate
+	// here would let the agent start writing policy on a machine it was never
+	// meant to touch. The coupling is recorded so a later change to either
+	// side knows the other exists.
 	if !AppLockerDeployed(xml) {
 		if len(paths) == 0 {
 			return rejectedErr(rejected)

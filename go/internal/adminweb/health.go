@@ -96,6 +96,30 @@ func codexNote(m admincore.MachineState, target string) string {
 	}
 }
 
+// appLockerSeverity colours a machine's reported AppLocker mode, or returns
+// "" for a mode the console cannot vouch for.
+//
+// Audit is red, not amber: it means that machine's whitelist is no longer
+// blocking anything, which is exactly the state the fleet-wide switch on the
+// 封禁策略 page puts machines into and exactly the state nobody should be
+// left in unnoticed. "None" is amber -- AppLocker is not deployed there at
+// all, which is a machine the switch cannot help. "Unknown" (the agent could
+// not read the policy) and an empty value (nothing reported yet) are not
+// states, so they get no tag and the column falls back to the dim dash the
+// neighbouring columns use.
+func appLockerSeverity(mode string) string {
+	switch mode {
+	case "Enforce":
+		return "ok"
+	case "Audit":
+		return "bad"
+	case "None":
+		return "warn"
+	default:
+		return ""
+	}
+}
+
 // codexNoteSeverity colours the tag. Only a failure is an actual problem; the
 // rest are stages of an update that is still moving.
 func codexNoteSeverity(note string) string {
