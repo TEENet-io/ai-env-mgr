@@ -12,6 +12,14 @@ import (
 type Policy struct {
 	BlockEnabled        bool     `json:"blockEnabled"`
 	BlockedDomains      []string `json:"blockedDomains"`
+	// AppLockerAllowPaths are program directories every user may execute
+	// from, in AppLocker path syntax (`C:\tools\Codex\*`). The image ships
+	// AppLocker allowing only Windows and Program Files; anything installed
+	// elsewhere -- Codex at C:\tools\Codex -- is blocked for employees the
+	// moment AppLocker is enforced. The agent turns this list into rules it
+	// owns and never touches the image's own rules. Empty means "manage no
+	// rules" (and remove any it previously wrote).
+	AppLockerAllowPaths []string `json:"appLockerAllowPaths,omitempty"`
 	SyncIntervalMinutes int      `json:"syncIntervalMinutes"`
 	// Collection of raw AI session files. Off by default: the code ships
 	// before the feature is enabled, and the agent's write-only permission on
@@ -118,6 +126,7 @@ type Status struct {
 	SyncIntervalMinutes int      `json:"syncIntervalMinutes"`
 	CredsApplied        bool     `json:"credsApplied"`
 	AppLockerMode       string   `json:"appLockerMode"`
+	AppLockerAllowPaths int      `json:"appLockerAllowPaths"`
 	CollectEnabled      bool     `json:"collectEnabled"`
 	CollectUploaded     int      `json:"collectUploaded"`
 
