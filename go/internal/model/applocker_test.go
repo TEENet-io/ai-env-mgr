@@ -1,6 +1,10 @@
 package model
 
-import "testing"
+import (
+	"encoding/json"
+	"strings"
+	"testing"
+)
 
 func TestValidateAppLockerPathAcceptsMachineLevelDirs(t *testing.T) {
 	for _, p := range []string{
@@ -99,5 +103,50 @@ func TestNormalizeAppLockerPaths(t *testing.T) {
 	got := NormalizeAppLockerPaths([]string{` C:\tools\Codex\* `, `c:\TOOLS\codex\*`, ``, `C:\Apps\Foo\*`})
 	if len(got) != 2 || got[0] != `C:\Apps\Foo\*` || got[1] != `C:\tools\Codex\*` {
 		t.Errorf("got %q", got)
+	}
+}
+
+// The enforcement mode is a fleet-wide switch on a security control, so the
+// only three spellings the rest of the system may see are pinned here.
+func TestValidateAppLockerMode(t *testing.T) {
+	for _, m := range []string{"", AppLockerModeEnforce, AppLockerModeAudit} {
+		if err := ValidateAppLockerMode(m); err != nil {
+			t.Errorf("ValidateAppLockerMode(%q) = %v, want nil", m, err)
+		}
+	}
+	for _, m := range []string{"Enabled", "AuditOnly", "ENFORCE", "off", " audit", "audit "} {
+		if err := ValidateAppLockerMode(m); err == nil {
+			t.Errorf("ValidateAppLockerMode(%q) = nil, want an error", m)
+		}
+	}
+}
+
+// A policy object in the field carries no appLockerMode. It must keep
+// deserialising to the unmanaged default, and must not gain the key back when
+// it is re-published: an empty string here means "the agent does not touch
+// the machine's enforcement mode at all".
+func TestPolicyAppLockerModeDefaultsToUnmanaged(t *testing.T) {
+	var p Policy
+	if err := json.Unmarshal([]byte(`{"blockEnabled":true}`), &p); err != nil {
+		t.Fatal(err)
+	}
+	if p.AppLockerMode != "" {
+		t.Errorf("AppLockerMode = %q, want the unmanaged default", p.AppLockerMode)
+	}
+	out, err := json.Marshal(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(out), "appLockerMode") {
+		t.Errorf("an unmanaged policy must not serialise appLockerMode: %s", out)
+	}
+
+	p.AppLockerMode = AppLockerModeAudit
+	out, err = json.Marshal(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(out), `"appLockerMode":"audit"`) {
+		t.Errorf("appLockerMode not serialised under its json tag: %s", out)
 	}
 }

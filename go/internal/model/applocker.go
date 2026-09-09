@@ -19,6 +19,30 @@ const appLockerMaxPathLen = 200
 // gates (console and agent) enforce it.
 const AppLockerMaxAllowPaths = 64
 
+// The three values Policy.AppLockerMode may take. The empty string is not
+// named here because it is the absence of a decision, not a mode: see the
+// field's comment.
+const (
+	AppLockerModeEnforce = "enforce"
+	AppLockerModeAudit   = "audit"
+)
+
+// ValidateAppLockerMode reports why m is not an acceptable enforcement mode.
+//
+// The check is exact -- no trimming, no case folding. The value is written
+// into policy.json and turned into an AppLocker EnforcementMode on every
+// machine in the fleet; a spelling this function does not recognise must be
+// refused at the console rather than reach an agent that would then have to
+// guess what was meant.
+func ValidateAppLockerMode(m string) error {
+	switch m {
+	case "", AppLockerModeEnforce, AppLockerModeAudit:
+		return nil
+	}
+	return fmt.Errorf("unknown AppLocker mode %q: use %q, %q, or empty for unmanaged",
+		m, AppLockerModeEnforce, AppLockerModeAudit)
+}
+
 var appLockerDriveRoot = regexp.MustCompile(`^[A-Za-z]:\\`)
 
 // canonicalWholeDrive matches a canonicalised whole-drive rule (`c:\*`).

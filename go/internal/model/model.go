@@ -20,7 +20,20 @@ type Policy struct {
 	// owns and never touches the image's own rules. Empty means "manage no
 	// rules" (and remove any it previously wrote).
 	AppLockerAllowPaths []string `json:"appLockerAllowPaths,omitempty"`
-	SyncIntervalMinutes int      `json:"syncIntervalMinutes"`
+	// AppLockerMode is the enforcement mode the agent holds every configured
+	// rule collection in: "enforce", "audit", or empty.
+	//
+	// Empty is the default and means UNMANAGED: the agent does not touch the
+	// machine's enforcement mode at all, which is what every policy object
+	// already in the field says and must keep saying. Whether AppLocker
+	// blocks is otherwise the image's decision, and an agent must not change
+	// a machine's security posture because a field was added.
+	//
+	// "audit" is the administrator's testing switch: the rules stay exactly
+	// where they are and AppLocker keeps logging, it just stops blocking. It
+	// is reversible with "enforce"; nothing here ever deletes a rule.
+	AppLockerMode       string `json:"appLockerMode,omitempty"`
+	SyncIntervalMinutes int    `json:"syncIntervalMinutes"`
 	// Collection of raw AI session files. Off by default: the code ships
 	// before the feature is enabled, and the agent's write-only permission on
 	// data_collect is added only when an administrator turns this on. See
