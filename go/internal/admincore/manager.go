@@ -219,14 +219,26 @@ func (m *Manager) MutateAppLockerAllowPaths(add, remove []string) (model.Policy,
 			return model.Policy{}, fmt.Errorf("allow path %q: %w", a, err)
 		}
 	}
+	// The stored policy may already hold an entry that no longer validates:
+	// written before the rules tightened, or by a hand-edit or compromised
+	// publisher (policy.json is not a trust boundary; see
+	// policy.FilterAllowPaths). One unrelated edit is a chance to heal
+	// that -- drop the bad entry rather than refusing the whole change
+	// because of a problem it did not cause.
+	var existing []string
+	for _, e := range p.AppLockerAllowPaths {
+		if err := model.ValidateAppLockerPath(strings.TrimSpace(e)); err == nil {
+			existing = append(existing, e)
+		}
+	}
 	drop := map[string]bool{}
 	for _, r := range remove {
 		drop[strings.ToLower(strings.TrimSpace(r))] = true
 	}
 	var keep []string
-	for _, existing := range append(append([]string{}, p.AppLockerAllowPaths...), add...) {
-		if !drop[strings.ToLower(strings.TrimSpace(existing))] {
-			keep = append(keep, existing)
+	for _, e := range append(append([]string{}, existing...), add...) {
+		if !drop[strings.ToLower(strings.TrimSpace(e))] {
+			keep = append(keep, e)
 		}
 	}
 	p.AppLockerAllowPaths = model.NormalizeAppLockerPaths(keep)

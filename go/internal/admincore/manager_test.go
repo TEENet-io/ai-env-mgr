@@ -265,6 +265,29 @@ func TestMutateAppLockerAllowPathsValidatesAndNormalises(t *testing.T) {
 	}
 }
 
+// A stored policy can hold an entry that no longer validates -- written
+// before the rules tightened, or by a hand-edit / compromised publisher.
+// One unrelated edit is a chance to heal that: the bad entry is dropped
+// rather than the edit being refused because of a pre-existing problem it
+// did not cause.
+func TestMutateAppLockerAllowPathsDropsPreExistingInvalidEntry(t *testing.T) {
+	m, _ := newManager()
+	if err := m.PublishPolicy(model.Policy{
+		AppLockerAllowPaths: []string{`C:\Users\Evil\*`, `C:\tools\Codex\*`},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	p, err := m.MutateAppLockerAllowPaths([]string{`D:\Apps\Foo\*`}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []string{`C:\tools\Codex\*`, `D:\Apps\Foo\*`}
+	if !reflect.DeepEqual(p.AppLockerAllowPaths, want) {
+		t.Errorf("AppLockerAllowPaths = %v, want %v (pre-existing invalid entry must be dropped)",
+			p.AppLockerAllowPaths, want)
+	}
+}
+
 func TestSetBlockEnabledPersists(t *testing.T) {
 	m, store := newManager()
 	addTestUser(t, m, "work1", "", "")
