@@ -260,6 +260,14 @@ func TestPlaintextEndpointIsLoopbackOnly(t *testing.T) {
 		"http://collector.example:8080",
 		"http://10.0.0.5:8080",
 		"http://ap-southeast-1.log.aliyuncs.com",
+		// userinfo: a hand-rolled host split reads a loopback host, the
+		// dialer connects to evil.example.
+		"http://127.0.0.1:80@evil.example",
+		"http://localhost:80@evil.example",
+		"http://[::1]:80@evil.example",
+		"http://127.0.0.1.evil.example",
+		"http://localhost.evil",
+		"http://127.0.0.1/evil",
 	} {
 		c := New(ep, "windows-control-logs", testAK, testSK)
 		origin, _, err := c.origin()

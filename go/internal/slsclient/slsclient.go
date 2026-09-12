@@ -94,12 +94,17 @@ func (c *Client) Project() string { return c.project }
 // endpoint must therefore fail loudly rather than quietly downgrade -- hence
 // an error rather than a silent rewrite to https.
 func (c *Client) origin() (string, string, error) {
-	if rest, ok := strings.CutPrefix(c.endpoint, "http://"); ok {
-		if !isLoopback(rest) {
+	if strings.HasPrefix(c.endpoint, "http://") {
+		// Decide with the same parser that will dial. Splitting on the last
+		// colon by hand disagrees with net/url on "127.0.0.1:80@evil.example":
+		// the hand split sees a loopback host, the dialer sees userinfo and
+		// connects to evil.example.
+		u, err := url.Parse(c.endpoint)
+		if err != nil || u.User != nil || u.Path != "" || u.RawQuery != "" || u.Fragment != "" || !isLoopback(u.Host) {
 			return "", "", fmt.Errorf(
-				"sls: refusing to send a signed request in the clear to %q; drop the http:// prefix to use https", rest)
+				"sls: refusing to send a signed request in the clear to %q; drop the http:// prefix to use https", c.endpoint)
 		}
-		return "http://" + rest, rest, nil
+		return "http://" + u.Host, u.Host, nil
 	}
 	host := c.project + "." + strings.TrimPrefix(c.endpoint, "https://")
 	return "https://" + host, host, nil
