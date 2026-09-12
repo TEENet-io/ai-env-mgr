@@ -4,15 +4,13 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"strconv"
 	"strings"
-	"time"
 )
 
-// maxUploadBytes caps a browser upload. The agent binary is ~10 MB and staged
-// files are small; the Codex installer is ~700 MB and is fetched by URL
-// instead, because pushing it through a browser and a CDN is both slow and
-// commonly blocked by an upload limit on the way.
+// maxUploadBytes caps a browser upload. The agent binary is ~10 MB; the Codex
+// installer is ~700 MB and is fetched by URL instead, because pushing it
+// through a browser and a CDN is both slow and commonly blocked by an upload
+// limit on the way.
 const maxUploadBytes = 64 << 20
 
 // confirmMatches enforces the typed confirmation on an irreversible or
@@ -190,57 +188,4 @@ func (s *Server) actionMachineForget(sess *session, r *http.Request) error {
 	}
 	logAudit(s.clientKey(r), "forgot machine %s", machine)
 	return nil
-}
-
-// --- staged files ---
-
-func (s *Server) actionFilePut(sess *session, r *http.Request) error {
-	ttl, err := parseHours(formValue(r, "hours"))
-	if err != nil {
-		return err
-	}
-	f, hdr, err := r.FormFile("file")
-	if err != nil {
-		return fmt.Errorf("choose a file")
-	}
-	defer f.Close()
-	if hdr.Size > maxUploadBytes {
-		return fmt.Errorf("that file is %d MB; uploads are capped at %d MB", hdr.Size>>20, maxUploadBytes>>20)
-	}
-	name := formValue(r, "name")
-	if name == "" {
-		name = hdr.Filename
-	}
-	data, err := io.ReadAll(io.LimitReader(f, maxUploadBytes+1))
-	if err != nil {
-		return err
-	}
-	if _, err := sess.mgr.PutFile(name, data, ttl); err != nil {
-		return err
-	}
-	logAudit(s.clientKey(r), "staged file %s (%d bytes, link valid %s)", name, len(data), ttl)
-	return nil
-}
-
-func (s *Server) actionFileRemove(sess *session, r *http.Request) error {
-	name := formValue(r, "name")
-	if name == "" {
-		return fmt.Errorf("a name is required")
-	}
-	if err := sess.mgr.RemoveFile(name); err != nil {
-		return err
-	}
-	logAudit(s.clientKey(r), "removed staged file %s", name)
-	return nil
-}
-
-func parseHours(v string) (time.Duration, error) {
-	if v == "" {
-		return 24 * time.Hour, nil
-	}
-	h, err := strconv.Atoi(v)
-	if err != nil || h <= 0 {
-		return 0, fmt.Errorf("the link lifetime must be a positive number of hours")
-	}
-	return time.Duration(h) * time.Hour, nil
 }

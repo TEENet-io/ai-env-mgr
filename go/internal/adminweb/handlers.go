@@ -56,9 +56,6 @@ type pageData struct {
 	Log      string
 	Notes    *admincore.MachineState // that machine's own errors and warnings
 	Job      *job                    // a publish in flight, or the last one
-	Files    []admincore.StagedFile
-	Link     string // a freshly minted download link
-	LinkName string
 
 	// Account pages.
 	Accounts      []accountRow
@@ -327,28 +324,6 @@ func (s *Server) handleLog(w http.ResponseWriter, r *http.Request, sess *session
 		data.Log = string(b)
 	}
 	s.render(w, "log.html", http.StatusOK, data)
-}
-
-func (s *Server) handleFiles(w http.ResponseWriter, r *http.Request, sess *session) {
-	data := newPage(sess, r, "files")
-	files, err := sess.mgr.ListFiles()
-	if err != nil {
-		data.Error = "could not list staged files"
-		log.Printf("adminweb: ListFiles: %v", err)
-	} else {
-		data.Files = files
-	}
-	// A link is minted on demand rather than listed for every file: each one is
-	// a URL that downloads the object without any credential, so they should be
-	// created when wanted and left to expire.
-	if name := strings.TrimSpace(r.URL.Query().Get("link")); name != "" {
-		if url, err := sess.mgr.LinkFile(name, 24*time.Hour); err != nil {
-			data.Error = "could not create a link for " + name
-		} else {
-			data.Link, data.LinkName = url, name
-		}
-	}
-	s.render(w, "files.html", http.StatusOK, data)
 }
 
 // handleRollout is the page for the two actions that reach every machine.

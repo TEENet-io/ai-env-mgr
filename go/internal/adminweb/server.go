@@ -268,7 +268,6 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("/sites", s.requireSession(s.handleSites))
 	mux.HandleFunc("/settings", s.requireSession(s.handleSettings))
 	mux.HandleFunc("/log", s.requireSession(s.handleLog))
-	mux.HandleFunc("/files", s.requireSession(s.handleFiles))
 	mux.HandleFunc("/rollout", s.requireSession(s.handleRollout))
 	mux.HandleFunc("/gateway", s.requireSession(s.handleGateway))
 	mux.HandleFunc("/logs", s.requireSession(s.handleLogs))
@@ -300,8 +299,6 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("/codex/publish", s.requirePost("/rollout", s.actionCodexPublish))
 	mux.HandleFunc("/codex/cancel", s.requirePost("/rollout", s.actionCodexCancel))
 	mux.HandleFunc("/machines/forget", s.requirePost("/machines", s.actionMachineForget))
-	mux.HandleFunc("/files/put", s.requirePost("/files", s.actionFilePut))
-	mux.HandleFunc("/files/rm", s.requirePost("/files", s.actionFileRemove))
 	// Serve only assets/static, so the templates next to it are never handed
 	// out as raw files, and strip the prefix so paths resolve inside it.
 	staticFS, err := fs.Sub(assetFS, "assets/static")

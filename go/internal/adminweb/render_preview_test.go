@@ -104,13 +104,10 @@ func TestRenderPreview(t *testing.T) {
 			{User: "peter", Codex: 128, Claude: 0, Total: 128, Latest: time.Now()},
 			{User: "work1", Codex: 64, Claude: 31, Total: 95, Latest: time.Now()},
 		},
-		Files:   []admincore.StagedFile{{Name: "agent-1.2.4.exe"}, {Name: "codex-setup.exe"}},
 		Machine: "hv8uqpity23nkc7",
 		Log: "2026-08-16T01:35:54Z sync ok (policy etag W/\"a1b2\")\n" +
 			"2026-08-16T01:35:54Z credentials: nothing new\n" +
 			"2026-08-16T01:35:55Z status uploaded",
-		Link:     "https://ai-collect-sg.oss-ap-southeast-1.aliyuncs.com/admin/files/agent-1.2.4.exe?Expires=1786717938&Signature=abc%3D",
-		LinkName: "agent-1.2.4.exe",
 		Job: &job{Kind: "codex", Version: "26.810.52044-b1", State: jobRunning,
 			Step: "下载安装包", Started: time.Now().Add(-95 * time.Second),
 			Done: 412 << 20, Total: 700 << 20},
@@ -132,15 +129,15 @@ func TestRenderPreview(t *testing.T) {
 	}
 	for _, tplName := range []string{
 		"login.html", "machines.html", "users.html", "user.html", "sites.html",
-		"settings.html", "files.html", "rollout.html", "policy.html", "log.html",
+		"settings.html", "rollout.html", "policy.html", "log.html",
 		"gateway.html", "logs.html",
 	} {
 		d := base
 		d.Nav = map[string]string{
 			"machines.html": "machines", "users.html": "users", "user.html": "users",
 			"sites.html":    "sites",
-			"settings.html": "settings", "files.html": "files",
-			"rollout.html": "rollout", "policy.html": "policy", "log.html": "machines",
+			"settings.html": "settings",
+			"rollout.html":  "rollout", "policy.html": "policy", "log.html": "machines",
 			"gateway.html": "gateway", "logs.html": "logs",
 		}[tplName]
 		f, err := os.Create(filepath.Join(dir, tplName))

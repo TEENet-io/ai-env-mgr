@@ -224,7 +224,7 @@ func TestWriteRoutesIgnoreGET(t *testing.T) {
 func TestHighRiskActionsStillRequireCSRF(t *testing.T) {
 	for _, path := range []string{
 		"/agent/publish", "/agent/cancel", "/codex/publish", "/codex/cancel",
-		"/machines/forget", "/files/put", "/files/rm",
+		"/machines/forget",
 	} {
 		fs := newFakeStore()
 		s := newTestServer(t, fs)
@@ -251,14 +251,15 @@ func TestNavigationCoversEveryPage(t *testing.T) {
 	s.Handler().ServeHTTP(rec, req)
 	body := rec.Body.String()
 
-	// One per menu item in cmd/admin/tui.go.
+	// One per nav entry that is always drawn; /logs is conditional on SLS.
 	for _, path := range []string{
 		"/machines", // 机器状态 + 机器管理
-		"/users",    // 员工管理
+		"/users",    // 员工账号
 		"/sites",    // 封禁策略
 		"/settings", // 会话采集
-		"/files",    // 文件传输
-		"/rollout",  // agent 更新
+		"/rollout",  // 发布更新
+		"/gateway",  // 模型网关
+		"/policy",   // 策略总览
 	} {
 		if !strings.Contains(body, `href="`+path+`"`) {
 			t.Errorf("the navigation has no link to %s", path)
