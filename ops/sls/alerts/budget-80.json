@@ -1,7 +1,7 @@
 {
   "name": "wc-budget-80",
   "displayName": "预算预警(滚动 30 天累计达 80%)",
-  "description": "按 event_id 去重后的 llm_call 费用累计 ≥ 员工预算的 80%;SLS 相对时间无自然月,先用滚动 30 天,实施时若支持自然月再改",
+  "description": "按 event_id 去重后的 llm_call 费用累计 ≥ 员工预算的 80%;SLS 相对时间无自然月,先用滚动 30 天,实施时若支持自然月再改;user_max_budget 可能是字符串(Decimal 经 default=str),用 try_cast 转 double",
   "configuration": {
     "version": "2.0",
     "type": "default",
@@ -11,7 +11,7 @@
         "storeType": "log",
         "project": "windows-control-logs",
         "store": "ops",
-        "query": "event_type: llm_call and status: success | select employee_id, round(sum(cost_usd),4) as spent, max(user_max_budget) as budget from (select distinct event_id, employee_id, cost_usd, user_max_budget from log) group by employee_id having max(user_max_budget) > 0 and sum(cost_usd) >= 0.8 * max(user_max_budget)",
+        "query": "event_type: llm_call and status: success | select employee_id, round(sum(cost_usd),4) as spent, max(budget) as budget from (select distinct event_id, employee_id, cost_usd, try_cast(user_max_budget as double) as budget from log) group by employee_id having max(budget) > 0 and sum(cost_usd) >= 0.8 * max(budget)",
         "timeSpanType": "Relative",
         "start": "-30d",
         "end": "now",
