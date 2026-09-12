@@ -56,6 +56,10 @@
 
   {{if .Incomplete}}<p class="note note-err">结果可能不完整（SLS 索引仍在处理）。</p>{{end}}
 
+  {{/* No table at all when its query failed: a header over an empty body
+  reads as "nothing happened", which is the one thing the console does not
+  know. The notice above says what did happen. */}}
+  {{if .ListOK}}
   <div class="panel scroll">
   <table class="logtable">
     <thead><tr>
@@ -80,6 +84,7 @@
     </tbody>
   </table>
   </div>
+  {{end}}
 
   {{if or .PrevURL .NextURL}}
   <p class="pager">

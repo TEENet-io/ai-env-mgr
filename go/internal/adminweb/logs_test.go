@@ -239,16 +239,22 @@ type slsStub struct {
 	queries []string
 	stores  []string
 
-	status   int
-	progress string
-	rows     map[string]string // logstore+"|agg" or logstore+"|list" -> JSON array
+	status    int
+	errorCode string
+	progress  string
+	// progressFor overrides progress for one logstore, so a probe query can
+	// be behind while the table's is not.
+	progressFor map[string]string
+	rows        map[string]string // logstore+"|agg" or logstore+"|list" -> JSON array
 }
 
 func newSLSStub(t *testing.T) *slsStub {
 	t.Helper()
 	st := &slsStub{
 		mu: make(chan struct{}, 1), status: http.StatusOK, progress: "Complete",
-		rows: map[string]string{},
+		errorCode:   "Unauthorized",
+		progressFor: map[string]string{},
+		rows:        map[string]string{},
 	}
 	st.srv = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		store := strings.TrimPrefix(r.URL.Path, "/logstores/")
@@ -260,7 +266,7 @@ func newSLSStub(t *testing.T) *slsStub {
 
 		if st.status != http.StatusOK {
 			w.WriteHeader(st.status)
-			w.Write([]byte(`{"errorCode":"Unauthorized","errorMessage":"denied"}`))
+			w.Write([]byte(`{"errorCode":"` + st.errorCode + `","errorMessage":"denied"}`))
 			return
 		}
 		kind := "list"
@@ -271,8 +277,11 @@ func newSLSStub(t *testing.T) *slsStub {
 		if body == "" {
 			body = "[]"
 		}
-		w.Header().Set("x-log-progress", st.progress)
-		w.Header().Set("x-log-count", "0")
+		progress := st.progress
+		if p, ok := st.progressFor[store]; ok {
+			progress = p
+		}
+		w.Header().Set("x-log-progress", progress)
 		w.Write([]byte(body))
 	}))
 	t.Cleanup(st.srv.Close)
@@ -370,6 +379,40 @@ func TestLogsPageExplainsAForbiddenKey(t *testing.T) {
 	// The form is still there, so the page is usable once the key is fixed.
 	if !strings.Contains(body, `<form method="get" action="/logs"`) {
 		t.Error("the filter form was dropped")
+	}
+	// And nothing claims there were no calls: the console has no idea.
+	if strings.Contains(body, "这段时间没有调用记录") {
+		t.Error("a failed query was rendered as an empty week")
+	}
+}
+
+// A signing bug and a missing policy both arrive as 401/403, and no RAM
+// policy will fix the first. The errorCode is the only thing that tells them
+// apart, so it has to reach the page.
+func TestLogsPageNamesTheErrorCodeBehindAForbidden(t *testing.T) {
+	st := newSLSStub(t)
+	st.status = http.StatusUnauthorized
+	st.errorCode = "SignatureNotMatch"
+
+	s, cookie := logsServer(t, st)
+	body := getLogs(t, s, cookie, "").Body.String()
+	if !strings.Contains(body, "SignatureNotMatch") {
+		t.Fatal("the page hid the errorCode behind the permission hint")
+	}
+}
+
+// The health bar counts over an hour of probes. An index that is still
+// catching up under-counts, and under-counting failures turns a red bar
+// green -- the page has to say the tally is provisional.
+func TestLogsPageWarnsWhenTheProbeIndexIsBehind(t *testing.T) {
+	st := newSLSStub(t)
+	st.progressFor[logstoreOps] = "Incomplete"
+	st.rows["ops|agg"] = `[{"oks":"58","fails":"0"}]`
+
+	s, cookie := logsServer(t, st)
+	body := getLogs(t, s, cookie, "").Body.String()
+	if !strings.Contains(body, "结果可能不完整") {
+		t.Fatal("a partial probe tally was presented as the hour's total")
 	}
 }
 

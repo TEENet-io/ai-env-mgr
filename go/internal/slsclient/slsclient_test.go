@@ -136,7 +136,7 @@ func TestGetLogsSendsAndParses(t *testing.T) {
 		t.Errorf("User-Agent = %q", got.Header.Get("User-Agent"))
 	}
 
-	if res.Count != 2 || !res.Complete || len(res.Logs) != 2 {
+	if !res.Complete || len(res.Logs) != 2 {
 		t.Fatalf("result = %+v", res)
 	}
 	if res.Logs[0]["employee_id"] != "peter" || res.Logs[1]["error_class"] != "rate_limit" {
@@ -238,11 +238,89 @@ func TestGetLogsRejectsGarbage(t *testing.T) {
 
 func TestNewDefaultsTheEndpoint(t *testing.T) {
 	c := New("", "windows-control-logs", testAK, testSK)
-	origin, host := c.origin()
+	origin, host, err := c.origin()
+	if err != nil {
+		t.Fatal(err)
+	}
 	if host != "windows-control-logs."+DefaultEndpoint {
 		t.Errorf("host = %q", host)
 	}
 	if origin != "https://"+host {
 		t.Errorf("origin = %q", origin)
+	}
+}
+
+// The Authorization header is an HMAC over the AccessKey secret: anyone who
+// can read it off the wire can replay it against the real logstore. The
+// plaintext endpoint form is a test affordance, so it must not be usable to
+// reach anything but this machine -- a typo in --sls-endpoint must fail, not
+// quietly ship a signed request across a network.
+func TestPlaintextEndpointIsLoopbackOnly(t *testing.T) {
+	for _, ep := range []string{
+		"http://collector.example:8080",
+		"http://10.0.0.5:8080",
+		"http://ap-southeast-1.log.aliyuncs.com",
+	} {
+		c := New(ep, "windows-control-logs", testAK, testSK)
+		origin, _, err := c.origin()
+		if err == nil {
+			t.Errorf("%s was accepted, origin = %q", ep, origin)
+			continue
+		}
+		// And the refusal reaches the caller rather than being swallowed.
+		if _, gerr := c.GetLogs(context.Background(), "audit", "*", 1, 2, 10, 0, true); gerr == nil {
+			t.Errorf("%s: GetLogs made a request anyway", ep)
+		}
+	}
+
+	// Loopback in every spelling still works, or the test servers below
+	// could not be reached.
+	for _, ep := range []string{
+		"http://127.0.0.1:9999", "http://localhost:9999", "http://[::1]:9999",
+	} {
+		if _, _, err := New(ep, "p", testAK, testSK).origin(); err != nil {
+			t.Errorf("%s was rejected: %v", ep, err)
+		}
+	}
+}
+
+// An error body that is not the documented JSON -- an HTML page from a proxy
+// in front of SLS, say -- must not arrive whole in a notice or a log line.
+func TestErrorBodyIsTruncated(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusBadGateway)
+		w.Write([]byte("<html>" + strings.Repeat("x", 5000) + "</html>"))
+	}))
+	defer srv.Close()
+
+	_, err := New(srv.URL, "p", testAK, testSK).
+		GetLogs(context.Background(), "audit", "*", 1, 2, 10, 0, true)
+	if err == nil {
+		t.Fatal("expected an error")
+	}
+	if len(err.Error()) > 300 {
+		t.Fatalf("error is %d bytes, want it truncated: %.120q…", len(err.Error()), err.Error())
+	}
+}
+
+// Code is how the page tells a missing policy from a signing bug: both are
+// ErrForbidden, and only one is about permissions.
+func TestCodeSurvivesTheForbiddenWrap(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusUnauthorized)
+		w.Write([]byte(`{"errorCode":"SignatureNotMatch","errorMessage":"bad signature"}`))
+	}))
+	defer srv.Close()
+
+	_, err := New(srv.URL, "p", testAK, testSK).
+		GetLogs(context.Background(), "audit", "*", 1, 2, 10, 0, true)
+	if !errors.Is(err, ErrForbidden) {
+		t.Fatalf("err = %v, want ErrForbidden", err)
+	}
+	if got := Code(err); got != "SignatureNotMatch" {
+		t.Fatalf("Code(err) = %q, want SignatureNotMatch", got)
+	}
+	if Code(errors.New("plain")) != "" {
+		t.Error("Code invented a code for a plain error")
 	}
 }

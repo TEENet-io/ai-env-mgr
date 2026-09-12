@@ -20,6 +20,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"net/url"
 	"sort"
@@ -85,12 +86,37 @@ func New(endpoint, project, accessKeyID, accessKeySecret string) *Client {
 func (c *Client) Project() string { return c.project }
 
 // origin returns the scheme+host to send to and the Host header to sign with.
-func (c *Client) origin() (string, string) {
+//
+// The plaintext form exists for tests only, and is allowed only to a loopback
+// host. The Authorization header this client sends is an HMAC over the
+// AccessKey secret; anyone who can read it off the wire can replay it against
+// the real logstore for as long as the Date header stays fresh. A misspelled
+// endpoint must therefore fail loudly rather than quietly downgrade -- hence
+// an error rather than a silent rewrite to https.
+func (c *Client) origin() (string, string, error) {
 	if rest, ok := strings.CutPrefix(c.endpoint, "http://"); ok {
-		return "http://" + rest, rest
+		if !isLoopback(rest) {
+			return "", "", fmt.Errorf(
+				"sls: refusing to send a signed request in the clear to %q; drop the http:// prefix to use https", rest)
+		}
+		return "http://" + rest, rest, nil
 	}
 	host := c.project + "." + strings.TrimPrefix(c.endpoint, "https://")
-	return "https://" + host, host
+	return "https://" + host, host, nil
+}
+
+// isLoopback reports whether a host[:port] cannot leave this machine.
+func isLoopback(hostport string) bool {
+	host := hostport
+	if h, _, err := net.SplitHostPort(hostport); err == nil {
+		host = h
+	}
+	host = strings.Trim(host, "[]")
+	if host == "localhost" {
+		return true
+	}
+	ip := net.ParseIP(host)
+	return ip != nil && ip.IsLoopback()
 }
 
 // Log is one row: SLS answers with string values throughout, for raw log
@@ -101,10 +127,12 @@ type Log map[string]string
 // Result is one page of a query.
 type Result struct {
 	Logs []Log
-	// Count is what x-log-count reported: the rows in this response.
-	Count int
 	// Complete is x-log-progress == "Complete". False means the index was
 	// still catching up and the rows below may be missing some.
+	//
+	// There is no row count here on purpose: x-log-count reports the rows in
+	// this response, which is len(Logs), and a second name for the same
+	// number is a place for the two to disagree.
 	Complete bool
 }
 
@@ -127,7 +155,10 @@ func (c *Client) GetLogs(ctx context.Context, logstore, query string, from, to i
 	// signature's CanonicalizedResource wants -- see stringToSign.
 	uri := "/logstores/" + logstore + "?" + v.Encode()
 
-	origin, host := c.origin()
+	origin, host, err := c.origin()
+	if err != nil {
+		return nil, err
+	}
 	headers := map[string]string{
 		"Date":              nowRFC1123(),
 		"Host":              host,
@@ -167,18 +198,10 @@ func (c *Client) GetLogs(ctx context.Context, logstore, query string, from, to i
 	if err != nil {
 		return nil, err
 	}
-	res := &Result{
+	return &Result{
 		Logs:     logs,
 		Complete: resp.Header.Get("x-log-progress") == "Complete",
-	}
-	// A missing or unparsable count is not worth failing the page over; the
-	// rows themselves are the answer.
-	if n, cerr := strconv.Atoi(resp.Header.Get("x-log-count")); cerr == nil {
-		res.Count = n
-	} else {
-		res.Count = len(logs)
-	}
-	return res, nil
+	}, nil
 }
 
 // decodeLogs turns the JSON array into rows.
@@ -216,10 +239,28 @@ type slsError struct {
 
 func (e *slsError) Error() string {
 	if e.Code == "" {
-		return fmt.Sprintf("sls: HTTP %d: %s", e.HTTPCode, e.Message)
+		return fmt.Sprintf("HTTP %d: %s", e.HTTPCode, e.Message)
 	}
-	return fmt.Sprintf("sls: %s: %s", e.Code, e.Message)
+	return fmt.Sprintf("%s: %s", e.Code, e.Message)
 }
+
+// Code returns the SLS errorCode behind err, or "" if there is none.
+//
+// It exists so a caller can tell a missing policy (Unauthorized) from a
+// signing bug (SignatureNotMatch): both arrive as ErrForbidden, and only the
+// first has anything to do with permissions.
+func Code(err error) string {
+	var e *slsError
+	if errors.As(err, &e) {
+		return e.Code
+	}
+	return ""
+}
+
+// maxErrorBody caps the fallback message taken from an unparsable error body.
+// A gateway or proxy in front of SLS answers with an HTML page, and the whole
+// of it has no business reaching a notice on a web page or a log line.
+const maxErrorBody = 200
 
 // apiError builds the error for a non-2xx response. 401 and 403 additionally
 // wrap ErrForbidden, which is the one case the page can act on.
@@ -233,10 +274,19 @@ func apiError(code int, body []byte) error {
 		e.Code, e.Message = parsed.ErrorCode, parsed.ErrorMessage
 	}
 	if e.Message == "" {
-		e.Message = strings.TrimSpace(string(body))
+		msg := strings.TrimSpace(string(body))
+		if len(msg) > maxErrorBody {
+			// ToValidUTF8 drops the partial rune a byte-wise cut can leave
+			// behind, which would otherwise reach the page as a replacement
+			// character.
+			msg = strings.ToValidUTF8(msg[:maxErrorBody], "") + "…"
+		}
+		e.Message = msg
 	}
 	if code == http.StatusUnauthorized || code == http.StatusForbidden {
-		return fmt.Errorf("%w (%s)", ErrForbidden, e.Error())
+		// Two %w verbs: callers test for ErrForbidden with errors.Is and pull
+		// the errorCode out with errors.As, and both have to keep working.
+		return fmt.Errorf("%w: %w", ErrForbidden, e)
 	}
 	return e
 }

@@ -109,9 +109,13 @@ var logRanges = []struct{ Value, Label string }{
 func parseLogFilter(q url.Values) logFilter {
 	f := logFilter{Range: "7d", Page: 1}
 
-	// The gateway writes employee_id as the gateway user id ("emp-peter"),
-	// while every link in this console names people by their Windows user.
-	// Accept either spelling and keep the bare one.
+	// employee_id is spelled two ways in this system. The gateway writes the
+	// LiteLLM user id, which admincore.KeyAlias builds as "emp-" + the
+	// lowercased Windows user; every link in this console -- /users/detail,
+	// the roster, the dropdown below -- names the same person by the bare
+	// Windows user. Strip the prefix here so both spellings land on one
+	// filter, and put it back in filterQuery, which is the only place that
+	// has to match what is actually in the logstore.
 	emp := strings.ToLower(strings.TrimSpace(q.Get("employee")))
 	emp = strings.TrimPrefix(emp, "emp-")
 	if reEmployee.MatchString(emp) {
@@ -230,7 +234,7 @@ func (f logFilter) summaryQuery() string {
 const (
 	probeFilterQuery  = "module: probe and target: gateway"
 	probeSummaryQuery = probeFilterQuery +
-		" | select count_if(ok='true') as oks, count_if(ok='false') as fails, max(occurred_at) as latest"
+		" | select count_if(ok='true') as oks, count_if(ok='false') as fails"
 	probeFailQuery = probeFilterQuery + " and ok: false"
 )
 
@@ -284,6 +288,10 @@ type logsPage struct {
 	Probe      *probeHealth
 	Summary    *logsSummary
 	Rows       []logRow
+	// ListOK says the table's query actually ran. Without it a failed query
+	// and a quiet week look identical, and "这段时间没有调用记录" would be a
+	// claim the console is in no position to make.
+	ListOK     bool
 	Incomplete bool
 	Notice     string
 	PrevURL    string
@@ -528,7 +536,14 @@ func (f logFilter) pageLinks(rowsOnPage int) (string, string) {
 // errorCode, which is what an Alibaba Cloud ticket will ask for.
 func slsNotice(err error) string {
 	if errors.Is(err, slsclient.ErrForbidden) {
-		return "这把 AccessKey 没有日志读取权限，请给它添加 AliyunLogReadOnlyAccess"
+		hint := "这把 AccessKey 没有日志读取权限，请给它添加 AliyunLogReadOnlyAccess"
+		// The errorCode distinguishes the two things a 401/403 can mean. A
+		// missing policy says Unauthorized; a signing bug says
+		// SignatureNotMatch, and no amount of RAM policy will fix that one.
+		if code := slsclient.Code(err); code != "" {
+			hint += "（" + code + "）"
+		}
+		return hint
 	}
 	return "查询 SLS 失败：" + err.Error()
 }
@@ -586,6 +601,7 @@ func (s *Server) handleLogs(w http.ResponseWriter, r *http.Request, sess *sessio
 		page.Summary = summaryFrom(res.Logs)
 	}
 	if res := query(logstoreAudit, f.filterQuery(), logsPageSize, (f.Page-1)*logsPageSize, true); res != nil {
+		page.ListOK = true
 		page.Rows = logRowsFrom(res.Logs)
 		page.PrevURL, page.NextURL = f.pageLinks(len(res.Logs))
 	}
@@ -614,6 +630,12 @@ func (s *Server) loadProbe(ctx context.Context, sess *session, page *logsPage) {
 			}
 			log.Printf("adminweb: sls %s (probe): %v", logstoreOps, err)
 			return nil, false
+		}
+		// An index still catching up under-counts, and under-counting here
+		// turns a red bar green. Say so with the same warning the table uses
+		// rather than presenting a partial tally as the hour's total.
+		if !res.Complete {
+			page.Incomplete = true
 		}
 		return res.Logs, true
 	}

@@ -178,7 +178,7 @@ func previewLogsPage() *logsPage {
 		{"calls": "1842", "failures": "23", "cancelled": "4", "cost": "37.9142"},
 	})
 	p.Probe = probeFrom(
-		[]slsclient.Log{{"oks": "58", "fails": "2", "latest": "2026-09-12T03:10:00.000Z"}},
+		[]slsclient.Log{{"oks": "58", "fails": "2"}},
 		[]slsclient.Log{{"occurred_at": "2026-09-12T02:41:08.220Z", "message": "probe failed: 502 Bad Gateway"}},
 	)
 	p.Rows = logRowsFrom([]slsclient.Log{
@@ -195,6 +195,9 @@ func previewLogsPage() *logsPage {
 			"model_group": "glm-5", "model": "zhipu/glm-5", "latency_ms": "6210",
 			"total_tokens": "48210", "cost_usd": "0.013877", "cost_state": "estimated"},
 	})
-	p.PrevURL, p.NextURL = logFilter{Range: "7d", Page: 2}.pageLinks(logsPageSize)
+	p.ListOK = true
+	// The page's own filter, so the preview shows what page 1 actually looks
+	// like: a next link and no previous one.
+	p.PrevURL, p.NextURL = f.pageLinks(logsPageSize)
 	return p
 }
