@@ -1395,3 +1395,46 @@ Expected: 全部 `0`。再在 SLS 上对两个 Logstore 各跑一次同样的关
 - Spec 覆盖:§9 阶段一四项(锁定版本与样本→Task 2 Step 6 与 Task 7;ops/audit 与索引、受限身份→Task 1;网关与控制台统一事件→Task 2、3;告警→Task 6;旧 Agent 标注→Task 8;出口条件"成功/失败/取消可区分、底稿可核验、断连可补回、费用不重复"→Task 2 字段 + Task 7 Step 1、2)。"底稿可核验"的对账脚本(SpendLogs vs SLS)未单列任务:Task 7 Step 1 用本地文件求和代替,与 Postgres SpendLogs 的定期对账留给阶段二,已在 Task 7 记录为已知边界。
 - 占位符:Task 5 的安装命令与 Logtail 处理器名、Task 6 的 `begin of month`、`StandardLoggingPayload` 键名三处标明"以实施当天官方文档/真实数据为准",不是 TBD,是明确的核对动作。
 - 类型一致:`eventlog.New(dir, source)`、`Ops(level, eventType, msg, fields)`、`Audit(eventType, msg, fields)`、`Redact(map[string]any)` 在 Task 3 定义,Task 3 Step 6/7 使用一致;`Manager.Events` 字段名两处一致;文件名 `admin.jsonl` / `audit.jsonl` / `probe.jsonl` / `llm_events.jsonl` 在 Task 3、4、5 一致。
+
+---
+
+## 阶段二提前项:控制台日志页(2026-09-12)
+
+阶段一把事件送进了 SLS,但要看它们仍得开阿里云控制台。这一项把「最近的模型调用记录」和「网关探测健康」提前搬进管理控制台,是阶段二计划里的一小块,先做了。
+
+**在哪** `/logs`,导航第 10 项「日志」。数据来自 SLS 项目 `windows-control-logs`:调用记录读 `audit`(`event_type: llm_call`),页首的健康条读 `ops`(`module=probe and target=gateway`,最近 60 分钟)。
+
+**权限要求** 页面用**管理员登录时输入的那把 AccessKey**直接查 SLS,控制台不存任何新秘密,也没有第二把钥匙。因此那把 AK 必须能读日志——给它挂 `AliyunLogReadOnlyAccess`,或者更紧一点,用仓库里的 `ops/sls/policy-reader.json`(只授权 `windows-control-logs` 这一个项目)。没有权限时页面不报错,显示一行提示:「这把 AccessKey 没有日志读取权限,请给它添加 AliyunLogReadOnlyAccess」,筛选表单照常可用。
+
+**启动参数**
+
+```
+admin web --sls-project windows-control-logs [--sls-endpoint ap-southeast-1.log.aliyuncs.com]
+```
+
+也可用环境变量 `AIENVMGR_SLS_PROJECT` / `AIENVMGR_SLS_ENDPOINT`。`--sls-project` 为空(默认)= 整个日志页不存在:导航不显示这一项,`/logs` 返回 404。这和 `GatewayURL` 为空关掉网关页是同一套做法。`--sls-endpoint` 默认 `ap-southeast-1.log.aliyuncs.com`。
+
+**查询范围与上限**
+
+| 项 | 值 |
+| --- | --- |
+| 默认时间范围 | 最近 7 天(另有「今天」「最近 30 天」「自定义」) |
+| 自定义跨度上限 | 90 天;超出、填反或只填一半,静默退回默认 7 天 |
+| 时区 | 显示与自定义日期都按 `Asia/Shanghai`(tzdata 缺失时退回固定 +8) |
+| 每页 | 100 条,最多翻到第 50 页 |
+| 单次查询超时 | 15 秒;整页 30 秒 |
+| 探测健康条窗口 | 固定最近 60 分钟,与表格的时间范围无关 |
+
+筛选项(员工、状态、模型)走白名单正则,不做转义:这些值会被拼进 SLS 查询串,所以规则是「不允许出现需要转义的字符」,不是「出现了再转义」。不合法的值当作没填,不报错页。
+
+**汇总怎么算** `select ... from (select distinct event_id, status, cost_usd from log)`。按 `event_id` 去重是必须的:Logtail 在文件轮转后会重读尾部,网关重试也会写同一个 `event_id`,直接对原始行求和会把一次调用算两遍、把某个员工的花费翻倍。
+
+**不支持的内容(明确不做)**
+
+- **运维事件**:`ops` 里除探测以外的东西(`http_access`、`admin_action`、平台事件)在这一页看不到,仍去 SLS 控制台。
+- **请求原文**:提示词和回复从来没有进过日志(见阶段一的秘密扫描),这里自然也没有。
+- **导出**:没有 CSV / 下载。要批量取数就在 SLS 控制台或用 SDK。
+- **总条数**:分页靠「本页不足 100 条即最后一页」,不显示总数——SLS 不白送这个数字,为它多跑一次聚合查询不值。
+- **跨项目 / 跨 logstore**:项目、logstore、地域都是部署常量。
+
+**SLS 客户端** `go/internal/slsclient`,只读,只有 `GetLogs` 一个调用,纯标准库。没有引官方 SDK:它会为这一个 GET 带进 backoff、go-kit、protobuf、lz4 四棵依赖树,而这个二进制的依赖清单本身是可审计性的一部分。v1 签名照官方 SDK 的 `SignerV1.Sign` 逐行抄,有两处文档写不清而只会在生产上以 403 暴露的细节——`x-log-` 头要小写排序且块尾不带换行、CanonicalizedResource 里的 query 参数按键排序但写**解码后**的值——测试里把 string-to-sign 按精确文本钉死了。
