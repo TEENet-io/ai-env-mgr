@@ -43,6 +43,8 @@ R() { aliyun ram "$@" --profile "$PROFILE" --region "$REGION" --force; }
 for spec in wc-logs-writer:policy-writer.json wc-logs-reader:policy-reader.json; do
   u=${spec%%:*}; p=${spec##*:}; pol=${u}-policy
   R GetUser --UserName "$u" >/dev/null 2>&1 || R CreateUser --UserName "$u" --DisplayName "$u"
+  # RAM policies do NOT converge: an existing policy keeps its old document.
+  # After editing policy-*.json run CreatePolicyVersion --SetAsDefault true.
   R GetPolicy --PolicyType Custom --PolicyName "$pol" >/dev/null 2>&1 || \
     R CreatePolicy --PolicyName "$pol" --PolicyDocument "$(cat "$HERE/$p")"
   # Attach only when missing: a swallowed attach failure would leave an
