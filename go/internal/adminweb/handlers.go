@@ -11,6 +11,7 @@ import (
 	"github.com/TEENet-io/ai-env-mgr/internal/ecdclient"
 	"github.com/TEENet-io/ai-env-mgr/internal/litellm"
 	"github.com/TEENet-io/ai-env-mgr/internal/model"
+	"github.com/TEENet-io/ai-env-mgr/internal/slsclient"
 )
 
 // freshAfter mirrors cmd/admin/status_cmd.go: a machine that reported within
@@ -65,6 +66,12 @@ type pageData struct {
 	Audit         []admincore.AuditEntry // that account's history, newest first
 	QuotaDefaults litellm.Quota          // pre-fills the onboarding form
 
+	// SLS says the deployment has a log project, which is what decides
+	// whether the nav offers the log page. Set centrally in render.
+	SLS bool
+	// Logs is the log page's own data; nil on every other page.
+	Logs *logsPage
+
 	// Gateway page: what the gateway offers.
 	GatewayURL      string
 	GatewayEnabled  bool
@@ -90,6 +97,10 @@ func newPage(sess *session, r *http.Request, nav string) pageData {
 }
 
 func (s *Server) render(w http.ResponseWriter, name string, code int, data pageData) {
+	// Set here rather than in newPage: the nav is drawn by every page, so the
+	// flag that decides one of its entries should not be something a new
+	// handler can forget.
+	data.SLS = s.opts.SLSProject != ""
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.WriteHeader(code)
 	if err := s.tpl.ExecuteTemplate(w, name, data); err != nil {
@@ -182,7 +193,15 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	id, err := s.sessions.create(mgr, cfg.Bucket, cfg.Endpoint, cloud)
+	// The same AccessKey reads the unified log. Built here so it never has to
+	// be stored anywhere: it lives in the session and dies with it. A key
+	// without log permission simply makes the log page say so.
+	var sls *slsclient.Client
+	if s.opts.SLSProject != "" {
+		sls = slsclient.New(s.opts.SLSEndpoint, s.opts.SLSProject, cfg.AccessKeyID, cfg.AccessKeySecret)
+	}
+
+	id, err := s.sessions.create(mgr, cfg.Bucket, cfg.Endpoint, cloud, sls)
 	if err != nil {
 		s.render(w, "login.html", http.StatusServiceUnavailable, s.loginPage(err.Error()))
 		return

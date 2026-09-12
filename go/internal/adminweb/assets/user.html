@@ -22,6 +22,7 @@
   <h2>本月用量</h2>
   <div class="usage wide"><div class="bar"><span class="{{usagesev .Spend .Budget}} w{{usagepct .Spend .Budget}}"></span></div>
     <span>${{money .Spend}} / ${{money .Budget}}{{if ge (len .BudgetResetAt) 10}} · {{slice .BudgetResetAt 0 10}} 重置{{end}}</span></div>
+  {{if $.SLS}}<p class="hint"><a href="/logs?employee={{.WindowsUser}}&amp;range=30d">查看调用记录 →</a></p>{{end}}
   {{end}}
 
   <h2>基本信息</h2>

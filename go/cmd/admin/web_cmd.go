@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/TEENet-io/ai-env-mgr/internal/adminweb"
+	"github.com/TEENet-io/ai-env-mgr/internal/slsclient"
 )
 
 func cmdWeb(args []string) error {
@@ -26,6 +27,11 @@ func cmdWeb(args []string) error {
 		// flag. A flag would put it in the process table, where any local
 		// account could read it off `ps`.
 		GatewayAdminKey: os.Getenv("AIENVMGR_GATEWAY_ADMIN_KEY"),
+		// The log page reads SLS with whatever AccessKey the administrator
+		// signed in with, so there is no key to configure here -- only where
+		// to look. Empty project means no log page at all.
+		SLSProject:  os.Getenv("AIENVMGR_SLS_PROJECT"),
+		SLSEndpoint: envOr("AIENVMGR_SLS_ENDPOINT", slsclient.DefaultEndpoint),
 	}
 	for i := 0; i < len(args); i++ {
 		switch args[i] {
@@ -54,6 +60,18 @@ func cmdWeb(args []string) error {
 				return fmt.Errorf("--log-dir needs a value")
 			}
 			opts.LogDir = args[i+1]
+			i++
+		case "--sls-project":
+			if i+1 >= len(args) {
+				return fmt.Errorf("--sls-project needs a value")
+			}
+			opts.SLSProject = args[i+1]
+			i++
+		case "--sls-endpoint":
+			if i+1 >= len(args) {
+				return fmt.Errorf("--sls-endpoint needs a value")
+			}
+			opts.SLSEndpoint = args[i+1]
 			i++
 		case "--oss-data-endpoint":
 			if i+1 >= len(args) {

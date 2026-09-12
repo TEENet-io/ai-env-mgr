@@ -19,6 +19,7 @@ import (
 	"time"
 
 	"github.com/TEENet-io/ai-env-mgr/internal/admincore"
+	"github.com/TEENet-io/ai-env-mgr/internal/slsclient"
 )
 
 // sessionCookie is the cookie carrying the session id. The id is a random
@@ -38,7 +39,13 @@ type session struct {
 	// credentials, so nothing has to be stored for it. The lookup only ever
 	// runs while a page is being rendered, which is exactly when somebody is
 	// signed in -- there is no background consumer to strand.
-	cloud    *cloudLookup
+	cloud *cloudLookup
+	// sls reads the unified log with this administrator's own AccessKey,
+	// built at sign-in and held nowhere else. nil when the deployment has no
+	// SLS project configured. Like mgr and cloud, it exists only for as long
+	// as the session does: signing out or restarting the console takes the
+	// key with it.
+	sls      *slsclient.Client
 	created  time.Time
 	lastSeen time.Time
 }
@@ -78,7 +85,7 @@ func newID() (string, error) {
 }
 
 // create registers a signed-in administrator and returns the session id.
-func (s *sessionStore) create(mgr *admincore.Manager, bucket, endpoint string, cloud *cloudLookup) (string, error) {
+func (s *sessionStore) create(mgr *admincore.Manager, bucket, endpoint string, cloud *cloudLookup, sls *slsclient.Client) (string, error) {
 	id, err := newID()
 	if err != nil {
 		return "", err
@@ -94,7 +101,7 @@ func (s *sessionStore) create(mgr *admincore.Manager, bucket, endpoint string, c
 		return "", errTooManySessions
 	}
 	now := s.now()
-	s.byID[id] = &session{mgr: mgr, bucket: bucket, endpoint: endpoint, csrf: csrf, cloud: cloud, created: now, lastSeen: now}
+	s.byID[id] = &session{mgr: mgr, bucket: bucket, endpoint: endpoint, csrf: csrf, cloud: cloud, sls: sls, created: now, lastSeen: now}
 	return id, nil
 }
 

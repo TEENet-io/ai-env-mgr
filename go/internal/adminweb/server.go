@@ -94,6 +94,19 @@ type Options struct {
 	// in with, so nothing is stored and nothing ships inside the binary.
 	// Empty disables the lookup, leaving quiet machines reading as offline.
 	ECDRegion string
+
+	// SLSProject is the Simple Log Service project holding the unified log
+	// (the "audit" and "ops" logstores). Empty disables the log page the same
+	// way an empty GatewayURL disables the gateway page: the nav entry is not
+	// drawn and /logs answers 404, rather than offering a page that cannot
+	// possibly return anything.
+	SLSProject string
+
+	// SLSEndpoint is that project's regional endpoint. Empty means
+	// slsclient.DefaultEndpoint. No key belongs here either: the log page
+	// reads with the AccessKey the administrator signed in with, so a console
+	// that nobody is signed in to holds nothing that could read the logs.
+	SLSEndpoint string
 }
 
 // store is what the console needs from OSS: everything admincore.Manager uses,
@@ -266,6 +279,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("/rollout", s.requireSession(s.handleRollout))
 	mux.HandleFunc("/employee-login", s.requireSession(s.handleEmployeeLogin))
 	mux.HandleFunc("/gateway", s.requireSession(s.handleGateway))
+	mux.HandleFunc("/logs", s.requireSession(s.handleLogs))
 
 	// Every state-changing route is POST + CSRF + redirect (see requirePost).
 	mux.HandleFunc("/users/onboard", s.requirePostBack(backToAccount, s.actionAccountOnboard))

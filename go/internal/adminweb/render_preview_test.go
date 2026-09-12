@@ -10,6 +10,7 @@ import (
 	"github.com/TEENet-io/ai-env-mgr/internal/agentcore"
 	"github.com/TEENet-io/ai-env-mgr/internal/litellm"
 	"github.com/TEENet-io/ai-env-mgr/internal/model"
+	"github.com/TEENet-io/ai-env-mgr/internal/slsclient"
 )
 
 // TestRenderPreview writes every page to ADMINWEB_PREVIEW_DIR with fixture
@@ -117,6 +118,12 @@ func TestRenderPreview(t *testing.T) {
 			Done: 412 << 20, Total: 700 << 20},
 		Fixed: true,
 
+		// The log page never talks to SLS here: the handler turns query
+		// results into this shape with pure functions, so the preview fills
+		// one in directly and the design can be looked at without a project.
+		SLS:  true,
+		Logs: previewLogsPage(),
+
 		GatewayURL:     "https://litellm.teenet.app",
 		GatewayEnabled: true,
 		GatewayModels: []litellm.Model{
@@ -128,7 +135,7 @@ func TestRenderPreview(t *testing.T) {
 	for _, name := range []string{
 		"login.html", "machines.html", "users.html", "user.html", "employee-login", "sites.html",
 		"settings.html", "files.html", "rollout.html", "policy.html", "log.html",
-		"gateway.html",
+		"gateway.html", "logs.html",
 	} {
 		tplName := name
 		if name == "employee-login" {
@@ -140,7 +147,7 @@ func TestRenderPreview(t *testing.T) {
 			"employeelogin.html": "employee-login", "sites.html": "sites",
 			"settings.html": "settings", "files.html": "files",
 			"rollout.html": "rollout", "policy.html": "policy", "log.html": "machines",
-			"gateway.html": "gateway",
+			"gateway.html": "gateway", "logs.html": "logs",
 		}[tplName]
 		f, err := os.Create(filepath.Join(dir, tplName))
 		if err != nil {
@@ -159,4 +166,35 @@ func TestRenderPreview(t *testing.T) {
 	os.MkdirAll(filepath.Join(dir, "static"), 0o755)
 	os.WriteFile(filepath.Join(dir, "static", "app.css"), css, 0o644)
 	t.Logf("wrote preview pages to %s", dir)
+}
+
+// previewLogsPage is a plausible page of calls: a success, a failure with an
+// error class, a cancellation and a call the gateway could not price, so
+// every cell the template has a branch for is actually exercised.
+func previewLogsPage() *logsPage {
+	f := logFilter{Range: "7d", Page: 1}
+	p := newLogsPage(f, []string{"chen", "peter", "work1"})
+	p.Summary = summaryFrom([]slsclient.Log{
+		{"calls": "1842", "failures": "23", "cancelled": "4", "cost": "37.9142"},
+	})
+	p.Probe = probeFrom(
+		[]slsclient.Log{{"oks": "58", "fails": "2", "latest": "2026-09-12T03:10:00.000Z"}},
+		[]slsclient.Log{{"occurred_at": "2026-09-12T02:41:08.220Z", "message": "probe failed: 502 Bad Gateway"}},
+	)
+	p.Rows = logRowsFrom([]slsclient.Log{
+		{"occurred_at": "2026-09-12T03:12:44.118Z", "employee_id": "emp-peter", "status": "success",
+			"model_group": "glm-5", "model": "zhipu/glm-5", "latency_ms": "1483.2",
+			"total_tokens": "1520", "cost_usd": "0.000421", "cost_state": "estimated"},
+		{"occurred_at": "2026-09-12T03:09:02.771Z", "employee_id": "emp-work1", "status": "failure",
+			"model_group": "grok-4.6", "model": "xai/grok-4.6", "latency_ms": "812",
+			"error_class": "rate_limit", "error_code": "429", "cost_usd": "0.0", "cost_state": "estimated"},
+		{"occurred_at": "2026-09-12T02:58:30.004Z", "employee_id": "emp-peter", "status": "cancelled",
+			"model_group": "deepseek-v3.2", "model": "deepseek/deepseek-v3.2", "latency_ms": "240",
+			"cost_state": "unknown"},
+		{"occurred_at": "2026-09-12T02:41:19.900Z", "employee_id": "emp-chen", "status": "success",
+			"model_group": "glm-5", "model": "zhipu/glm-5", "latency_ms": "6210",
+			"total_tokens": "48210", "cost_usd": "0.013877", "cost_state": "estimated"},
+	})
+	p.PrevURL, p.NextURL = logFilter{Range: "7d", Page: 2}.pageLinks(logsPageSize)
+	return p
 }

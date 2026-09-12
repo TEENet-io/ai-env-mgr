@@ -54,7 +54,7 @@ Run with no arguments to open the console on this machine:
   admin                       serve on 127.0.0.1:8080, then open it in a browser
 
   web [--listen <host:port>] [--cert <file> --key <file>] [--behind-proxy]
-      [--log-dir <dir>]
+      [--log-dir <dir>] [--sls-project <name>] [--sls-endpoint <host>]
                               serve the console. Sign in with the OSS
                               AccessKey; it is kept in memory only, never on
                               disk. TLS is required unless bound to 127.0.0.1,
@@ -62,6 +62,13 @@ Run with no arguments to open the console on this machine:
                               --log-dir writes admin.jsonl / audit.jsonl there
                               for the unified log; without it events go to
                               stderr only.
+                              --sls-project turns on the log page, reading the
+                              named Simple Log Service project with the same
+                              AccessKey. That key needs log read permission
+                              (AliyunLogReadOnlyAccess). Without it there is
+                              no log page.
+                              --sls-endpoint is that project's region, default
+                              ap-southeast-1.log.aliyuncs.com.
   version
 
 Everything else -- employees, machines, website blocking, signing in for an
