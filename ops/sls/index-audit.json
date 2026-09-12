@@ -1,0 +1,31 @@
+{
+  "ttl": 365,
+  "line": {"token": [",", " ", "'", "\"", ";", "=", "(", ")", "[", "]", "{", "}", "?", "@", "&", "<", ">", "/", ":", "\n", "\t", "\r"], "caseSensitive": false, "chn": false},
+  "keys": {
+    "event_id":        {"type": "text", "token": [], "caseSensitive": true, "doc_value": true},
+    "event_type":      {"type": "text", "token": [], "doc_value": true},
+    "module":          {"type": "text", "token": [], "doc_value": true},
+    "source_id":       {"type": "text", "token": [], "doc_value": true},
+    "level":           {"type": "text", "token": [], "doc_value": true},
+    "occurred_at":     {"type": "text", "token": [], "doc_value": true},
+    "employee_id":     {"type": "text", "token": [], "doc_value": true},
+    "key_alias":       {"type": "text", "token": [], "doc_value": true},
+    "model_group":     {"type": "text", "token": [], "doc_value": true},
+    "model":           {"type": "text", "token": [], "doc_value": true},
+    "status":          {"type": "text", "token": [], "doc_value": true},
+    "error_class":     {"type": "text", "token": [], "doc_value": true},
+    "error_source":    {"type": "text", "token": [], "doc_value": true},
+    "litellm_call_id": {"type": "text", "token": [], "caseSensitive": true, "doc_value": true},
+    "latency_ms":      {"type": "double", "doc_value": true},
+    "prompt_tokens":   {"type": "long", "doc_value": true},
+    "completion_tokens": {"type": "long", "doc_value": true},
+    "total_tokens":    {"type": "long", "doc_value": true},
+    "cost_usd":        {"type": "double", "doc_value": true},
+    "cost_state":      {"type": "text", "token": [], "doc_value": true},
+    "user_max_budget": {"type": "double", "doc_value": true},
+    "action":          {"type": "text", "token": [], "doc_value": true},
+    "target":          {"type": "text", "token": [], "doc_value": true},
+    "ok":              {"type": "text", "token": [], "doc_value": true},
+    "message":         {"type": "text", "token": [" ", ",", ":", "=", "\"", "'", "(", ")", "[", "]", "{", "}"], "doc_value": false}
+  }
+}
