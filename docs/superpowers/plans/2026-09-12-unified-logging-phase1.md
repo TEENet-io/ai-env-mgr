@@ -1150,6 +1150,8 @@ git add ops/probe && git commit -m "ops: independent gateway health probe feedin
 
 ### Task 5: 两台主机装 Logtail 并下发采集配置
 
+> **实施记录(2026-09-12)**:两台主机都已装好并有心跳,五个采集配置已下发,probe 与网关 stdout 已在 SLS 可查。三处与原稿不同:(1) 控制台 ECS 属于另一个阿里云账号(ECS 元数据 aliuid 5330947630858195),Logtail 按跨账号主机处理,需要 `/etc/ilogtail/users/5230362917187930` 标识文件;(2) Logtail 2.1 的 `input_file` 一个配置只能有一个 `FilePaths`,控制台侧拆成 console-ops / console-probe / console-audit 三个配置;(3) 网关 stdout 不做多行合并(`BeginLineRegex` 切错行),Traceback 会按行入库。另:CLI 3.5.0 的 `--body file://` 不读文件,脚本改为内联;bootstrap AK 只有日志权限,RAM 子用户未建(`SKIP_RAM=1`),Logtail 用账号标识写入、不放 AK。
+
 依赖 Task 1(机器组、writer AK)。Logtail 在非阿里云主机上需要用户标识和 AK;在同账号 ECS 上只需地域。官方安装文档在实施当天再核对一次命令(安装脚本 URL、参数名会变),以文档为准,这里记录目标状态。
 
 **Files:**
