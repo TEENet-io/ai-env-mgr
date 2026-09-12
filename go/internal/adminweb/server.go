@@ -12,12 +12,14 @@ import (
 	"os"
 	"os/signal"
 	"strconv"
+	"strings"
 	"sync"
 	"syscall"
 	"time"
 
 	"github.com/TEENet-io/ai-env-mgr/internal/admincore"
 	"github.com/TEENet-io/ai-env-mgr/internal/config"
+	"github.com/TEENet-io/ai-env-mgr/internal/eventlog"
 	"github.com/TEENet-io/ai-env-mgr/internal/ossclient"
 )
 
@@ -79,6 +81,14 @@ type Options struct {
 	// be revoked on its own without rotating the gateway's own secret.
 	GatewayAdminKey string
 
+	// LogDir is where the unified-log files go (admin.jsonl, audit.jsonl).
+	// Empty means stderr only, which is right for a developer's laptop.
+	LogDir string
+
+	// Version is the build this process is, recorded on the start and stop
+	// events so a log search can tell which binary produced a run.
+	Version string
+
 	// ECDRegion is where the cloud desktops live. Not a secret, and no key
 	// belongs here: the lookup uses the credentials the administrator signed
 	// in with, so nothing is stored and nothing ships inside the binary.
@@ -114,6 +124,10 @@ type Server struct {
 
 	// jobs holds the one publish that may be in flight; see job.go.
 	jobs jobRunner
+
+	// events is the unified log. Never nil after New; every session's
+	// Manager shares this one writer, which is safe for concurrent use.
+	events *eventlog.Writer
 }
 
 // New validates the options and builds the server.
@@ -175,8 +189,14 @@ func New(opts Options) (*Server, error) {
 	if err != nil {
 		return nil, fmt.Errorf("parse templates: %w", err)
 	}
+	host, _ := os.Hostname()
+	events, err := eventlog.New(opts.LogDir, "console@"+host)
+	if err != nil {
+		return nil, err
+	}
 	return &Server{
 		opts:     opts,
+		events:   events,
 		sessions: newSessionStore(opts.IdleTTL, opts.AbsTTL),
 		limiter:  newLoginLimiter(time.Minute, 10),
 		tpl:      tpl,
@@ -287,8 +307,45 @@ func (s *Server) Handler() http.Handler {
 		panic("adminweb: embedded assets/static missing: " + err.Error())
 	}
 	mux.Handle("/static/", http.StripPrefix("/static/", http.FileServer(http.FS(staticFS))))
-	return s.secureHeaders(mux)
+	return s.accessLog(s.secureHeaders(mux))
 }
+
+// accessLog records one line per request in the unified log.
+//
+// Method, path and status only: the query string can carry an employee name
+// or a file key, and no header is recorded at all, so a session cookie can
+// never reach the log. Static assets are skipped -- they are the same handful
+// of files on every page and say nothing about what an operator did.
+func (s *Server) accessLog(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		start := time.Now()
+		rec := &statusRecorder{ResponseWriter: w, status: http.StatusOK}
+		next.ServeHTTP(rec, r)
+		if strings.HasPrefix(r.URL.Path, "/static/") {
+			return
+		}
+		level := "info"
+		if rec.status >= 500 {
+			level = "error"
+		} else if rec.status >= 400 {
+			level = "warn"
+		}
+		s.events.Ops(level, "http_access", r.Method+" "+r.URL.Path, map[string]any{
+			"method": r.Method, "path": r.URL.Path, "status": rec.status,
+			"latency_ms": float64(time.Since(start).Microseconds()) / 1000.0,
+			"ok":         rec.status < 400,
+		})
+	})
+}
+
+// statusRecorder remembers the status code so the access log can report it.
+// A handler that never calls WriteHeader has answered 200.
+type statusRecorder struct {
+	http.ResponseWriter
+	status int
+}
+
+func (r *statusRecorder) WriteHeader(c int) { r.status = c; r.ResponseWriter.WriteHeader(c) }
 
 // publishDrainTimeout bounds how long shutdown waits for a publish to finish.
 //
@@ -303,6 +360,13 @@ const publishDrainTimeout = 20 * time.Minute
 func (s *Server) ListenAndServe() error {
 	stop := make(chan os.Signal, 1)
 	signal.Notify(stop, syscall.SIGTERM, syscall.SIGINT)
+
+	s.events.Ops("info", "platform_event", "console started", map[string]any{
+		"version": s.opts.Version, "listen": s.opts.Listen,
+	})
+	defer s.events.Ops("info", "platform_event", "console stopping", map[string]any{
+		"version": s.opts.Version,
+	})
 
 	srv := &http.Server{
 		Addr:    s.opts.Listen,

@@ -168,7 +168,9 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 		s.render(w, "login.html", http.StatusUnauthorized, s.loginPage("could not reach the bucket with those credentials"))
 		return
 	}
-	mgr := &admincore.Manager{Store: st}
+	// One writer for the whole console: each session's Manager logs its audit
+	// copy through it, and it is safe to share.
+	mgr := &admincore.Manager{Store: st, Events: s.events}
 
 	// The same credentials serve the cloud desktop lookup. A key without ECD
 	// permission simply makes that lookup fail and be logged; everything else

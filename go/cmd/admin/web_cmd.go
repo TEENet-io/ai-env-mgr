@@ -14,6 +14,7 @@ func cmdWeb(args []string) error {
 	built := builtIn()
 	opts := adminweb.Options{
 		Listen:    "127.0.0.1:8080",
+		Version:   version,
 		Bucket:    built.Bucket,
 		Endpoint:  built.Endpoint,
 		ECDRegion: envOr("AIENVMGR_ECD_REGION", ecdRegion),
@@ -48,6 +49,12 @@ func cmdWeb(args []string) error {
 			i++
 		case "--behind-proxy":
 			opts.BehindProxy = true
+		case "--log-dir":
+			if i+1 >= len(args) {
+				return fmt.Errorf("--log-dir needs a value")
+			}
+			opts.LogDir = args[i+1]
+			i++
 		case "--oss-data-endpoint":
 			if i+1 >= len(args) {
 				return fmt.Errorf("--oss-data-endpoint needs a value")

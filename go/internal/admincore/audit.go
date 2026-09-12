@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"log"
 	"strings"
 	"time"
@@ -60,6 +61,13 @@ func (m *Manager) appendAudit(windowsUser string, action AuditAction, detail map
 	if err != nil {
 		log.Printf("admincore: audit %s for %q: encode: %v", action, windowsUser, err)
 		return
+	}
+	// SLS copy (phase 1): same fact, unified shape. The OSS history stays the
+	// page's source; this line is the searchable, alertable duplicate.
+	if m.Events != nil {
+		m.Events.Audit("admin_action", fmt.Sprintf("%s %s", action, windowsUser), map[string]any{
+			"action": string(action), "employee_id": strings.ToLower(windowsUser), "target": "employee", "detail": detail,
+		})
 	}
 	key := AuditKey(windowsUser)
 	existing, _, err := m.Store.Get(key)

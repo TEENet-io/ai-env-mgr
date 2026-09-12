@@ -15,6 +15,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/TEENet-io/ai-env-mgr/internal/eventlog"
 	"github.com/TEENet-io/ai-env-mgr/internal/model"
 	"github.com/TEENet-io/ai-env-mgr/internal/ossclient"
 )
@@ -41,6 +42,9 @@ type Store interface {
 // Manager implements the admin operations against a Store.
 type Manager struct {
 	Store Store
+	// Events writes the unified-log copy of each audit line. nil means no
+	// unified log, which is what the CLI and the tests use.
+	Events *eventlog.Writer
 }
 
 // Both sides must build keys the same way or the admin writes where the agent

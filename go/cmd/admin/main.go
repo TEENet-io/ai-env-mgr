@@ -54,10 +54,14 @@ Run with no arguments to open the console on this machine:
   admin                       serve on 127.0.0.1:8080, then open it in a browser
 
   web [--listen <host:port>] [--cert <file> --key <file>] [--behind-proxy]
+      [--log-dir <dir>]
                               serve the console. Sign in with the OSS
                               AccessKey; it is kept in memory only, never on
                               disk. TLS is required unless bound to 127.0.0.1,
                               or to a private address with --behind-proxy.
+                              --log-dir writes admin.jsonl / audit.jsonl there
+                              for the unified log; without it events go to
+                              stderr only.
   version
 
 Everything else -- employees, machines, website blocking, signing in for an
