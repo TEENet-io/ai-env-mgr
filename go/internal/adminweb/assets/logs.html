@@ -1,0 +1,101 @@
+{{define "logs.html"}}{{template "head" "日志"}}
+<body>
+<div class="app">
+{{template "nav" .}}
+<main class="sheet">
+  <header class="pagehead">
+    <h1>日志</h1>
+    <p>模型调用记录 · SLS <code>windows-control-logs/audit</code></p>
+  </header>
+  {{template "notices" .}}
+
+{{with .Logs}}
+  {{if .Notice}}<p class="note note-err">{{.Notice}}</p>{{end}}
+
+  {{/* Health first: whether the gateway is answering right now decides how to
+  read everything below it. An empty hour is its own state -- a prober that
+  stopped must not read as a healthy one. */}}
+  {{with .Probe}}
+  <section class="panel probe">
+    <p><span class="tag tag-{{.Sev}}">{{.Label}}</span>
+      最近 60 分钟：成功 <b class="mono">{{.OKs}}</b> 次 · 失败 <b class="mono">{{.Fails}}</b> 次</p>
+    {{if .Detail}}<p class="hint">{{.Detail}}</p>{{end}}
+    {{if .LastFailAt}}<p class="hint">最近一次失败 {{.LastFailAt}}{{if .LastFailMsg}} · {{.LastFailMsg}}{{end}}</p>{{end}}
+  </section>
+  {{end}}
+
+  <form method="get" action="/logs" class="form">
+    <label>员工
+      <select name="employee">
+        <option value=""{{if not .Filter.Employee}} selected{{end}}>全部</option>
+        {{range .Employees}}<option value="{{.}}"{{if eq . $.Logs.Filter.Employee}} selected{{end}}>{{.}}</option>{{end}}
+      </select>
+    </label>
+    <label>状态
+      <select name="status">
+        {{range .Statuses}}<option value="{{.Value}}"{{if eq .Value $.Logs.Filter.Status}} selected{{end}}>{{.Label}}</option>{{end}}
+      </select>
+    </label>
+    <label>模型<input name="model" value="{{.Filter.Model}}" placeholder="glm-5"></label>
+    <label class="wide">时间范围
+      <span class="choices">
+        {{range .Ranges}}<label class="choice"><input type="radio" name="range" value="{{.Value}}"{{if eq .Value $.Logs.Filter.Range}} checked{{end}}>{{.Label}}</label>{{end}}
+      </span>
+    </label>
+    <label>自定义起<input type="date" name="from" value="{{.Filter.From}}"></label>
+    <label>自定义止<input type="date" name="to" value="{{.Filter.To}}"></label>
+    <button type="submit">查询</button>
+  </form>
+  <p class="hint">自定义范围按 Asia/Shanghai 解释，起止都算在内，跨度上限 90 天；超出或填反了按「最近 7 天」处理。</p>
+
+  {{with .Summary}}
+  <p class="tally">{{$.Logs.RangeLabel}}：调用 <b class="mono">{{.Calls}}</b> 次 ·
+    失败 <b class="mono">{{.Failures}}</b> · 取消 <b class="mono">{{.Cancelled}}</b> ·
+    费用 <b class="mono">${{.Cost}}</b></p>
+  {{end}}
+
+  {{if .Incomplete}}<p class="note note-err">结果可能不完整（SLS 索引仍在处理）。</p>{{end}}
+
+  <div class="panel scroll">
+  <table class="logtable">
+    <thead><tr>
+      <th>时间</th><th>员工</th><th>模型</th><th>状态</th>
+      <th class="num">耗时 ms</th><th class="num">Token</th><th class="num">费用 $</th><th>错误</th>
+    </tr></thead>
+    <tbody>
+    {{range .Rows}}
+      <tr>
+        <td class="id">{{.Time}}</td>
+        <td>{{if .Employee}}<a href="/users/detail?user={{.Employee}}">{{.Employee}}</a>{{else if .EmployeeID}}{{.EmployeeID}}{{else}}—{{end}}</td>
+        <td>{{.ModelGroup}}{{if .Model}}<br><span class="hint">{{.Model}}</span>{{end}}</td>
+        <td><span class="tag tag-{{.StatusSev}}">{{.StatusLabel}}</span></td>
+        <td class="num">{{.Latency}}</td>
+        <td class="num">{{.Tokens}}</td>
+        <td class="num">{{.Cost}}</td>
+        <td class="dim">{{.Error}}</td>
+      </tr>
+    {{else}}
+      <tr><td colspan="8" class="empty">这段时间没有调用记录。</td></tr>
+    {{end}}
+    </tbody>
+  </table>
+  </div>
+
+  {{if or .PrevURL .NextURL}}
+  <p class="pager">
+    {{if .PrevURL}}<a href="{{.PrevURL}}">← 上一页</a>{{else}}<span class="muted">← 上一页</span>{{end}}
+    <span class="muted">第 {{.Filter.Page}} 页</span>
+    {{if .NextURL}}<a href="{{.NextURL}}">下一页 →</a>{{else}}<span class="muted">下一页 →</span>{{end}}
+  </p>
+  {{end}}
+
+  <p class="hint">
+    这张表来自 SLS 自己，控制台不缓存任何调用记录。汇总按 <code>event_id</code> 去重，
+    所以采集重放不会把同一次调用算两遍。运维事件、请求原文与导出不在这里。
+  </p>
+{{end}}
+</main>
+</div>
+</body>
+</html>
+{{end}}

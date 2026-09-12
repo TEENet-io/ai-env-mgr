@@ -618,3 +618,25 @@ ol li { margin: 7px 0; }
 .usage .bar .s-ok { background: var(--ok); }
 .usage .bar .s-warn { background: var(--warn); }
 .usage .bar .s-bad { background: var(--bad); }
+
+/* ---------- log page ---------- */
+
+/* The gateway's probe health, above the table it gives context to. */
+.probe { padding: 12px 16px; margin-bottom: 16px; }
+.probe p { margin: 0; }
+.probe p + p { margin-top: 5px; }
+
+/* The time-range radios sit inside one wide form field rather than as four
+   separate ones, so the group reads as a single choice. */
+.choices { display: flex; flex-wrap: wrap; gap: 14px; padding-top: 6px; }
+.choice { display: inline-flex; align-items: center; gap: 5px; margin: 0; font-weight: 400; }
+.choice input { width: auto; margin: 0; }
+
+.tally { margin: 16px 0 10px; color: var(--ink-soft); }
+.tally b { color: var(--ink); }
+
+/* Numbers line up on their last digit; text does not. Scoped to this table so
+   the version columns elsewhere keep reading left-to-right. */
+.logtable th.num, .logtable td.num { text-align: right; }
+
+.pager { display: flex; gap: 18px; align-items: baseline; margin: 12px 0 0; font-size: 13px; }
