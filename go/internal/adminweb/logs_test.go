@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/TEENet-io/ai-env-mgr/internal/config"
+	"github.com/TEENet-io/ai-env-mgr/internal/model"
 	"github.com/TEENet-io/ai-env-mgr/internal/slsclient"
 )
 
@@ -213,7 +214,7 @@ func TestRowFormatting(t *testing.T) {
 			"latency_ms": "1483.7", "total_tokens": "1520", "cost_usd": "0.000421", "cost_state": "estimated"},
 		{"employee_id": "console@host", "status": "failure", "cost_state": "unknown",
 			"error_class": "rate_limit", "error_code": "429"},
-	})
+	}, rosterOf("peter"))
 	if rows[0].Employee != "peter" || rows[0].Latency != "1484" || rows[0].Cost != "0.000421" {
 		t.Fatalf("row 0 = %+v", rows[0])
 	}
@@ -327,6 +328,7 @@ func TestLogsPageQueriesAndRenders(t *testing.T) {
 	st.rows["ops|agg"] = `[{"oks":"58","fails":"0"}]`
 
 	s, cookie := logsServer(t, st)
+	seedRoster(t, s, cookie, "peter")
 	rec := getLogs(t, s, cookie, "?employee=peter&status=success")
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status %d", rec.Code)
@@ -496,5 +498,92 @@ func TestLogsPageLeaksNoCredential(t *testing.T) {
 	}
 	if sess.sls.Project() != "windows-control-logs" {
 		t.Errorf("project = %q", sess.sls.Project())
+	}
+}
+
+// rosterOf is a roster with these Windows users on it, enabled.
+func rosterOf(users ...string) *model.Users {
+	us := &model.Users{}
+	for _, u := range users {
+		us.Users = append(us.Users, model.UserEntry{WindowsUser: u, Enabled: true})
+	}
+	return us
+}
+
+// The employee column answers three different questions, and conflating any
+// two of them misleads whoever is reading a bill.
+//
+// A call made with the gateway's own master key is not an employee's call:
+// showing the raw "default_user_id" invites somebody to go looking for an
+// employee by that name. An id whose employee has left the roster must not be
+// linked, because /users/detail would 404 on it -- but it must still be shown,
+// since those calls were real and somebody paid for them.
+func TestEmployeeColumnDistinguishesMasterKeyAndDepartedStaff(t *testing.T) {
+	rows := logRowsFrom([]slsclient.Log{
+		{"employee_id": "emp-peter"},
+		{"employee_id": "emp-eventprobe"},
+		{"employee_id": masterKeyID},
+		{"employee_id": ""},
+	}, rosterOf("Peter")) // the roster spells it with a capital; Windows does not care
+
+	if rows[0].Employee != "peter" || rows[0].OffRoster || rows[0].Master {
+		t.Errorf("a roster member = %+v, want a plain link", rows[0])
+	}
+	if rows[1].Employee != "eventprobe" || !rows[1].OffRoster {
+		t.Errorf("an id with nobody behind it = %+v, want OffRoster", rows[1])
+	}
+	if !rows[2].Master || rows[2].Employee != "" || rows[2].EmployeeID != "" {
+		t.Errorf("the master key = %+v, want Master and no employee", rows[2])
+	}
+	if rows[3].Employee != "" || rows[3].Master || rows[3].EmployeeID != "" {
+		t.Errorf("a missing id = %+v, want every field empty", rows[3])
+	}
+}
+
+// The distinctions above have to survive the template, which is where they
+// actually reach a reader.
+func TestLogsPageRendersMasterKeyAndOffRosterLabels(t *testing.T) {
+	st := newSLSStub(t)
+	st.rows["audit|list"] = `[{"employee_id":"emp-peter","status":"success"},` +
+		`{"employee_id":"emp-eventprobe","status":"success"},` +
+		`{"employee_id":"default_user_id","status":"success"}]`
+	s, cookie := logsServer(t, st)
+
+	seedRoster(t, s, cookie, "peter")
+
+	body := getLogs(t, s, cookie, "").Body.String()
+	if !strings.Contains(body, `<a href="/users/detail?user=peter">peter</a>`) {
+		t.Error("a roster member is not linked to their account page")
+	}
+	if !strings.Contains(body, "不在名册") || strings.Contains(body, `user=eventprobe`) {
+		t.Error("an off-roster id must be plain text marked 不在名册")
+	}
+	if !strings.Contains(body, "主密钥") || strings.Contains(body, "default_user_id") {
+		t.Error("a master-key call must read as 主密钥, never as the raw id")
+	}
+}
+
+// A roster that could not be read is not an empty roster. If OSS hiccups, the
+// page must not answer by telling the operator that every employee it is
+// showing has left.
+func TestUnreadableRosterDoesNotBrandEveryoneOffRoster(t *testing.T) {
+	rows := logRowsFrom([]slsclient.Log{{"employee_id": "emp-peter"}}, nil)
+	if rows[0].Employee != "peter" || rows[0].OffRoster {
+		t.Errorf("row = %+v, want the employee shown and not judged", rows[0])
+	}
+}
+
+// seedRoster writes a roster through the signed-in session's own manager, so
+// the page reads it back the way it would in production.
+func seedRoster(t *testing.T, s *Server, cookie *http.Cookie, users ...string) {
+	t.Helper()
+	sess := s.currentSession(&http.Request{
+		Header: http.Header{"Cookie": {cookie.Name + "=" + cookie.Value}},
+	})
+	if sess == nil {
+		t.Fatal("sign-in did not leave a session")
+	}
+	if err := sess.mgr.SaveUsers(*rosterOf(users...)); err != nil {
+		t.Fatal(err)
 	}
 }

@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/TEENet-io/ai-env-mgr/internal/admincore"
+	"github.com/TEENet-io/ai-env-mgr/internal/model"
 	"github.com/TEENet-io/ai-env-mgr/internal/slsclient"
 )
 
@@ -242,9 +243,14 @@ const (
 // no parsing: a column that could not be read is an em dash here, not a
 // template that silently renders nothing.
 type logRow struct {
-	Time        string
-	Employee    string // Windows user, for display
-	EmployeeID  string // raw employee_id, when it is not the "emp-" shape
+	Time string
+	// Employee is the Windows user behind an "emp-" id. OffRoster says nobody
+	// on the roster answers to it any more, which is what decides whether it
+	// is drawn as a link: /users/detail for a departed employee is a 404.
+	Employee    string
+	OffRoster   bool
+	Master      bool   // the gateway's own key rather than any employee
+	EmployeeID  string // raw employee_id, when it is none of the above
 	ModelGroup  string
 	Model       string
 	StatusLabel string
@@ -325,8 +331,19 @@ func fieldOr(l slsclient.Log, key string) string {
 	return em
 }
 
-// logRowsFrom formats the table.
-func logRowsFrom(logs []slsclient.Log) []logRow {
+// masterKeyID is what LiteLLM records for a call made with the master key
+// rather than with an employee's own. It is not a user id and there is no
+// account page behind it, so the table names it for what it is.
+const masterKeyID = "default_user_id"
+
+// logRowsFrom formats the table. The roster decides which employee ids are
+// still links; it is the one the handler already loaded for the filter
+// dropdown, so this costs no extra read.
+//
+// A nil roster means it could not be read. That is deliberately not the same
+// as an empty one: marking every row 不在名册 because OSS hiccuped would be
+// the console asserting something it does not know.
+func logRowsFrom(logs []slsclient.Log, roster *model.Users) []logRow {
 	rows := make([]logRow, 0, len(logs))
 	for _, l := range logs {
 		r := logRow{
@@ -339,9 +356,14 @@ func logRowsFrom(logs []slsclient.Log) []logRow {
 			Error:      errorOf(l),
 		}
 		id := field(l, "employee_id")
-		if user, ok := strings.CutPrefix(id, "emp-"); ok && user != "" {
+		user, isEmp := strings.CutPrefix(id, "emp-")
+		switch {
+		case isEmp && user != "":
 			r.Employee = user
-		} else if id != "" {
+			r.OffRoster = roster != nil && roster.Find(user) == nil
+		case id == masterKeyID:
+			r.Master = true
+		case id != "":
 			// Something wrote an employee_id in another shape. Show it, but do
 			// not link it to an account page that would 404.
 			r.EmployeeID = id
@@ -559,7 +581,10 @@ func (s *Server) handleLogs(w http.ResponseWriter, r *http.Request, sess *sessio
 
 	f := parseLogFilter(r.URL.Query())
 	from, to := f.resolveWindow(time.Now())
-	page := newLogsPage(s.opts.SLSProject, f, s.employeeIDs(sess))
+	// Read once and used twice: the filter dropdown lists it, and the table
+	// asks it whether each employee id still belongs to somebody.
+	roster := loadRoster(sess)
+	page := newLogsPage(s.opts.SLSProject, f, employeeIDs(roster))
 	data.Logs = page
 
 	s.events.Ops("info", "admin_query", "logs query", map[string]any{
@@ -602,7 +627,7 @@ func (s *Server) handleLogs(w http.ResponseWriter, r *http.Request, sess *sessio
 	}
 	if res := query(logstoreAudit, f.filterQuery(), logsPageSize, (f.Page-1)*logsPageSize, true); res != nil {
 		page.ListOK = true
-		page.Rows = logRowsFrom(res.Logs)
+		page.Rows = logRowsFrom(res.Logs, roster)
 		page.PrevURL, page.NextURL = f.pageLinks(len(res.Logs))
 	}
 	s.loadProbe(ctx, sess, page)
@@ -652,12 +677,22 @@ func (s *Server) loadProbe(ctx context.Context, sess *session, page *logsPage) {
 	page.Probe = probeFrom(summary, lastFail)
 }
 
-// employeeIDs is the dropdown: everyone on the roster, so filtering does not
-// require knowing how an id is spelled. Sorted, and a roster that cannot be
-// read costs the dropdown rather than the page.
-func (s *Server) employeeIDs(sess *session) []string {
+// loadRoster reads the employee roster, or nil if it could not be read. The
+// log page is still worth drawing without it: the dropdown goes empty and no
+// employee id is judged against a roster nobody has seen.
+func loadRoster(sess *session) *model.Users {
 	us, err := sess.mgr.LoadUsers()
 	if err != nil {
+		log.Printf("adminweb: LoadUsers for the log page: %v", err)
+		return nil
+	}
+	return &us
+}
+
+// employeeIDs is the dropdown: everyone on the roster, so filtering does not
+// require knowing how an id is spelled. Sorted.
+func employeeIDs(us *model.Users) []string {
+	if us == nil {
 		return nil
 	}
 	ids := make([]string, 0, len(us.Users))

@@ -114,26 +114,6 @@ const (
 	AdminRoot = "admin/"
 )
 
-// FilePrefix is an administrator-managed staging area for files that need to
-// reach a cloud desktop -- agent.exe itself, most often.
-//
-// It sits under AdminRoot, not under Root, because no agent ever reads it:
-// the binary has to exist before the process that would download it does.
-// Transfers happen through a signed URL instead, which needs no credentials
-// on the receiving machine at all.
-const FilePrefix = AdminRoot + "files/"
-
-// FileKey is where one staged file lives. The name is reduced to a single
-// path element so a crafted name cannot write elsewhere in the bucket.
-func FileKey(name string) string {
-	return FilePrefix + sanitiseSegment(name)
-}
-
-// FileFromKey recovers the file name from a staged-file key.
-func FileFromKey(key string) string {
-	return strings.TrimPrefix(key, FilePrefix)
-}
-
 // PolicyKey is the browser block policy, which is machine-wide rather than
 // per-employee: it is written into HKLM and protects the whole box no matter
 // who logs in. It therefore lives at the top of Root, reachable without

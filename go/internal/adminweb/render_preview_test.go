@@ -192,7 +192,15 @@ func previewLogsPage() *logsPage {
 		{"occurred_at": "2026-09-12T02:41:19.900Z", "employee_id": "emp-chen", "status": "success",
 			"model_group": "glm-5", "model": "zhipu/glm-5", "latency_ms": "6210",
 			"total_tokens": "48210", "cost_usd": "0.013877", "cost_state": "estimated"},
-	})
+		// The two rows that are not an employee on the roster: a call on the
+		// gateway's own key, and one billed to somebody who has left.
+		{"occurred_at": "2026-09-12T02:30:11.500Z", "employee_id": "default_user_id", "status": "success",
+			"model_group": "glm-5", "model": "zhipu/glm-5", "latency_ms": "990",
+			"total_tokens": "410", "cost_usd": "0.000118", "cost_state": "estimated"},
+		{"occurred_at": "2026-09-12T02:22:04.010Z", "employee_id": "emp-eventprobe", "status": "success",
+			"model_group": "glm-5", "model": "zhipu/glm-5", "latency_ms": "1180",
+			"total_tokens": "300", "cost_usd": "0.000090", "cost_state": "estimated"},
+	}, rosterOf("chen", "peter", "work1"))
 	p.ListOK = true
 	// The page's own filter, so the preview shows what page 1 actually looks
 	// like: a next link and no previous one.

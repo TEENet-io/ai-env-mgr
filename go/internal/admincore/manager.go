@@ -35,7 +35,12 @@ type Store interface {
 	ListInfo(prefix string) ([]ossclient.ObjectInfo, error)
 	Delete(key string) error
 	// SignedURL grants temporary read access to one object without the
-	// holder needing credentials -- how a staged file reaches a machine.
+	// holder needing credentials. Nothing in the console mints one today --
+	// the file-transfer page that did was removed -- but it stays on the
+	// interface because it is what any future "hand somebody this object"
+	// path has to be built on, and because the split-endpoint rule it obeys
+	// (sign with the public endpoint, never the internal one) is easy to get
+	// wrong and is pinned by a test.
 	SignedURL(key string, ttl time.Duration) (string, error)
 }
 

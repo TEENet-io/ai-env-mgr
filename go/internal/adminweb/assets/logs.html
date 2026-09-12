@@ -70,7 +70,7 @@
     {{range .Rows}}
       <tr>
         <td class="id">{{.Time}}</td>
-        <td>{{if .Employee}}<a href="/users/detail?user={{.Employee}}">{{.Employee}}</a>{{else if .EmployeeID}}{{.EmployeeID}}{{else}}—{{end}}</td>
+        <td>{{if .Employee}}{{if .OffRoster}}{{.Employee}} <span class="muted">不在名册</span>{{else}}<a href="/users/detail?user={{.Employee}}">{{.Employee}}</a>{{end}}{{else if .Master}}<span class="muted">主密钥</span>{{else if .EmployeeID}}{{.EmployeeID}}{{else}}—{{end}}</td>
         <td>{{.ModelGroup}}{{if .Model}}<br><span class="hint">{{.Model}}</span>{{end}}</td>
         <td><span class="tag tag-{{.StatusSev}}">{{.StatusLabel}}</span></td>
         <td class="num">{{.Latency}}</td>

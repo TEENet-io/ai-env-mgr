@@ -18,7 +18,7 @@ func TestSignedURLsUseThePublicEndpoint(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	url, err := c.SignedURL(FileKey("agent.exe"), time.Hour)
+	url, err := c.SignedURL(UserKey("work1", "credentials.zip"), time.Hour)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -40,7 +40,7 @@ func TestSignedURLsFallBackToTheOnlyEndpoint(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	url, err := c.SignedURL(FileKey("agent.exe"), time.Hour)
+	url, err := c.SignedURL(UserKey("work1", "credentials.zip"), time.Hour)
 	if err != nil {
 		t.Fatal(err)
 	}
