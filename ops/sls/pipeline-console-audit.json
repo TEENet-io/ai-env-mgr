@@ -1,0 +1,34 @@
+{
+  "configName": "console-audit",
+  "logSample": "{\"schema_version\":1,\"event_type\":\"admin_action\",\"occurred_at\":\"2026-09-12T01:02:03.000Z\"}",
+  "inputs": [
+    {
+      "Type": "input_file",
+      "FilePaths": [
+        "/var/log/ai-env-mgr/audit.jsonl"
+      ],
+      "MaxDirSearchDepth": 0,
+      "FileEncoding": "utf8"
+    }
+  ],
+  "processors": [
+    {
+      "Type": "processor_parse_json_native",
+      "SourceKey": "content",
+      "KeepingSourceWhenParseFail": true,
+      "KeepingSourceWhenParseSucceed": false
+    },
+    {
+      "Type": "processor_parse_timestamp_native",
+      "SourceKey": "occurred_at",
+      "SourceFormat": "%Y-%m-%dT%H:%M:%S.%fZ",
+      "SourceTimezone": "GMT+00:00"
+    }
+  ],
+  "flushers": [
+    {
+      "Type": "flusher_sls",
+      "Logstore": "audit"
+    }
+  ]
+}

@@ -1,0 +1,70 @@
+{
+  "name": "wc-collection-stalled",
+  "displayName": "采集停摆(控制台 10 分钟无数据)",
+  "description": "ops 里 module=console 的事件 10 分钟内为 0;Logtail 停、控制台停、网络断都会触发",
+  "configuration": {
+    "version": "2.0",
+    "type": "default",
+    "dashboard": "internal-alert-analysis",
+    "queryList": [
+      {
+        "storeType": "log",
+        "project": "windows-control-logs",
+        "store": "ops",
+        "query": "module: console | select count(*) as n",
+        "timeSpanType": "Relative",
+        "start": "-10m",
+        "end": "now",
+        "powerSqlMode": "auto"
+      }
+    ],
+    "groupConfiguration": {
+      "type": "no_group",
+      "fields": []
+    },
+    "conditionConfiguration": {
+      "condition": "n = 0",
+      "countCondition": ""
+    },
+    "severityConfigurations": [
+      {
+        "severity": 8,
+        "evalCondition": {
+          "condition": "",
+          "countCondition": ""
+        }
+      }
+    ],
+    "labels": [
+      {
+        "key": "rule",
+        "value": "collection-stalled"
+      }
+    ],
+    "annotations": [
+      {
+        "key": "title",
+        "value": "控制台日志 10 分钟无数据"
+      },
+      {
+        "key": "desc",
+        "value": "检查控制台主机 ilogtaild 与 ai-env-mgr-admin 服务"
+      }
+    ],
+    "autoAnnotation": true,
+    "sendResolved": true,
+    "threshold": 1,
+    "noDataFire": true,
+    "noDataSeverity": 8,
+    "policyConfiguration": {
+      "alertPolicyId": "sls.builtin.dynamic",
+      "actionPolicyId": "wecom-ops-policy",
+      "repeatInterval": "1h",
+      "useDefault": false
+    }
+  },
+  "schedule": {
+    "type": "FixedRate",
+    "interval": "5m"
+  }
+}

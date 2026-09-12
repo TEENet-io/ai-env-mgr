@@ -1,0 +1,72 @@
+{
+  "name": "wc-upstream-error-rate",
+  "displayName": "上游错误率(5 分钟,按模型组)",
+  "description": "llm_call 事件 5 分钟内失败占比 >10%,样本 ≥10,按 model_group 分组",
+  "configuration": {
+    "version": "2.0",
+    "type": "default",
+    "dashboard": "internal-alert-analysis",
+    "queryList": [
+      {
+        "storeType": "log",
+        "project": "windows-control-logs",
+        "store": "ops",
+        "query": "event_type: llm_call | select model_group, count(*) as n, round(count_if(status='failure')*100.0/count(*),1) as err_pct group by model_group having count(*) >= 10",
+        "timeSpanType": "Relative",
+        "start": "-5m",
+        "end": "now",
+        "powerSqlMode": "auto"
+      }
+    ],
+    "groupConfiguration": {
+      "type": "custom",
+      "fields": [
+        "model_group"
+      ]
+    },
+    "conditionConfiguration": {
+      "condition": "err_pct > 10",
+      "countCondition": ""
+    },
+    "severityConfigurations": [
+      {
+        "severity": 8,
+        "evalCondition": {
+          "condition": "",
+          "countCondition": ""
+        }
+      }
+    ],
+    "labels": [
+      {
+        "key": "rule",
+        "value": "upstream-error-rate"
+      }
+    ],
+    "annotations": [
+      {
+        "key": "title",
+        "value": "上游错误率 ${err_pct}% (${model_group})"
+      },
+      {
+        "key": "desc",
+        "value": "5 分钟内 ${n} 次调用,失败 ${err_pct}%;查看 https://windows-control.teenet.app 网关页"
+      }
+    ],
+    "autoAnnotation": true,
+    "sendResolved": true,
+    "threshold": 1,
+    "noDataFire": false,
+    "noDataSeverity": 8,
+    "policyConfiguration": {
+      "alertPolicyId": "sls.builtin.dynamic",
+      "actionPolicyId": "wecom-ops-policy",
+      "repeatInterval": "30m",
+      "useDefault": false
+    }
+  },
+  "schedule": {
+    "type": "FixedRate",
+    "interval": "1m"
+  }
+}

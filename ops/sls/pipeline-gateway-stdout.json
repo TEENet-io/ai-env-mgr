@@ -1,0 +1,31 @@
+{
+  "configName": "gateway-stdout",
+  "inputs": [
+    {
+      "Type": "service_docker_stdout",
+      "Stdout": true,
+      "Stderr": true,
+      "IncludeLabel": {
+        "com.docker.compose.service": "litellm"
+      },
+      "BeginLineRegex": "^(\\d{2}:\\d{2}:\\d{2} - LiteLLM|INFO:|WARNING:|ERROR:|\\x1b\\[)"
+    }
+  ],
+  "processors": [
+    {
+      "Type": "processor_add_fields",
+      "Fields": {
+        "module": "gateway",
+        "event_type": "process_log",
+        "schema_version": "1"
+      },
+      "IgnoreIfExist": true
+    }
+  ],
+  "flushers": [
+    {
+      "Type": "flusher_sls",
+      "Logstore": "ops"
+    }
+  ]
+}

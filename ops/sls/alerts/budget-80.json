@@ -1,0 +1,72 @@
+{
+  "name": "wc-budget-80",
+  "displayName": "预算预警(滚动 30 天累计达 80%)",
+  "description": "按 event_id 去重后的 llm_call 费用累计 ≥ 员工预算的 80%;SLS 相对时间无自然月,先用滚动 30 天,实施时若支持自然月再改",
+  "configuration": {
+    "version": "2.0",
+    "type": "default",
+    "dashboard": "internal-alert-analysis",
+    "queryList": [
+      {
+        "storeType": "log",
+        "project": "windows-control-logs",
+        "store": "ops",
+        "query": "event_type: llm_call and status: success | select employee_id, round(sum(cost_usd),4) as spent, max(user_max_budget) as budget from (select distinct event_id, employee_id, cost_usd, user_max_budget from log) group by employee_id having max(user_max_budget) > 0 and sum(cost_usd) >= 0.8 * max(user_max_budget)",
+        "timeSpanType": "Relative",
+        "start": "-30d",
+        "end": "now",
+        "powerSqlMode": "auto"
+      }
+    ],
+    "groupConfiguration": {
+      "type": "custom",
+      "fields": [
+        "employee_id"
+      ]
+    },
+    "conditionConfiguration": {
+      "condition": "spent >= 0.8 * budget",
+      "countCondition": ""
+    },
+    "severityConfigurations": [
+      {
+        "severity": 6,
+        "evalCondition": {
+          "condition": "",
+          "countCondition": ""
+        }
+      }
+    ],
+    "labels": [
+      {
+        "key": "rule",
+        "value": "budget-80"
+      }
+    ],
+    "annotations": [
+      {
+        "key": "title",
+        "value": "预算预警 ${employee_id} 已用 $${spent} / $${budget}"
+      },
+      {
+        "key": "desc",
+        "value": "滚动 30 天累计;在 https://windows-control.teenet.app 员工页调整额度"
+      }
+    ],
+    "autoAnnotation": true,
+    "sendResolved": true,
+    "threshold": 1,
+    "noDataFire": false,
+    "noDataSeverity": 8,
+    "policyConfiguration": {
+      "alertPolicyId": "sls.builtin.dynamic",
+      "actionPolicyId": "wecom-ops-policy",
+      "repeatInterval": "24h",
+      "useDefault": false
+    }
+  },
+  "schedule": {
+    "type": "FixedRate",
+    "interval": "1h"
+  }
+}

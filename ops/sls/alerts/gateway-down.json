@@ -1,0 +1,70 @@
+{
+  "name": "wc-gateway-down",
+  "displayName": "网关不可用(独立探测连续失败)",
+  "description": "probe.jsonl 里最近 5 分钟内失败 ≥3 次且成功 0 次",
+  "configuration": {
+    "version": "2.0",
+    "type": "default",
+    "dashboard": "internal-alert-analysis",
+    "queryList": [
+      {
+        "storeType": "log",
+        "project": "windows-control-logs",
+        "store": "ops",
+        "query": "module: probe and target: gateway | select count_if(ok='false') as fails, count_if(ok='true') as oks",
+        "timeSpanType": "Relative",
+        "start": "-5m",
+        "end": "now",
+        "powerSqlMode": "auto"
+      }
+    ],
+    "groupConfiguration": {
+      "type": "no_group",
+      "fields": []
+    },
+    "conditionConfiguration": {
+      "condition": "fails >= 3 and oks = 0",
+      "countCondition": ""
+    },
+    "severityConfigurations": [
+      {
+        "severity": 10,
+        "evalCondition": {
+          "condition": "",
+          "countCondition": ""
+        }
+      }
+    ],
+    "labels": [
+      {
+        "key": "rule",
+        "value": "gateway-down"
+      }
+    ],
+    "annotations": [
+      {
+        "key": "title",
+        "value": "网关不可用"
+      },
+      {
+        "key": "desc",
+        "value": "探测连续失败 ${fails} 次;请在 https://windows-control.teenet.app 查看网关页"
+      }
+    ],
+    "autoAnnotation": true,
+    "sendResolved": true,
+    "threshold": 1,
+    "noDataFire": true,
+    "noDataSeverity": 8,
+    "policyConfiguration": {
+      "alertPolicyId": "sls.builtin.dynamic",
+      "actionPolicyId": "wecom-ops-policy",
+      "repeatInterval": "30m",
+      "useDefault": false
+    }
+  },
+  "schedule": {
+    "type": "FixedRate",
+    "interval": "1m"
+  }
+}
