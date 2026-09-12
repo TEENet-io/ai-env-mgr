@@ -67,9 +67,6 @@ func (w *Writer) Audit(eventType, msg string, fields map[string]any) {
 }
 
 func (w *Writer) emit(dst *rotatingFile, level, eventType, msg string, fields map[string]any) {
-	if w == nil {
-		return
-	}
 	ev := map[string]any{
 		"schema_version": SchemaVersion,
 		"event_id":       newID(),
@@ -81,15 +78,27 @@ func (w *Writer) emit(dst *rotatingFile, level, eventType, msg string, fields ma
 		"message":        secretValues.ReplaceAllString(msg, "[redacted]"),
 	}
 	for k, v := range Redact(fields) {
-		if _, taken := ev[k]; !taken {
-			ev[k] = v
+		if _, taken := ev[k]; taken {
+			// A caller field named like a common field cannot overwrite it:
+			// the shape of every event has to stay the same or the queries
+			// and alerts built on it stop meaning one thing. Say which key
+			// was dropped, or the field silently goes missing and whoever
+			// added it hunts for it in SLS instead of here.
+			fmt.Fprintf(w.stderr, "eventlog: %s: field %q collides with a common field and was dropped\n", eventType, k)
+			continue
 		}
+		ev[k] = v
 	}
 	line, err := json.Marshal(ev)
 	if err != nil {
 		fmt.Fprintf(w.stderr, "eventlog: encode: %v\n", err)
 		return
 	}
+	// Backstop. Redact works on the values it is given, but a custom
+	// MarshalJSON, or a type nobody anticipated, can still put a secret into
+	// the encoded line. This is the last place the bytes can be inspected
+	// before they become durable, so inspect them.
+	line = secretValues.ReplaceAll(line, []byte("[redacted]"))
 	line = append(line, '\n')
 	if dst == nil {
 		w.stderr.Write(line)
@@ -155,6 +164,16 @@ func (r *rotatingFile) write(line []byte) error {
 	return err
 }
 
+// rotate closes the live file, shifts .1..N-1 up one, renames the live file
+// to .1 and opens a fresh one.
+//
+// It is called with the lock held, from write. If a rename or the reopen
+// fails, the file stays closed and the error reaches the caller, which logs
+// it to stderr: the lines written in between are visible there but are not
+// kept and not shipped. The next write finds the size still over the limit
+// and tries the whole rotation again, so a transient failure (a full disk
+// that is then cleared, a directory briefly replaced) heals itself without
+// anyone restarting the console.
 func (r *rotatingFile) rotate() error {
 	r.f.Close()
 	for i := r.backups - 1; i >= 1; i-- {
@@ -163,6 +182,5 @@ func (r *rotatingFile) rotate() error {
 	if err := os.Rename(r.path, r.path+".1"); err != nil && !os.IsNotExist(err) {
 		return err
 	}
-	os.Remove(fmt.Sprintf("%s.%d", r.path, r.backups+1))
 	return r.open()
 }

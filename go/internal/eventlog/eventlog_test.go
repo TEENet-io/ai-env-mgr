@@ -2,6 +2,7 @@ package eventlog
 
 import (
 	"bufio"
+	"bytes"
 	"encoding/json"
 	"os"
 	"path/filepath"
@@ -112,5 +113,64 @@ func TestFieldsAreRedactedBeforeWrite(t *testing.T) {
 	raw, _ := os.ReadFile(filepath.Join(dir, "admin.jsonl"))
 	if strings.Contains(string(raw), "sk-abcdef") || strings.Contains(string(raw), "sk-1234567890") {
 		t.Fatalf("secret leaked: %s", raw)
+	}
+}
+
+// The unit test above proves Redact handles the shapes; this one proves the
+// writer actually applies it on the way to the file, for a type the original
+// implementation passed through verbatim.
+func TestCompositeFieldsAreRedactedOnTheWayToTheFile(t *testing.T) {
+	dir := t.TempDir()
+	w, err := New(dir, "x")
+	if err != nil {
+		t.Fatal(err)
+	}
+	type tagged struct {
+		Token string `json:"token"`
+	}
+	w.Ops("error", "platform_event", "gateway said no", map[string]any{
+		"headers": map[string]string{"authorization": "sk-abc-header"},
+		"models":  []string{"gpt-5", "sk-abc-slice"},
+		"body":    tagged{Token: "sk-abc-struct"},
+	})
+	raw, err := os.ReadFile(filepath.Join(dir, "admin.jsonl"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(raw), "sk-abc") {
+		t.Fatalf("secret reached the file: %s", raw)
+	}
+	if !strings.Contains(string(raw), "gpt-5") {
+		t.Errorf("harmless value lost: %s", raw)
+	}
+}
+
+// A caller field must never displace a common field, and the drop must be
+// audible: a silent one sends whoever added it looking in SLS.
+func TestCommonFieldCollisionIsReportedAndDropped(t *testing.T) {
+	dir := t.TempDir()
+	w, err := New(dir, "x")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var stderr bytes.Buffer
+	w.stderr = &stderr
+	w.Ops("info", "platform_event", "real message", map[string]any{
+		"message": "impostor", "level": "debug", "kept": 1,
+	})
+	lines := readLines(t, filepath.Join(dir, "admin.jsonl"))
+	if len(lines) != 1 {
+		t.Fatalf("want 1 line, got %d", len(lines))
+	}
+	if lines[0]["message"] != "real message" || lines[0]["level"] != "info" {
+		t.Errorf("common fields were overwritten: %v", lines[0])
+	}
+	if lines[0]["kept"].(float64) != 1 {
+		t.Errorf("non-colliding field dropped: %v", lines[0])
+	}
+	for _, want := range []string{`"message"`, `"level"`} {
+		if !strings.Contains(stderr.String(), want) {
+			t.Errorf("stderr does not name the dropped key %s: %q", want, stderr.String())
+		}
 	}
 }

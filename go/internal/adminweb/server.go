@@ -347,6 +347,21 @@ type statusRecorder struct {
 
 func (r *statusRecorder) WriteHeader(c int) { r.status = c; r.ResponseWriter.WriteHeader(c) }
 
+// Flush and Unwrap keep the wrapper from quietly disabling what the real
+// ResponseWriter can do. Wrapping hides every optional interface behind it,
+// so without these a streamed response would buffer to the end and
+// http.ResponseController (hijacking, per-request deadlines, ReadFrom's
+// sendfile path for file downloads) would report the feature as unsupported.
+// Unwrap is what the controller follows; Flush is here for the pre-1.20
+// callers that still type-assert http.Flusher directly.
+func (r *statusRecorder) Flush() {
+	if f, ok := r.ResponseWriter.(http.Flusher); ok {
+		f.Flush()
+	}
+}
+
+func (r *statusRecorder) Unwrap() http.ResponseWriter { return r.ResponseWriter }
+
 // publishDrainTimeout bounds how long shutdown waits for a publish to finish.
 //
 // Long enough for the slow half of the job -- several hundred megabytes up to
