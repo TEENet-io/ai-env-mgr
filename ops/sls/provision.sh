@@ -4,7 +4,7 @@
 # by a get. Run with: PROFILE=sls-bootstrap ops/sls/provision.sh
 set -euo pipefail
 PROFILE=${PROFILE:-sls-bootstrap}
-PRODUCT=${PRODUCT:-sls}   # needs aliyun CLI >= 3.5.0 (3.0.x has no sls product)
+PRODUCT=${PRODUCT:-sls}   # needs aliyun CLI >= 3.5.0 (3.0.x has no sls product); --body file:// is NOT honoured, bodies are inlined
 REGION=ap-southeast-1
 PROJECT=windows-control-logs
 HERE=$(cd "$(dirname "$0")" && pwd)
@@ -25,9 +25,9 @@ echo "== indexes"
 # index-*.json and re-running applies the change.
 for ls in ops audit; do
   if A GetIndex --project "$PROJECT" --logstore "$ls" >/dev/null 2>&1; then
-    A UpdateIndex --project "$PROJECT" --logstore "$ls" --body "file://$HERE/index-$ls.json"
+    A UpdateIndex --project "$PROJECT" --logstore "$ls" --body "$(cat "$HERE/index-$ls.json")"
   else
-    A CreateIndex --project "$PROJECT" --logstore "$ls" --body "file://$HERE/index-$ls.json"
+    A CreateIndex --project "$PROJECT" --logstore "$ls" --body "$(cat "$HERE/index-$ls.json")"
   fi
 done
 
@@ -38,6 +38,10 @@ for g in console-host:wc-console gateway-host:wc-gateway; do
     A CreateMachineGroup --project "$PROJECT" --body "{\"groupName\":\"$name\",\"machineIdentifyType\":\"userdefined\",\"machineList\":[\"$id\"]}"
 done
 
+if [ "${SKIP_RAM:-0}" = "1" ]; then
+  echo "== RAM identities skipped (SKIP_RAM=1): the bootstrap AK has no RAM rights; create wc-logs-writer/reader by hand from policy-*.json"
+  exit 0
+fi
 echo "== RAM identities"
 R() { aliyun ram "$@" --profile "$PROFILE" --region "$REGION" --force; }
 for spec in wc-logs-writer:policy-writer.json wc-logs-reader:policy-reader.json; do

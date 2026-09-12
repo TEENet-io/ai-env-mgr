@@ -5,8 +5,8 @@ HERE=$(cd "$(dirname "$0")" && pwd)
 A() { aliyun "$PRODUCT" "$@" --profile "$PROFILE" --region "$REGION" --force; }
 apply() { # name file group
   A GetLogtailPipelineConfig --project "$PROJECT" --configName "$1" >/dev/null 2>&1 \
-    && A UpdateLogtailPipelineConfig --project "$PROJECT" --configName "$1" --body "file://$HERE/$2" \
-    || A CreateLogtailPipelineConfig --project "$PROJECT" --body "file://$HERE/$2"
+    && A UpdateLogtailPipelineConfig --project "$PROJECT" --configName "$1" --body "$(cat "$HERE/$2")" \
+    || A CreateLogtailPipelineConfig --project "$PROJECT" --body "$(cat "$HERE/$2")"
   A ApplyConfigToMachineGroup --project "$PROJECT" --machineGroup "$3" --configName "$1"
 }
 apply console-ops     pipeline-console-ops.json     console-host
