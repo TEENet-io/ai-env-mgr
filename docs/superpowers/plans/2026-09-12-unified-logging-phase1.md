@@ -1068,6 +1068,14 @@ ssh root@47.236.115.50 'mkdir -p /var/log/ai-env-mgr && chown $(stat -c %U /opt/
 ```
 Expected: `active`、`login 200`、最后一行是 `http_access` 或 `console started` 事件。
 
+> **实施记录(2026-09-12)**:单元文件有 `ProtectSystem=strict`,`--log-dir` 目录必须在 drop-in 里放行,否则进程启动即退出、控制台 502(本次因此中断约 70 秒):
+> ```
+> # /etc/systemd/system/ai-env-mgr-admin.service.d/logdir.conf
+> [Service]
+> ReadWritePaths=/var/log/ai-env-mgr
+> ```
+> 先写 drop-in、`daemon-reload`,再切软链重启。web-34 已按此上线。
+
 回滚:恢复 `.bak` 的 unit 文件、`systemctl daemon-reload && systemctl restart ai-env-mgr-admin`,软链切回 web-33。
 
 ---
