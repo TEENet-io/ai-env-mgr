@@ -7,8 +7,7 @@
       "Stderr": true,
       "IncludeLabel": {
         "com.docker.compose.service": "litellm"
-      },
-      "BeginLineRegex": "^(\\d{2}:\\d{2}:\\d{2} - LiteLLM|INFO:|WARNING:|ERROR:|\\x1b\\[)"
+      }
     }
   ],
   "processors": [

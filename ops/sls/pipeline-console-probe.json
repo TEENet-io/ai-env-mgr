@@ -1,11 +1,11 @@
 {
-  "configName": "console-ops",
-  "logSample": "{\"schema_version\":1,\"event_type\":\"http_access\",\"occurred_at\":\"2026-09-12T01:02:03.000Z\"}",
+  "configName": "console-probe",
+  "logSample": "{\"schema_version\":1,\"event_type\":\"platform_event\",\"module\":\"probe\",\"occurred_at\":\"2026-09-12T01:02:03.000Z\"}",
   "inputs": [
     {
       "Type": "input_file",
       "FilePaths": [
-        "/var/log/ai-env-mgr/admin.jsonl"
+        "/var/log/ai-env-mgr/probe.jsonl"
       ],
       "MaxDirSearchDepth": 0,
       "FileEncoding": "utf8"
