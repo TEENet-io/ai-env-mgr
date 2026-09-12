@@ -1438,3 +1438,5 @@ admin web --sls-project windows-control-logs [--sls-endpoint ap-southeast-1.log.
 - **跨项目 / 跨 logstore**:项目、logstore、地域都是部署常量。
 
 **SLS 客户端** `go/internal/slsclient`,只读,只有 `GetLogs` 一个调用,纯标准库。没有引官方 SDK:它会为这一个 GET 带进 backoff、go-kit、protobuf、lz4 四棵依赖树,而这个二进制的依赖清单本身是可审计性的一部分。v1 签名照官方 SDK 的 `SignerV1.Sign` 逐行抄,有两处文档写不清而只会在生产上以 403 暴露的细节——`x-log-` 头要小写排序且块尾不带换行、CanonicalizedResource 里的 query 参数按键排序但写**解码后**的值——测试里把 string-to-sign 按精确文本钉死了。
+
+> **上线记录(2026-09-12)**:web-35 已发布,启动参数 `--sls-project windows-control-logs`(endpoint 用默认 `ap-southeast-1.log.aliyuncs.com`)。`--sls-endpoint` 是受信任的部署输入:`http://` 形式只允许本机回环地址(用于测试),但任何 https 主机都会收到签名请求,所以它只能由部署者设置,不能来自不可信来源。签名与三种查询已用真实项目验证。
