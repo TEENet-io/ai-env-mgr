@@ -6,6 +6,7 @@
   <header class="pagehead">
     <h1>日志</h1>
     <p><span class="mono">{{.Machine}}</span> 最近上报的 agent 日志</p>
+    <p class="hint">这里只有 Agent 上传的日志尾部（约 64KB）。完整运行日志与调用记录在 SLS 项目 windows-control-logs（ops / audit），控制台内查询在阶段二接入。</p>
   </header>
   {{template "notices" .}}
   {{with .Notes}}
