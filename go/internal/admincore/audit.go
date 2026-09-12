@@ -62,17 +62,29 @@ func (m *Manager) appendAudit(windowsUser string, action AuditAction, detail map
 		log.Printf("admincore: audit %s for %q: encode: %v", action, windowsUser, err)
 		return
 	}
-	// SLS copy (phase 1): same fact, unified shape. The OSS history stays the
-	// page's source; this line is the searchable, alertable duplicate.
-	if m.Events != nil {
-		m.Events.Audit("admin_action", fmt.Sprintf("%s %s", action, windowsUser), map[string]any{
-			"action": string(action), "employee_id": strings.ToLower(windowsUser), "target": "employee", "detail": detail,
-		})
+	// SLS copy (phase 1): same fact, unified shape, emitted once the OSS
+	// outcome is known. The OSS history stays the page's source; this line is
+	// the searchable, alertable duplicate, and its "result" field says whether
+	// the OSS write went through -- so the two stores can be reconciled when
+	// they disagree instead of SLS quietly asserting a record OSS never got.
+	emit := func(result string, ossErr error) {
+		if m.Events == nil {
+			return
+		}
+		fields := map[string]any{
+			"action": string(action), "employee_id": strings.ToLower(windowsUser), "target": "employee",
+			"detail": detail, "result": result, "ok": ossErr == nil,
+		}
+		if ossErr != nil {
+			fields["error"] = ossErr.Error()
+		}
+		m.Events.Audit("admin_action", fmt.Sprintf("%s %s", action, windowsUser), fields)
 	}
 	key := AuditKey(windowsUser)
 	existing, _, err := m.Store.Get(key)
 	if err != nil && !errors.Is(err, ossclient.ErrNotFound) {
 		log.Printf("admincore: audit %s for %q: read existing history: %v (entry not written)", action, windowsUser, err)
+		emit("oss_read_failed", err)
 		return
 	}
 	var buf bytes.Buffer
@@ -84,7 +96,10 @@ func (m *Manager) appendAudit(windowsUser string, action AuditAction, detail map
 	buf.WriteByte('\n')
 	if err := m.Store.Put(key, buf.Bytes()); err != nil {
 		log.Printf("admincore: audit %s for %q: write: %v", action, windowsUser, err)
+		emit("oss_write_failed", err)
+		return
 	}
+	emit("written", nil)
 }
 
 // ReadAudit returns an employee's history, newest first, at most

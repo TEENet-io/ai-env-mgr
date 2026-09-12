@@ -21,10 +21,15 @@ A GetLogStore --project "$PROJECT" --logstore audit >/dev/null 2>&1 || \
   A CreateLogStore --project "$PROJECT" --body '{"logstoreName":"audit","ttl":365,"hot_ttl":30,"shardCount":2,"autoSplit":true,"maxSplitShard":8}'
 
 echo "== indexes"
-A GetIndex --project "$PROJECT" --logstore ops >/dev/null 2>&1 || \
-  A CreateIndex --project "$PROJECT" --logstore ops --body "file://$HERE/index-ops.json"
-A GetIndex --project "$PROJECT" --logstore audit >/dev/null 2>&1 || \
-  A CreateIndex --project "$PROJECT" --logstore audit --body "file://$HERE/index-audit.json"
+# Indexes converge: an existing index is updated from the file, so editing
+# index-*.json and re-running applies the change.
+for ls in ops audit; do
+  if A GetIndex --project "$PROJECT" --logstore "$ls" >/dev/null 2>&1; then
+    A UpdateIndex --project "$PROJECT" --logstore "$ls" --body "file://$HERE/index-$ls.json"
+  else
+    A CreateIndex --project "$PROJECT" --logstore "$ls" --body "file://$HERE/index-$ls.json"
+  fi
+done
 
 echo "== machine groups (custom identifier; hosts declare it in /etc/ilogtail/user_defined_id)"
 for g in console-host:wc-console gateway-host:wc-gateway; do
@@ -40,7 +45,11 @@ for spec in wc-logs-writer:policy-writer.json wc-logs-reader:policy-reader.json;
   R GetUser --UserName "$u" >/dev/null 2>&1 || R CreateUser --UserName "$u" --DisplayName "$u"
   R GetPolicy --PolicyType Custom --PolicyName "$pol" >/dev/null 2>&1 || \
     R CreatePolicy --PolicyName "$pol" --PolicyDocument "$(cat "$HERE/$p")"
-  R AttachPolicyToUser --PolicyType Custom --PolicyName "$pol" --UserName "$u" >/dev/null 2>&1 || true
+  # Attach only when missing: a swallowed attach failure would leave an
+  # identity that looks provisioned but cannot write.
+  if ! R ListPoliciesForUser --UserName "$u" | grep -q "\"PolicyName\": *\"$pol\""; then
+    R AttachPolicyToUser --PolicyType Custom --PolicyName "$pol" --UserName "$u"
+  fi
 done
 echo "create AKs by hand (they print once):"
 echo "  aliyun ram CreateAccessKey --UserName wc-logs-writer --profile $PROFILE"

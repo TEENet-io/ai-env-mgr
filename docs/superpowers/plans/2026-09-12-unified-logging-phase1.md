@@ -1134,8 +1134,10 @@ Expected: 第一条 `"ok": true, "status": 200`;第二条 `"ok": false, "status"
 ```bash
 scp ops/probe/gateway-probe.sh root@47.236.115.50:/opt/ai-env-mgr/ops/gateway-probe.sh
 scp ops/probe/gateway-probe.service ops/probe/gateway-probe.timer root@47.236.115.50:/etc/systemd/system/
-ssh root@47.236.115.50 'chmod +x /opt/ai-env-mgr/ops/gateway-probe.sh && systemctl daemon-reload && systemctl enable --now gateway-probe.timer && sleep 65 && tail -1 /var/log/ai-env-mgr/probe.jsonl'
+scp ops/probe/gateway-probe.logrotate root@47.236.115.50:/etc/logrotate.d/gateway-probe
+ssh root@47.236.115.50 'chmod +x /opt/ai-env-mgr/ops/gateway-probe.sh && systemctl daemon-reload && systemctl enable --now gateway-probe.timer && logrotate -d /etc/logrotate.d/gateway-probe 2>&1 | tail -2 && sleep 65 && tail -1 /var/log/ai-env-mgr/probe.jsonl'
 ```
+probe.jsonl 由 logrotate 按 50MB 重命名轮转(不 copytruncate),保留 5 份。
 回滚:`systemctl disable --now gateway-probe.timer`。
 
 - [ ] **Step 5: 提交**

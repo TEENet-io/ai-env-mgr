@@ -1,7 +1,7 @@
 {
   "name": "wc-gateway-down",
   "displayName": "网关不可用(独立探测连续失败)",
-  "description": "probe.jsonl 里最近 5 分钟内失败 ≥3 次且成功 0 次",
+  "description": "probe.jsonl 里最近 5 分钟内失败 ≥3 次且成功 0 次;探测器/采集停摆由 wc-collection-stalled 负责,这里不开 noDataFire,避免把采集故障报成网关故障",
   "configuration": {
     "version": "2.0",
     "type": "default",
@@ -54,7 +54,7 @@
     "autoAnnotation": true,
     "sendResolved": true,
     "threshold": 1,
-    "noDataFire": true,
+    "noDataFire": false,
     "noDataSeverity": 8,
     "policyConfiguration": {
       "alertPolicyId": "sls.builtin.dynamic",

@@ -1,7 +1,7 @@
 {
   "name": "wc-upstream-error-rate",
   "displayName": "上游错误率(5 分钟,按模型组)",
-  "description": "llm_call 事件 5 分钟内失败占比 >10%,样本 ≥10,按 model_group 分组",
+  "description": "llm_call 事件 5 分钟内失败占比 >10%,样本 ≥10(取消不计入分母),按 model_group 分组;阶段一按请求汇总而非 attempt,attempt 级要等网关 fallback 事件接入",
   "configuration": {
     "version": "2.0",
     "type": "default",
@@ -10,8 +10,8 @@
       {
         "storeType": "log",
         "project": "windows-control-logs",
-        "store": "ops",
-        "query": "event_type: llm_call | select model_group, count(*) as n, round(count_if(status='failure')*100.0/count(*),1) as err_pct group by model_group having count(*) >= 10",
+        "store": "audit",
+        "query": "event_type: llm_call | select model_group, count_if(status in ('success','failure')) as n, round(count_if(status='failure')*100.0/greatest(count_if(status in ('success','failure')),1),1) as err_pct group by model_group having count_if(status in ('success','failure')) >= 10",
         "timeSpanType": "Relative",
         "start": "-5m",
         "end": "now",

@@ -5,11 +5,14 @@
 # It reads only the public health endpoint and carries no key, and it runs
 # from a systemd timer on the console host -- so a gateway outage is seen
 # by something that does not depend on the gateway's own logging chain.
+#
+# The URL is written into every line verbatim: never put a token in it.
+# Rotation is done by logrotate (gateway-probe.logrotate), by rename only.
 set -u
 OUT=${PROBE_LOG:-/var/log/ai-env-mgr/probe.jsonl}
 URL=${GATEWAY_HEALTH_URL:-https://litellm.teenet.app/health/liveliness}
 start=$(date +%s%3N)
-code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 10 "$URL" || echo 000)
+code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 10 "$URL") || code=000
 end=$(date +%s%3N)
 ok=false; level=error; msg="gateway probe failed ($code)"
 if [ "$code" = "200" ]; then ok=true; level=info; msg="gateway probe ok"; fi

@@ -1,0 +1,10 @@
+# /etc/logrotate.d/gateway-probe -- rename-style rotation for the probe log.
+# No copytruncate: Logtail follows the renamed inode to EOF, so nothing is lost.
+/var/log/ai-env-mgr/probe.jsonl {
+    size 50M
+    rotate 5
+    missingok
+    notifempty
+    nocompress
+    create 0640 root root
+}

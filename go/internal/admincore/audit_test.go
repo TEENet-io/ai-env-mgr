@@ -2,9 +2,14 @@ package admincore
 
 import (
 	"bytes"
+	"encoding/json"
 	"errors"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/TEENet-io/ai-env-mgr/internal/eventlog"
 )
 
 func TestAuditAppendsOneLinePerAction(t *testing.T) {
@@ -84,5 +89,51 @@ func TestAuditSkipsWriteWhenReadFailsTransiently(t *testing.T) {
 	// The seeded line should be unchanged.
 	if !bytes.Equal(store.objects[key], seedLine) {
 		t.Errorf("history was modified on transient read failure: expected %q, got %q", seedLine, store.objects[key])
+	}
+}
+
+// The SLS copy is written after the OSS outcome is known and says which
+// way it went, so the two stores can be reconciled when they disagree.
+func TestAuditSLSCopyCarriesOSSResult(t *testing.T) {
+	dir := t.TempDir()
+	events, err := eventlog.New(dir, "test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	read := func() []map[string]any {
+		t.Helper()
+		raw, _ := os.ReadFile(filepath.Join(dir, "audit.jsonl"))
+		var out []map[string]any
+		for _, l := range bytes.Split(bytes.TrimSpace(raw), []byte("\n")) {
+			if len(l) == 0 {
+				continue
+			}
+			var e map[string]any
+			if err := json.Unmarshal(l, &e); err != nil {
+				t.Fatalf("bad line %q: %v", l, err)
+			}
+			out = append(out, e)
+		}
+		return out
+	}
+
+	m, store := newManager()
+	m.Events = events
+	m.appendAudit("alice", AuditOnboard, map[string]any{"budget": 20})
+	store.putErr = errors.New("oss 503")
+	m.appendAudit("alice", AuditQuota, map[string]any{"budget": 30})
+
+	got := read()
+	if len(got) != 2 {
+		t.Fatalf("want 2 SLS lines, got %d: %v", len(got), got)
+	}
+	if got[0]["result"] != "written" || got[0]["ok"] != true || got[0]["employee_id"] != "alice" || got[0]["action"] != "onboard" {
+		t.Errorf("first copy: %v", got[0])
+	}
+	if got[1]["result"] != "oss_write_failed" || got[1]["ok"] != false || got[1]["error"] != "oss 503" {
+		t.Errorf("failed copy must say so: %v", got[1])
+	}
+	if got[0]["event_type"] != "admin_action" || got[0]["module"] != "console" {
+		t.Errorf("common fields: %v", got[0])
 	}
 }

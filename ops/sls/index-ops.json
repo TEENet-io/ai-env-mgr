@@ -1,18 +1,111 @@
 {
   "ttl": 30,
-  "line": {"token": [",", " ", "'", "\"", ";", "=", "(", ")", "[", "]", "{", "}", "?", "@", "&", "<", ">", "/", ":", "\n", "\t", "\r"], "caseSensitive": false, "chn": false},
+  "line": {
+    "token": [
+      ",",
+      " ",
+      "'",
+      "\"",
+      ";",
+      "=",
+      "(",
+      ")",
+      "[",
+      "]",
+      "{",
+      "}",
+      "?",
+      "@",
+      "&",
+      "<",
+      ">",
+      "/",
+      ":",
+      "\n",
+      "\t",
+      "\r"
+    ],
+    "caseSensitive": false,
+    "chn": false
+  },
   "keys": {
-    "event_id":    {"type": "text", "token": [], "caseSensitive": true, "doc_value": true},
-    "event_type":  {"type": "text", "token": [], "doc_value": true},
-    "module":      {"type": "text", "token": [], "doc_value": true},
-    "source_id":   {"type": "text", "token": [], "doc_value": true},
-    "level":       {"type": "text", "token": [], "doc_value": true},
-    "occurred_at": {"type": "text", "token": [], "doc_value": true},
-    "message":     {"type": "text", "token": [" ", ",", ":", "=", "\"", "'", "(", ")", "[", "]", "{", "}"], "doc_value": false},
-    "request_id":  {"type": "text", "token": [], "caseSensitive": true, "doc_value": true},
-    "employee_id": {"type": "text", "token": [], "doc_value": true},
-    "status":      {"type": "long", "doc_value": true},
-    "latency_ms":  {"type": "double", "doc_value": true},
-    "ok":          {"type": "text", "token": [], "doc_value": true}
+    "event_id": {
+      "type": "text",
+      "token": [],
+      "caseSensitive": true,
+      "doc_value": true
+    },
+    "event_type": {
+      "type": "text",
+      "token": [],
+      "doc_value": true
+    },
+    "module": {
+      "type": "text",
+      "token": [],
+      "doc_value": true
+    },
+    "source_id": {
+      "type": "text",
+      "token": [],
+      "doc_value": true
+    },
+    "level": {
+      "type": "text",
+      "token": [],
+      "doc_value": true
+    },
+    "occurred_at": {
+      "type": "text",
+      "token": [],
+      "doc_value": true
+    },
+    "message": {
+      "type": "text",
+      "token": [
+        " ",
+        ",",
+        ":",
+        "=",
+        "\"",
+        "'",
+        "(",
+        ")",
+        "[",
+        "]",
+        "{",
+        "}"
+      ],
+      "doc_value": false
+    },
+    "request_id": {
+      "type": "text",
+      "token": [],
+      "caseSensitive": true,
+      "doc_value": true
+    },
+    "employee_id": {
+      "type": "text",
+      "token": [],
+      "doc_value": true
+    },
+    "status": {
+      "type": "long",
+      "doc_value": true
+    },
+    "latency_ms": {
+      "type": "double",
+      "doc_value": true
+    },
+    "ok": {
+      "type": "text",
+      "token": [],
+      "doc_value": true
+    },
+    "target": {
+      "type": "text",
+      "token": [],
+      "doc_value": true
+    }
   }
 }

@@ -10,7 +10,7 @@
       {
         "storeType": "log",
         "project": "windows-control-logs",
-        "store": "ops",
+        "store": "audit",
         "query": "event_type: llm_call and status: success | select employee_id, round(sum(cost_usd),4) as spent, max(budget) as budget from (select distinct event_id, employee_id, cost_usd, try_cast(user_max_budget as double) as budget from log) group by employee_id having max(budget) > 0 and sum(cost_usd) >= 0.8 * max(budget)",
         "timeSpanType": "Relative",
         "start": "-30d",
