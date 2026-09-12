@@ -104,7 +104,7 @@ aliyun configure set --profile sls-bootstrap --mode AK --region ap-southeast-1 \
   --access-key-id "$BOOTSTRAP_AK" --access-key-secret "$BOOTSTRAP_SK"
 aliyun sls help 2>&1 | grep -E "CreateProject|CreateLogStore|CreateIndex|CreateMachineGroup|CreateLogtailPipelineConfig|ApplyConfigToMachineGroup|CreateAlert|UpdateLogStore" 
 ```
-Expected: 八个 API 名称都列出。若产品码不是 `sls`(例如显示为 `log`),把本任务后续命令里的 `aliyun sls` 全部替换成实际产品码,并在 provision.sh 顶部变量 `PRODUCT` 里改。
+Expected: 八个 API 名称都列出。**已核对(2026-09-12)**:本机 `/usr/local/bin/aliyun` 是 3.0.282,没有 SLS 产品;3.5.0 有,产品码是 `sls`,本计划用到的 API(CreateProject、CreateLogStore、CreateIndex、GetIndex、CreateMachineGroup、GetMachineGroup、ListMachines、CreateLogtailPipelineConfig、GetLogtailPipelineConfig、UpdateLogtailPipelineConfig、ApplyConfigToMachineGroup、CreateAlert、GetAlert、UpdateAlert、GetLogs、ListProject)全部存在。用 `https://github.com/aliyun/aliyun-cli/releases/download/v3.5.0/aliyun-cli-linux-3.5.0-amd64.tgz` 解包到 `~/bin/aliyun`(不覆盖系统的 3.0.282),后续命令都用它。
 
 - [ ] **Step 2: 写索引定义**
 

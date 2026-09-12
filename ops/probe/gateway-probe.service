@@ -1,0 +1,6 @@
+[Unit]
+Description=Independent LiteLLM gateway health probe (unified log)
+
+[Service]
+Type=oneshot
+ExecStart=/opt/ai-env-mgr/ops/gateway-probe.sh
