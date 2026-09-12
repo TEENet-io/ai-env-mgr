@@ -273,6 +273,9 @@ type probeHealth struct {
 // logsPage is everything logs.html draws. It is built by pure functions from
 // query results, so the preview renderer can fill one in by hand.
 type logsPage struct {
+	// Project names the SLS project in the subtitle, so a console pointed at
+	// a staging project does not claim to be showing production.
+	Project    string
 	Filter     logFilter
 	RangeLabel string
 	Employees  []string
@@ -289,8 +292,9 @@ type logsPage struct {
 
 // newLogsPage seeds the parts that never depend on SLS, so a page whose
 // queries all failed still draws its form.
-func newLogsPage(f logFilter, employees []string) *logsPage {
+func newLogsPage(project string, f logFilter, employees []string) *logsPage {
 	return &logsPage{
+		Project:    project,
 		Filter:     f,
 		RangeLabel: f.rangeLabel(),
 		Employees:  employees,
@@ -540,7 +544,7 @@ func (s *Server) handleLogs(w http.ResponseWriter, r *http.Request, sess *sessio
 
 	f := parseLogFilter(r.URL.Query())
 	from, to := f.resolveWindow(time.Now())
-	page := newLogsPage(f, s.employeeIDs(sess))
+	page := newLogsPage(s.opts.SLSProject, f, s.employeeIDs(sess))
 	data.Logs = page
 
 	s.events.Ops("info", "admin_query", "logs query", map[string]any{

@@ -5,7 +5,7 @@
 <main class="sheet">
   <header class="pagehead">
     <h1>日志</h1>
-    <p>模型调用记录 · SLS <code>windows-control-logs/audit</code></p>
+    <p>模型调用记录 · SLS <code>{{with .Logs}}{{.Project}}{{end}}/audit</code></p>
   </header>
   {{template "notices" .}}
 

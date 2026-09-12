@@ -173,7 +173,7 @@ func TestRenderPreview(t *testing.T) {
 // every cell the template has a branch for is actually exercised.
 func previewLogsPage() *logsPage {
 	f := logFilter{Range: "7d", Page: 1}
-	p := newLogsPage(f, []string{"chen", "peter", "work1"})
+	p := newLogsPage("windows-control-logs", f, []string{"chen", "peter", "work1"})
 	p.Summary = summaryFrom([]slsclient.Log{
 		{"calls": "1842", "failures": "23", "cancelled": "4", "cost": "37.9142"},
 	})
