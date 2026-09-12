@@ -1,9 +1,9 @@
 {{define "overview.html"}}{{template "head" "总览"}}
+{{template "refresh-while-running" .}}
 <body>
 <div class="app">
 {{template "nav" .}}
 <main class="sheet">
-  {{template "refresh-while-running" .}}
   <header class="pagehead">
     <h1>总览</h1>
     <p>机队、策略、网关一眼看全。</p>
@@ -26,7 +26,7 @@
         {{if .AgentUpdateVersion}}<span class="mono">{{.AgentUpdateVersion}}</span>{{else}}<span class="muted">未设置</span>{{end}}
       · <a href="/rollout">Codex 目标</a>
         {{if .CodexVersion}}<span class="mono">{{.CodexVersion}}</span>{{else}}<span class="muted">未设置</span>{{end}}
-      · <span class="muted">更新于</span> <span class="mono">{{.UpdatedAt}}</span>
+      · <span class="muted">更新于</span> <span class="mono">{{stamp .UpdatedAt}}</span>
     </p>
     <p class="hint">每台机器同步时读到的就是这一份。</p>
   </section>
@@ -45,10 +45,18 @@
       {{if .Detail}}<p class="hint">{{.Detail}}</p>{{end}}
       {{if .LastFailAt}}<p class="hint">最近一次失败 {{.LastFailAt}}{{if .LastFailMsg}} · {{.LastFailMsg}}{{end}}</p>{{end}}
     {{end}}
+    {{/* Why there is no bar, or why the one above under-counts. Without these
+    an unreachable SLS and a quiet hour look identical. */}}
+    {{if .ProbeNotice}}<p class="hint">探测状态读不到：{{.ProbeNotice}}</p>{{end}}
+    {{if .ProbeIncomplete}}<p class="hint muted">探测数据可能不完整</p>{{end}}
 
     <details>
-      <summary>{{if .GatewayUnusable}}网关不可达{{else}}可用模型 {{len .GatewayModels}} 个{{end}}</summary>
-      {{if .GatewayUnusable}}<p class="note note-err">{{.GatewayUnusable}}</p>{{end}}
+      {{/* Three different states, and conflating the first two sends somebody
+      to debug a network that is fine: the gateway is configured but this
+      console cannot authenticate to it, the gateway is enabled but did not
+      answer, or all is well. */}}
+      <summary>{{if not .GatewayEnabled}}{{.GatewayUnusable}}{{else if .GatewayUnusable}}网关不可达{{else}}可用模型 {{len .GatewayModels}} 个{{end}}</summary>
+      {{if and .GatewayEnabled .GatewayUnusable}}<p class="note note-err">{{.GatewayUnusable}}</p>{{end}}
       {{if .GatewayEnabled}}
       <div class="scroll">
       <table>

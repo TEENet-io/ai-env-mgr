@@ -77,13 +77,20 @@ type pageData struct {
 	Logs *logsPage
 
 	// Gateway panel: what the gateway offers.
-	GatewayURL      string
-	GatewayEnabled  bool
-	GatewayModels   []litellm.Model
-	GatewayUnusable string // why the panel cannot act, when it cannot
+	GatewayURL     string
+	GatewayEnabled bool
+	GatewayModels  []litellm.Model
+	// GatewayUnusable is why the panel cannot act. Only rendered when
+	// GatewayURL is set: with no gateway configured at all the panel says so
+	// in its own words rather than reporting a missing address as a fault.
+	GatewayUnusable string
 	// Probe is the last hour of gateway probes, shown on the overview when
-	// the deployment has a log project. nil means "not asked".
-	Probe *probeHealth
+	// the deployment has both a gateway and a log project. nil means "not
+	// asked" -- which is not the same as "asked and found nothing", so the
+	// two fields below carry why an answer is missing or partial.
+	Probe           *probeHealth
+	ProbeNotice     string // the SLS query failed, and this is what to do
+	ProbeIncomplete bool   // the index was still catching up, so counts are low
 }
 
 // newPage seeds the fields every page needs, including the notices carried
@@ -239,12 +246,17 @@ func (s *Server) handleLogout(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, "/", http.StatusSeeOther)
 }
 
-// overviewBudget bounds the whole overview handler.
+// overviewBudget bounds the two remote calls on this page that accept a
+// context: the gateway's model list and the SLS probe window.
 //
-// The page asks OSS for machines and the policy, the gateway for its model
-// list, and SLS for the probe window. Each of those can hang; together they
-// must still answer inside what a browser will wait for, so every remote call
-// below hangs off one deadline rather than each having its own.
+// It does NOT bound the rest. LoadUsers, CurrentPolicy and CollectMachines
+// take no context, and neither does cloud.annotate -- which is the slowest
+// thing here when it goes wrong, because it holds the lookup's mutex across
+// a DescribeDesktops call, so a slow platform stalls every concurrent render
+// of this page rather than just one. Giving those a deadline means changing
+// signatures down in admincore, which is a larger change than this page
+// deserves; until then the honest statement is that this budget covers the
+// gateway and the probe, and the page can still outlast it.
 const overviewBudget = 10 * time.Second
 
 // handleOverview is the console's front page: the fleet, the policy every
@@ -256,6 +268,10 @@ const overviewBudget = 10 * time.Second
 // else.
 func (s *Server) handleOverview(w http.ResponseWriter, r *http.Request, sess *session) {
 	data := newPage(sess, r, "overview")
+	// A publish started from /rollout keeps running while the operator wanders
+	// back here, and the machine table below is exactly what it is changing.
+	// Without this the page's refresh directive has nothing to trigger on.
+	data.Job = s.jobs.snapshot()
 
 	ctx, cancel := context.WithTimeout(r.Context(), overviewBudget)
 	defer cancel()
@@ -289,10 +305,18 @@ func (s *Server) handleOverview(w http.ResponseWriter, r *http.Request, sess *se
 	s.loadGatewayPanel(ctx, &data)
 	// The probe bar is the log page's, reused rather than reimplemented: two
 	// renderings of "is the gateway up" would eventually disagree.
-	if s.opts.SLSProject != "" && sess.sls != nil {
+	//
+	// Skipped without a gateway to probe: the panel does not draw the bar
+	// then, so the queries would be two SLS round trips spent on nothing.
+	if s.opts.GatewayURL != "" && s.opts.SLSProject != "" && sess.sls != nil {
 		scratch := &logsPage{}
 		s.loadProbe(ctx, sess, scratch)
+		// Why the bar is missing or wrong matters as much as the bar: an SLS
+		// query that failed and an hour with no probes both leave OKs and
+		// Fails at zero, and only one of them means nobody is watching.
 		data.Probe = scratch.Probe
+		data.ProbeNotice = scratch.Notice
+		data.ProbeIncomplete = scratch.Incomplete
 	}
 
 	s.render(w, "overview.html", http.StatusOK, data)

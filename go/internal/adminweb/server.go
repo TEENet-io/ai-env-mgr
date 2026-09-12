@@ -176,6 +176,7 @@ func New(opts Options) (*Server, error) {
 		"classify": stateSeverity,
 		"state":    stateLabel,
 		"age":      humanAge,
+		"stamp":    localStamp,
 		"noscan":   noEmailScan,
 		"codex":    codexNote,
 		"codexsev": codexNoteSeverity,

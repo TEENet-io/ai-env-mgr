@@ -34,3 +34,21 @@ func humanAge(stamp string) string {
 		return fmt.Sprintf("%d 天前", int(d.Hours()/24))
 	}
 }
+
+// localStamp renders an RFC3339 timestamp as Shanghai wall-clock time.
+//
+// The policy's UpdatedAt is written in UTC, and everyone reading this console
+// is eight hours ahead of it: shown raw, "2026-08-16T09:03:50Z" is a stamp the
+// reader has to convert before it means anything. Seconds are dropped because
+// nobody cares which second a policy was saved in. Same zone as the log page
+// (see shanghai), so two pages never disagree about what time it is.
+func localStamp(stamp string) string {
+	if stamp == "" {
+		return "—"
+	}
+	t, err := time.Parse(time.RFC3339, stamp)
+	if err != nil {
+		return stamp // show what was actually stored rather than hiding it
+	}
+	return t.In(shanghai()).Format("2006-01-02 15:04")
+}

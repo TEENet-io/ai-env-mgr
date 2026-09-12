@@ -126,6 +126,9 @@ func TestRenderPreview(t *testing.T) {
 			[]slsclient.Log{{"oks": "52", "fails": "3"}},
 			[]slsclient.Log{{"occurred_at": "2026-09-12T02:41:08.220Z", "message": "probe failed: 502 Bad Gateway"}},
 		),
+		// And the disclosure that the count above may be low, which is the
+		// line that stops a partial tally from reading as the hour's total.
+		ProbeIncomplete: true,
 
 		GatewayURL:     "https://litellm.teenet.app",
 		GatewayEnabled: true,
