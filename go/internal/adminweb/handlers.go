@@ -1,6 +1,7 @@
 package adminweb
 
 import (
+	"context"
 	"log"
 	"net/http"
 	"strings"
@@ -51,11 +52,17 @@ type pageData struct {
 	Fleet    *fleetSummary
 	Users    []model.UserEntry // the roster, for the bind forms on other pages
 	Policy   *model.Policy
-	Stats    []admincore.CollectStat
-	Machine  string // the machine a log belongs to
-	Log      string
-	Notes    *admincore.MachineState // that machine's own errors and warnings
-	Job      *job                    // a publish in flight, or the last one
+
+	// The overview draws three independent sections, so each reports its own
+	// failure. A single Error field would let one dead section hide the two
+	// that still have something to say.
+	MachinesError string
+	PolicyError   string
+	Stats         []admincore.CollectStat
+	Machine       string // the machine a log belongs to
+	Log           string
+	Notes         *admincore.MachineState // that machine's own errors and warnings
+	Job           *job                    // a publish in flight, or the last one
 
 	// Account pages.
 	Accounts      []accountRow
@@ -69,11 +76,14 @@ type pageData struct {
 	// Logs is the log page's own data; nil on every other page.
 	Logs *logsPage
 
-	// Gateway page: what the gateway offers.
+	// Gateway panel: what the gateway offers.
 	GatewayURL      string
 	GatewayEnabled  bool
 	GatewayModels   []litellm.Model
-	GatewayUnusable string // why the page cannot act, when it cannot
+	GatewayUnusable string // why the panel cannot act, when it cannot
+	// Probe is the last hour of gateway probes, shown on the overview when
+	// the deployment has a log project. nil means "not asked".
+	Probe *probeHealth
 }
 
 // newPage seeds the fields every page needs, including the notices carried
@@ -108,7 +118,7 @@ func (s *Server) handleIndex(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if sess := s.currentSession(r); sess != nil {
-		http.Redirect(w, r, "/machines", http.StatusSeeOther)
+		http.Redirect(w, r, "/overview", http.StatusSeeOther)
 		return
 	}
 	s.render(w, "login.html", http.StatusOK, s.loginPage(""))
@@ -210,7 +220,7 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 		Secure:   s.browserUsesTLS(),
 	})
 	log.Printf("adminweb: sign-in from %s for bucket %s", s.clientKey(r), cfg.Bucket)
-	http.Redirect(w, r, "/machines", http.StatusSeeOther)
+	http.Redirect(w, r, "/overview", http.StatusSeeOther)
 }
 
 func (s *Server) handleLogout(w http.ResponseWriter, r *http.Request) {
@@ -229,22 +239,44 @@ func (s *Server) handleLogout(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, "/", http.StatusSeeOther)
 }
 
-func (s *Server) handleMachines(w http.ResponseWriter, r *http.Request, sess *session) {
-	data := newPage(sess, r, "machines")
+// overviewBudget bounds the whole overview handler.
+//
+// The page asks OSS for machines and the policy, the gateway for its model
+// list, and SLS for the probe window. Each of those can hang; together they
+// must still answer inside what a browser will wait for, so every remote call
+// below hangs off one deadline rather than each having its own.
+const overviewBudget = 10 * time.Second
+
+// handleOverview is the console's front page: the fleet, the policy every
+// machine is reading, and what the gateway is offering, in that order.
+//
+// The three used to be three pages, which meant three sign-in-to-answer round
+// trips to learn whether anything was wrong. They are read independently and
+// they fail independently: a dead gateway costs its own panel and nothing
+// else.
+func (s *Server) handleOverview(w http.ResponseWriter, r *http.Request, sess *session) {
+	data := newPage(sess, r, "overview")
+
+	ctx, cancel := context.WithTimeout(r.Context(), overviewBudget)
+	defer cancel()
+
 	if us, err := sess.mgr.LoadUsers(); err == nil {
 		data.Users = us.Users // the bind form offers the roster
 	}
-	// The published Codex version, so each machine's own can be shown as
-	// "arrived" or "not yet" rather than as a bare string nobody can place.
-	// A failure here costs the comparison, not the page.
-	if p, err := sess.mgr.CurrentPolicy(); err == nil {
+
+	// The policy is read once and used twice: for its own panel, and for the
+	// Codex column, which compares each machine against the published target.
+	if p, err := sess.mgr.CurrentPolicy(); err != nil {
+		data.PolicyError = "could not read the policy"
+		log.Printf("adminweb: CurrentPolicy: %v", err)
+	} else {
 		data.Policy = &p
 	}
+
 	// Same freshness window the CLI uses (cmd/admin/status_cmd.go), so the two
 	// front ends never disagree about whether a machine is alive.
-	machines, err := sess.mgr.CollectMachines(freshAfter)
-	if err != nil {
-		data.Error = "could not list machines"
+	if machines, err := sess.mgr.CollectMachines(freshAfter); err != nil {
+		data.MachinesError = "could not list machines"
 		log.Printf("adminweb: CollectMachines: %v", err)
 	} else {
 		// Only reaches the platform for machines whose own report is
@@ -253,19 +285,17 @@ func (s *Server) handleMachines(w http.ResponseWriter, r *http.Request, sess *se
 		data.Machines = machines
 		data.Fleet = summariseFleet(machines)
 	}
-	s.render(w, "machines.html", http.StatusOK, data)
-}
 
-func (s *Server) handlePolicy(w http.ResponseWriter, r *http.Request, sess *session) {
-	data := newPage(sess, r, "policy")
-	p, err := sess.mgr.CurrentPolicy()
-	if err != nil {
-		data.Error = "could not read the policy"
-		log.Printf("adminweb: CurrentPolicy: %v", err)
-	} else {
-		data.Policy = &p
+	s.loadGatewayPanel(ctx, &data)
+	// The probe bar is the log page's, reused rather than reimplemented: two
+	// renderings of "is the gateway up" would eventually disagree.
+	if s.opts.SLSProject != "" && sess.sls != nil {
+		scratch := &logsPage{}
+		s.loadProbe(ctx, sess, scratch)
+		data.Probe = scratch.Probe
 	}
-	s.render(w, "policy.html", http.StatusOK, data)
+
+	s.render(w, "overview.html", http.StatusOK, data)
 }
 
 func (s *Server) handleSites(w http.ResponseWriter, r *http.Request, sess *session) {
@@ -301,7 +331,7 @@ func (s *Server) handleSettings(w http.ResponseWriter, r *http.Request, sess *se
 }
 
 func (s *Server) handleLog(w http.ResponseWriter, r *http.Request, sess *session) {
-	data := newPage(sess, r, "machines")
+	data := newPage(sess, r, "overview")
 	machine := strings.TrimSpace(r.URL.Query().Get("machine"))
 	data.Machine = machine
 	// The machine's own errors and warnings, so the page explains the state

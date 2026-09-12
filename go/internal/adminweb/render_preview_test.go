@@ -119,6 +119,14 @@ func TestRenderPreview(t *testing.T) {
 		SLS:  true,
 		Logs: previewLogsPage(),
 
+		// The overview's own gateway health. A failing hour rather than a
+		// green one: the red state is the one whose layout has to be looked
+		// at, and a preview of the happy path proves the least.
+		Probe: probeFrom(
+			[]slsclient.Log{{"oks": "52", "fails": "3"}},
+			[]slsclient.Log{{"occurred_at": "2026-09-12T02:41:08.220Z", "message": "probe failed: 502 Bad Gateway"}},
+		),
+
 		GatewayURL:     "https://litellm.teenet.app",
 		GatewayEnabled: true,
 		GatewayModels: []litellm.Model{
@@ -128,17 +136,16 @@ func TestRenderPreview(t *testing.T) {
 		},
 	}
 	for _, tplName := range []string{
-		"login.html", "machines.html", "users.html", "user.html", "sites.html",
-		"settings.html", "rollout.html", "policy.html", "log.html",
-		"gateway.html", "logs.html",
+		"login.html", "overview.html", "users.html", "user.html", "sites.html",
+		"settings.html", "rollout.html", "log.html", "logs.html",
 	} {
 		d := base
 		d.Nav = map[string]string{
-			"machines.html": "machines", "users.html": "users", "user.html": "users",
+			"overview.html": "overview", "users.html": "users", "user.html": "users",
 			"sites.html":    "sites",
 			"settings.html": "settings",
-			"rollout.html":  "rollout", "policy.html": "policy", "log.html": "machines",
-			"gateway.html": "gateway", "logs.html": "logs",
+			"rollout.html":  "rollout", "log.html": "overview",
+			"logs.html": "logs",
 		}[tplName]
 		f, err := os.Create(filepath.Join(dir, tplName))
 		if err != nil {

@@ -136,7 +136,7 @@ func TestSessionCookieCarriesNoCredentials(t *testing.T) {
 
 func TestProtectedPagesRequireSession(t *testing.T) {
 	s := newTestServer(t, newFakeStore())
-	for _, path := range []string{"/machines", "/policy"} {
+	for _, path := range []string{"/overview", "/users"} {
 		req := httptest.NewRequest(http.MethodGet, path, nil)
 		rec := httptest.NewRecorder()
 		s.Handler().ServeHTTP(rec, req)
@@ -149,15 +149,15 @@ func TestProtectedPagesRequireSession(t *testing.T) {
 func TestSignedInRequestReachesPage(t *testing.T) {
 	s := newTestServer(t, newFakeStore())
 	c := signIn(t, s)
-	req := httptest.NewRequest(http.MethodGet, "/policy", nil)
+	req := httptest.NewRequest(http.MethodGet, "/overview", nil)
 	req.AddCookie(c)
 	rec := httptest.NewRecorder()
 	s.Handler().ServeHTTP(rec, req)
 	if rec.Code != http.StatusOK {
-		t.Fatalf("policy page returned %d", rec.Code)
+		t.Fatalf("overview page returned %d", rec.Code)
 	}
 	if !strings.Contains(rec.Body.String(), "15") {
-		t.Fatal("policy page did not render the sync interval from the store")
+		t.Fatal("overview page did not render the sync interval from the store")
 	}
 }
 
@@ -168,7 +168,7 @@ func TestLogoutInvalidatesSession(t *testing.T) {
 	req.AddCookie(c)
 	s.Handler().ServeHTTP(httptest.NewRecorder(), req)
 
-	req = httptest.NewRequest(http.MethodGet, "/policy", nil)
+	req = httptest.NewRequest(http.MethodGet, "/overview", nil)
 	req.AddCookie(c)
 	rec := httptest.NewRecorder()
 	s.Handler().ServeHTTP(rec, req)
@@ -442,7 +442,7 @@ func TestPublishPageRendersWithoutRolloutControls(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	for _, path := range []string{"/rollout", "/policy"} {
+	for _, path := range []string{"/rollout", "/overview"} {
 		req := httptest.NewRequest(http.MethodGet, path, nil)
 		req.AddCookie(c)
 		rec := httptest.NewRecorder()
@@ -480,12 +480,12 @@ func TestMachinesPageRendersCodexColumn(t *testing.T) {
 			Status: model.Status{Machine: "pc3", LastSync: fresh, AgentVersion: "1.2.4"}},
 	}
 	policy := model.Policy{CodexVersion: "26.810.52044-b1"}
-	data := pageData{CSRF: "t", Nav: "machines", Machines: machines,
+	data := pageData{CSRF: "t", Nav: "overview", Machines: machines,
 		Fleet: summariseFleet(machines), Policy: &policy}
 
 	var buf bytes.Buffer
-	if err := s.tpl.ExecuteTemplate(&buf, "machines.html", data); err != nil {
-		t.Fatalf("machines.html: %v", err)
+	if err := s.tpl.ExecuteTemplate(&buf, "overview.html", data); err != nil {
+		t.Fatalf("overview.html: %v", err)
 	}
 	body := buf.String()
 	for _, want := range []string{
@@ -562,12 +562,12 @@ func TestMachinesPageRendersAppLockerColumn(t *testing.T) {
 		mk("pc1", "Enforce"), mk("pc2", "Audit"), mk("pc3", "None"),
 		mk("pc4", "Unknown"), mk("pc5", ""),
 	}
-	data := pageData{CSRF: "t", Nav: "machines", Machines: machines,
+	data := pageData{CSRF: "t", Nav: "overview", Machines: machines,
 		Fleet: summariseFleet(machines), Policy: &model.Policy{}}
 
 	var buf bytes.Buffer
-	if err := s.tpl.ExecuteTemplate(&buf, "machines.html", data); err != nil {
-		t.Fatalf("machines.html: %v", err)
+	if err := s.tpl.ExecuteTemplate(&buf, "overview.html", data); err != nil {
+		t.Fatalf("overview.html: %v", err)
 	}
 	body := buf.String()
 	if !strings.Contains(body, "<th>APPLOCKER</th>") {

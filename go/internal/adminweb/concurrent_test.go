@@ -105,9 +105,9 @@ func TestConcurrentRequestsThroughTheHandler(t *testing.T) {
 		wg.Add(1)
 		go func(i int) {
 			defer wg.Done()
-			path := "/policy"
+			path := "/overview"
 			if i%2 == 0 {
-				path = "/machines"
+				path = "/settings"
 			}
 			req := httptest.NewRequest(http.MethodGet, path, nil)
 			req.AddCookie(cookie)

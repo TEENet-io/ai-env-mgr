@@ -470,7 +470,7 @@ func TestLogsPageAbsentWithoutAProject(t *testing.T) {
 	if rec := getLogs(t, s, cookie, ""); rec.Code != http.StatusNotFound {
 		t.Fatalf("status %d, want 404", rec.Code)
 	}
-	req := httptest.NewRequest(http.MethodGet, "/machines", nil)
+	req := httptest.NewRequest(http.MethodGet, "/overview", nil)
 	req.AddCookie(cookie)
 	rec := httptest.NewRecorder()
 	s.Handler().ServeHTTP(rec, req)

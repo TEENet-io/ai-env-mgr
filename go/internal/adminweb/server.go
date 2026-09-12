@@ -261,15 +261,19 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("/login", s.handleLogin)
 	mux.HandleFunc("/logout", s.handleLogout)
 	mux.HandleFunc("/", s.handleIndex)
-	mux.HandleFunc("/machines", s.requireSession(s.handleMachines))
-	mux.HandleFunc("/policy", s.requireSession(s.handlePolicy))
+	mux.HandleFunc("/overview", s.requireSession(s.handleOverview))
+	// The fleet, the policy and the gateway are one page now. The three old
+	// paths keep answering for a while, because they are what is in everyone's
+	// bookmarks and in every link written down before the merge.
+	mux.HandleFunc("/machines", movedTo("/overview"))
+	mux.HandleFunc("/policy", movedTo("/overview"))
+	mux.HandleFunc("/gateway", movedTo("/overview"))
 	mux.HandleFunc("/users", s.requireSession(s.handleUsers))
 	mux.HandleFunc("/users/detail", s.requireSession(s.handleUserDetail))
 	mux.HandleFunc("/sites", s.requireSession(s.handleSites))
 	mux.HandleFunc("/settings", s.requireSession(s.handleSettings))
 	mux.HandleFunc("/log", s.requireSession(s.handleLog))
 	mux.HandleFunc("/rollout", s.requireSession(s.handleRollout))
-	mux.HandleFunc("/gateway", s.requireSession(s.handleGateway))
 	mux.HandleFunc("/logs", s.requireSession(s.handleLogs))
 
 	// Every state-changing route is POST + CSRF + redirect (see requirePost).
@@ -280,8 +284,8 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("/users/models", s.requirePostBack(backToAccount, s.actionAccountModels))
 	mux.HandleFunc("/users/reissue", s.requirePostBack(backToAccount, s.actionAccountReissue))
 	mux.HandleFunc("/users/profile", s.requirePostBack(backToAccount, s.actionAccountProfile))
-	mux.HandleFunc("/machines/bind", s.requirePost("/machines", s.actionMachineBind))
-	mux.HandleFunc("/machines/unbind", s.requirePost("/machines", s.actionMachineUnbind))
+	mux.HandleFunc("/machines/bind", s.requirePost("/overview", s.actionMachineBind))
+	mux.HandleFunc("/machines/unbind", s.requirePost("/overview", s.actionMachineUnbind))
 	mux.HandleFunc("/sites/mutate", s.requirePost("/sites", s.actionSites))
 	mux.HandleFunc("/sites/enabled", s.requirePost("/sites", s.actionBlockEnabled))
 	mux.HandleFunc("/sites/applocker", s.requirePost("/sites", s.actionAppLocker))
@@ -298,7 +302,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("/agent/cancel", s.requirePost("/rollout", s.actionAgentCancel))
 	mux.HandleFunc("/codex/publish", s.requirePost("/rollout", s.actionCodexPublish))
 	mux.HandleFunc("/codex/cancel", s.requirePost("/rollout", s.actionCodexCancel))
-	mux.HandleFunc("/machines/forget", s.requirePost("/machines", s.actionMachineForget))
+	mux.HandleFunc("/machines/forget", s.requirePost("/overview", s.actionMachineForget))
 	// Serve only assets/static, so the templates next to it are never handed
 	// out as raw files, and strip the prefix so paths resolve inside it.
 	staticFS, err := fs.Sub(assetFS, "assets/static")
@@ -309,6 +313,17 @@ func (s *Server) Handler() http.Handler {
 	}
 	mux.Handle("/static/", http.StripPrefix("/static/", http.FileServer(http.FS(staticFS))))
 	return s.accessLog(s.secureHeaders(mux))
+}
+
+// movedTo answers a retired path with a redirect to its replacement.
+//
+// 302 rather than 301: a permanent redirect is cached by the browser
+// indefinitely, and these paths are meant to be reclaimed once the bookmarks
+// have caught up.
+func movedTo(target string) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, target, http.StatusFound)
+	}
 }
 
 // accessLog records one line per request in the unified log.

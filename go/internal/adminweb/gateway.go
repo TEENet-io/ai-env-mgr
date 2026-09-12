@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"log"
-	"net/http"
 	"strconv"
 	"time"
 
@@ -17,6 +16,15 @@ import (
 // a bound the console would appear frozen rather than reporting that the
 // gateway is unreachable.
 const gatewayTimeout = 20 * time.Second
+
+// gatewayModelsTimeout is the shorter bound for the overview's model list.
+//
+// That list is one panel on a page with three of them, and it is the only one
+// whose answer comes from another cloud. Twenty seconds is right for an action
+// an operator started and is watching; for a read that merely decorates the
+// front page it is long enough to make the whole console feel broken, so the
+// panel gives up quickly and says the gateway is unreachable.
+const gatewayModelsTimeout = 3 * time.Second
 
 // gateway builds a client for this deployment's gateway, or explains why it
 // cannot.
@@ -33,32 +41,30 @@ func (s *Server) gateway() (*litellm.Client, error) {
 	return litellm.New(s.opts.GatewayURL, s.opts.GatewayAdminKey), nil
 }
 
-func (s *Server) handleGateway(w http.ResponseWriter, r *http.Request, sess *session) {
-	data := newPage(sess, r, "gateway")
+// loadGatewayPanel fills the overview's gateway panel.
+//
+// Every failure is reported on the page rather than to the caller: knowing the
+// gateway is unreachable is more useful than an error page, and the fleet and
+// policy sections above it are still worth showing.
+func (s *Server) loadGatewayPanel(ctx context.Context, data *pageData) {
 	data.GatewayURL = s.opts.GatewayURL
 
 	gw, err := s.gateway()
 	if err != nil {
 		data.GatewayUnusable = err.Error()
-		s.render(w, "gateway.html", http.StatusOK, data)
 		return
 	}
 	data.GatewayEnabled = true
 
-	ctx, cancel := context.WithTimeout(r.Context(), gatewayTimeout)
+	mctx, cancel := context.WithTimeout(ctx, gatewayModelsTimeout)
 	defer cancel()
 
-	models, err := gw.Models(ctx)
+	models, err := gw.Models(mctx)
 	if err != nil {
-		// Report it on the page instead of failing the request: knowing the
-		// gateway is unreachable is more useful than an error page, and the
-		// roster half below is still worth showing.
 		data.GatewayUnusable = "无法读取网关模型清单：" + err.Error()
 		log.Printf("adminweb: gateway models: %v", err)
 	}
 	data.GatewayModels = models
-
-	s.render(w, "gateway.html", http.StatusOK, data)
 }
 
 // contextWindowLabel renders a context window the way the model vendors

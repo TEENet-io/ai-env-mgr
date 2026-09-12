@@ -640,3 +640,26 @@ ol li { margin: 7px 0; }
 .logtable th.num, .logtable td.num { text-align: right; }
 
 .pager { display: flex; gap: 18px; align-items: baseline; margin: 12px 0 0; font-size: 13px; }
+
+/* ---------- overview ---------- */
+
+/* The policy and gateway panels are one dense line each: the whole point of
+   the page is that a reader takes all of it in without scrolling, so these
+   summarise rather than tabulate. */
+.summary-row { padding: 12px 16px; }
+.summary-row p { margin: 0; line-height: 1.9; }
+.summary-row p + p { margin-top: 6px; }
+
+/* The model list folds away behind <details>. It is reference material, not
+   something an operator checks daily, and unfolded it would push the machine
+   table below the fold on every visit. No script: the element does this
+   itself, and this console serves no JavaScript. */
+.summary-row details { margin-top: 8px; }
+.summary-row summary {
+  cursor: pointer;
+  font-size: 13px;
+  color: var(--accent);
+  padding: 4px 0;
+}
+.summary-row details[open] summary { margin-bottom: 8px; }
+.summary-row details .scroll { max-height: 360px; }

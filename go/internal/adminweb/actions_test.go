@@ -245,7 +245,7 @@ func TestHighRiskActionsStillRequireCSRF(t *testing.T) {
 func TestNavigationCoversEveryPage(t *testing.T) {
 	s := newTestServer(t, newFakeStore())
 	cookie := signIn(t, s)
-	req := httptest.NewRequest(http.MethodGet, "/machines", nil)
+	req := httptest.NewRequest(http.MethodGet, "/overview", nil)
 	req.AddCookie(cookie)
 	rec := httptest.NewRecorder()
 	s.Handler().ServeHTTP(rec, req)
@@ -253,13 +253,11 @@ func TestNavigationCoversEveryPage(t *testing.T) {
 
 	// One per nav entry that is always drawn; /logs is conditional on SLS.
 	for _, path := range []string{
-		"/machines", // 机器状态 + 机器管理
+		"/overview", // 机队 + 策略 + 网关
 		"/users",    // 员工账号
 		"/sites",    // 封禁策略
 		"/settings", // 会话采集
 		"/rollout",  // 发布更新
-		"/gateway",  // 模型网关
-		"/policy",   // 策略总览
 	} {
 		if !strings.Contains(body, `href="`+path+`"`) {
 			t.Errorf("the navigation has no link to %s", path)
