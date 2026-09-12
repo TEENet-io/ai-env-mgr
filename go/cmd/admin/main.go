@@ -1,8 +1,8 @@
 // Command admin serves the administrator console for the AI sandbox.
 //
 // Everything is done from the browser: the roster, machine bindings, website
-// blocking, signing in on an employee's behalf, and publishing agent or Codex
-// builds to the fleet. The terminal interface this program used to carry was
+// blocking, and publishing agent or Codex builds to the fleet. The terminal
+// interface this program used to carry was
 // removed once the console covered all of it -- two front ends over the same
 // operations kept drifting apart, and each divergence was a bug nobody saw
 // until somebody hit it.
@@ -71,7 +71,7 @@ Run with no arguments to open the console on this machine:
                               ap-southeast-1.log.aliyuncs.com.
   version
 
-Everything else -- employees, machines, website blocking, signing in for an
-employee, publishing agent and Codex builds -- is in the console itself.
+Everything else -- employees, machines, website blocking, publishing agent
+and Codex builds -- is in the console itself.
 `)
 }

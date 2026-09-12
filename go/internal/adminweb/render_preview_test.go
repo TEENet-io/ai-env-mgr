@@ -109,10 +109,8 @@ func TestRenderPreview(t *testing.T) {
 		Log: "2026-08-16T01:35:54Z sync ok (policy etag W/\"a1b2\")\n" +
 			"2026-08-16T01:35:54Z credentials: nothing new\n" +
 			"2026-08-16T01:35:55Z status uploaded",
-		Link:        "https://ai-collect-sg.oss-ap-southeast-1.aliyuncs.com/admin/files/agent-1.2.4.exe?Expires=1786717938&Signature=abc%3D",
-		LinkName:    "agent-1.2.4.exe",
-		AuthURL:     "https://auth.openai.com/oauth/authorize?client_id=app_EMoamEEZ73f0CkXaXp7hrann&code_challenge=8q3n…&state=7f2a9c",
-		PendingUser: "peter", PendingTool: "codex",
+		Link:     "https://ai-collect-sg.oss-ap-southeast-1.aliyuncs.com/admin/files/agent-1.2.4.exe?Expires=1786717938&Signature=abc%3D",
+		LinkName: "agent-1.2.4.exe",
 		Job: &job{Kind: "codex", Version: "26.810.52044-b1", State: jobRunning,
 			Step: "下载安装包", Started: time.Now().Add(-95 * time.Second),
 			Done: 412 << 20, Total: 700 << 20},
@@ -132,19 +130,15 @@ func TestRenderPreview(t *testing.T) {
 			{Name: "glm-5", Info: litellm.ModelInfo{DisplayName: "智谱 GLM-5", ContextWindow: 128000, ReasoningLevels: []string{"low", "high"}}},
 		},
 	}
-	for _, name := range []string{
-		"login.html", "machines.html", "users.html", "user.html", "employee-login", "sites.html",
+	for _, tplName := range []string{
+		"login.html", "machines.html", "users.html", "user.html", "sites.html",
 		"settings.html", "files.html", "rollout.html", "policy.html", "log.html",
 		"gateway.html", "logs.html",
 	} {
-		tplName := name
-		if name == "employee-login" {
-			tplName = "employeelogin.html"
-		}
 		d := base
 		d.Nav = map[string]string{
 			"machines.html": "machines", "users.html": "users", "user.html": "users",
-			"employeelogin.html": "employee-login", "sites.html": "sites",
+			"sites.html":    "sites",
 			"settings.html": "settings", "files.html": "files",
 			"rollout.html": "rollout", "policy.html": "policy", "log.html": "machines",
 			"gateway.html": "gateway", "logs.html": "logs",

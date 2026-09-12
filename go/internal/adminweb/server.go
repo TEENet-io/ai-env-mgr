@@ -13,7 +13,6 @@ import (
 	"os/signal"
 	"strconv"
 	"strings"
-	"sync"
 	"syscall"
 	"time"
 
@@ -130,11 +129,6 @@ type Server struct {
 	// dialOSS is the seam tests use to avoid talking to a real bucket.
 	dialOSS func(cfg config.Config) (store, error)
 
-	// pending holds in-flight employee sign-ins, keyed by the session's CSRF
-	// token so one console session cannot finish another's flow.
-	pendingMu sync.Mutex
-	pending   map[string]*pendingLogin
-
 	// jobs holds the one publish that may be in flight; see job.go.
 	jobs jobRunner
 
@@ -213,7 +207,6 @@ func New(opts Options) (*Server, error) {
 		sessions: newSessionStore(opts.IdleTTL, opts.AbsTTL),
 		limiter:  newLoginLimiter(time.Minute, 10),
 		tpl:      tpl,
-		pending:  make(map[string]*pendingLogin),
 		dialOSS: func(cfg config.Config) (store, error) {
 			data := cfg.Endpoint
 			if opts.DataEndpoint != "" {
@@ -277,7 +270,6 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("/log", s.requireSession(s.handleLog))
 	mux.HandleFunc("/files", s.requireSession(s.handleFiles))
 	mux.HandleFunc("/rollout", s.requireSession(s.handleRollout))
-	mux.HandleFunc("/employee-login", s.requireSession(s.handleEmployeeLogin))
 	mux.HandleFunc("/gateway", s.requireSession(s.handleGateway))
 	mux.HandleFunc("/logs", s.requireSession(s.handleLogs))
 
@@ -310,8 +302,6 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("/machines/forget", s.requirePost("/machines", s.actionMachineForget))
 	mux.HandleFunc("/files/put", s.requirePost("/files", s.actionFilePut))
 	mux.HandleFunc("/files/rm", s.requirePost("/files", s.actionFileRemove))
-	mux.HandleFunc("/employee-login/start", s.requirePost("/employee-login", s.actionEmployeeLoginStart))
-	mux.HandleFunc("/employee-login/finish", s.requirePost("/employee-login", s.actionEmployeeLoginFinish))
 	// Serve only assets/static, so the templates next to it are never handed
 	// out as raw files, and strip the prefix so paths resolve inside it.
 	staticFS, err := fs.Sub(assetFS, "assets/static")

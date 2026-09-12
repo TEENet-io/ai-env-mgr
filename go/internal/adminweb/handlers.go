@@ -77,10 +77,6 @@ type pageData struct {
 	GatewayEnabled  bool
 	GatewayModels   []litellm.Model
 	GatewayUnusable string // why the page cannot act, when it cannot
-
-	PendingUser string // an employee sign-in waiting for the pasted callback
-	PendingTool string
-	AuthURL     string
 }
 
 // newPage seeds the fields every page needs, including the notices carried
@@ -372,17 +368,4 @@ func (s *Server) handleRollout(w http.ResponseWriter, r *http.Request, sess *ses
 		data.Fleet = summariseFleet(machines)
 	}
 	s.render(w, "rollout.html", http.StatusOK, data)
-}
-
-func (s *Server) handleEmployeeLogin(w http.ResponseWriter, r *http.Request, sess *session) {
-	data := newPage(sess, r, "employee-login")
-	if us, err := sess.mgr.LoadUsers(); err == nil {
-		data.Users = us.Users
-	}
-	s.pendingMu.Lock()
-	if p := s.pending[sess.csrf]; p != nil && time.Since(p.started) <= employeeLoginTTL {
-		data.PendingUser, data.PendingTool, data.AuthURL = p.user, p.tool, p.authURL
-	}
-	s.pendingMu.Unlock()
-	s.render(w, "employeelogin.html", http.StatusOK, data)
 }

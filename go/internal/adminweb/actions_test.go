@@ -225,7 +225,6 @@ func TestHighRiskActionsStillRequireCSRF(t *testing.T) {
 	for _, path := range []string{
 		"/agent/publish", "/agent/cancel", "/codex/publish", "/codex/cancel",
 		"/machines/forget", "/files/put", "/files/rm",
-		"/employee-login/start", "/employee-login/finish",
 	} {
 		fs := newFakeStore()
 		s := newTestServer(t, fs)
@@ -241,10 +240,9 @@ func TestHighRiskActionsStillRequireCSRF(t *testing.T) {
 	}
 }
 
-// Every TUI menu entry needs a way in from the navigation. The employee
-// sign-in page existed for a while with no link to it, which is the same as
-// not having built it -- this fails if that happens again.
-func TestNavigationCoversEveryTUIEntry(t *testing.T) {
+// Every page needs a way in from the navigation. A page that exists with no
+// link to it is the same as not having built it -- this fails if that happens.
+func TestNavigationCoversEveryPage(t *testing.T) {
 	s := newTestServer(t, newFakeStore())
 	cookie := signIn(t, s)
 	req := httptest.NewRequest(http.MethodGet, "/machines", nil)
@@ -255,13 +253,12 @@ func TestNavigationCoversEveryTUIEntry(t *testing.T) {
 
 	// One per menu item in cmd/admin/tui.go.
 	for _, path := range []string{
-		"/machines",       // 机器状态 + 机器管理
-		"/users",          // 员工管理
-		"/employee-login", // 代员工登录
-		"/sites",          // 封禁策略
-		"/settings",       // 会话采集
-		"/files",          // 文件传输
-		"/rollout",        // agent 更新
+		"/machines", // 机器状态 + 机器管理
+		"/users",    // 员工管理
+		"/sites",    // 封禁策略
+		"/settings", // 会话采集
+		"/files",    // 文件传输
+		"/rollout",  // agent 更新
 	} {
 		if !strings.Contains(body, `href="`+path+`"`) {
 			t.Errorf("the navigation has no link to %s", path)
