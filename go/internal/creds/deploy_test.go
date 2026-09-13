@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"strings"
 	"testing"
 
 	"github.com/TEENet-io/ai-env-mgr/internal/model"
@@ -411,5 +412,81 @@ func TestRedeliveryOfUnchangedArchiveChangesNothing(t *testing.T) {
 	}
 	if len(second.Changed) != 0 {
 		t.Errorf("identical redelivery must change nothing: %v", second.Changed)
+	}
+}
+
+// The restart rule on the agent side ends the employee's Codex whenever a
+// delivered file's bytes moved on disk. That makes idempotence of the merged
+// files a correctness property and not a nicety: a merge that reproduces the
+// file with one extra blank line makes every redelivery look like a change,
+// and every one of those takes somebody's work away.
+//
+// The employee here has edited their own config, which is the case that
+// exercises the merge rather than the plain overwrite.
+func TestRepeatedDeliveryToAnEditedProfileChangesNothingAfterTheFirst(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(dir, ".codex"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, ".codex", "config.toml"),
+		[]byte("[tui]\ntheme = \"dark\"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	set := model.CredentialSet{
+		model.PathCodexAuth:   []byte(`{"token":"t1"}`),
+		model.PathCodexModels: []byte(`{"models":[{"slug":"grok-4.6"}]}`),
+		// The fragment the console actually renders (see
+		// admincore.renderCodexConfig): the managed root keys plus the one
+		// table this tool owns.
+		model.PathCodexConfig: []byte("model              = \"grok-4.6\"\n" +
+			"model_provider     = \"gateway\"\n" +
+			"model_catalog_json = \"C:/Users/work1/.codex/models.json\"\n" +
+			"web_search         = \"live\"\n" +
+			"stream_idle_timeout_ms = 7200000\n\n" +
+			"[model_providers.gateway]\n" +
+			"name     = \"Gateway\"\n" +
+			"base_url = \"https://gw.example/v1\"\n" +
+			"wire_api = \"responses\"\n" +
+			"experimental_bearer_token = \"sk-abc\"\n"),
+		model.PathClaudeCreds:  []byte(`{"token":"c1"}`),
+		model.PathClaudeConfig: []byte(`{"hasCompletedOnboarding":true}`),
+	}
+
+	first, err := WriteToProfileReport(dir, set)
+	if err != nil {
+		t.Fatalf("first delivery: %v", err)
+	}
+	if len(first.Changed) != len(set) {
+		t.Fatalf("the first delivery should write every entry, changed %v", first.Changed)
+	}
+
+	// Three more deliveries of the same archive. Nothing may move, and in
+	// particular not on the second pass: a merge that is stable only from the
+	// third pass on would still have cost every employee one interruption.
+	for pass := 2; pass <= 4; pass++ {
+		rep, err := WriteToProfileReport(dir, set)
+		if err != nil {
+			t.Fatalf("delivery %d: %v", pass, err)
+		}
+		if rep.Written != len(set) {
+			t.Errorf("delivery %d wrote %d entries, want %d", pass, rep.Written, len(set))
+		}
+		if len(rep.Changed) != 0 {
+			t.Errorf("delivery %d changed %v; redelivering the same archive must move nothing",
+				pass, rep.Changed)
+		}
+	}
+
+	// The employee's own setting survived all of it -- an idempotent merge
+	// that idempotently discards their edits would pass the check above.
+	got, err := os.ReadFile(filepath.Join(dir, ".codex", "config.toml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{"[tui]", `theme = "dark"`, "[model_providers.gateway]", "base_url"} {
+		if !strings.Contains(string(got), want) {
+			t.Errorf("config.toml lost %q after four deliveries:\n%s", want, got)
+		}
 	}
 }
