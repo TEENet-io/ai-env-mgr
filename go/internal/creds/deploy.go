@@ -85,10 +85,10 @@ type Report struct {
 	// moved. An entry whose bytes were already in place is counted in Written
 	// (it is recognised and placed) but not here.
 	//
-	// This is what decides whether the AI tools get restarted. The archive
-	// always carries every entry ever published for the employee -- a login
-	// from months ago rides along with today's catalog -- so "the archive
-	// contains a login" is true of every delivery and says nothing.
+	// It is what a delivery actually did, as opposed to what the archive
+	// contained: the archive always carries every entry ever published for
+	// the employee -- a login from months ago rides along with today's
+	// catalog -- so its contents say nothing about whether anything moved.
 	Changed []string
 }
 
@@ -160,26 +160,6 @@ func WriteToProfileReport(profileDir string, set model.CredentialSet) (Report, e
 	sort.Strings(rep.Changed)
 	rep.Written, rep.Skipped = written, skipped
 	return rep, nil
-}
-
-// NeedsToolRestart reports whether a delivery changed a login the AI tools
-// hold in memory.
-//
-// Only a changed login justifies force-killing a running tool: Codex and
-// Claude read their token once at startup, so a stale one would keep a
-// session working against an account that may have been revoked. A new
-// config.toml or model catalog changes what the next launch does and can
-// wait for the employee to restart on their own terms.
-//
-// It looks at Changed rather than at what the archive contains, because the
-// archive contains every login ever published -- see Report.Changed.
-func NeedsToolRestart(rep Report) bool {
-	for _, entry := range rep.Changed {
-		if model.IsLoginCredential(entry) {
-			return true
-		}
-	}
-	return false
 }
 
 // VerifyPlaced reports whether every file in placed is still on disk with the

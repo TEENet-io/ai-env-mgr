@@ -10,6 +10,7 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -273,6 +274,20 @@ type fakeApplier struct {
 	appLockerPaths [][]string
 	appLockerModes []string
 	appLockerErr   error
+
+	// stoppedFor records every user whose Codex was ended, in order, so a
+	// test can prove both that a restart happened and that it happened once.
+	stoppedFor []string
+	stopKilled int
+	stopErr    error
+}
+
+func (a *fakeApplier) StopCodex(user string) (int, error) {
+	a.stoppedFor = append(a.stoppedFor, user)
+	if a.stopErr != nil {
+		return 0, a.stopErr
+	}
+	return a.stopKilled, nil
 }
 
 func (a *fakeApplier) RemoveCreds(profileDir string) (int, error) {
@@ -1123,6 +1138,136 @@ func TestRunOnceDoesNotRedownloadUnchangedCredentials(t *testing.T) {
 	if len(app.deployed) != 2 {
 		t.Errorf("a changed archive should be redelivered, got %d deploys", len(app.deployed))
 	}
+}
+
+// The whole point of the feature: whatever changed inside the package -- a
+// rotated gateway token, a new model catalog, a closed account -- the tools
+// that read it once at startup have to be restarted, or the employee is left
+// running on configuration that no longer exists.
+func TestRunOnceRestartsCodexWhenCredentialsChange(t *testing.T) {
+	store := newFakeStore()
+	bind(t, store, "DESKTOP-A", "work1")
+	store.set(ossclient.PolicyKey(), policyBytes(t, model.Policy{BlockEnabled: true}), "p1")
+	credsKey := ossclient.UserKey("work1", "credentials.zip")
+	store.set(credsKey, credsBytes(t), "c1")
+
+	app := &fakeApplier{stopKilled: 1}
+	s := newSyncer(t, store, app)
+
+	// First delivery: Codex may already be open on a new employee's desktop,
+	// and it will not read the catalog that just landed until it restarts.
+	st, err := s.RunOnce()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(app.stoppedFor, []string{"work1"}) {
+		t.Fatalf("first delivery stopped %v, want one restart for work1", app.stoppedFor)
+	}
+	if !hasSubstring(st.Warnings, "codex restarted") {
+		t.Errorf("the restart should be visible in status, got: %v", st.Warnings)
+	}
+	if len(st.Errors) != 0 {
+		t.Errorf("a restart is not an error: %v", st.Errors)
+	}
+
+	// Same archive, several cycles: nothing changed, so nobody's work is taken.
+	for i := 0; i < 3; i++ {
+		if _, err := s.RunOnce(); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if len(app.stoppedFor) != 1 {
+		t.Fatalf("an unchanged archive restarted Codex %d times; only a change may", len(app.stoppedFor))
+	}
+
+	// A new package: restart again.
+	store.set(credsKey, credsBytes(t), "c2")
+	if _, err := s.RunOnce(); err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(app.stoppedFor, []string{"work1", "work1"}) {
+		t.Errorf("a new package stopped %v, want a second restart", app.stoppedFor)
+	}
+}
+
+// Deleting the files is only half a revocation: the running process still
+// holds the token it read at startup.
+func TestRunOnceRestartsCodexWhenCredentialsAreRevoked(t *testing.T) {
+	store := newFakeStore()
+	bind(t, store, "DESKTOP-A", "work1")
+	store.set(ossclient.PolicyKey(), policyBytes(t, model.Policy{BlockEnabled: true}), "p1")
+	// No credentials.zip: the employee has been offboarded.
+
+	app := &fakeApplier{removeN: 3, stopKilled: 2}
+	s := newSyncer(t, store, app)
+
+	st, err := s.RunOnce()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(app.stoppedFor, []string{"work1"}) {
+		t.Fatalf("revocation stopped %v, want one restart for work1", app.stoppedFor)
+	}
+	if !hasSubstring(st.Warnings, "revocation") {
+		t.Errorf("the restart should say what caused it, got: %v", st.Warnings)
+	}
+}
+
+// Nothing was removed, so nothing cached a token that has gone stale. A
+// machine whose employee never had credentials published must not have its
+// tools killed on every single cycle.
+func TestRunOnceDoesNotRestartCodexWhenThereWasNothingToRevoke(t *testing.T) {
+	store := newFakeStore()
+	bind(t, store, "DESKTOP-A", "work1")
+	store.set(ossclient.PolicyKey(), policyBytes(t, model.Policy{BlockEnabled: true}), "p1")
+
+	app := &fakeApplier{removeN: 0}
+	s := newSyncer(t, store, app)
+
+	if _, err := s.RunOnce(); err != nil {
+		t.Fatal(err)
+	}
+	if len(app.stoppedFor) != 0 {
+		t.Errorf("nothing was revoked, so nothing should have been killed: %v", app.stoppedFor)
+	}
+}
+
+// The credentials are already on disk by this point, which is the part that
+// had to succeed. A taskkill that failed costs the employee a manual restart
+// -- it must not make the cycle report failure and it must not undo the
+// delivery.
+func TestRunOnceReportsAFailedCodexRestartAsAWarning(t *testing.T) {
+	store := newFakeStore()
+	bind(t, store, "DESKTOP-A", "work1")
+	store.set(ossclient.PolicyKey(), policyBytes(t, model.Policy{BlockEnabled: true}), "p1")
+	store.set(ossclient.UserKey("work1", "credentials.zip"), credsBytes(t), "c1")
+
+	app := &fakeApplier{stopErr: errors.New("access is denied")}
+	s := newSyncer(t, store, app)
+
+	st, err := s.RunOnce()
+	if err != nil {
+		t.Fatalf("a failed restart must not fail the sync: %v", err)
+	}
+	if !st.CredsApplied {
+		t.Error("the credentials landed; a failed kill does not undo that")
+	}
+	if !hasSubstring(st.Warnings, "FAILED") {
+		t.Errorf("the failure should be visible in status, got: %v", st.Warnings)
+	}
+	if len(st.Errors) != 0 {
+		t.Errorf("a failed restart is a warning, not an error: %v", st.Errors)
+	}
+}
+
+// hasSubstring reports whether any line contains want.
+func hasSubstring(lines []string, want string) bool {
+	for _, l := range lines {
+		if strings.Contains(l, want) {
+			return true
+		}
+	}
+	return false
 }
 
 func TestRunOnceRunsCollectorWhenEnabled(t *testing.T) {

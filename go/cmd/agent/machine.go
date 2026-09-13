@@ -170,29 +170,21 @@ func (localApplier) DeployCreds(profileDir string, set model.CredentialSet) (int
 			user, strings.Join(failed, "; "))
 	}
 
-	// Restart the tools only when a login actually changed on disk.
-	//
-	// The kill is a taskkill /F: it takes an employee's in-progress work with
-	// no chance to save. The archive carries every entry ever published for
-	// them, so a login from months ago rides along with today's catalog and
-	// "the archive contains a login" is true of every delivery. The decision
-	// therefore rests on which bytes moved (creds.NeedsToolRestart), not on
-	// what the archive happened to contain.
-	if creds.NeedsToolRestart(rep) {
-		creds.StopAITools()
-	}
 	return rep.Written, rep.Placed, rep.Merged, nil
 }
 
 // RemoveCreds deletes an offboarded employee's logins from their profile.
 func (localApplier) RemoveCreds(profileDir string) (int, error) {
-	n, err := creds.Remove(profileDir)
-	if n > 0 {
-		// The tools keep the tokens in memory, so a running session would
-		// carry on working until it restarts.
-		creds.StopAITools()
-	}
-	return n, err
+	return creds.Remove(profileDir)
+}
+
+// StopCodex ends the AI tools running in one employee's session.
+//
+// The sync loop decides when, not this method: whether a delivery is worth
+// interrupting somebody's work over is a question about what changed in the
+// store, which is knowable there and not here.
+func (localApplier) StopCodex(user string) (int, error) {
+	return creds.StopAIToolsFor(user)
 }
 
 // localState reports what this machine currently has applied, without

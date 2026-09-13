@@ -8,32 +8,47 @@ import (
 	"strings"
 )
 
-// aiToolProcesses are the executables that hold AI tool credentials open
-// in memory. They are killed before a credential deploy so the tool is
-// forced to reload from disk on next launch.
-var aiToolProcesses = []string{"ChatGPT.exe", "codex.exe", "claude.exe"}
+// taskkillNoMatchExit is what taskkill returns when its /FI filter matched no
+// process. It is not a failure: the employee simply did not have the tool
+// open. Treating it as one would put a red error on every routine token
+// rotation for anybody who was not using Codex at that moment.
+const taskkillNoMatchExit = 128
 
-// StopAITools force-kills the running AI tool processes and returns the
-// names of the ones that were actually stopped.
+// StopAIToolsFor force-kills one user's AI tool processes and reports how
+// many it ended.
 //
-// Why kill them at all: these tools cache credentials in memory and do not
-// watch auth.json (or the Claude equivalents) for changes. Codex's own
-// source is explicit that an external edit to auth.json is not picked up
-// until the process does an explicit reload. So overwriting the files on
-// disk while the tool keeps running has no effect until the process is
-// restarted — StopAITools makes sure the next launch reads what was just
-// deployed instead of what it already had cached.
-func StopAITools() []string {
-	var stopped []string
-	for _, name := range aiToolProcesses {
-		cmd := exec.Command("taskkill", "/F", "/IM", name)
-		out, _ := cmd.CombinedOutput()
-		if strings.Contains(strings.ToLower(string(out)), "not found") {
+// Scoped to the bound employee's session by /FI "USERNAME eq <user>" -- see
+// stopCodexArgs for why a machine-wide kill is not acceptable on a
+// multi-session desktop.
+//
+// "Nothing was running" comes back as (0, nil), so the caller can tell an
+// empty session apart from a taskkill that actually failed.
+func StopAIToolsFor(user string) (int, error) {
+	if strings.TrimSpace(user) == "" {
+		return 0, fmt.Errorf("no user to stop AI tools for")
+	}
+	killed := 0
+	var failed []string
+	for _, args := range stopCodexArgs(user) {
+		proc := args[len(args)-1]
+		out, err := exec.Command("taskkill", args...).CombinedOutput()
+		text := string(out)
+		killed += taskkillKilled(text)
+		if err == nil {
 			continue
 		}
-		stopped = append(stopped, name)
+		if exitErr, ok := err.(*exec.ExitError); ok && exitErr.ExitCode() == taskkillNoMatchExit {
+			continue
+		}
+		if taskkillNoMatch(text) {
+			continue
+		}
+		failed = append(failed, fmt.Sprintf("%s: %v (%s)", proc, err, strings.TrimSpace(text)))
 	}
-	return stopped
+	if len(failed) > 0 {
+		return killed, fmt.Errorf("taskkill: %s", strings.Join(failed, "; "))
+	}
+	return killed, nil
 }
 
 // GrantAccess fixes the ACL on path (recursively) so user can read and write

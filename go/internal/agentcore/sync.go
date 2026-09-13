@@ -53,6 +53,13 @@ type Applier interface {
 	// delivered file from one that was skipped or has since been removed.
 	DeployCreds(profileDir string, set model.CredentialSet) (int, map[string]string, []string, error)
 	RemoveCreds(profileDir string) (int, error)
+	// StopCodex ends the AI tools running in one employee's session and
+	// reports how many processes it stopped. Nothing running is (0, nil), not
+	// an error: most restarts land on somebody who did not have Codex open.
+	//
+	// It takes a user rather than acting machine-wide because these are
+	// multi-session cloud desktops -- see creds.stopCodexArgs.
+	StopCodex(user string) (killed int, err error)
 	// ApplyAppLocker brings the machine's local AppLocker policy in line with
 	// paths. It is a separate method rather than folded into ApplyPolicy
 	// because it must NOT be gated by the policy ETag: ApplyPolicy is skipped
@@ -281,6 +288,11 @@ func (s *Syncer) RunOnce() (model.Status, error) {
 			case n > 0:
 				warns = append(warns, fmt.Sprintf("credentials revoked: removed %d file(s) for %q", n, binding.User))
 				s.writeMarker(credsMarkerFile, "")
+				// The tools hold the token in memory, so a session left
+				// running would keep working against an account that has
+				// just been closed. Deleting the files is only half of a
+				// revocation until the process that cached them is gone.
+				warns = append(warns, s.stopCodex(binding.User, "a credential revocation"))
 			default:
 				// Nothing published and nothing to remove: the employee
 				// exists but the administrator has not signed in for them
@@ -305,6 +317,11 @@ func (s *Syncer) RunOnce() (model.Status, error) {
 			errs = append(errs, fmt.Sprintf("credentials: %v", err))
 		} else {
 			credsETag = etag
+			// What the last delivery fetched, read before this one overwrites
+			// it: an archive with a new ETag is a new credential package, and
+			// that -- not a repair of a file somebody deleted -- is what
+			// justifies interrupting the employee's session below.
+			prev, _ := s.readCredsMark()
 			if set, err := creds.Unpack(data); err != nil {
 				errs = append(errs, fmt.Sprintf("credentials unpack: %v", err))
 			} else if n, placed, merged, err := s.Applier.DeployCreds(s.Machine.ProfileDir(binding.User), set); err != nil {
@@ -318,6 +335,20 @@ func (s *Syncer) RunOnce() (model.Status, error) {
 				// exact gap that let a silently skipped entry go unnoticed.
 				log.Printf("credentials: placed %d file(s): %s", n,
 					strings.Join(append(baseNames(placed), baseNames(merged)...), ", "))
+				// Any change to the package ends the employee's Codex, not
+				// only a changed login. A rotated gateway token, an updated
+				// model catalog and a closed account all arrive as new bytes
+				// in this archive, and every one of them is unreadable to a
+				// process that read its configuration once at startup -- so
+				// leaving the session running meant the employee had to work
+				// out for themselves that they needed to restart it.
+				//
+				// A first delivery counts too (prev.ETag is empty): a new
+				// employee whose Codex was already open when their
+				// configuration landed needs the same restart.
+				if etag == "" || etag != prev.ETag {
+					warns = append(warns, s.stopCodex(binding.User, "a credential update"))
+				}
 			} else {
 				// The archive held nothing we recognise. Saying so beats
 				// retrying forever with no trace in admin status.
@@ -538,6 +569,22 @@ func (s *Syncer) ReportEvent(event string) {
 func (s *Syncer) NextInterval(st model.Status) time.Duration {
 	minutes := model.ClampInterval(st.SyncIntervalMinutes, s.FallbackInterval)
 	return time.Duration(minutes) * time.Minute
+}
+
+// stopCodex ends the bound employee's AI tools and returns the line to put in
+// the machine's warnings either way.
+//
+// It returns a warning rather than an error even when taskkill fails: the
+// credentials are already on disk (or already gone), which is the part that
+// had to succeed. A kill that did not happen means the employee keeps a stale
+// session until they restart the tool themselves -- worth saying out loud,
+// not worth reporting the whole cycle as failed over.
+func (s *Syncer) stopCodex(user, reason string) string {
+	killed, err := s.Applier.StopCodex(user)
+	if err != nil {
+		return fmt.Sprintf("codex restart for %q after %s FAILED: %v", user, reason, err)
+	}
+	return fmt.Sprintf("codex restarted for %q after %s (%d killed)", user, reason, killed)
 }
 
 // containsFold reports membership ignoring case, as Windows account names do.

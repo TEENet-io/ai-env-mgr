@@ -412,49 +412,4 @@ func TestRedeliveryOfUnchangedArchiveChangesNothing(t *testing.T) {
 	if len(second.Changed) != 0 {
 		t.Errorf("identical redelivery must change nothing: %v", second.Changed)
 	}
-	if NeedsToolRestart(second) {
-		t.Error("nothing changed, so nothing justifies killing the employee's tools")
-	}
-}
-
-func TestNewCatalogWithOldLoginDoesNotRestartTools(t *testing.T) {
-	// The production case: auth.json has been in the archive since the
-	// employee first signed in; today's publish only adds a catalog.
-	dir := t.TempDir()
-	if _, err := WriteToProfileReport(dir, model.CredentialSet{
-		model.PathCodexAuth: []byte(`{"token":"t1"}`),
-	}); err != nil {
-		t.Fatal(err)
-	}
-	rep, err := WriteToProfileReport(dir, model.CredentialSet{
-		model.PathCodexAuth:   []byte(`{"token":"t1"}`),
-		model.PathCodexModels: []byte(`{"models":[{"slug":"grok-4.6"}]}`),
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(rep.Changed) != 1 || rep.Changed[0] != model.PathCodexModels {
-		t.Fatalf("only the catalog should register as changed: %v", rep.Changed)
-	}
-	if NeedsToolRestart(rep) {
-		t.Error("a catalog change must not force-kill Codex")
-	}
-}
-
-func TestChangedLoginRestartsTools(t *testing.T) {
-	dir := t.TempDir()
-	if _, err := WriteToProfileReport(dir, model.CredentialSet{
-		model.PathCodexAuth: []byte(`{"token":"t1"}`),
-	}); err != nil {
-		t.Fatal(err)
-	}
-	rep, err := WriteToProfileReport(dir, model.CredentialSet{
-		model.PathCodexAuth: []byte(`{"token":"t2"}`),
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !NeedsToolRestart(rep) {
-		t.Error("a rotated login must restart the tools, or a revoked token keeps working")
-	}
 }
