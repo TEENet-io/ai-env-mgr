@@ -35,8 +35,19 @@ type Report struct {
 	CollectUploaded int
 	CodexVersion    string
 	CodexState      string
+	CodexRestart    CodexRestart
 	Warnings        []string
 	Errors          []string
+}
+
+// CodexRestart is the outcome of the console's one-shot restart request: the
+// nonce the agent acted on, when, and what came of it. A zero value means no
+// request has reached this machine, which is how the console tells "never
+// asked" apart from "asked and done".
+type CodexRestart struct {
+	Nonce string
+	At    string
+	Note  string
 }
 
 // Build fills in a Status from the results of one sync cycle.
@@ -68,6 +79,9 @@ func Build(r Report) model.Status {
 		CollectUploaded:     r.CollectUploaded,
 		CodexVersion:        r.CodexVersion,
 		CodexState:          r.CodexState,
+		CodexRestartNonce:   r.CodexRestart.Nonce,
+		CodexRestartAt:      r.CodexRestart.At,
+		CodexRestartNote:    r.CodexRestart.Note,
 		Warnings:            r.Warnings,
 		Errors:              errs,
 	}

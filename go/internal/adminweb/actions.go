@@ -8,6 +8,8 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
+
+	"github.com/TEENet-io/ai-env-mgr/internal/model"
 )
 
 // requirePost gates a state-changing handler on POST plus a matching CSRF
@@ -17,6 +19,20 @@ import (
 // cannot replay the action. Several of these change what every machine in the
 // fleet does, and repeating one by accident is a real cost.
 func (s *Server) requirePost(back string, next func(*session, *http.Request) error) http.HandlerFunc {
+	return s.requirePostNotice(back, func(sess *session, r *http.Request) (string, error) {
+		return "", next(sess, r)
+	})
+}
+
+// requirePostNotice is requirePost for an action whose result needs more
+// saying than "已保存": the handler returns the line to show, and it is
+// carried through the redirect in the query string like an error is.
+//
+// It exists for actions that do not take effect when the button is pressed.
+// "Saved" is a lie for a request an agent will pick up minutes from now, and
+// an administrator who is not told that goes looking for a change that cannot
+// have happened yet.
+func (s *Server) requirePostNotice(back string, next func(*session, *http.Request) (string, error)) http.HandlerFunc {
 	return s.requireSession(func(w http.ResponseWriter, r *http.Request, sess *session) {
 		if r.Method != http.MethodPost {
 			http.Redirect(w, r, back, http.StatusSeeOther)
@@ -34,12 +50,17 @@ func (s *Server) requirePost(back string, next func(*session, *http.Request) err
 			s.redirectWithError(w, r, back, "the form expired; reload the page and try again")
 			return
 		}
-		if err := next(sess, r); err != nil {
+		notice, err := next(sess, r)
+		if err != nil {
 			log.Printf("adminweb: %s: %v", r.URL.Path, err)
 			s.redirectWithError(w, r, back, err.Error())
 			return
 		}
-		http.Redirect(w, r, withQuery(back, "ok", "1"), http.StatusSeeOther)
+		dest := withQuery(back, "ok", "1")
+		if notice != "" {
+			dest = withQuery(dest, "msg", notice)
+		}
+		http.Redirect(w, r, dest, http.StatusSeeOther)
 	})
 }
 
@@ -103,6 +124,28 @@ func (s *Server) actionMachineBind(sess *session, r *http.Request) error {
 		return fmt.Errorf("both a machine and a user are required")
 	}
 	return sess.mgr.BindMachine(machine, user, formValue(r, "note"))
+}
+
+// actionMachineRestartCodex asks one machine's agent to end its employee's
+// Codex on its next sync.
+//
+// The notice names the interval because nothing visible happens when the
+// button is pressed: the request sits in the binding until the agent next
+// reads it. Without the number, an administrator watching the row for a
+// change would conclude the button was broken.
+func (s *Server) actionMachineRestartCodex(sess *session, r *http.Request) (string, error) {
+	machine := formValue(r, "machine")
+	if machine == "" {
+		return "", fmt.Errorf("a machine is required")
+	}
+	if err := sess.mgr.RequestCodexRestart(machine); err != nil {
+		return "", err
+	}
+	minutes := model.DefaultSyncInterval
+	if p, err := sess.mgr.CurrentPolicy(); err == nil {
+		minutes = model.ClampInterval(p.SyncIntervalMinutes, model.DefaultSyncInterval)
+	}
+	return fmt.Sprintf("已下发，Agent 下个同步周期执行（当前间隔 %d 分钟）", minutes), nil
 }
 
 func (s *Server) actionMachineUnbind(sess *session, r *http.Request) error {

@@ -1,9 +1,12 @@
 package admincore
 
 import (
+	"crypto/rand"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"sort"
+	"strings"
 	"time"
 
 	"github.com/TEENet-io/ai-env-mgr/internal/model"
@@ -35,6 +38,10 @@ func (m *Manager) BindMachine(machine, user, note string) error {
 		return fmt.Errorf("user %q not found in roster", user)
 	}
 
+	// No restart request is carried over. A binding is written when a machine
+	// changes hands, and a pending request belongs to the person who has just
+	// been unassigned from it -- acting on it would end the new employee's
+	// Codex for a reason that has nothing to do with them.
 	b := model.Binding{
 		User:    e.WindowsUser,
 		BoundAt: time.Now().UTC().Format(time.RFC3339),
@@ -47,6 +54,58 @@ func (m *Manager) BindMachine(machine, user, note string) error {
 	if err := m.Store.Put(ossclient.BindingKey(machine), data); err != nil {
 		return fmt.Errorf("bind machine %q to %q: %w", machine, user, err)
 	}
+	return nil
+}
+
+// RequestCodexRestart asks the machine's agent to end the bound employee's
+// Codex once, on its next sync.
+//
+// The request rides inside the binding object rather than in one of its own.
+// The binding is already the one thing every agent reads every cycle, and the
+// agent's OSS role can read _bindings/ and almost nothing else -- a separate
+// object would mean widening that role across the whole fleet to carry a
+// sixteen-byte nonce.
+//
+// The nonce is what makes it one-shot. The agent records the last one it
+// acted on, so re-reading the same binding on every subsequent cycle does
+// nothing; only a value it has not seen before is a new request. Random
+// rather than a counter or a timestamp so two administrators pressing the
+// button in the same second cannot produce the same one.
+//
+// Everything else in the binding is written back untouched: this is a
+// read-modify-write of a live object, and dropping the note or the bound-at
+// stamp would quietly rewrite history every time somebody pressed a button.
+func (m *Manager) RequestCodexRestart(machine string) error {
+	b, ok, err := m.LoadBinding(machine)
+	if err != nil {
+		return err
+	}
+	if !ok || b.User == "" {
+		return fmt.Errorf("machine %q is not bound to anyone, so there is no session to restart", machine)
+	}
+
+	nonce := make([]byte, 16)
+	if _, err := rand.Read(nonce); err != nil {
+		return fmt.Errorf("generate restart nonce: %w", err)
+	}
+	b.RestartCodex = hex.EncodeToString(nonce)
+	b.RestartCodexAt = time.Now().UTC().Format(time.RFC3339)
+
+	data, err := json.MarshalIndent(b, "", "  ")
+	if err != nil {
+		return fmt.Errorf("encode binding for %q: %w", machine, err)
+	}
+	if err := m.Store.Put(ossclient.BindingKey(machine), data); err != nil {
+		return fmt.Errorf("request codex restart on %q: %w", machine, err)
+	}
+
+	// Recorded against the machine rather than the employee: this is an act
+	// on a box, and the employee's own history is about their account.
+	m.Events.Audit("admin_action", "restart_codex "+machine, map[string]any{
+		"action": "restart_codex", "target": "machine",
+		"machine": machine, "employee_id": strings.ToLower(b.User),
+		"result": "written", "ok": true,
+	})
 	return nil
 }
 

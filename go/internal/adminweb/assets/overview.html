@@ -98,6 +98,7 @@
     <tbody>
     {{$target := ""}}{{if .Policy}}{{$target = .Policy.CodexVersion}}{{end}}
     {{range .Machines}}
+      {{$m := .}}
       <tr class="r-{{classify .}}">
         <td class="id">{{.Machine}}</td>
         <td>{{if .Bound}}{{.Binding.User}}{{else}}<span class="muted">—</span>{{end}}</td>
@@ -117,6 +118,26 @@
             <input type="hidden" name="machine" value="{{.Machine}}">
             <button class="link">解绑</button>
           </form>
+          <form method="post" action="/machines/restart-codex" class="inline">
+            <input type="hidden" name="csrf" value="{{$.CSRF}}">
+            <input type="hidden" name="machine" value="{{.Machine}}">
+            <button class="link">关闭 Codex</button>
+          </form>
+          {{/* Nothing happens when the button is pressed: the request waits
+          in the binding until the agent next reads it. The row says which of
+          the two states it is in, or an administrator has no way to tell a
+          request still in flight from one that quietly did nothing. */}}
+          {{with .Binding.RestartCodex}}
+          {{if eq . $m.Status.CodexRestartNonce}}
+          <div class="rowsub">已关闭 {{age $m.Status.CodexRestartAt}}{{if $m.Status.CodexRestartNote}} · {{$m.Status.CodexRestartNote}}{{end}}</div>
+          {{else}}
+          {{/* The note belongs to the nonce it was recorded against. While a
+          NEW request is pending, an old "killed 1 process" would read as this
+          one's outcome -- so it is shown only when the agent reported a note
+          without acting at all, which is the reason it could not. */}}
+          <div class="rowsub">关闭 Codex：待执行（下个同步周期）{{if and (not $m.Status.CodexRestartNonce) $m.Status.CodexRestartNote}} · {{$m.Status.CodexRestartNote}}{{end}}</div>
+          {{end}}
+          {{end}}
           {{end}}
         </td>
       </tr>

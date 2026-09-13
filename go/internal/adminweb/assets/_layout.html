@@ -36,7 +36,7 @@ seconds. */}}
 
 {{define "notices"}}
 {{if .Error}}<p class="note note-err">{{.Error}}</p>{{end}}
-{{if .OK}}<p class="note note-ok">已保存</p>{{end}}
+{{if .Notice}}<p class="note note-ok">{{.Notice}}</p>{{else if .OK}}<p class="note note-ok">已保存</p>{{end}}
 {{end}}
 
 {{/* The fleet's composition at a glance: three states, the same colours the

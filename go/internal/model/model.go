@@ -122,6 +122,20 @@ type Binding struct {
 	User    string `json:"user"`
 	BoundAt string `json:"boundAt"`
 	Note    string `json:"note,omitempty"`
+
+	// RestartCodex is a one-shot request from the console: a fresh nonce asks
+	// the agent to end the bound user's Codex once. The agent remembers the
+	// last nonce it acted on, so re-reading the same binding every cycle --
+	// which is what the agent does -- costs nobody their work a second time.
+	//
+	// It rides inside the binding rather than in an object of its own because
+	// the binding is already the one thing every agent reads every cycle, and
+	// the agent's OSS role can read _bindings/ and almost nothing else. A new
+	// prefix would mean a new grant on the role for every machine in the
+	// fleet, to carry sixteen bytes.
+	RestartCodex string `json:"restartCodex,omitempty"` // nonce
+	// RestartCodexAt is when the console asked, for display only.
+	RestartCodexAt string `json:"restartCodexAt,omitempty"` // RFC3339
 }
 
 // Status is written by the agent to agent_workdir/_status/{machine}.json
@@ -171,6 +185,17 @@ type Status struct {
 	// "deferred" (Codex was in use, or the disk was too full) or "failed".
 	CodexVersion string `json:"codexVersion,omitempty"`
 	CodexState   string `json:"codexState,omitempty"`
+
+	// CodexRestartNonce is the last Binding.RestartCodex this machine acted
+	// on. The console compares it with the nonce it wrote: equal means the
+	// request has been carried out, different means it is still pending.
+	// Without it a one-shot request would have no visible outcome at all --
+	// the administrator would press the button and learn nothing.
+	CodexRestartNonce string `json:"codexRestartNonce,omitempty"`
+	// CodexRestartAt is when the agent acted (RFC3339), and CodexRestartNote
+	// is what came of it: "killed 1 process", "no process", or the error.
+	CodexRestartAt   string `json:"codexRestartAt,omitempty"`
+	CodexRestartNote string `json:"codexRestartNote,omitempty"`
 }
 
 // HasLocalUser reports whether a given account has a profile on the machine.

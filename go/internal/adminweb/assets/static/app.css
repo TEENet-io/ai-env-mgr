@@ -227,6 +227,17 @@ td.id, td.num, .mono {
 td.id { font-weight: 600; }
 td.dim { color: var(--ink-faint); }
 
+/* A line of explanation under a row's actions: what a request that has not
+   taken effect yet is waiting for, and what came of the last one. Small and
+   faint because it matters only to whoever just pressed the button. */
+.rowsub {
+  margin-top: 3px;
+  font-size: 11px;
+  line-height: 1.5;
+  color: var(--ink-faint);
+  white-space: normal;
+}
+
 table.kv th {
   width: 190px;
   font-weight: 500;

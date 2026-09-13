@@ -46,7 +46,10 @@ type pageData struct {
 	CSRF     string
 	Error    string
 	OK       bool
-	Nav      string // which nav entry to mark active
+	// Notice replaces the standard "已保存" for an action whose outcome needs
+	// explaining -- see requirePostNotice.
+	Notice string
+	Nav    string // which nav entry to mark active
 
 	Machines []admincore.MachineState
 	Fleet    *fleetSummary
@@ -103,6 +106,7 @@ func newPage(sess *session, r *http.Request, nav string) pageData {
 		Nav:      nav,
 		Error:    r.URL.Query().Get("err"),
 		OK:       r.URL.Query().Get("ok") == "1",
+		Notice:   r.URL.Query().Get("msg"),
 	}
 }
 

@@ -76,6 +76,15 @@
       <button{{if not $.GatewayEnabled}} disabled{{end}}>重新开户</button>
     </form>
     {{end}}
+    {{/* Same request as the 总览 button, reachable from the person rather
+    than from the box: the administrator who has just reissued this
+    employee's token is looking at this page, not at the machine list. */}}
+    {{range .Machines}}
+    <form method="post" action="/machines/restart-codex" class="inline">
+      <input type="hidden" name="csrf" value="{{$.CSRF}}"><input type="hidden" name="machine" value="{{.}}">
+      <button class="link">关闭 {{.}} 上的 Codex</button>
+    </form>
+    {{end}}
     {{range .Flags}}{{if eq .Fix "offboard"}}
     <form method="post" action="/users/offboard" class="inline">
       <input type="hidden" name="csrf" value="{{$.CSRF}}"><input type="hidden" name="windowsUser" value="{{$u}}"><input type="hidden" name="back" value="detail">

@@ -149,3 +149,99 @@ func TestBindMachineStoresTheRostersSpelling(t *testing.T) {
 		t.Errorf("User = %q, want Bob (the roster's own spelling)", b.User)
 	}
 }
+
+// The request is added to the live binding, so everything else in it has to
+// survive: a button press must not quietly rewrite who the machine belongs to
+// or when it was assigned.
+func TestRequestCodexRestartKeepsTheRestOfTheBinding(t *testing.T) {
+	m, _ := newManager()
+	addTestUser(t, m, "alice", "", "")
+	if err := m.BindMachine("work1", "alice", "reimaged 2026-08"); err != nil {
+		t.Fatal(err)
+	}
+	before, _, err := m.LoadBinding("work1")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if err := m.RequestCodexRestart("work1"); err != nil {
+		t.Fatal(err)
+	}
+
+	after, ok, err := m.LoadBinding("work1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !ok {
+		t.Fatal("the binding should still be there")
+	}
+	if after.User != before.User || after.BoundAt != before.BoundAt || after.Note != before.Note {
+		t.Errorf("the binding changed beyond the request:\n got %+v\nwas %+v", after, before)
+	}
+	if after.RestartCodex == "" {
+		t.Fatal("no nonce was written, so the agent would never act")
+	}
+	if len(after.RestartCodex) != 32 {
+		t.Errorf("nonce = %q, want 16 bytes of hex", after.RestartCodex)
+	}
+	if after.RestartCodexAt == "" {
+		t.Error("RestartCodexAt should be stamped for display")
+	}
+}
+
+// Two presses are two requests. A repeated nonce would be ignored by an agent
+// that had already acted on it, leaving the second press silently doing
+// nothing.
+func TestRequestCodexRestartIssuesAFreshNonce(t *testing.T) {
+	m, _ := newManager()
+	addTestUser(t, m, "alice", "", "")
+	if err := m.BindMachine("work1", "alice", ""); err != nil {
+		t.Fatal(err)
+	}
+	if err := m.RequestCodexRestart("work1"); err != nil {
+		t.Fatal(err)
+	}
+	first, _, _ := m.LoadBinding("work1")
+	if err := m.RequestCodexRestart("work1"); err != nil {
+		t.Fatal(err)
+	}
+	second, _, _ := m.LoadBinding("work1")
+	if first.RestartCodex == second.RestartCodex {
+		t.Error("the second press reused the first nonce; the agent would ignore it")
+	}
+}
+
+// There is nobody to restart, and inventing a binding to carry the request
+// would assign the machine to whoever the agent later found.
+func TestRequestCodexRestartOnAnUnboundMachineFails(t *testing.T) {
+	m, _ := newManager()
+	if err := m.RequestCodexRestart("nobodys-pc"); err == nil {
+		t.Fatal("expected an error for an unbound machine")
+	}
+}
+
+// Rebinding is a change of hands: a request left pending belongs to the
+// employee who has just been unassigned, and acting on it would end the new
+// one's session for a reason that has nothing to do with them.
+func TestBindMachineClearsAPendingRestartRequest(t *testing.T) {
+	m, _ := newManager()
+	addTestUser(t, m, "alice", "", "")
+	addTestUser(t, m, "bob", "", "")
+	if err := m.BindMachine("work1", "alice", ""); err != nil {
+		t.Fatal(err)
+	}
+	if err := m.RequestCodexRestart("work1"); err != nil {
+		t.Fatal(err)
+	}
+	if err := m.BindMachine("work1", "bob", "reassigned"); err != nil {
+		t.Fatal(err)
+	}
+
+	b, _, err := m.LoadBinding("work1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if b.RestartCodex != "" || b.RestartCodexAt != "" {
+		t.Errorf("a new employee inherited the old one's request: %+v", b)
+	}
+}

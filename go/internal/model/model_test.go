@@ -161,3 +161,79 @@ func TestBindingRoundTrip(t *testing.T) {
 		t.Errorf("empty note should be omitted, got %s", out)
 	}
 }
+
+func TestBindingCarriesARestartRequest(t *testing.T) {
+	raw := `{"user":"work1","boundAt":"2026-08-04T10:00:00Z",` +
+		`"restartCodex":"9f8c1a2b3d4e5f60","restartCodexAt":"2026-09-06T08:00:00Z"}`
+	var b Binding
+	if err := json.Unmarshal([]byte(raw), &b); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if b.RestartCodex != "9f8c1a2b3d4e5f60" || b.RestartCodexAt != "2026-09-06T08:00:00Z" {
+		t.Errorf("restart request not parsed: %+v", b)
+	}
+	out, err := json.Marshal(b)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var again Binding
+	if err := json.Unmarshal(out, &again); err != nil {
+		t.Fatal(err)
+	}
+	if again != b {
+		t.Errorf("round trip changed the binding:\n got %+v\nwant %+v", again, b)
+	}
+}
+
+// Every machine in the fleet is holding a binding written before this field
+// existed. Reading one must go on meaning exactly what it meant, and in
+// particular must not look like a pending restart request.
+func TestBindingWithoutARestartRequestIsUnchanged(t *testing.T) {
+	raw := `{"user":"work1","boundAt":"2026-08-04T10:00:00Z","note":"dev team"}`
+	var b Binding
+	if err := json.Unmarshal([]byte(raw), &b); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if b.RestartCodex != "" || b.RestartCodexAt != "" {
+		t.Errorf("an old binding must carry no request: %+v", b)
+	}
+	out, err := json.Marshal(b)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(out), "restartCodex") {
+		t.Errorf("an absent request must stay absent, got %s", out)
+	}
+}
+
+func TestStatusCarriesTheRestartOutcome(t *testing.T) {
+	s := Status{
+		Machine: "DESKTOP-A", BoundUser: "work1", Errors: []string{},
+		CodexRestartNonce: "9f8c1a2b3d4e5f60",
+		CodexRestartAt:    "2026-09-06T08:05:00Z",
+		CodexRestartNote:  "killed 1 process",
+	}
+	out, err := json.Marshal(s)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var again Status
+	if err := json.Unmarshal(out, &again); err != nil {
+		t.Fatal(err)
+	}
+	if again.CodexRestartNonce != s.CodexRestartNonce ||
+		again.CodexRestartAt != s.CodexRestartAt ||
+		again.CodexRestartNote != s.CodexRestartNote {
+		t.Errorf("restart outcome did not survive the round trip: %+v", again)
+	}
+
+	// An agent that has never been asked reports nothing, so the console can
+	// tell "not asked" from "asked and done" by the key's absence alone.
+	bare, err := json.Marshal(Status{Machine: "DESKTOP-A", Errors: []string{}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(bare), "codexRestart") {
+		t.Errorf("an untouched machine should report no restart fields, got %s", bare)
+	}
+}

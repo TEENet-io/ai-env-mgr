@@ -96,6 +96,7 @@ const (
 	credsMarkerFile    = "credentials.etag"
 	lastSyncMarkerFile = "last-sync"
 	updateMarkerFile   = "update-target" // the last self-update version attempted
+	// codexRestartMarkerFile lives in codexrestart.go, beside what writes it.
 )
 
 // Updater replaces the running agent binary with a newer one and restarts the
@@ -228,6 +229,7 @@ func (s *Syncer) RunOnce() (model.Status, error) {
 	policyETag := ""
 	credsETag := ""
 	credsApplied := false
+	var codexRestart codexRestartMark
 
 	// ---- policy ----
 	// Applied first and unconditionally. The block is written into HKLM and
@@ -355,6 +357,12 @@ func (s *Syncer) RunOnce() (model.Status, error) {
 				errs = append(errs, "credentials: archive contained no recognised files")
 			}
 		}
+
+		// ---- one-shot restart request ----
+		// After the credentials, so a cycle that delivers a new package and
+		// carries a pending request does the delivery first and the employee
+		// gets one interruption covering both.
+		codexRestart = s.runCodexRestart(binding, boundUserExists, &warns)
 	}
 
 	// ---- collection ----
@@ -403,8 +411,11 @@ func (s *Syncer) RunOnce() (model.Status, error) {
 		CollectUploaded: collectUploaded,
 		CodexVersion:    codexVersion,
 		CodexState:      codexState,
-		Errors:          errs,
-		Warnings:        warns,
+		CodexRestart: status.CodexRestart{
+			Nonce: codexRestart.Nonce, At: codexRestart.At, Note: codexRestart.Note,
+		},
+		Errors:   errs,
+		Warnings: warns,
 	})
 
 	if out, err := status.Marshal(st); err != nil {

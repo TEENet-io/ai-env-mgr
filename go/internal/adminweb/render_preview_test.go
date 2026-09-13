@@ -32,7 +32,7 @@ func TestRenderPreview(t *testing.T) {
 	}
 	mk := func(name, user string, st admincore.MachineState) admincore.MachineState {
 		st.Machine = name
-		st.Binding = model.Binding{User: user}
+		st.Binding = model.Binding{User: user, RestartCodex: st.Binding.RestartCodex}
 		st.Bound = user != ""
 		return st
 	}
@@ -53,6 +53,17 @@ func TestRenderPreview(t *testing.T) {
 				AppLockerMode: "None"}}),
 		mk("wuying-desk-0145", "", admincore.MachineState{Unbound: true,
 			Status: model.Status{LastSync: ago(2 * time.Minute), AgentVersion: "1.2.4"}}),
+		// The two states of a one-shot restart request: asked but not yet
+		// picked up, and carried out.
+		mk("wuying-desk-0149", "mei", admincore.MachineState{
+			Binding: model.Binding{RestartCodex: "1a2b3c4d5e6f7080"},
+			Status: model.Status{LastSync: ago(2 * time.Minute), AgentVersion: "1.2.7",
+				AppLockerMode: "Enforce"}}),
+		mk("wuying-desk-0150", "tan", admincore.MachineState{
+			Binding: model.Binding{RestartCodex: "7b3c9d1e2f4a5b60"},
+			Status: model.Status{LastSync: ago(3 * time.Minute), AgentVersion: "1.2.7",
+				AppLockerMode: "Enforce", CodexRestartNonce: "7b3c9d1e2f4a5b60",
+				CodexRestartAt: ago(4 * time.Minute), CodexRestartNote: "killed 1 process"}}),
 		mk("wuying-desk-0146", "chen", admincore.MachineState{Missing: true}),
 		mk("wuying-desk-0147", "zhao", admincore.MachineState{
 			Status: model.Status{LastSync: time.Now().Add(-3 * time.Hour).UTC().Format(time.RFC3339),

@@ -137,3 +137,62 @@ func TestAuditSLSCopyCarriesOSSResult(t *testing.T) {
 		t.Errorf("common fields: %v", got[0])
 	}
 }
+
+// Ending somebody's session is an administrative act on a machine, and the
+// log is the only place it leaves a trace: the binding itself shows only the
+// latest request, and the machine's own status is overwritten every cycle.
+func TestRequestCodexRestartIsAudited(t *testing.T) {
+	dir := t.TempDir()
+	events, err := eventlog.New(dir, "test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	m, _ := newManager()
+	m.Events = events
+	addTestUser(t, m, "alice", "", "")
+	if err := m.BindMachine("work1", "alice", ""); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := m.RequestCodexRestart("work1"); err != nil {
+		t.Fatal(err)
+	}
+
+	raw, err := os.ReadFile(filepath.Join(dir, "audit.jsonl"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	lines := bytes.Split(bytes.TrimSpace(raw), []byte("\n"))
+	if len(lines) != 1 {
+		t.Fatalf("want 1 audit line, got %d: %s", len(lines), raw)
+	}
+	var e map[string]any
+	if err := json.Unmarshal(lines[0], &e); err != nil {
+		t.Fatal(err)
+	}
+	if e["event_type"] != "admin_action" || e["action"] != "restart_codex" {
+		t.Errorf("wrong action: %v", e)
+	}
+	if e["target"] != "machine" || e["machine"] != "work1" {
+		t.Errorf("the machine acted on must be named: %v", e)
+	}
+	if e["employee_id"] != "alice" {
+		t.Errorf("whose session was ended must be recorded: %v", e)
+	}
+}
+
+// Events is nil on a console started without a log directory, which is how a
+// developer runs it. A button must not panic there.
+func TestRequestCodexRestartWithoutAnEventLog(t *testing.T) {
+	m, _ := newManager()
+	addTestUser(t, m, "alice", "", "")
+	if err := m.BindMachine("work1", "alice", ""); err != nil {
+		t.Fatal(err)
+	}
+	if m.Events != nil {
+		t.Fatal("this test wants a manager with no event log")
+	}
+	if err := m.RequestCodexRestart("work1"); err != nil {
+		t.Fatal(err)
+	}
+}
