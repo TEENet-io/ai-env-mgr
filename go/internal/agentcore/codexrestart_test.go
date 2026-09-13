@@ -91,6 +91,66 @@ func TestRestartRequestActsOncePerNonce(t *testing.T) {
 	}
 }
 
+// A cycle that both delivers changed credentials and finds a pending request
+// has one session to end, not two. Killing twice would take whatever the
+// employee reopened in the seconds between -- and from their side the second
+// one is inexplicable, since nothing happened in between that they could see.
+func TestDeliveryAndRequestInOneCycleInterruptOnce(t *testing.T) {
+	app := &fakeApplier{stopKilled: 2}
+	s, store := restartSyncer(t, app)
+	bindWithRestart(t, store, "DESKTOP-A", "work1", "nonce-1")
+	store.set(ossclient.UserKey("work1", "credentials.zip"), credsBytesFor(t, model.CredentialSet{
+		model.PathCodexAuth: []byte(`{"token":"t1"}`),
+	}), "c1")
+
+	st, err := s.RunOnce()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(app.stoppedFor) != 1 {
+		t.Fatalf("the session was ended %d times in one cycle, want 1: %v", len(app.stoppedFor), app.stoppedFor)
+	}
+	// The request still counts as carried out, with the sweep's outcome, or
+	// the console would show it pending forever.
+	if st.CodexRestartNonce != "nonce-1" {
+		t.Errorf("CodexRestartNonce = %q, want nonce-1", st.CodexRestartNonce)
+	}
+	if st.CodexRestartNote != "killed 2 processes" {
+		t.Errorf("CodexRestartNote = %q, want the sweep's own result", st.CodexRestartNote)
+	}
+
+	// And it does not come back on the next cycle: the marker was written.
+	if _, err := s.RunOnce(); err != nil {
+		t.Fatal(err)
+	}
+	if len(app.stoppedFor) != 1 {
+		t.Errorf("the request ran again after being covered: %v", app.stoppedFor)
+	}
+}
+
+// A failed sweep is the request's outcome too: reporting "killed 0" for a
+// taskkill that was refused would tell the administrator the session is
+// clean when it is not.
+func TestARequestCoveredByAFailedSweepReportsTheFailure(t *testing.T) {
+	app := &fakeApplier{stopErr: errors.New("access is denied")}
+	s, store := restartSyncer(t, app)
+	bindWithRestart(t, store, "DESKTOP-A", "work1", "nonce-1")
+	store.set(ossclient.UserKey("work1", "credentials.zip"), credsBytesFor(t, model.CredentialSet{
+		model.PathCodexAuth: []byte(`{"token":"t1"}`),
+	}), "c1")
+
+	st, err := s.RunOnce()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(app.stoppedFor) != 1 {
+		t.Fatalf("stopped %d times, want 1", len(app.stoppedFor))
+	}
+	if !strings.Contains(st.CodexRestartNote, "access is denied") {
+		t.Errorf("CodexRestartNote = %q, want the failure", st.CodexRestartNote)
+	}
+}
+
 func TestRestartRequestWritesTheNonceMarker(t *testing.T) {
 	app := &fakeApplier{stopKilled: 1}
 	s, store := restartSyncer(t, app)

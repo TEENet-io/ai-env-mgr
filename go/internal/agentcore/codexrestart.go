@@ -63,7 +63,7 @@ func (s *Syncer) writeCodexRestartMark(m codexRestartMark) {
 // retry is another attempt to take somebody's session away. The failure is
 // recorded in the note instead, where an administrator can see it and decide
 // whether to ask again.
-func (s *Syncer) runCodexRestart(b model.Binding, userExists bool, warns *[]string) codexRestartMark {
+func (s *Syncer) runCodexRestart(b model.Binding, userExists bool, sweep codexSweep, warns *[]string) codexRestartMark {
 	if b.RestartCodex == "" {
 		return codexRestartMark{}
 	}
@@ -82,7 +82,14 @@ func (s *Syncer) runCodexRestart(b model.Binding, userExists bool, warns *[]stri
 	}
 
 	m := codexRestartMark{Nonce: b.RestartCodex, At: time.Now().UTC().Format(time.RFC3339)}
-	killed, err := s.Applier.StopCodex(b.User)
+	// A delivery earlier in this cycle has already ended the session the
+	// request asked about. Killing again would take whatever the employee
+	// reopened in the seconds between, so the request records that sweep as
+	// its own outcome instead.
+	killed, err := sweep.killed, sweep.err
+	if !sweep.done {
+		killed, err = s.Applier.StopCodex(b.User)
+	}
 	switch {
 	case err != nil:
 		m.Note = err.Error()

@@ -260,6 +260,10 @@ func (s *Syncer) RunOnce() (model.Status, error) {
 	credsETag := ""
 	credsApplied := false
 	var codexRestart codexRestartMark
+	// One interruption per cycle: a delivery and a pending request both end
+	// the same session, and doing it twice in one pass would take whatever
+	// the employee had reopened in between.
+	var sweep codexSweep
 
 	// ---- policy ----
 	// Applied first and unconditionally. The block is written into HKLM and
@@ -324,7 +328,7 @@ func (s *Syncer) RunOnce() (model.Status, error) {
 				// running would keep working against an account that has
 				// just been closed. Deleting the files is only half of a
 				// revocation until the process that cached them is gone.
-				warns = append(warns, s.stopCodex(binding.User, "a credential revocation"))
+				warns = append(warns, s.stopCodex(binding.User, "a credential revocation", &sweep))
 			default:
 				// Nothing published and nothing to remove: the employee
 				// exists but the administrator has not signed in for them
@@ -379,7 +383,7 @@ func (s *Syncer) RunOnce() (model.Status, error) {
 				// Changed, so a new employee whose Codex was already open
 				// still gets the restart they need.
 				if len(d.Changed) > 0 {
-					warns = append(warns, s.stopCodex(binding.User, "a credential update"))
+					warns = append(warns, s.stopCodex(binding.User, "a credential update", &sweep))
 				}
 			} else {
 				// The archive held nothing we recognise. Saying so beats
@@ -391,8 +395,9 @@ func (s *Syncer) RunOnce() (model.Status, error) {
 		// ---- one-shot restart request ----
 		// After the credentials, so a cycle that delivers a new package and
 		// carries a pending request does the delivery first and the employee
-		// gets one interruption covering both.
-		codexRestart = s.runCodexRestart(binding, boundUserExists, &warns)
+		// gets one interruption covering both: the sweep above, if it ran,
+		// is what the request records as its outcome.
+		codexRestart = s.runCodexRestart(binding, boundUserExists, sweep, &warns)
 	}
 
 	// ---- collection ----
@@ -612,16 +617,25 @@ func (s *Syncer) NextInterval(st model.Status) time.Duration {
 	return time.Duration(minutes) * time.Minute
 }
 
-// stopCodex ends the bound employee's AI tools and returns the line to put in
-// the machine's warnings either way.
+// codexSweep records this cycle's kill so a second one is not needed. A zero
+// value means nothing has been stopped yet in this pass.
+type codexSweep struct {
+	done   bool
+	killed int
+	err    error
+}
+
+// stopCodex ends the bound employee's AI tools, records the outcome in sweep
+// and returns the line to put in the machine's warnings either way.
 //
 // It returns a warning rather than an error even when taskkill fails: the
 // credentials are already on disk (or already gone), which is the part that
 // had to succeed. A kill that did not happen means the employee keeps a stale
 // session until they restart the tool themselves -- worth saying out loud,
 // not worth reporting the whole cycle as failed over.
-func (s *Syncer) stopCodex(user, reason string) string {
+func (s *Syncer) stopCodex(user, reason string, sweep *codexSweep) string {
 	killed, err := s.Applier.StopCodex(user)
+	*sweep = codexSweep{done: true, killed: killed, err: err}
 	if err != nil {
 		return fmt.Sprintf("codex restart for %q after %s FAILED: %v", user, reason, err)
 	}
