@@ -2,6 +2,7 @@ package creds
 
 import (
 	"reflect"
+	"strings"
 	"testing"
 )
 
@@ -16,7 +17,11 @@ func TestStopCodexArgsAreScopedToTheUser(t *testing.T) {
 		{"/F", "/FI", "USERNAME eq work1", "/IM", "codex.exe"},
 		{"/F", "/FI", "USERNAME eq work1", "/IM", "claude.exe"},
 	}
-	if got := stopCodexArgs("work1"); !reflect.DeepEqual(got, want) {
+	got, err := stopCodexArgs("work1")
+	if err != nil {
+		t.Fatalf("stopCodexArgs(%q): %v", "work1", err)
+	}
+	if !reflect.DeepEqual(got, want) {
 		t.Errorf("stopCodexArgs(%q) =\n%q\nwant\n%q", "work1", got, want)
 	}
 }
@@ -24,7 +29,11 @@ func TestStopCodexArgsAreScopedToTheUser(t *testing.T) {
 // A machine-wide kill would take every other session's work with it, so the
 // filter must be present on every command, not merely on the first.
 func TestStopCodexArgsNeverKillMachineWide(t *testing.T) {
-	for _, args := range stopCodexArgs("work1") {
+	all, err := stopCodexArgs("work1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, args := range all {
 		found := false
 		for _, a := range args {
 			if a == "/FI" {
@@ -39,7 +48,10 @@ func TestStopCodexArgsNeverKillMachineWide(t *testing.T) {
 
 func TestStopCodexArgsStripsDomainPrefix(t *testing.T) {
 	for _, user := range []string{`CORP\work1`, `.\work1`, "  work1  "} {
-		args := stopCodexArgs(user)
+		args, err := stopCodexArgs(user)
+		if err != nil {
+			t.Fatalf("stopCodexArgs(%q): %v", user, err)
+		}
 		if args[0][2] != "USERNAME eq work1" {
 			t.Errorf("stopCodexArgs(%q) filter = %q, want %q", user, args[0][2], "USERNAME eq work1")
 		}
@@ -90,5 +102,63 @@ func TestTaskkillKilledCountsBothLocales(t *testing.T) {
 		if got := taskkillKilled(c.out); got != c.want {
 			t.Errorf("taskkillKilled(%q) = %d, want %d", c.out, got, c.want)
 		}
+	}
+}
+
+// The filter is built by pasting the name into a string, and the name comes
+// from a binding the console writes. This is the boundary where something
+// that is not a name has to be turned away -- above all `*`, which would
+// turn "end this employee's Codex" into the machine-wide kill the filter
+// exists to prevent.
+func TestStopCodexArgsRejectsNamesThatAreNotNames(t *testing.T) {
+	bad := []string{
+		"*",          // matches every account on the box
+		"work*",      // same, less obviously
+		`corp\`,      // a domain prefix and nothing after it
+		"",           // no user at all
+		"   ",        // nor after trimming
+		"work 1",     // a space changes how taskkill parses the filter
+		`work"1`,     // quote
+		"work1;calc", // command-ish
+		"work$1",     // not a character Windows allows in an account name
+		strings.Repeat("a", 65),
+	}
+	for _, user := range bad {
+		args, err := stopCodexArgs(user)
+		if err == nil {
+			t.Errorf("stopCodexArgs(%q) was accepted and produced %q", user, args)
+			continue
+		}
+		if !strings.Contains(err.Error(), "refusing to kill for invalid user name") {
+			t.Errorf("stopCodexArgs(%q) error = %v, want it to say why", user, err)
+		}
+		if args != nil {
+			t.Errorf("stopCodexArgs(%q) returned commands alongside an error: %q", user, args)
+		}
+	}
+}
+
+// The names real accounts actually have must keep working; a check that
+// refuses those is a check that gets deleted.
+func TestStopCodexArgsAcceptsOrdinaryNames(t *testing.T) {
+	for _, user := range []string{"work1", "Administrator", "li.si", "zhang-san", "a_b", "A", strings.Repeat("a", 64)} {
+		if _, err := stopCodexArgs(user); err != nil {
+			t.Errorf("stopCodexArgs(%q) refused a legitimate name: %v", user, err)
+		}
+	}
+}
+
+// The error text names the executable that failed. Reading it off the end of
+// the argument list happened to work; one more flag appended to the command
+// and every failure report would have named the flag instead.
+func TestImageNameComesFromTheIMFlag(t *testing.T) {
+	if got := imageName([]string{"/F", "/FI", "USERNAME eq work1", "/IM", "codex.exe"}); got != "codex.exe" {
+		t.Errorf("imageName = %q, want codex.exe", got)
+	}
+	if got := imageName([]string{"/F", "/IM", "ChatGPT.exe", "/T"}); got != "ChatGPT.exe" {
+		t.Errorf("imageName = %q, want ChatGPT.exe (not the trailing flag)", got)
+	}
+	if got := imageName([]string{"/F", "/IM"}); got != "taskkill" {
+		t.Errorf("imageName = %q, want the fallback when /IM has no value", got)
 	}
 }

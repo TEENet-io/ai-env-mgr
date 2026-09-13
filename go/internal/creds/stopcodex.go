@@ -1,6 +1,10 @@
 package creds
 
-import "strings"
+import (
+	"fmt"
+	"regexp"
+	"strings"
+)
 
 // aiToolProcesses are the executables that hold AI tool credentials open in
 // memory. Codex ships as the Electron app ChatGPT.exe (launched by
@@ -13,6 +17,19 @@ import "strings"
 // therefore changes nothing until it restarts, and a token that has since
 // been revoked goes on working.
 var aiToolProcesses = []string{"ChatGPT.exe", "codex.exe", "claude.exe"}
+
+// localAccountPattern is what a Windows local account name may look like
+// before it is pasted into a taskkill filter.
+//
+// The filter string is built by concatenation, and the binding it comes from
+// is written by the console -- so this is the boundary where a name that is
+// not a name has to be refused. A `*` would turn "end this employee's Codex"
+// into "end everybody's on this machine", which is exactly the machine-wide
+// kill the filter exists to prevent; a name with a space changes how taskkill
+// parses the expression. Windows itself forbids all of "/\[]:;|=,+*?<>%"
+// and spaces at the ends, so nothing legitimate is lost by being stricter
+// than Windows and allowing only these.
+var localAccountPattern = regexp.MustCompile(`^[A-Za-z0-9._-]{1,64}$`)
 
 // stopCodexArgs builds the taskkill argument lists that end one user's AI
 // tools, one list per executable.
@@ -27,13 +44,16 @@ var aiToolProcesses = []string{"ChatGPT.exe", "codex.exe", "claude.exe"}
 // a command line belong to the shell; exec passes `USERNAME eq work1` as one
 // argument without them. A DOMAIN\ prefix is stripped because the filter
 // matches the bare account name that owns the session.
-func stopCodexArgs(user string) [][]string {
+func stopCodexArgs(user string) ([][]string, error) {
 	name := localAccountName(user)
+	if !localAccountPattern.MatchString(name) {
+		return nil, fmt.Errorf("refusing to kill for invalid user name %q", user)
+	}
 	args := make([][]string, 0, len(aiToolProcesses))
 	for _, proc := range aiToolProcesses {
 		args = append(args, []string{"/F", "/FI", "USERNAME eq " + name, "/IM", proc})
 	}
-	return args
+	return args, nil
 }
 
 // localAccountName reduces `CORP\work1` or `.\work1` to `work1`.
@@ -43,6 +63,19 @@ func localAccountName(user string) string {
 		return user[i+1:]
 	}
 	return user
+}
+
+// imageName pulls the executable out of a taskkill argument list for an error
+// message: the value after /IM, rather than whichever argument happens to be
+// last. A later flag appended to the list would otherwise quietly turn every
+// failure report into a lie.
+func imageName(args []string) string {
+	for i, a := range args {
+		if strings.EqualFold(a, "/IM") && i+1 < len(args) {
+			return args[i+1]
+		}
+	}
+	return "taskkill"
 }
 
 // taskkillKilled counts the processes taskkill reports having ended: one

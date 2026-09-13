@@ -184,6 +184,29 @@ func TestFailedRestartRequestIsMarkedAndNotRetried(t *testing.T) {
 	}
 }
 
+// A binding naming something that is not an account -- `*`, say, which as a
+// taskkill filter would match every session on the box -- never reaches the
+// kill at all: no local profile matches it, so the request stops at the same
+// check that catches an employee who has not signed in yet. The name is
+// validated again further down (creds.stopCodexArgs), but this is the layer
+// that means a bad name in the store cannot even get that far.
+func TestRestartRequestNamingSomethingThatIsNotAnAccountNeverKills(t *testing.T) {
+	app := &fakeApplier{stopKilled: 1}
+	s, store := restartSyncer(t, app)
+	bindWithRestart(t, store, "DESKTOP-A", "*", "nonce-1")
+
+	st, err := s.RunOnce()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(app.stoppedFor) != 0 {
+		t.Fatalf("a wildcard binding reached the kill: %v", app.stoppedFor)
+	}
+	if st.CodexRestartNote != noBoundUserProfileNote {
+		t.Errorf("CodexRestartNote = %q, want %q", st.CodexRestartNote, noBoundUserProfileNote)
+	}
+}
+
 // Nothing running is the common case -- most people do not have Codex open
 // when an administrator presses the button -- and it is a success.
 func TestRestartRequestWithNothingRunningSaysSo(t *testing.T) {

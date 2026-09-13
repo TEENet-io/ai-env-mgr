@@ -24,13 +24,17 @@ const taskkillNoMatchExit = 128
 // "Nothing was running" comes back as (0, nil), so the caller can tell an
 // empty session apart from a taskkill that actually failed.
 func StopAIToolsFor(user string) (int, error) {
-	if strings.TrimSpace(user) == "" {
-		return 0, fmt.Errorf("no user to stop AI tools for")
+	// Checked before anything runs: a name that is not a name must not reach
+	// the filter at all, and half the executables killed under a bad filter
+	// would be worse than none.
+	commands, err := stopCodexArgs(user)
+	if err != nil {
+		return 0, err
 	}
 	killed := 0
 	var failed []string
-	for _, args := range stopCodexArgs(user) {
-		proc := args[len(args)-1]
+	for _, args := range commands {
+		proc := imageName(args)
 		out, err := exec.Command("taskkill", args...).CombinedOutput()
 		text := string(out)
 		killed += taskkillKilled(text)

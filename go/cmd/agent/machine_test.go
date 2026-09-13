@@ -184,3 +184,25 @@ func TestIsSystemProfile(t *testing.T) {
 		}
 	}
 }
+
+// The taskkill filter is built by pasting the bound user's name into a
+// string, and that name arrives from the console inside the binding. A `*`
+// there would turn "end this employee's Codex" into "end everybody's on this
+// machine" -- so the agent's own entry point has to refuse it, not merely the
+// argument builder underneath.
+func TestStopCodexRefusesAUserNameThatIsNotAName(t *testing.T) {
+	for _, user := range []string{"*", `corp\`, "work 1", ""} {
+		killed, err := localApplier{}.StopCodex(user)
+		if err == nil {
+			t.Errorf("StopCodex(%q) was accepted", user)
+		}
+		if killed != 0 {
+			t.Errorf("StopCodex(%q) reported %d killed alongside the refusal", user, killed)
+		}
+	}
+	// An ordinary account still goes through. Off Windows nothing is killed,
+	// which is reported as zero rather than as a failure.
+	if killed, err := (localApplier{}).StopCodex("work1"); err != nil || killed != 0 {
+		t.Errorf("StopCodex(%q) = %d, %v; want 0, nil off Windows", "work1", killed, err)
+	}
+}
