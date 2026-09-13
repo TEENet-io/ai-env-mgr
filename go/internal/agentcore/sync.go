@@ -47,11 +47,9 @@ type Store interface {
 // them again when the employee is offboarded.
 type Applier interface {
 	ApplyPolicy(p model.Policy) error
-	// DeployCreds writes the archive into the employee's profile and returns
-	// how many files it placed along with a path -> SHA-256 manifest of the
-	// bytes that reached disk. The manifest is what lets a later cycle tell a
-	// delivered file from one that was skipped or has since been removed.
-	DeployCreds(profileDir string, set model.CredentialSet) (int, map[string]string, []string, error)
+	// DeployCreds writes the archive into the employee's profile and reports
+	// what that did -- see Delivery.
+	DeployCreds(profileDir string, set model.CredentialSet) (Delivery, error)
 	RemoveCreds(profileDir string) (int, error)
 	// StopCodex ends the AI tools running in one employee's session and
 	// reports how many processes it stopped. Nothing running is (0, nil), not
@@ -73,6 +71,38 @@ type Applier interface {
 	// "audit", or empty for unmanaged), applied in the same pass so the
 	// fleet-wide off switch costs no extra work on the machine.
 	ApplyAppLocker(paths []string, mode string) error
+}
+
+// Delivery is what one credential deploy actually did on the machine.
+//
+// It is a struct rather than a handful of return values because the facts it
+// carries answer different questions -- what landed, what can be verified
+// later, and what actually moved -- and a caller that confuses the last two
+// either takes an employee's work away for nothing or leaves them running on
+// a token that has been withdrawn.
+type Delivery struct {
+	// Written counts the files placed on disk, whether or not their contents
+	// moved. Zero means the archive held nothing this build recognises.
+	Written int
+
+	// Placed maps a written file's path to the SHA-256 of the bytes that
+	// reached disk, and Merged lists the files folded into what the employee
+	// already had (checked for presence only). Together they are what lets a
+	// later cycle tell a delivered file from one that was skipped or has
+	// since been removed, which is what makes skipping an unchanged archive
+	// safe.
+	Placed map[string]string
+	Merged []string
+
+	// Changed names the entries whose bytes on disk are not what they were
+	// before this delivery: files created, files rewritten, and files
+	// replaced after somebody deleted them.
+	//
+	// This is what decides whether the employee's session is ended. A
+	// redelivery is not evidence of anything on its own -- the archive is
+	// re-fetched whenever its ETag moves or the local marker cannot be read,
+	// and either can happen with every byte on disk already correct.
+	Changed []string
 }
 
 // Machine describes what the agent can learn about the box it runs on.
@@ -319,36 +349,36 @@ func (s *Syncer) RunOnce() (model.Status, error) {
 			errs = append(errs, fmt.Sprintf("credentials: %v", err))
 		} else {
 			credsETag = etag
-			// What the last delivery fetched, read before this one overwrites
-			// it: an archive with a new ETag is a new credential package, and
-			// that -- not a repair of a file somebody deleted -- is what
-			// justifies interrupting the employee's session below.
-			prev, _ := s.readCredsMark()
 			if set, err := creds.Unpack(data); err != nil {
 				errs = append(errs, fmt.Sprintf("credentials unpack: %v", err))
-			} else if n, placed, merged, err := s.Applier.DeployCreds(s.Machine.ProfileDir(binding.User), set); err != nil {
+			} else if d, err := s.Applier.DeployCreds(s.Machine.ProfileDir(binding.User), set); err != nil {
 				errs = append(errs, fmt.Sprintf("credentials deploy: %v", err))
-			} else if n > 0 {
+			} else if d.Written > 0 {
 				credsApplied = true
-				s.writeCredsMark(etag, placed, merged)
+				s.writeCredsMark(etag, d.Placed, d.Merged)
 				// Name the files. Without this a delivery leaves only an
 				// ETag behind, so "the archive was fetched" and "the file
 				// the employee needs is on disk" cannot be told apart -- the
 				// exact gap that let a silently skipped entry go unnoticed.
-				log.Printf("credentials: placed %d file(s): %s", n,
-					strings.Join(append(baseNames(placed), baseNames(merged)...), ", "))
-				// Any change to the package ends the employee's Codex, not
-				// only a changed login. A rotated gateway token, an updated
-				// model catalog and a closed account all arrive as new bytes
-				// in this archive, and every one of them is unreadable to a
+				log.Printf("credentials: placed %d file(s): %s", d.Written,
+					strings.Join(append(baseNames(d.Placed), baseNames(d.Merged)...), ", "))
+				// Any changed file ends the employee's Codex, not only a
+				// changed login. A rotated gateway token, an updated model
+				// catalog and a closed account all arrive as new bytes in
+				// this archive, and every one of them is unreadable to a
 				// process that read its configuration once at startup -- so
 				// leaving the session running meant the employee had to work
 				// out for themselves that they needed to restart it.
 				//
-				// A first delivery counts too (prev.ETag is empty): a new
-				// employee whose Codex was already open when their
-				// configuration landed needs the same restart.
-				if etag == "" || etag != prev.ETag {
+				// The test is what moved on disk, not that a delivery
+				// happened. The archive is re-fetched whenever its ETag
+				// changes or the local marker cannot be read -- a new console
+				// build republishing identical bytes, an agent upgraded past
+				// an older marker format -- and neither is a reason to take
+				// somebody's work away. A first delivery has every file in
+				// Changed, so a new employee whose Codex was already open
+				// still gets the restart they need.
+				if len(d.Changed) > 0 {
 					warns = append(warns, s.stopCodex(binding.User, "a credential update"))
 				}
 			} else {

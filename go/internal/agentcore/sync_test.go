@@ -11,6 +11,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"sort"
 	"strings"
 	"testing"
 	"time"
@@ -312,29 +313,40 @@ func (a *fakeApplier) ApplyAppLocker(paths []string, mode string) error {
 	return a.appLockerErr
 }
 
-func (a *fakeApplier) DeployCreds(profileDir string, set model.CredentialSet) (int, map[string]string, []string, error) {
+func (a *fakeApplier) DeployCreds(profileDir string, set model.CredentialSet) (Delivery, error) {
 	if a.deployErr != nil {
-		return 0, nil, nil, a.deployErr
+		return Delivery{}, a.deployErr
 	}
 	a.deployed = append(a.deployed, set)
 	if a.deployNone {
-		return 0, nil, nil, nil
+		return Delivery{}, nil
 	}
-	// A manifest of files that really exist, so the sync loop's verification
-	// behaves as it would on a machine rather than always failing.
-	placed := map[string]string{}
+	// Files that really exist, so the sync loop's verification behaves as it
+	// would on a machine rather than always failing -- and Changed worked out
+	// the way creds.WriteToProfileReport works it out, by comparing with what
+	// was on disk. Faking that with a flag would let the loop pass a test
+	// while killing an employee's session over a redelivery of bytes it
+	// already had.
+	d := Delivery{Placed: map[string]string{}}
 	for name, data := range set {
 		path := filepath.Join(profileDir, filepath.Base(name))
-		if err := os.MkdirAll(profileDir, 0o700); err == nil {
-			if os.WriteFile(path, data, 0o600) == nil {
-				placed[path] = fmt.Sprintf("%x", sha256.Sum256(data))
-			}
+		if err := os.MkdirAll(profileDir, 0o700); err != nil {
+			continue
+		}
+		previous, readErr := os.ReadFile(path)
+		if readErr != nil || !bytes.Equal(previous, data) {
+			d.Changed = append(d.Changed, name)
+		}
+		if os.WriteFile(path, data, 0o600) == nil {
+			d.Placed[path] = fmt.Sprintf("%x", sha256.Sum256(data))
 		}
 	}
+	sort.Strings(d.Changed)
+	d.Written = len(set)
 	if a.deployedN > 0 {
-		return a.deployedN, placed, nil, nil
+		d.Written = a.deployedN
 	}
-	return len(set), placed, nil, nil
+	return d, nil
 }
 
 // fakeMachine stands in for the real host.
@@ -397,7 +409,15 @@ func policyBytes(t *testing.T, p model.Policy) []byte {
 
 func credsBytes(t *testing.T) []byte {
 	t.Helper()
-	blob, err := creds.Pack(model.CredentialSet{model.PathCodexAuth: []byte("{}")})
+	return credsBytesFor(t, model.CredentialSet{model.PathCodexAuth: []byte("{}")})
+}
+
+// credsBytesFor packs an archive with contents of the caller's choosing, so a
+// test can tell a redelivery of the same bytes apart from a real change --
+// which is the whole basis of the restart decision.
+func credsBytesFor(t *testing.T, set model.CredentialSet) []byte {
+	t.Helper()
+	blob, err := creds.Pack(set)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1144,18 +1164,20 @@ func TestRunOnceDoesNotRedownloadUnchangedCredentials(t *testing.T) {
 // rotated gateway token, a new model catalog, a closed account -- the tools
 // that read it once at startup have to be restarted, or the employee is left
 // running on configuration that no longer exists.
-func TestRunOnceRestartsCodexWhenCredentialsChange(t *testing.T) {
+func TestRunOnceRestartsCodexWhenACredentialFileChanges(t *testing.T) {
 	store := newFakeStore()
 	bind(t, store, "DESKTOP-A", "work1")
 	store.set(ossclient.PolicyKey(), policyBytes(t, model.Policy{BlockEnabled: true}), "p1")
 	credsKey := ossclient.UserKey("work1", "credentials.zip")
-	store.set(credsKey, credsBytes(t), "c1")
+	store.set(credsKey, credsBytesFor(t, model.CredentialSet{
+		model.PathCodexAuth: []byte(`{"token":"t1"}`),
+	}), "c1")
 
 	app := &fakeApplier{stopKilled: 1}
 	s := newSyncer(t, store, app)
 
-	// First delivery: Codex may already be open on a new employee's desktop,
-	// and it will not read the catalog that just landed until it restarts.
+	// First delivery: every file is new, and a new employee's Codex may
+	// already be open on a configuration it will never see.
 	st, err := s.RunOnce()
 	if err != nil {
 		t.Fatal(err)
@@ -1170,7 +1192,8 @@ func TestRunOnceRestartsCodexWhenCredentialsChange(t *testing.T) {
 		t.Errorf("a restart is not an error: %v", st.Errors)
 	}
 
-	// Same archive, several cycles: nothing changed, so nobody's work is taken.
+	// Same archive, several cycles: not even downloaded again, and nobody's
+	// work is taken.
 	for i := 0; i < 3; i++ {
 		if _, err := s.RunOnce(); err != nil {
 			t.Fatal(err)
@@ -1180,13 +1203,124 @@ func TestRunOnceRestartsCodexWhenCredentialsChange(t *testing.T) {
 		t.Fatalf("an unchanged archive restarted Codex %d times; only a change may", len(app.stoppedFor))
 	}
 
-	// A new package: restart again.
-	store.set(credsKey, credsBytes(t), "c2")
+	// A rotated token: different bytes, so the running session is now holding
+	// one that has been withdrawn.
+	store.set(credsKey, credsBytesFor(t, model.CredentialSet{
+		model.PathCodexAuth: []byte(`{"token":"t2"}`),
+	}), "c2")
 	if _, err := s.RunOnce(); err != nil {
 		t.Fatal(err)
 	}
 	if !reflect.DeepEqual(app.stoppedFor, []string{"work1", "work1"}) {
-		t.Errorf("a new package stopped %v, want a second restart", app.stoppedFor)
+		t.Errorf("a rotated token stopped %v, want a second restart", app.stoppedFor)
+	}
+}
+
+// A file the employee did not have before is a change even though nothing
+// they had was touched: the catalog that just arrived is exactly what the
+// running Codex cannot see.
+func TestRunOnceRestartsCodexWhenAFileIsAdded(t *testing.T) {
+	store := newFakeStore()
+	bind(t, store, "DESKTOP-A", "work1")
+	store.set(ossclient.PolicyKey(), policyBytes(t, model.Policy{BlockEnabled: true}), "p1")
+	credsKey := ossclient.UserKey("work1", "credentials.zip")
+	auth := model.CredentialSet{model.PathCodexAuth: []byte(`{"token":"t1"}`)}
+	store.set(credsKey, credsBytesFor(t, auth), "c1")
+
+	app := &fakeApplier{stopKilled: 1}
+	s := newSyncer(t, store, app)
+	if _, err := s.RunOnce(); err != nil {
+		t.Fatal(err)
+	}
+
+	store.set(credsKey, credsBytesFor(t, model.CredentialSet{
+		model.PathCodexAuth:   []byte(`{"token":"t1"}`),
+		model.PathCodexModels: []byte(`{"models":[{"slug":"grok-4.6"}]}`),
+	}), "c2")
+	if _, err := s.RunOnce(); err != nil {
+		t.Fatal(err)
+	}
+	if len(app.stoppedFor) != 2 {
+		t.Errorf("a newly delivered catalog restarted Codex %d times, want 2 in total", len(app.stoppedFor))
+	}
+}
+
+// A redelivery is not evidence of anything. The console republishing an
+// identical package moves the ETag without moving a byte on disk, and taking
+// an employee's work away for that is a cost paid for nothing.
+func TestRunOnceDoesNotRestartCodexForAnIdenticalRedelivery(t *testing.T) {
+	store := newFakeStore()
+	bind(t, store, "DESKTOP-A", "work1")
+	store.set(ossclient.PolicyKey(), policyBytes(t, model.Policy{BlockEnabled: true}), "p1")
+	credsKey := ossclient.UserKey("work1", "credentials.zip")
+	same := model.CredentialSet{model.PathCodexAuth: []byte(`{"token":"t1"}`)}
+	store.set(credsKey, credsBytesFor(t, same), "c1")
+
+	app := &fakeApplier{stopKilled: 1}
+	s := newSyncer(t, store, app)
+	if _, err := s.RunOnce(); err != nil {
+		t.Fatal(err)
+	}
+	if len(app.stoppedFor) != 1 {
+		t.Fatalf("the first delivery should restart once, got %v", app.stoppedFor)
+	}
+
+	// Same contents, new ETag: fetched and deployed, nothing moved.
+	store.set(credsKey, credsBytesFor(t, same), "c2")
+	st, err := s.RunOnce()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(app.deployed) != 2 {
+		t.Fatalf("a changed ETag must still be delivered, got %d deploys", len(app.deployed))
+	}
+	if len(app.stoppedFor) != 1 {
+		t.Errorf("an identical package stopped Codex again: %v", app.stoppedFor)
+	}
+	if !st.CredsApplied {
+		t.Error("the delivery still happened and should be reported as applied")
+	}
+	if mark, ok := s.readCredsMark(); !ok || mark.ETag != "c2" {
+		t.Errorf("the marker should have moved to the new ETag, got %+v (ok=%v)", mark, ok)
+	}
+}
+
+// The case that made this rule necessary. An agent upgraded past the old
+// bare-ETag marker format cannot read what the previous build left behind, so
+// it re-fetches and redelivers the package -- on every machine in the fleet,
+// all at once, with every file already correct.
+func TestRunOnceDoesNotRestartCodexAfterAnAgentUpgrade(t *testing.T) {
+	store := newFakeStore()
+	bind(t, store, "DESKTOP-A", "work1")
+	store.set(ossclient.PolicyKey(), policyBytes(t, model.Policy{BlockEnabled: true}), "p1")
+	credsKey := ossclient.UserKey("work1", "credentials.zip")
+	store.set(credsKey, credsBytesFor(t, model.CredentialSet{
+		model.PathCodexAuth: []byte(`{"token":"t1"}`),
+	}), "c1")
+
+	app := &fakeApplier{stopKilled: 1}
+	s := newSyncer(t, store, app)
+	if _, err := s.RunOnce(); err != nil {
+		t.Fatal(err)
+	}
+	before := len(app.stoppedFor)
+
+	// What an older build wrote: the bare ETag, which this one cannot use.
+	if err := os.WriteFile(filepath.Join(s.StateDir, credsMarkerFile), []byte("c1"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := s.RunOnce(); err != nil {
+		t.Fatal(err)
+	}
+	if len(app.deployed) != 2 {
+		t.Fatalf("an unreadable marker should force one redelivery, got %d", len(app.deployed))
+	}
+	if len(app.stoppedFor) != before {
+		t.Errorf("upgrading the agent ended the employee's session: %v", app.stoppedFor)
+	}
+	if mark, ok := s.readCredsMark(); !ok || mark.ETag != "c1" {
+		t.Errorf("the marker should have been rewritten in the current format, got %+v (ok=%v)", mark, ok)
 	}
 }
 

@@ -81,14 +81,23 @@ type Report struct {
 	Merged []string
 
 	// Changed names the archive entries whose bytes on disk differ from what
-	// was there before this delivery: new files, and files whose content
-	// moved. An entry whose bytes were already in place is counted in Written
-	// (it is recognised and placed) but not here.
+	// was there before this delivery: new files, files whose content moved,
+	// and files that had been deleted and are now back. An entry whose bytes
+	// were already in place is counted in Written (it is recognised and
+	// placed) but not here.
 	//
-	// It is what a delivery actually did, as opposed to what the archive
-	// contained: the archive always carries every entry ever published for
-	// the employee -- a login from months ago rides along with today's
-	// catalog -- so its contents say nothing about whether anything moved.
+	// This is what decides whether the employee's running tools are stopped.
+	// It has to be the bytes and not the delivery: the archive is re-fetched
+	// whenever its ETag moves or the local marker cannot be read, and both
+	// happen routinely with every file on disk already correct -- a console
+	// republishing an unchanged package, an agent upgraded past an older
+	// marker format. Killing on those would cost an employee their work for
+	// nothing.
+	//
+	// Nor can the caller work it out from the manifest instead: a file the
+	// employee deleted comes back with exactly the hash it always had, so a
+	// hash comparison would call the repair a no-op while the running process
+	// has been reading a file that was not there.
 	Changed []string
 }
 

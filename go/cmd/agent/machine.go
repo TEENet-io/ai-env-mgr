@@ -7,6 +7,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/TEENet-io/ai-env-mgr/internal/agentcore"
 	"github.com/TEENet-io/ai-env-mgr/internal/creds"
 	"github.com/TEENet-io/ai-env-mgr/internal/model"
 	"github.com/TEENet-io/ai-env-mgr/internal/policy"
@@ -131,13 +132,13 @@ func (localApplier) ApplyAppLocker(paths []string, mode string) error {
 	return policy.ApplyAppLocker(paths, mode)
 }
 
-func (localApplier) DeployCreds(profileDir string, set model.CredentialSet) (int, map[string]string, []string, error) {
+func (localApplier) DeployCreds(profileDir string, set model.CredentialSet) (agentcore.Delivery, error) {
 	rep, err := creds.WriteToProfileReport(profileDir, set)
 	if err != nil {
-		return rep.Written, nil, nil, err
+		return agentcore.Delivery{Written: rep.Written}, err
 	}
 	if rep.Written == 0 {
-		return 0, nil, nil, nil
+		return agentcore.Delivery{}, nil
 	}
 
 	// An entry this agent does not recognize means the console is delivering
@@ -145,7 +146,7 @@ func (localApplier) DeployCreds(profileDir string, set model.CredentialSet) (int
 	// difference between "the employee is missing a file" being visible in
 	// admin status and it looking like a perfectly clean delivery.
 	if len(rep.Skipped) > 0 {
-		return rep.Written, nil, nil, fmt.Errorf("this agent does not know how to place %s; update the agent",
+		return agentcore.Delivery{Written: rep.Written}, fmt.Errorf("this agent does not know how to place %s; update the agent",
 			strings.Join(rep.Skipped, ", "))
 	}
 
@@ -166,11 +167,18 @@ func (localApplier) DeployCreds(profileDir string, set model.CredentialSet) (int
 		}
 	}
 	if len(failed) > 0 {
-		return rep.Written, nil, nil, fmt.Errorf("credentials written but not readable by %s (%s)",
+		return agentcore.Delivery{Written: rep.Written}, fmt.Errorf("credentials written but not readable by %s (%s)",
 			user, strings.Join(failed, "; "))
 	}
 
-	return rep.Written, rep.Placed, rep.Merged, nil
+	// Changed is carried out as the report gives it: it is the one thing here
+	// that knows whether the employee's session is now running on files that
+	// no longer exist, and the sync loop cannot work it out from the manifest
+	// alone -- a file the employee deleted comes back with the hash it always
+	// had.
+	return agentcore.Delivery{
+		Written: rep.Written, Placed: rep.Placed, Merged: rep.Merged, Changed: rep.Changed,
+	}, nil
 }
 
 // RemoveCreds deletes an offboarded employee's logins from their profile.
