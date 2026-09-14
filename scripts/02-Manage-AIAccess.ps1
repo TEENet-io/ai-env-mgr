@@ -22,6 +22,8 @@
 .PARAMETER RemoveSite  Remove one or more domains from the block list and re-apply.
 .PARAMETER ListSites   List the currently configured domains.
 .PARAMETER SkipAppLocker  With -Init: only do the site block.
+.PARAMETER ToolsDir    Directory holding Codex and the agent (default C:\Tools); -Init locks its ACL so
+                       standard users cannot write into an AppLocker-allowed path.
 
 .EXAMPLE
   .\AIAccess.ps1 -Init                       # block sites + AppLocker (audit)
@@ -48,7 +50,8 @@ param(
     [string[]]$AddSite = @(),
     [string[]]$RemoveSite = @(),
     [switch]$ListSites,
-    [switch]$SkipAppLocker
+    [switch]$SkipAppLocker,
+    [string]$ToolsDir = 'C:\Tools'
 )
 
 # ===================== configuration =====================
@@ -104,6 +107,48 @@ function Remove-SiteBlock {
 }
 
 # ===================== AppLocker =====================
+# Directories under %WINDIR% that a standard user can write to by default. Any
+# allow rule on %WINDIR%\* must except them, or "allowed shell + writable dir"
+# bypasses the whole allowlist. This is the standard AppLocker hardening list.
+$UserWritableWindowsDirs = @(
+    '%WINDIR%\Temp\*',
+    '%WINDIR%\Tasks\*',
+    '%WINDIR%\tracing\*',
+    '%WINDIR%\Registration\CRMLog\*',
+    '%WINDIR%\debug\WIA\*',
+    '%SYSTEM32%\Tasks\*',
+    '%SYSTEM32%\spool\drivers\color\*',
+    '%SYSTEM32%\spool\PRINTERS\*',
+    '%SYSTEM32%\spool\SERVERS\*',
+    '%SYSTEM32%\Com\dmp\*',
+    '%SYSTEM32%\FxsTmp\*',
+    '%SYSTEM32%\Microsoft\Crypto\RSA\MachineKeys\*',
+    '%WINDIR%\SysWOW64\Tasks\*',
+    '%WINDIR%\SysWOW64\Com\dmp\*',
+    '%WINDIR%\SysWOW64\FxsTmp\*'
+)
+$UserWritableWindowsExceptions = ($UserWritableWindowsDirs | ForEach-Object { '        <FilePathCondition Path="' + $_ + '" />' }) -join "`n"
+
+# The Exe collection must stay a SINGLE rule collection: the agent adds its own
+# allow rules (id prefix e0000000-, name prefix AIEnvMgr-allow-) into it every
+# sync cycle and refuses a policy with more than one Exe collection.
+
+# C:\Tools holds Codex (allowed by an agent-managed AppLocker rule) and the agent
+# itself. Windows' default C:\ inheritance gives Authenticated Users Modify on
+# new subfolders, which would let an employee drop an exe under an allowed path.
+# Break inheritance: SYSTEM and Administrators full, Users read/execute only.
+function Protect-ToolsDir([string]$Dir) {
+    if (-not (Test-Path $Dir)) { New-Item -ItemType Directory -Force -Path $Dir | Out-Null }
+    & icacls $Dir /inheritance:r /grant:r "*S-1-5-18:(OI)(CI)F" "*S-1-5-32-544:(OI)(CI)F" "*S-1-5-32-545:(OI)(CI)RX" /Q | Out-Null
+    if ($LASTEXITCODE -ne 0) { Write-Host ("  [err] icacls on {0} failed ({1})" -f $Dir, $LASTEXITCODE) -ForegroundColor Red; return }
+    $acl = (& icacls $Dir) -join ' '
+    if ($acl -match 'Authenticated Users:' -or $acl -match 'BUILTIN\\Users:[^ ]*\((M|W|F)\)') {
+        Write-Host ("  [warn] {0} still writable by standard users -- check icacls output" -f $Dir) -ForegroundColor Yellow
+    } else {
+        Write-Host ("  [ok] {0}: SYSTEM/Administrators full, Users read-execute" -f $Dir) -ForegroundColor Green
+    }
+}
+
 function Set-AppLocker([string]$Mode) {
     $policy = @"
 <AppLockerPolicy Version="1">
@@ -114,20 +159,21 @@ function Set-AppLocker([string]$Mode) {
     <FilePathRule Id="a0000000-0000-0000-0000-000000000002" Name="Everyone-allow-Windows" Description="allow Windows dir, exclude registry/script hosts" UserOrGroupSid="$EveryoneSid" Action="Allow">
       <Conditions><FilePathCondition Path="%WINDIR%\*" /></Conditions>
       <Exceptions>
+        <!-- Registry editors and the script hosts stay blocked for standard users.
+             cmd.exe / powershell.exe are deliberately ALLOWED (2026-09-14): Codex runs
+             its tasks through PowerShell. The user-writable Windows directories below
+             are excluded so an allowed shell still cannot start anything an employee
+             dropped there. -->
         <FilePathCondition Path="%WINDIR%\regedit.exe" />
         <FilePathCondition Path="%SYSTEM32%\reg.exe" />
-        <FilePathCondition Path="%SYSTEM32%\cmd.exe" />
-        <FilePathCondition Path="%SYSTEM32%\WindowsPowerShell\v1.0\powershell.exe" />
-        <FilePathCondition Path="%SYSTEM32%\WindowsPowerShell\v1.0\powershell_ise.exe" />
         <FilePathCondition Path="%SYSTEM32%\wscript.exe" />
         <FilePathCondition Path="%SYSTEM32%\cscript.exe" />
         <FilePathCondition Path="%SYSTEM32%\mshta.exe" />
         <FilePathCondition Path="%WINDIR%\SysWOW64\reg.exe" />
-        <FilePathCondition Path="%WINDIR%\SysWOW64\cmd.exe" />
-        <FilePathCondition Path="%WINDIR%\SysWOW64\WindowsPowerShell\v1.0\powershell.exe" />
         <FilePathCondition Path="%WINDIR%\SysWOW64\wscript.exe" />
         <FilePathCondition Path="%WINDIR%\SysWOW64\cscript.exe" />
         <FilePathCondition Path="%WINDIR%\SysWOW64\mshta.exe" />
+$UserWritableWindowsExceptions
       </Exceptions>
     </FilePathRule>
     <FilePathRule Id="a0000000-0000-0000-0000-000000000003" Name="Everyone-allow-ProgramFiles" Description="allow installed programs" UserOrGroupSid="$EveryoneSid" Action="Allow">
@@ -138,8 +184,11 @@ function Set-AppLocker([string]$Mode) {
     <FilePathRule Id="b0000000-0000-0000-0000-000000000001" Name="Admins-allow-all-scripts" Description="" UserOrGroupSid="$AdminsSid" Action="Allow">
       <Conditions><FilePathCondition Path="*" /></Conditions>
     </FilePathRule>
-    <FilePathRule Id="b0000000-0000-0000-0000-000000000002" Name="Everyone-allow-Windows-scripts" Description="" UserOrGroupSid="$EveryoneSid" Action="Allow">
+    <FilePathRule Id="b0000000-0000-0000-0000-000000000002" Name="Everyone-allow-Windows-scripts" Description="Windows scripts, minus user-writable directories" UserOrGroupSid="$EveryoneSid" Action="Allow">
       <Conditions><FilePathCondition Path="%WINDIR%\*" /></Conditions>
+      <Exceptions>
+$UserWritableWindowsExceptions
+      </Exceptions>
     </FilePathRule>
     <FilePathRule Id="b0000000-0000-0000-0000-000000000003" Name="Everyone-allow-ProgramFiles-scripts" Description="" UserOrGroupSid="$EveryoneSid" Action="Allow">
       <Conditions><FilePathCondition Path="%PROGRAMFILES%\*" /></Conditions>
@@ -276,6 +325,8 @@ if ($Init) {
     Set-SiteBlock
     if (-not $SkipAppLocker) {
         $mode = if ($Enforce) { 'Enabled' } else { 'AuditOnly' }
+        Write-Host ("Locking {0} against standard-user writes..." -f $ToolsDir) -ForegroundColor White
+        Protect-ToolsDir $ToolsDir
         Write-Host ("Applying AppLocker ({0})..." -f $mode) -ForegroundColor White
         try { Set-AppLocker $mode } catch { Write-Host ("  [err] AppLocker failed: {0}" -f $_) -ForegroundColor Red }
         if (-not $Enforce) {

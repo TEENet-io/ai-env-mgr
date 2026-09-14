@@ -168,3 +168,19 @@ agent 每个同步周期都会用它重写本机的 AppLocker Exe 规则集（�
 
 在这两项完成之前，每台新开的、用当前安装器装出来的机器都会重新踩到"第二道墙"，需要
 按上面「正确做法」第 2 步手动改一遍。
+
+
+---
+
+## 2026-09-14 镜像策略修订(重做基础镜像前定稿)
+
+安装目录继续用 `C:\Tools\Codex`,由 Agent 下发的放行项 `C:\tools\Codex\*` 覆盖其下全部可执行文件(路径规则递归生效,Codex 自带的辅助进程不需要逐个放行)。随之在 `scripts/02-Manage-AIAccess.ps1` 里改了四处:
+
+1. **`C:\Tools` 的 ACL 在 `-Init` 时收紧**:断开继承,SYSTEM 与 Administrators 完全控制,Users 只读和执行。原因是 Windows 默认给 `C:\` 下新建目录的 Authenticated Users 继承 Modify 权限,员工能往放行路径里放任意 exe,放行规则就成了漏洞。Agent 以 SYSTEM 安装 Codex,不受影响;Codex 运行数据在用户 AppData。
+2. **对员工放开 `cmd.exe` 和 `powershell.exe`**。Codex 在 Windows 上通过 PowerShell 执行任务,封了就只能改文件不能跑命令。`wscript`、`cscript`、`mshta`、`regedit`、`reg` 继续封。
+3. **`%WINDIR%\*` 的 Exe 和 Script 两条规则都排除标准用户可写的 Windows 子目录**(Temp、Tasks、tracing、spool、Com\dmp、FxsTmp、MachineKeys 等 15 处)。这是放开 shell 后堵"脚本宿主 + 可写目录"口子的标准做法:员工能跑 PowerShell,但 Windows 树里他能写的地方全在白名单之外,Program Files 和 `C:\Tools` 又写不了。
+4. **Exe 集合保持单个规则集合**,镜像只放固定规则;Agent 每周期把自己管理的放行规则(id 前缀 `e0000000-`)写进同一个集合,遇到多个 Exe 集合会拒绝处理。
+
+DLL 集合不启用;MSI 仍只允许管理员;Appx 仍只允许已签名。镜像默认 Audit,新机器跑完真实任务、用 `applocker-audit-events.ps1` 确认没有 Codex 树外的拦截后,再从后台切 Enforce。
+
+启动方式:镜像里的快捷方式必须直指 `_internal\app\ChatGPT.exe`(codex-kiosk 安装器已改),环境变量 `CODEX_ELECTRON_ENABLE_WINDOWS_COMPUTER_USE=1` 设为机器级;已部署机器用 `fix-codex-launch.ps1` 单机修。
