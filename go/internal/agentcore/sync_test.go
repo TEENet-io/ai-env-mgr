@@ -1160,10 +1160,8 @@ func TestRunOnceDoesNotRedownloadUnchangedCredentials(t *testing.T) {
 	}
 }
 
-// The whole point of the feature: whatever changed inside the package -- a
-// rotated gateway token, a new model catalog, a closed account -- the tools
-// that read it once at startup have to be restarted, or the employee is left
-// running on configuration that no longer exists.
+// A changed credential must end the process still holding the old token.
+// Catalog-only updates are tested separately and do not interrupt work.
 func TestRunOnceRestartsCodexWhenACredentialFileChanges(t *testing.T) {
 	store := newFakeStore()
 	bind(t, store, "DESKTOP-A", "work1")
@@ -1216,10 +1214,8 @@ func TestRunOnceRestartsCodexWhenACredentialFileChanges(t *testing.T) {
 	}
 }
 
-// A file the employee did not have before is a change even though nothing
-// they had was touched: the catalog that just arrived is exactly what the
-// running Codex cannot see.
-func TestRunOnceRestartsCodexWhenAFileIsAdded(t *testing.T) {
+// A new catalog is delivered without stopping the employee task.
+func TestRunOnceDoesNotRestartCodexWhenOnlyCatalogIsAdded(t *testing.T) {
 	store := newFakeStore()
 	bind(t, store, "DESKTOP-A", "work1")
 	store.set(ossclient.PolicyKey(), policyBytes(t, model.Policy{BlockEnabled: true}), "p1")
@@ -1240,8 +1236,8 @@ func TestRunOnceRestartsCodexWhenAFileIsAdded(t *testing.T) {
 	if _, err := s.RunOnce(); err != nil {
 		t.Fatal(err)
 	}
-	if len(app.stoppedFor) != 2 {
-		t.Errorf("a newly delivered catalog restarted Codex %d times, want 2 in total", len(app.stoppedFor))
+	if len(app.stoppedFor) != 1 {
+		t.Errorf("a catalog-only delivery stopped Codex again: %v", app.stoppedFor)
 	}
 }
 
@@ -1573,5 +1569,61 @@ func TestReportEventLogsItsOutcome(t *testing.T) {
 	s.ReportEvent("suspend")
 	if got := buf.String(); !strings.Contains(got, "report FAILED") {
 		t.Fatalf("a failed report was not logged: %q", got)
+	}
+}
+
+func TestRunOnceCatalogAndTokenChangePolicy(t *testing.T) {
+	for _, tc := range []struct {
+		name            string
+		catalog, config string
+		stop            bool
+	}{
+		{"catalog only", `{"models":[{"slug":"new"}]}`, "token=old", false},
+		{"token only", `{"models":[{"slug":"old"}]}`, "token=new", true},
+		{"both", `{"models":[{"slug":"new"}]}`, "token=new", true},
+		{"identical", `{"models":[{"slug":"old"}]}`, "token=old", false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			store := newFakeStore()
+			bind(t, store, "DESKTOP-A", "work1")
+			store.set(ossclient.PolicyKey(), policyBytes(t, model.Policy{BlockEnabled: true}), "p1")
+			key := ossclient.UserKey("work1", "credentials.zip")
+			store.set(key, credsBytesFor(t, model.CredentialSet{model.PathCodexConfig: []byte("token=old"), model.PathCodexModels: []byte(`{"models":[{"slug":"old"}]}`)}), "c1")
+			app := &fakeApplier{stopKilled: 1}
+			s := newSyncer(t, store, app)
+			if _, err := s.RunOnce(); err != nil {
+				t.Fatal(err)
+			}
+			before := len(app.stoppedFor)
+			store.set(key, credsBytesFor(t, model.CredentialSet{model.PathCodexConfig: []byte(tc.config), model.PathCodexModels: []byte(tc.catalog)}), "c2")
+			st, err := s.RunOnce()
+			if err != nil {
+				t.Fatal(err)
+			}
+			want := before
+			if tc.stop {
+				want++
+			}
+			if len(app.stoppedFor) != want {
+				t.Fatalf("stops=%d want=%d", len(app.stoppedFor), want)
+			}
+			if !st.CredsApplied {
+				t.Error("updated files not marked delivered")
+			}
+			if tc.name == "catalog only" && !hasSubstring(st.Warnings, "running task was not stopped") {
+				t.Errorf("missing next-launch notice: %v", st.Warnings)
+			}
+			got, err := os.ReadFile(filepath.Join(s.Machine.ProfileDir("work1"), filepath.Base(model.PathCodexModels)))
+			if err != nil || string(got) != tc.catalog {
+				t.Fatalf("catalog not written: %s, %v", got, err)
+			}
+			// Repeated sync must not re-interrupt after either kind of update.
+			if _, err := s.RunOnce(); err != nil {
+				t.Fatal(err)
+			}
+			if len(app.stoppedFor) != want {
+				t.Error("unchanged next cycle interrupted again")
+			}
+		})
 	}
 }

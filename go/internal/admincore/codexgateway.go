@@ -163,6 +163,9 @@ func (m *Manager) provisionLocked(ctx context.Context, gw Gateway, cfg GatewayCo
 		// impossible -- that would strand the employee on a token nobody can
 		// replace. Requested models are still rejected (resolveAllowlist).
 		models = keepAvailable(available, models, windowsUser)
+		if len(models) == 0 {
+			return fmt.Errorf("no previously allowed model is available for %q; select models explicitly before reissuing a token", windowsUser)
+		}
 	}
 	allowed, err := resolveAllowlist(available, models)
 	if err != nil {
@@ -266,7 +269,7 @@ func (m *Manager) setModelsLocked(ctx context.Context, gw Gateway, cfg GatewayCo
 		}
 	}
 	if err := gw.UpdateKey(ctx, key.Handle(), allowed); err != nil {
-		return nil, fmt.Errorf("update token for %q: %w", windowsUser, err)
+		return nil, fmt.Errorf("token update failed for %q after the user-permission step; catalog not published; retry the same model selection: %w", windowsUser, err)
 	}
 
 	catalogJSON, err := catalog.Build(available, allowed)
@@ -274,14 +277,14 @@ func (m *Manager) setModelsLocked(ctx context.Context, gw Gateway, cfg GatewayCo
 		return nil, fmt.Errorf("build catalog for %q: %w", windowsUser, err)
 	}
 	if err := m.PublishCredentials(windowsUser, model.CredentialSet{model.PathCodexModels: catalogJSON}); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("catalog delivery failed for %q after gateway permissions changed; retry the same model selection: %w", windowsUser, err)
 	}
 	return allowed, nil
 }
 
 // keepAvailable drops from a stored allowlist every model the gateway no
-// longer serves, logging each one. Nothing left means nil -- "everything
-// visible" -- since an empty allowlist would deny every model instead.
+// longer serves, logging each one. Callers must reject an empty result:
+// it must never become the default permission to use every visible model.
 func keepAvailable(available []litellm.Model, stored []string, windowsUser string) []string {
 	names := make(map[string]bool, len(available))
 	for _, m := range available {
@@ -294,10 +297,6 @@ func keepAvailable(available []litellm.Model, stored []string, windowsUser strin
 			continue
 		}
 		kept = append(kept, s)
-	}
-	if len(kept) == 0 {
-		log.Printf("admincore: %q: no stored model is still in the gateway catalog; falling back to every visible model", windowsUser)
-		return nil
 	}
 	return kept
 }

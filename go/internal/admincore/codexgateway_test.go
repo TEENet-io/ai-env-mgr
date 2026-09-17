@@ -27,6 +27,7 @@ type fakeGateway struct {
 	users   map[string]litellm.User
 	upserts []litellm.UserSpec
 
+	updateErr      error
 	generateErr    error
 	modelsErr      error
 	upsertErr      error
@@ -75,7 +76,16 @@ func (f *fakeGateway) GenerateKey(_ context.Context, alias, userID string, model
 }
 
 func (f *fakeGateway) UpdateKey(_ context.Context, key string, models []string) error {
+	if f.updateErr != nil {
+		return f.updateErr
+	}
 	f.updated[key] = models
+	for alias, k := range f.existing {
+		if k.Handle() == key {
+			k.Models = models
+			f.existing[alias] = k
+		}
+	}
 	return nil
 }
 

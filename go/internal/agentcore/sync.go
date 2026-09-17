@@ -366,24 +366,19 @@ func (s *Syncer) RunOnce() (model.Status, error) {
 				// exact gap that let a silently skipped entry go unnoticed.
 				log.Printf("credentials: placed %d file(s): %s", d.Written,
 					strings.Join(append(baseNames(d.Placed), baseNames(d.Merged)...), ", "))
-				// Any changed file ends the employee's Codex, not only a
-				// changed login. A rotated gateway token, an updated model
-				// catalog and a closed account all arrive as new bytes in
-				// this archive, and every one of them is unreadable to a
-				// process that read its configuration once at startup -- so
-				// leaving the session running meant the employee had to work
-				// out for themselves that they needed to restart it.
-				//
-				// The test is what moved on disk, not that a delivery
-				// happened. The archive is re-fetched whenever its ETag
-				// changes or the local marker cannot be read -- a new console
-				// build republishing identical bytes, an agent upgraded past
-				// an older marker format -- and neither is a reason to take
-				// somebody's work away. A first delivery has every file in
-				// Changed, so a new employee whose Codex was already open
-				// still gets the restart they need.
-				if len(d.Changed) > 0 {
+				// A catalog-only update is safe to pick up on the next launch.
+				// Gateway permissions already enforce removed models. Other
+				// changes (especially tokens) still need the old process ended.
+				restart := false
+				for _, name := range d.Changed {
+					if name != model.PathCodexModels {
+						restart = true
+					}
+				}
+				if restart {
 					warns = append(warns, s.stopCodex(binding.User, "a credential update", &sweep))
+				} else if len(d.Changed) > 0 {
+					warns = append(warns, "model catalog updated; restart Codex when convenient to load it; running task was not stopped")
 				}
 			} else {
 				// The archive held nothing we recognise. Saying so beats

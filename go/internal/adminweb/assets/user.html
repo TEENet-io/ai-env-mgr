@@ -48,6 +48,7 @@
   {{if not .HasUser}}<p class="hint">该员工在网关上还没有用户记录，先点「重新开户」建立。</p>{{end}}
 
   <h2>可用模型</h2>
+  <p class="hint">权限在网关保存后生效；仅模型目录变化不会结束当前任务，新目录在员工下次启动 Codex 时加载。保存失败时查看错误中的步骤，用相同选择重试。</p>
   <form method="post" action="/users/models" class="form">
     <input type="hidden" name="csrf" value="{{$.CSRF}}"><input type="hidden" name="windowsUser" value="{{.WindowsUser}}"><input type="hidden" name="back" value="detail">
     <fieldset class="checks">
@@ -60,6 +61,7 @@
   </form>
 
   <h2>令牌</h2>
+  <p class="hint">重发会吊销旧令牌；agent 收到令牌或配置变化后会结束工具进程，请先通知员工保存工作。关户立即撤回网关令牌，本地清理由 agent 后续同步完成。</p>
   <div class="row">
     <form method="post" action="/users/reissue" class="inline">
       <input type="hidden" name="csrf" value="{{$.CSRF}}"><input type="hidden" name="windowsUser" value="{{.WindowsUser}}"><input type="hidden" name="back" value="detail">

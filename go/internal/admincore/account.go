@@ -296,6 +296,9 @@ func (m *Manager) SetModels(ctx context.Context, gw Gateway, cfg GatewayConfig, 
 	}
 	allowed, err := m.setModelsLocked(ctx, gw, cfg, windowsUser, models)
 	if err != nil {
+		// A later failure can leave gateway permissions updated but delivery old.
+		// Keep the failed attempt in history; do not imply an atomic rollback.
+		m.appendAudit(windowsUser, AuditModels, map[string]any{"models": models, "failed": true, "error": err.Error()})
 		return err
 	}
 	m.appendAudit(windowsUser, AuditModels, map[string]any{"models": allowed})

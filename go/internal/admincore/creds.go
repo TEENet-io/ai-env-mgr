@@ -1,10 +1,12 @@
 package admincore
 
 import (
+	"errors"
 	"fmt"
 
 	"github.com/TEENet-io/ai-env-mgr/internal/creds"
 	"github.com/TEENet-io/ai-env-mgr/internal/model"
+	"github.com/TEENet-io/ai-env-mgr/internal/ossclient"
 )
 
 // PublishCredentials merges set into the user's existing credential archive
@@ -28,9 +30,15 @@ func (m *Manager) PublishCredentials(windowsUser string, set model.CredentialSet
 	}
 
 	existing := model.CredentialSet{}
-	if data, _, err := m.Store.Get(credsKey(windowsUser)); err == nil {
-		if unpacked, err := creds.Unpack(data); err == nil {
-			existing = unpacked
+	data, _, err := m.Store.Get(credsKey(windowsUser))
+	if err != nil {
+		if !errors.Is(err, ossclient.ErrNotFound) {
+			return fmt.Errorf("read existing credentials for %q; archive left unchanged: %w", windowsUser, err)
+		}
+	} else {
+		existing, err = creds.Unpack(data)
+		if err != nil {
+			return fmt.Errorf("unpack existing credentials for %q; archive left unchanged: %w", windowsUser, err)
 		}
 	}
 	merged := creds.Merge(existing, set)
