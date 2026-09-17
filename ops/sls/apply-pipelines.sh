@@ -11,8 +11,8 @@ apply() { # name file group
     || A CreateLogtailPipelineConfig --project "$PROJECT" --body "$(cat "$HERE/$2")"
   A ApplyConfigToMachineGroup --project "$PROJECT" --machineGroup "$3" --configName "$1"
 }
-apply console-ops     pipeline-console-ops.json     console-host
-apply console-probe   pipeline-console-probe.json   console-host
-apply console-audit   pipeline-console-audit.json   console-host
+apply console-ops     pipeline-console-ops.json     gateway-host
+apply console-probe   pipeline-console-probe.json   gateway-host
+apply console-audit   pipeline-console-audit.json   gateway-host
 apply gateway-audit   pipeline-gateway-audit.json   gateway-host
 apply gateway-stdout  pipeline-gateway-stdout.json  gateway-host
