@@ -127,7 +127,11 @@ func cmdWeb(args []string) error {
 	}
 	fmt.Printf("admin console on %s://%s\n", scheme, opts.Listen)
 	if opts.Database != nil {
-		fmt.Println("database mode: sign in with an administrator account; the Worker runs in this process.")
+		if opts.Database.Worker {
+			fmt.Println("database mode: sign in with an administrator account; the Worker runs in this process.")
+		} else {
+			fmt.Println("database mode: sign in with an administrator account; the Worker is OFF (AIENVMGR_WORKER=off), nothing reaches OSS or the gateway.")
+		}
 	} else {
 		fmt.Println("sign in with the OSS credentials; they stay in this process's memory only.")
 		fmt.Println("stopping the server signs everyone out.")
