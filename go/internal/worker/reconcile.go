@@ -2,7 +2,6 @@ package worker
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"time"
 
@@ -115,21 +114,8 @@ func (h Reconcile) drift(grant repo.Grant, observed string) {
 	}
 }
 
-// EnqueueReconcile puts a reconciliation on the queue for a given moment.
-//
-// The idempotency key is the hour it belongs to, so a scheduler that fires
-// twice, or two consoles that both decide it is time, produce one task.
+// EnqueueReconcile puts a reconciliation on the queue for the hour at holds.
+// The scheduler does this on its own; it is exported for a console button.
 func EnqueueReconcile(ctx context.Context, store repo.Store, at time.Time) error {
-	_, _, err := store.Tasks().Enqueue(ctx, repo.NewTask{
-		Kind:           repo.TaskReconcile,
-		IdempotencyKey: "reconcile:" + at.UTC().Format("2006-01-02T15"),
-		NotBefore:      at,
-		// A reconciliation that has failed for a day is not worth retrying
-		// against the same broken gateway; the next hour's will run anyway.
-		MaxAttempts: 3,
-	})
-	if err != nil && !errors.Is(err, repo.ErrDuplicate) {
-		return err
-	}
-	return nil
+	return enqueuePeriodic(ctx, store, repo.TaskReconcile, at, EveryReconcile, 3)
 }
