@@ -40,6 +40,8 @@ func (s *Store) Employees() repo.Employees { return employeeRepo{s.q} }
 func (s *Store) Quotas() repo.Quotas       { return quotaRepo{s.q} }
 func (s *Store) Devices() repo.Devices     { return deviceRepo{s.q} }
 func (s *Store) Bindings() repo.Bindings   { return bindingRepo{s.q} }
+func (s *Store) Policies() repo.Policies   { return policyRepo{s.q} }
+func (s *Store) Settings() repo.Settings   { return settingsRepo{s.q} }
 
 // errNoRow is what an Exec that matched nothing reports, so that a statement
 // written as an UPDATE goes through the same mapping as one written with

@@ -49,6 +49,8 @@ type Store interface {
 	Quotas() Quotas
 	Devices() Devices
 	Bindings() Bindings
+	Policies() Policies
+	Settings() Settings
 
 	// InTx runs fn in a transaction, committing if it returns nil. The Store
 	// passed to fn is the transactional one: using the outer Store inside fn
@@ -311,4 +313,72 @@ type Bindings interface {
 	// nobody is assigned to has nobody whose Codex could be ended, so that is
 	// ErrNotFound rather than a silent no-op.
 	RequestCodexRestart(ctx context.Context, deviceID, nonce string) (Binding, error)
+}
+
+// PolicyVersion is one published policy. Published policies are immutable:
+// editing a live one is how a bad AppLocker path reaches every machine with
+// nothing to roll back to. A rollback here is pointing Current at an older
+// version.
+//
+// Content is the policy JSON exactly as an agent will receive it. It is not
+// parsed on the way in or out: validation belongs with the rules (model
+// .ValidateAppLockerPath, interval clamping), and a second implementation in
+// SQL would be a second answer to the same question.
+type PolicyVersion struct {
+	Version   int64
+	Content   []byte
+	Note      string
+	CreatedBy string
+	CreatedAt time.Time
+}
+
+// Policies holds every published policy and which one the fleet should be on.
+type Policies interface {
+	// Current is the version the fleet should be running. ErrNotFound before
+	// anything has ever been published, which the caller answers with the
+	// built-in default -- but only for ErrNotFound, never for a read that
+	// failed.
+	Current(ctx context.Context) (PolicyVersion, error)
+
+	// Publish stores content as a new version and makes it current.
+	Publish(ctx context.Context, content []byte, note, by string) (PolicyVersion, error)
+
+	// Rollback makes an existing version current again without copying it, so
+	// the history reads as what happened rather than as a new decision.
+	Rollback(ctx context.Context, version int64, by string) (PolicyVersion, error)
+
+	ByVersion(ctx context.Context, version int64) (PolicyVersion, error)
+	List(ctx context.Context, limit int) ([]PolicyVersion, error)
+}
+
+// Setting is one global switch or default: the quota a new account is
+// pre-filled with, an alert channel, a feature flag. Key/value because each
+// has its own shape and they are read one at a time by name.
+type Setting struct {
+	Key       string
+	Value     []byte
+	Version   int
+	UpdatedAt time.Time
+	UpdatedBy string
+}
+
+// Settings keys in use. They are constants so a typo is a compile error rather
+// than a silently missing setting that falls back to a default.
+const (
+	SettingQuotaDefaults = "quota_defaults"
+)
+
+// Settings is the global configuration that is not policy.
+type Settings interface {
+	// Get returns the stored value. ErrNotFound means nothing has been saved
+	// yet; anything else means the database could not be read, and the caller
+	// must not fall back to a default on it.
+	Get(ctx context.Context, key string) (Setting, error)
+
+	// Set writes it. expectVersion is the version the caller read, or 0 for
+	// "there is none yet", so a first save and an edit use the same call and
+	// neither can quietly overwrite the other.
+	Set(ctx context.Context, key string, value []byte, expectVersion int, by string) (Setting, error)
+
+	List(ctx context.Context) ([]Setting, error)
 }
