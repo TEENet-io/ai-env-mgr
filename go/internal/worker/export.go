@@ -185,15 +185,11 @@ func (h OSSExport) exportEmployee(ctx context.Context, employeeID string) (Resul
 		return Result{}, err
 	}
 	set := model.CredentialSet{}
-	hasClaude, err := h.addClaudeFiles(ctx, employee, set)
-	if err != nil {
-		return Result{}, err
-	}
 
 	// Nothing to deliver -- offboarded, or a fresh account whose token has not
 	// arrived -- means no object. The agent reports the absence as "no
 	// credentials published yet" for the second case and revokes for the first.
-	if !employee.Active() || (!hasCodex && !hasClaude) {
+	if !employee.Active() || !hasCodex {
 		if err := h.withdraw(ctx, employee); err != nil {
 			return Result{}, err
 		}
@@ -246,37 +242,13 @@ func (h OSSExport) exportEmployee(ctx context.Context, employeeID string) (Resul
 	return Result{Note: fmt.Sprintf("published %d model(s) to %s", allowed, employee.WindowsUser)}, nil
 }
 
-// addClaudeFiles adds the manually published Claude sign-in, if there is one.
-// They are sealed as one blob of path -> bytes under their own purpose.
-func (h OSSExport) addClaudeFiles(ctx context.Context, employee repo.Employee, set model.CredentialSet) (bool, error) {
-	credential, err := h.Store.Credentials().Live(ctx, employee.ID, repo.PurposeClaudeLogin)
-	if errors.Is(err, repo.ErrNotFound) {
-		return false, nil
-	}
-	if err != nil {
-		return false, err
-	}
-	plain, err := h.Keyring.Open(ctx, credential.Ciphertext, credential.KeyVersion,
-		secrets.AAD("credential_versions", employee.ID, repo.PurposeClaudeLogin))
-	if err != nil {
-		return false, Permanent(fmt.Errorf("open the stored Claude credentials for %s: %w", employee.WindowsUser, err))
-	}
-	defer wipeBytes(plain)
-	var files model.CredentialSet
-	if err := json.Unmarshal(plain, &files); err != nil {
-		return false, Permanent(fmt.Errorf("the stored Claude credentials for %s are not readable: %w", employee.WindowsUser, err))
-	}
-	for path, data := range files {
-		set[path] = data
-	}
-	return len(files) > 0, nil
-}
-
-// publish merges into whatever archive is already there.
+// publish merges into whatever archive is already there, minus the entries
+// nobody publishes any more.
 //
-// Codex and Claude credentials are published independently, so overwriting the
-// archive outright would silently drop whichever tool was not part of this
-// call -- and the employee would find one of their tools logged out.
+// The merge is what keeps an entry this export did not produce; the Claude
+// entries an earlier console published are the exception, dropped on the way
+// through so that an archive stops carrying a login for a tool that is no
+// longer managed.
 func (h OSSExport) publish(_ context.Context, employee repo.Employee, set model.CredentialSet) error {
 	key := ossclient.UserKey(employee.WindowsUser, "credentials.zip")
 	existing := model.CredentialSet{}
@@ -295,7 +267,11 @@ func (h OSSExport) publish(_ context.Context, employee repo.Employee, set model.
 		return ClassError("oss_read", err)
 	}
 
-	blob, err := creds.Pack(creds.Merge(existing, set))
+	merged := creds.Merge(existing, set)
+	for _, legacy := range model.LegacyClaudeEntries {
+		delete(merged, legacy)
+	}
+	blob, err := creds.Pack(merged)
 	if err != nil {
 		return Permanent(fmt.Errorf("pack credentials for %s: %w", employee.WindowsUser, err))
 	}

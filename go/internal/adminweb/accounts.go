@@ -32,10 +32,9 @@ type accountRow struct {
 	// would 404: the list renders the name as plain text, not a link.
 	OnRoster bool
 
-	// Administrator notes, carried through from the roster untouched by
+	// Administrator note, carried through from the roster untouched by
 	// anything here -- see admincore.AccountSpec.
-	CodexAccount  string
-	ClaudeAccount string
+	CodexAccount string
 
 	HasUser  bool // the gateway has an internal user for this person
 	HasToken bool // the gateway holds a token under this person's alias
@@ -90,7 +89,7 @@ func reconcileAccounts(users []model.UserEntry, keys []litellm.Key, gwUsers []li
 		r := accountRow{
 			WindowsUser: e.WindowsUser, Name: e.Name, Department: e.Department, Enabled: e.Enabled,
 			OnRoster:     onRoster,
-			CodexAccount: e.CodexAccount, ClaudeAccount: e.ClaudeAccount,
+			CodexAccount: e.CodexAccount,
 		}
 		if u, ok := userByID[id]; ok {
 			r.HasUser = true
@@ -372,13 +371,12 @@ func (s *Server) actionAccountOnboard(sess *session, r *http.Request) error {
 		return err
 	}
 	return sess.be.Onboard(ctx, gw, cfg, admincore.AccountSpec{
-		WindowsUser:   user,
-		Name:          formValue(r, "name"),
-		Department:    formValue(r, "department"),
-		Quota:         quota,
-		Models:        r.PostForm["models"], // none selected = everything the gateway offers
-		CodexAccount:  formValue(r, "codexAccount"),
-		ClaudeAccount: formValue(r, "claudeAccount"),
+		WindowsUser:  user,
+		Name:         formValue(r, "name"),
+		Department:   formValue(r, "department"),
+		Quota:        quota,
+		Models:       r.PostForm["models"], // none selected = everything the gateway offers
+		CodexAccount: formValue(r, "codexAccount"),
 	})
 }
 
@@ -524,7 +522,7 @@ func (s *Server) actionAccountProfile(sess *session, r *http.Request) error {
 	}
 	return sess.be.UpdateProfile(ctx, gw, user,
 		formValue(r, "name"), formValue(r, "department"),
-		formValue(r, "codexAccount"), formValue(r, "claudeAccount"))
+		formValue(r, "codexAccount"))
 }
 
 func (s *Server) actionAccountReissue(sess *session, r *http.Request) error {

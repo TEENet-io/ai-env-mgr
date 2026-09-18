@@ -45,8 +45,6 @@ func (localFileSource) Sessions(profileDir string) ([]agentcore.SessionFile, err
 		dir   string
 		match func(name string) bool
 	}{
-		{filepath.Join(profileDir, ".claude", "projects"),
-			func(n string) bool { return strings.HasSuffix(n, ".jsonl") }},
 		{filepath.Join(profileDir, ".codex", "sessions"),
 			func(n string) bool { return strings.HasPrefix(n, "rollout-") && strings.HasSuffix(n, ".jsonl") }},
 	}

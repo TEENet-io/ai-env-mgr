@@ -18,11 +18,11 @@ func TestLocalFileSourceFindsSessions(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	mk(".claude/projects/proj/a.jsonl", "1\n")
+	mk(".claude/projects/proj/a.jsonl", "1\n") // Claude is no longer collected
 	mk(".codex/sessions/2026/08/rollout-abc.jsonl", "2\n")
 	mk(".codex/sessions/2026/08/notes.txt", "ignore\n")   // wrong extension
 	mk(".codex/sessions/2026/08/other.jsonl", "ignore\n") // not rollout-*
-	mk(".claude/projects/proj/sub/b.jsonl", "3\n")
+	mk(".codex/sessions/2026/09/rollout-def.jsonl", "3\n")
 
 	files, err := localFileSource{}.Sessions(profile)
 	if err != nil {
@@ -37,9 +37,8 @@ func TestLocalFileSourceFindsSessions(t *testing.T) {
 	}
 	sort.Strings(rels)
 	want := []string{
-		".claude/projects/proj/a.jsonl",
-		".claude/projects/proj/sub/b.jsonl",
 		".codex/sessions/2026/08/rollout-abc.jsonl",
+		".codex/sessions/2026/09/rollout-def.jsonl",
 	}
 	if len(rels) != len(want) {
 		t.Fatalf("rels=%v want %v", rels, want)
@@ -54,7 +53,7 @@ func TestLocalFileSourceFindsSessions(t *testing.T) {
 func TestLocalFileSourceMissingDirsAreNotErrors(t *testing.T) {
 	files, err := localFileSource{}.Sessions(t.TempDir()) // empty profile
 	if err != nil {
-		t.Fatalf("missing .claude/.codex must not error: %v", err)
+		t.Fatalf("a missing .codex must not error: %v", err)
 	}
 	if len(files) != 0 {
 		t.Fatalf("want 0 files, got %d", len(files))

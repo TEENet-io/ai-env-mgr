@@ -81,8 +81,8 @@ func TestSetCollectPreservesBlockPolicy(t *testing.T) {
 func TestCollectStatsCountsPerEmployeeAndTool(t *testing.T) {
 	fs := newFakeStore()
 	m := &Manager{Store: fs}
-	addTestUser(t, m, "work1", "", "")
-	addTestUser(t, m, "work2", "", "")
+	addTestUser(t, m, "work1", "")
+	addTestUser(t, m, "work2", "")
 
 	t0 := time.Date(2026, 8, 10, 9, 0, 0, 0, time.UTC)
 	t1 := t0.Add(30 * time.Minute) // newest
@@ -91,8 +91,8 @@ func TestCollectStatsCountsPerEmployeeAndTool(t *testing.T) {
 		fs.objects[pfx+rel] = []byte("data")
 		fs.mtimes[pfx+rel] = mt
 	}
-	put(".claude/projects/p/a.jsonl", t0)
-	put(".claude/projects/p/b.jsonl", t1)
+	put(".codex/sessions/2026/rollout-a.jsonl", t0)
+	put(".codex/sessions/2026/rollout-b.jsonl", t1)
 	put(".codex/sessions/2026/rollout-x.jsonl", t0)
 	// work2 has nothing.
 
@@ -112,8 +112,8 @@ func TestCollectStatsCountsPerEmployeeAndTool(t *testing.T) {
 		byUser[s.User] = s
 	}
 	w1 := byUser["work1"]
-	if w1.Claude != 2 || w1.Codex != 1 || w1.Total != 3 {
-		t.Fatalf("work1 stats = %+v want claude=2 codex=1 total=3", w1)
+	if w1.Codex != 3 || w1.Total != 3 {
+		t.Fatalf("work1 stats = %+v want codex=3 total=3", w1)
 	}
 	if !w1.Latest.Equal(t1) {
 		t.Fatalf("work1 latest = %v want %v", w1.Latest, t1)
@@ -129,9 +129,11 @@ func TestCollectStatsCountsPerEmployeeAndTool(t *testing.T) {
 func TestCollectStatsIncludesNonRosterUsers(t *testing.T) {
 	fs := newFakeStore()
 	m := &Manager{Store: fs}
-	addTestUser(t, m, "weipeng", "", "")
+	addTestUser(t, m, "weipeng", "")
 	// peter is NOT on the roster, but has collected data.
 	pfx := ossclient.DataCollectPrefix("peter")
+	// Data an earlier agent collected from Claude still sits in the bucket;
+	// it counts toward the total and is not attributed to Codex.
 	fs.objects[pfx+".claude/projects/p/a.jsonl"] = []byte("data")
 	fs.objects[pfx+".codex/sessions/x.jsonl"] = []byte("data")
 
@@ -143,8 +145,8 @@ func TestCollectStatsIncludesNonRosterUsers(t *testing.T) {
 	for _, s := range stats {
 		byUser[s.User] = s
 	}
-	if p, ok := byUser["peter"]; !ok || p.Total != 2 || p.Claude != 1 || p.Codex != 1 {
-		t.Fatalf("peter (off-roster) stats = %+v, ok=%v; want claude=1 codex=1 total=2", byUser["peter"], ok)
+	if p, ok := byUser["peter"]; !ok || p.Total != 2 || p.Codex != 1 {
+		t.Fatalf("peter (off-roster) stats = %+v, ok=%v; want codex=1 total=2", byUser["peter"], ok)
 	}
 	if w, ok := byUser["weipeng"]; !ok || w.Total != 0 {
 		t.Fatalf("roster user weipeng should appear at 0, got %+v ok=%v", w, ok)
@@ -154,7 +156,7 @@ func TestCollectStatsIncludesNonRosterUsers(t *testing.T) {
 func TestCollectStatsReportsEnabledFlag(t *testing.T) {
 	fs := newFakeStore()
 	m := &Manager{Store: fs}
-	addTestUser(t, m, "work1", "", "")
+	addTestUser(t, m, "work1", "")
 	if _, err := m.SetCollect(true, nil, nil); err != nil {
 		t.Fatal(err)
 	}

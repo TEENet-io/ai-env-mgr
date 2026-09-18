@@ -85,7 +85,7 @@ func TestRenderPreview(t *testing.T) {
 	}
 	users := []model.UserEntry{
 		{WindowsUser: "peter", CodexAccount: "peter@teenet.io", Enabled: true},
-		{WindowsUser: "work1", CodexAccount: "work1@teenet.io", ClaudeAccount: "work1@teenet.io", Enabled: true},
+		{WindowsUser: "work1", CodexAccount: "work1@teenet.io", Enabled: true},
 		{WindowsUser: "chen", Enabled: false},
 	}
 	accountRows := []accountRow{
@@ -112,8 +112,8 @@ func TestRenderPreview(t *testing.T) {
 			{At: "2026-09-05T08:30:00Z", Action: admincore.AuditQuota, User: "peter"},
 		},
 		Stats: []admincore.CollectStat{
-			{User: "peter", Codex: 128, Claude: 0, Total: 128, Latest: time.Now()},
-			{User: "work1", Codex: 64, Claude: 31, Total: 95, Latest: time.Now()},
+			{User: "peter", Codex: 128, Total: 128, Latest: time.Now()},
+			{User: "work1", Codex: 64, Total: 95, Latest: time.Now()},
 		},
 		Machine: "hv8uqpity23nkc7",
 		Log: "2026-08-16T01:35:54Z sync ok (policy etag W/\"a1b2\")\n" +

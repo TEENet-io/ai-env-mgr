@@ -11,7 +11,7 @@ import (
 
 func TestPublishCredentialsRoundTrips(t *testing.T) {
 	m, store := newManager()
-	addTestUser(t, m, "work1", "", "")
+	addTestUser(t, m, "work1", "")
 
 	set := model.CredentialSet{model.PathCodexAuth: []byte(`{"token":"abc"}`)}
 	if err := m.PublishCredentials("work1", set); err != nil {
@@ -41,19 +41,19 @@ func TestPublishCredentialsRejectsUnknownUser(t *testing.T) {
 	}
 }
 
-// Publishing Claude credentials alone must not erase Codex credentials
-// published earlier for the same user.
+// A partial publish must not erase the entries published earlier for the
+// same user.
 func TestPublishCredentialsMergesWithExisting(t *testing.T) {
 	m, store := newManager()
-	addTestUser(t, m, "work1", "", "")
+	addTestUser(t, m, "work1", "")
 
 	codex := model.CredentialSet{model.PathCodexAuth: []byte("codex-token")}
 	if err := m.PublishCredentials("work1", codex); err != nil {
 		t.Fatal(err)
 	}
 
-	claude := model.CredentialSet{model.PathClaudeCreds: []byte("claude-token")}
-	if err := m.PublishCredentials("work1", claude); err != nil {
+	catalog := model.CredentialSet{model.PathCodexModels: []byte(`{"models":[]}`)}
+	if err := m.PublishCredentials("work1", catalog); err != nil {
 		t.Fatal(err)
 	}
 
@@ -63,9 +63,9 @@ func TestPublishCredentialsMergesWithExisting(t *testing.T) {
 		t.Fatal(err)
 	}
 	if string(got[model.PathCodexAuth]) != "codex-token" {
-		t.Error("publishing claude creds dropped the existing codex creds")
+		t.Error("publishing the catalog dropped the existing auth entry")
 	}
-	if string(got[model.PathClaudeCreds]) != "claude-token" {
-		t.Error("claude creds were not published")
+	if string(got[model.PathCodexModels]) != `{"models":[]}` {
+		t.Error("the catalog was not published")
 	}
 }

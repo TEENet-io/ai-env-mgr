@@ -16,10 +16,8 @@ import (
 // the Windows user name, and publishing to an unknown name would just
 // scatter an object under an arbitrary key instead of reaching a machine.
 //
-// The merge matters because Codex and Claude credentials are published
-// independently (e.g. re-authenticating just one tool); overwriting the
-// archive outright would silently drop whichever tool's credentials were
-// not part of this call.
+// The merge keeps whatever else the archive already holds, so a partial
+// publish never drops an entry it did not carry.
 func (m *Manager) PublishCredentials(windowsUser string, set model.CredentialSet) error {
 	us, err := m.LoadUsers()
 	if err != nil {

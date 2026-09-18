@@ -157,7 +157,7 @@ func (localApplier) DeployCreds(profileDir string, set model.CredentialSet) (age
 	// their side and would otherwise be invisible in admin status.
 	user := filepath.Base(strings.TrimRight(filepath.Clean(profileDir), `\/`))
 	var failed []string
-	for _, sub := range []string{".codex", ".claude", ".claude.json"} {
+	for _, sub := range []string{".codex"} {
 		target := filepath.Join(profileDir, sub)
 		if _, statErr := os.Stat(target); statErr != nil {
 			continue

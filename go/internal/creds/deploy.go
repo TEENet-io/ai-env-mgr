@@ -3,7 +3,6 @@ package creds
 import (
 	"bytes"
 	"crypto/sha256"
-	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -23,12 +22,17 @@ import (
 // filepath.Join with attacker-controlled segments — it is turned away before
 // any path arithmetic happens.
 var profileTargets = map[string][]string{
-	model.PathCodexAuth:    {".codex", "auth.json"},
-	model.PathCodexConfig:  {".codex", "config.toml"},
-	model.PathCodexModels:  {".codex", "models.json"},
-	model.PathClaudeCreds:  {".claude", ".credentials.json"},
-	model.PathClaudeConfig: {".claude.json"},
+	model.PathCodexAuth:   {".codex", "auth.json"},
+	model.PathCodexConfig: {".codex", "config.toml"},
+	model.PathCodexModels: {".codex", "models.json"},
 }
+
+// legacyClaudeTargets is where an earlier agent put the Claude Code login.
+// Claude is no longer managed; these are swept on every deploy and on
+// offboarding so a token delivered by the old agent does not stay behind.
+// Only the credential file: .claude.json holds the employee's own state
+// (project history, settings) and is theirs to keep.
+var legacyClaudeTargets = [][]string{{".claude", ".credentials.json"}}
 
 // TargetPath resolves a zip-internal credential path to its absolute
 // destination under profileDir. Only the entries in profileTargets are
@@ -128,14 +132,6 @@ func WriteToProfileReport(profileDir string, set model.CredentialSet) (Report, e
 		payload := data
 		merged := false
 		switch entry {
-		case model.PathClaudeConfig:
-			merged = true
-			mergedBytes, err := mergeClaudeConfig(target, data)
-			if err != nil {
-				rep.Written, rep.Skipped = written, skipped
-				return rep, err
-			}
-			payload = mergedBytes
 		case model.PathCodexConfig:
 			merged = true
 			mergedBytes, err := mergeCodexConfig(target, data)
@@ -232,11 +228,19 @@ func Present(profileDir string) []string {
 func Remove(profileDir string) (int, error) {
 	removed := 0
 	var failed []string
+	paths := make([]string, 0, len(profileTargets)+len(legacyClaudeTargets))
 	for entry := range profileTargets {
 		path, err := TargetPath(profileDir, entry)
 		if err != nil {
 			continue
 		}
+		paths = append(paths, path)
+	}
+	for _, rel := range legacyClaudeTargets {
+		paths = append(paths, filepath.Join(append([]string{profileDir}, rel...)...))
+	}
+	for _, path := range paths {
+		entry := filepath.Base(path)
 		switch err := os.Remove(path); {
 		case err == nil:
 			removed++
@@ -251,44 +255,4 @@ func Remove(profileDir string) (int, error) {
 		return removed, fmt.Errorf("remove credentials: %s", strings.Join(failed, "; "))
 	}
 	return removed, nil
-}
-
-// mergeClaudeConfig folds the delivered keys into any ~/.claude.json already
-// on the machine instead of replacing the file.
-//
-// That file is not purely a credential: alongside the signed-in identity it
-// accumulates the employee's own state -- project history, MCP servers, tips
-// already seen. Overwriting it wholesale would silently wipe all of that
-// every time an administrator re-runs login, which happens on every token
-// refresh. Only the keys we deliver are touched.
-//
-// A file that is absent or unreadable as JSON is replaced outright: there is
-// nothing to preserve, and refusing to write would leave the employee unable
-// to sign in. A delivered payload that is not JSON is written verbatim.
-func mergeClaudeConfig(target string, incoming []byte) ([]byte, error) {
-	var delivered map[string]any
-	if err := json.Unmarshal(incoming, &delivered); err != nil {
-		// Not something we can merge into. Fall back to writing it verbatim,
-		// which is how every other entry behaves, rather than failing the
-		// whole deploy and leaving the Codex credentials undelivered too.
-		return incoming, nil
-	}
-
-	existing := map[string]any{}
-	if raw, err := os.ReadFile(target); err == nil {
-		if err := json.Unmarshal(raw, &existing); err != nil {
-			// Keep going with an empty base rather than failing the deploy.
-			existing = map[string]any{}
-		}
-	}
-
-	for k, v := range delivered {
-		existing[k] = v
-	}
-
-	merged, err := json.MarshalIndent(existing, "", "  ")
-	if err != nil {
-		return nil, fmt.Errorf("encode merged claude.json: %w", err)
-	}
-	return append(merged, '\n'), nil
 }

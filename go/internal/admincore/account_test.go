@@ -88,7 +88,7 @@ func TestOnboardIsIdempotent(t *testing.T) {
 	}
 }
 
-// CodexAccount/ClaudeAccount are administrator notes, not read by admincore
+// CodexAccount is an administrator note, not read by admincore
 // itself: Onboard should still write them when given, and a re-onboard that
 // omits them (e.g. adminweb's actionAccountReopen, which has no form fields
 // for these) must not blank a note nobody re-typed.
@@ -96,13 +96,13 @@ func TestOnboardWritesAndPreservesAccountNotes(t *testing.T) {
 	m, _ := newManager()
 	gw := newFakeGateway()
 	spec := aliceSpec()
-	spec.CodexAccount, spec.ClaudeAccount = "alice@codex.example", "alice@claude.example"
+	spec.CodexAccount = "alice@codex.example"
 	if err := m.Onboard(context.Background(), gw, testGW, spec); err != nil {
 		t.Fatalf("onboard: %v", err)
 	}
 	us, _ := m.LoadUsers()
 	e := us.Find("alice")
-	if e.CodexAccount != "alice@codex.example" || e.ClaudeAccount != "alice@claude.example" {
+	if e.CodexAccount != "alice@codex.example" {
 		t.Fatalf("notes not written: %+v", e)
 	}
 
@@ -113,7 +113,7 @@ func TestOnboardWritesAndPreservesAccountNotes(t *testing.T) {
 	}
 	us, _ = m.LoadUsers()
 	e = us.Find("alice")
-	if e.CodexAccount != "alice@codex.example" || e.ClaudeAccount != "alice@claude.example" {
+	if e.CodexAccount != "alice@codex.example" {
 		t.Fatalf("re-onboard with empty notes blanked them: %+v", e)
 	}
 }
@@ -476,7 +476,7 @@ func TestSetModelsLeavesTheTokenAloneWhenTheUserWriteFails(t *testing.T) {
 
 func TestUpdateProfileWritesRosterAndMirrorsTheGatewayUser(t *testing.T) {
 	m, _, gw := onboarded(t)
-	err := m.UpdateProfile(context.Background(), gw, "alice", "Alice Wong", "运营", "alice@codex.example", "")
+	err := m.UpdateProfile(context.Background(), gw, "alice", "Alice Wong", "运营", "alice@codex.example")
 	if err != nil {
 		t.Fatalf("profile: %v", err)
 	}
@@ -484,10 +484,6 @@ func TestUpdateProfileWritesRosterAndMirrorsTheGatewayUser(t *testing.T) {
 	e := us.Find("alice")
 	if e.Name != "Alice Wong" || e.Department != "运营" || e.CodexAccount != "alice@codex.example" {
 		t.Fatalf("roster not updated: %+v", e)
-	}
-	// Unlike Onboard's notes, this is the edit form: an empty field clears.
-	if e.ClaudeAccount != "" {
-		t.Errorf("an emptied field must be cleared, not kept: %+v", e)
 	}
 	u := gw.users["emp-alice"]
 	if u.Alias != "Alice Wong" || u.Department() != "运营" {
@@ -509,7 +505,7 @@ func TestUpdateProfileWithoutAGatewayUserSavesTheRoster(t *testing.T) {
 	m, _ := newManager()
 	_ = m.SaveUsers(model.Users{Users: []model.UserEntry{{WindowsUser: "alice", Enabled: true}}})
 	gw := newFakeGateway()
-	if err := m.UpdateProfile(context.Background(), gw, "alice", "Alice Wang", "研发", "", ""); err != nil {
+	if err := m.UpdateProfile(context.Background(), gw, "alice", "Alice Wang", "研发", ""); err != nil {
 		t.Fatalf("profile: %v", err)
 	}
 	us, _ := m.LoadUsers()
@@ -523,7 +519,7 @@ func TestUpdateProfileWithoutAGatewayUserSavesTheRoster(t *testing.T) {
 
 func TestUpdateProfileRequiresARosterEntry(t *testing.T) {
 	m, _ := newManager()
-	if err := m.UpdateProfile(context.Background(), newFakeGateway(), "ghost", "G", "", "", ""); err == nil {
+	if err := m.UpdateProfile(context.Background(), newFakeGateway(), "ghost", "G", "", ""); err == nil {
 		t.Fatal("expected an error")
 	}
 }

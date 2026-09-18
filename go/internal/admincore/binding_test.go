@@ -4,7 +4,7 @@ import "testing"
 
 func TestBindMachineThenLoad(t *testing.T) {
 	m, _ := newManager()
-	addTestUser(t, m, "alice", "", "")
+	addTestUser(t, m, "alice", "")
 	if err := m.BindMachine("work1", "alice", "reimaged 2026-08"); err != nil {
 		t.Fatal(err)
 	}
@@ -40,8 +40,8 @@ func TestBindMachineRejectsUnknownUser(t *testing.T) {
 // previous binding rather than erroring or duplicating it.
 func TestBindMachineIsIdempotent(t *testing.T) {
 	m, _ := newManager()
-	addTestUser(t, m, "alice", "", "")
-	addTestUser(t, m, "bob", "", "")
+	addTestUser(t, m, "alice", "")
+	addTestUser(t, m, "bob", "")
 	if err := m.BindMachine("work1", "alice", ""); err != nil {
 		t.Fatal(err)
 	}
@@ -74,7 +74,7 @@ func TestLoadBindingMissing(t *testing.T) {
 
 func TestUnbindMachine(t *testing.T) {
 	m, _ := newManager()
-	addTestUser(t, m, "alice", "", "")
+	addTestUser(t, m, "alice", "")
 	if err := m.BindMachine("work1", "alice", ""); err != nil {
 		t.Fatal(err)
 	}
@@ -102,8 +102,8 @@ func TestUnbindMachineNotBoundIsNoop(t *testing.T) {
 
 func TestListBindings(t *testing.T) {
 	m, _ := newManager()
-	addTestUser(t, m, "alice", "", "")
-	addTestUser(t, m, "bob", "", "")
+	addTestUser(t, m, "alice", "")
+	addTestUser(t, m, "bob", "")
 	if err := m.BindMachine("work1", "alice", ""); err != nil {
 		t.Fatal(err)
 	}
@@ -131,7 +131,7 @@ func TestListBindings(t *testing.T) {
 // does -- lowercase for anyone opened through the console.
 func TestBindMachineStoresTheRostersSpelling(t *testing.T) {
 	m, _ := newManager()
-	addTestUser(t, m, "alice", "", "")
+	addTestUser(t, m, "alice", "")
 	if err := m.BindMachine("PC-1", "ALICE", ""); err != nil {
 		t.Fatal(err)
 	}
@@ -141,7 +141,7 @@ func TestBindMachineStoresTheRostersSpelling(t *testing.T) {
 
 	// A legacy mixed-case roster entry is not rewritten, so the binding has
 	// to follow it rather than lowercasing blindly.
-	addTestUser(t, m, "Bob", "", "")
+	addTestUser(t, m, "Bob", "")
 	if err := m.BindMachine("PC-2", "bob", ""); err != nil {
 		t.Fatal(err)
 	}
@@ -155,7 +155,7 @@ func TestBindMachineStoresTheRostersSpelling(t *testing.T) {
 // or when it was assigned.
 func TestRequestCodexRestartKeepsTheRestOfTheBinding(t *testing.T) {
 	m, _ := newManager()
-	addTestUser(t, m, "alice", "", "")
+	addTestUser(t, m, "alice", "")
 	if err := m.BindMachine("work1", "alice", "reimaged 2026-08"); err != nil {
 		t.Fatal(err)
 	}
@@ -194,7 +194,7 @@ func TestRequestCodexRestartKeepsTheRestOfTheBinding(t *testing.T) {
 // nothing.
 func TestRequestCodexRestartIssuesAFreshNonce(t *testing.T) {
 	m, _ := newManager()
-	addTestUser(t, m, "alice", "", "")
+	addTestUser(t, m, "alice", "")
 	if err := m.BindMachine("work1", "alice", ""); err != nil {
 		t.Fatal(err)
 	}
@@ -225,8 +225,8 @@ func TestRequestCodexRestartOnAnUnboundMachineFails(t *testing.T) {
 // one's session for a reason that has nothing to do with them.
 func TestBindMachineClearsAPendingRestartRequest(t *testing.T) {
 	m, _ := newManager()
-	addTestUser(t, m, "alice", "", "")
-	addTestUser(t, m, "bob", "", "")
+	addTestUser(t, m, "alice", "")
+	addTestUser(t, m, "bob", "")
 	if err := m.BindMachine("work1", "alice", ""); err != nil {
 		t.Fatal(err)
 	}

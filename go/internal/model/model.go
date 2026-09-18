@@ -211,9 +211,8 @@ func (s Status) HasLocalUser(name string) bool {
 // UserEntry is one row of the admin-only roster.
 // The account fields are notes for the administrator; nothing logs in with them.
 type UserEntry struct {
-	WindowsUser   string `json:"windowsUser"`
-	CodexAccount  string `json:"codexAccount"`
-	ClaudeAccount string `json:"claudeAccount"`
+	WindowsUser  string `json:"windowsUser"`
+	CodexAccount string `json:"codexAccount"`
 	// Name and Department are labels for the administrator's benefit and
 	// are mirrored onto the gateway user (user_alias, metadata.department)
 	// so the gateway UI shows the same person. The roster is authoritative.
@@ -248,10 +247,17 @@ func (u Users) Find(windowsUser string) *UserEntry {
 type CredentialSet map[string][]byte
 
 // Paths inside credentials.zip. The agent maps these onto the user profile.
+//
+// Claude Code is no longer managed (2026-09-18): its two entries are gone
+// from here, and an archive that still carries them is delivered without
+// them. LegacyClaudeEntries names them for the cleanup that removes what an
+// earlier agent put on a machine.
 const (
-	PathCodexAuth    = "codex/auth.json"
-	PathCodexConfig  = "codex/config.toml"
-	PathCodexModels  = "codex/models.json"
-	PathClaudeCreds  = "claude/.credentials.json"
-	PathClaudeConfig = "claude.json"
+	PathCodexAuth   = "codex/auth.json"
+	PathCodexConfig = "codex/config.toml"
+	PathCodexModels = "codex/models.json"
 )
+
+// LegacyClaudeEntries are the archive paths an earlier console published for
+// Claude Code. They are recognised only to be dropped.
+var LegacyClaudeEntries = []string{"claude/.credentials.json", "claude.json"}

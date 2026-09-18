@@ -85,19 +85,18 @@ const (
 // superseded rather than applied -- which is how a delayed re-provision is
 // stopped from handing a token back to somebody who left.
 type Employee struct {
-	ID            string
-	WindowsUser   string
-	ExternalID    string // HR number; empty means unknown
-	Name          string
-	Department    string
-	CodexAccount  string // administrator's note: which login this person uses
-	ClaudeAccount string
-	Status        EmployeeStatus
-	AuthEpoch     int
-	Version       int
-	CreatedAt     time.Time
-	UpdatedAt     time.Time
-	OffboardedAt  *time.Time
+	ID           string
+	WindowsUser  string
+	ExternalID   string // HR number; empty means unknown
+	Name         string
+	Department   string
+	CodexAccount string // administrator's note: which login this person uses
+	Status       EmployeeStatus
+	AuthEpoch    int
+	Version      int
+	CreatedAt    time.Time
+	UpdatedAt    time.Time
+	OffboardedAt *time.Time
 }
 
 // Active reports whether this employee should have working credentials.
@@ -105,21 +104,19 @@ func (e Employee) Active() bool { return e.Status == StatusActive }
 
 // NewEmployee is what Create needs. Everything else has a default.
 type NewEmployee struct {
-	WindowsUser   string
-	ExternalID    string
-	Name          string
-	Department    string
-	CodexAccount  string
-	ClaudeAccount string
+	WindowsUser  string
+	ExternalID   string
+	Name         string
+	Department   string
+	CodexAccount string
 }
 
 // Profile is the set of fields an administrator edits by hand.
 type Profile struct {
-	Name          string
-	Department    string
-	CodexAccount  string
-	ClaudeAccount string
-	ExternalID    string
+	Name         string
+	Department   string
+	CodexAccount string
+	ExternalID   string
 }
 
 // EmployeeFilter narrows List.
@@ -711,12 +708,7 @@ type Credential struct {
 }
 
 // Credential purposes.
-const (
-	PurposeCodexGateway = "codex_gateway"
-	// PurposeClaudeLogin is the files a manual Claude sign-in produced, sealed
-	// as one JSON blob of path -> bytes.
-	PurposeClaudeLogin = "claude_login"
-)
+const PurposeCodexGateway = "codex_gateway"
 
 // NewCredential is what Store needs. The plaintext never appears: the caller
 // seals it first (internal/secrets) and passes the blob.

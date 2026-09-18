@@ -1,10 +1,8 @@
 package creds
 
 import (
-	"encoding/json"
 	"os"
 	"path/filepath"
-	"reflect"
 	"strings"
 	"testing"
 
@@ -20,8 +18,7 @@ func TestTargetPath_KnownEntries(t *testing.T) {
 	}{
 		{model.PathCodexAuth, filepath.Join(profileDir, ".codex", "auth.json")},
 		{model.PathCodexConfig, filepath.Join(profileDir, ".codex", "config.toml")},
-		{model.PathClaudeCreds, filepath.Join(profileDir, ".claude", ".credentials.json")},
-		{model.PathClaudeConfig, filepath.Join(profileDir, ".claude.json")},
+		{model.PathCodexModels, filepath.Join(profileDir, ".codex", "models.json")},
 	}
 
 	for _, tc := range cases {
@@ -42,6 +39,10 @@ func TestTargetPath_UnknownEntry(t *testing.T) {
 
 	unknownEntries := []string{
 		"bogus/file.txt",
+		// Claude Code is no longer managed: an archive that still carries
+		// its entries has them turned away like any other unknown path.
+		"claude/.credentials.json",
+		"claude.json",
 		"evil/../../etc/passwd",
 		"../../etc/passwd",
 		"",
@@ -62,18 +63,17 @@ func TestWriteToProfile_WritesKnownFiles(t *testing.T) {
 	profileDir := t.TempDir()
 
 	set := model.CredentialSet{
-		model.PathCodexAuth:    []byte(`{"token":"codex-auth"}`),
-		model.PathCodexConfig:  []byte(`title = "codex config"`),
-		model.PathClaudeCreds:  []byte(`{"token":"claude-creds"}`),
-		model.PathClaudeConfig: []byte(`{"token":"claude-config"}`),
+		model.PathCodexAuth:   []byte(`{"token":"codex-auth"}`),
+		model.PathCodexConfig: []byte(`title = "codex config"`),
+		model.PathCodexModels: []byte(`{"models":[]}`),
 	}
 
 	n, err := WriteToProfile(profileDir, set)
 	if err != nil {
 		t.Fatalf("WriteToProfile unexpected error: %v", err)
 	}
-	if n != 4 {
-		t.Errorf("WriteToProfile returned %d, want 4", n)
+	if n != 3 {
+		t.Errorf("WriteToProfile returned %d, want 3", n)
 	}
 
 	for entry, want := range set {
@@ -85,30 +85,9 @@ func TestWriteToProfile_WritesKnownFiles(t *testing.T) {
 		if err != nil {
 			t.Fatalf("reading written file %q: %v", target, err)
 		}
-		if entry == model.PathClaudeConfig {
-			// claude.json is merged into whatever is already there rather
-			// than copied, so it comes back re-encoded. Compare meaning.
-			assertSameJSON(t, got, want)
-			continue
-		}
 		if string(got) != string(want) {
 			t.Errorf("content for %q = %q, want %q", entry, got, want)
 		}
-	}
-}
-
-// assertSameJSON compares two JSON documents by value, ignoring formatting.
-func assertSameJSON(t *testing.T, got, want []byte) {
-	t.Helper()
-	var g, w any
-	if err := json.Unmarshal(got, &g); err != nil {
-		t.Fatalf("written file is not valid JSON: %v (%s)", err, got)
-	}
-	if err := json.Unmarshal(want, &w); err != nil {
-		t.Fatalf("expected value is not valid JSON: %v", err)
-	}
-	if !reflect.DeepEqual(g, w) {
-		t.Errorf("JSON differs:\n got %s\nwant %s", got, want)
 	}
 }
 
@@ -156,10 +135,9 @@ func TestWriteToProfile_FilesInCorrectSubdirectories(t *testing.T) {
 	profileDir := t.TempDir()
 
 	set := model.CredentialSet{
-		model.PathCodexAuth:    []byte("a"),
-		model.PathCodexConfig:  []byte("b"),
-		model.PathClaudeCreds:  []byte("c"),
-		model.PathClaudeConfig: []byte("d"),
+		model.PathCodexAuth:   []byte("a"),
+		model.PathCodexConfig: []byte("b"),
+		model.PathCodexModels: []byte("c"),
 	}
 
 	if _, err := WriteToProfile(profileDir, set); err != nil {
@@ -169,18 +147,48 @@ func TestWriteToProfile_FilesInCorrectSubdirectories(t *testing.T) {
 	expectedPaths := []string{
 		filepath.Join(profileDir, ".codex", "auth.json"),
 		filepath.Join(profileDir, ".codex", "config.toml"),
-		filepath.Join(profileDir, ".claude", ".credentials.json"),
-		filepath.Join(profileDir, ".claude.json"),
+		filepath.Join(profileDir, ".codex", "models.json"),
 	}
 	for _, p := range expectedPaths {
 		if _, err := os.Stat(p); err != nil {
 			t.Errorf("expected file at %s: %v", p, err)
 		}
 	}
+}
 
-	// claude.json must be directly in profileDir, not under .claude/.
-	if _, err := os.Stat(filepath.Join(profileDir, ".claude", "claude.json")); err == nil {
-		t.Errorf(".claude.json should not be nested inside .claude/")
+// An earlier agent delivered a Claude Code login. Offboarding through this
+// one must still take it away: a token left behind by software that no longer
+// knows about it is the worst kind of leftover.
+func TestRemoveSweepsTheLegacyClaudeLogin(t *testing.T) {
+	profileDir := t.TempDir()
+	legacy := filepath.Join(profileDir, ".claude", ".credentials.json")
+	if err := os.MkdirAll(filepath.Dir(legacy), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(legacy, []byte(`{"claudeAiOauth":{}}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	// The employee's own Claude state is theirs and is not touched.
+	own := filepath.Join(profileDir, ".claude.json")
+	if err := os.WriteFile(own, []byte(`{"projects":{}}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := WriteToProfile(profileDir, model.CredentialSet{model.PathCodexAuth: []byte("a")}); err != nil {
+		t.Fatal(err)
+	}
+
+	n, err := Remove(profileDir)
+	if err != nil {
+		t.Fatalf("Remove: %v", err)
+	}
+	if n != 2 {
+		t.Errorf("removed %d files, want the Codex login and the legacy Claude login", n)
+	}
+	if _, err := os.Stat(legacy); !os.IsNotExist(err) {
+		t.Error("the legacy Claude login survived offboarding")
+	}
+	if _, err := os.Stat(own); err != nil {
+		t.Error("the employee's own .claude.json was deleted")
 	}
 }
 
@@ -194,101 +202,6 @@ func TestWriteToProfile_EmptySet(t *testing.T) {
 	if n != 0 {
 		t.Errorf("WriteToProfile returned %d, want 0", n)
 	}
-}
-
-// ~/.claude.json is not purely a credential: alongside the signed-in identity
-// it accumulates the employee's own state. Delivering new tokens must not
-// wipe their project history.
-func TestClaudeConfigMergesInsteadOfReplacing(t *testing.T) {
-	profileDir := t.TempDir()
-	target := filepath.Join(profileDir, ".claude.json")
-
-	existing := `{
-	  "projects": {"C:\\work\\repo": {"history": ["one", "two"]}},
-	  "mcpServers": {"local": {"command": "x"}},
-	  "theme": "dark",
-	  "hasCompletedOnboarding": false
-	}`
-	if err := os.WriteFile(target, []byte(existing), 0o600); err != nil {
-		t.Fatal(err)
-	}
-
-	delivered := `{"oauthAccount":{"accountUuid":"acc-1","emailAddress":"a@b.com","organizationUuid":"org-1"},"hasCompletedOnboarding":true}`
-	if _, err := WriteToProfile(profileDir, model.CredentialSet{
-		model.PathClaudeConfig: []byte(delivered),
-	}); err != nil {
-		t.Fatal(err)
-	}
-
-	raw, err := os.ReadFile(target)
-	if err != nil {
-		t.Fatal(err)
-	}
-	var got map[string]any
-	if err := json.Unmarshal(raw, &got); err != nil {
-		t.Fatalf("merged file is not valid JSON: %v (%s)", err, raw)
-	}
-
-	// The employee's own state survives.
-	if _, ok := got["projects"]; !ok {
-		t.Error("project history was wiped")
-	}
-	if _, ok := got["mcpServers"]; !ok {
-		t.Error("MCP server config was wiped")
-	}
-	if got["theme"] != "dark" {
-		t.Errorf("theme = %v, want it preserved", got["theme"])
-	}
-
-	// The delivered keys win.
-	if got["hasCompletedOnboarding"] != true {
-		t.Error("hasCompletedOnboarding should have been set to true")
-	}
-	acct, ok := got["oauthAccount"].(map[string]any)
-	if !ok {
-		t.Fatalf("oauthAccount missing: %v", got["oauthAccount"])
-	}
-	if acct["accountUuid"] != "acc-1" || acct["emailAddress"] != "a@b.com" {
-		t.Errorf("oauthAccount = %v, want the delivered identity", acct)
-	}
-}
-
-// A machine that has never run Claude Code has no file to merge into.
-func TestClaudeConfigWritesWhenAbsent(t *testing.T) {
-	profileDir := t.TempDir()
-	delivered := `{"hasCompletedOnboarding":true}`
-	if _, err := WriteToProfile(profileDir, model.CredentialSet{
-		model.PathClaudeConfig: []byte(delivered),
-	}); err != nil {
-		t.Fatal(err)
-	}
-	raw, err := os.ReadFile(filepath.Join(profileDir, ".claude.json"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	assertSameJSON(t, raw, []byte(delivered))
-}
-
-// A corrupt file on the machine must not block sign-in: there is nothing
-// worth preserving in unparseable JSON.
-func TestClaudeConfigReplacesCorruptFile(t *testing.T) {
-	profileDir := t.TempDir()
-	target := filepath.Join(profileDir, ".claude.json")
-	if err := os.WriteFile(target, []byte("{not json at all"), 0o600); err != nil {
-		t.Fatal(err)
-	}
-
-	delivered := `{"hasCompletedOnboarding":true}`
-	if _, err := WriteToProfile(profileDir, model.CredentialSet{
-		model.PathClaudeConfig: []byte(delivered),
-	}); err != nil {
-		t.Fatalf("a corrupt file should be replaced, not fatal: %v", err)
-	}
-	raw, err := os.ReadFile(target)
-	if err != nil {
-		t.Fatal(err)
-	}
-	assertSameJSON(t, raw, []byte(delivered))
 }
 
 func TestWriteToProfileReportNamesSkippedEntries(t *testing.T) {
@@ -449,8 +362,6 @@ func TestRepeatedDeliveryToAnEditedProfileChangesNothingAfterTheFirst(t *testing
 			"base_url = \"https://gw.example/v1\"\n" +
 			"wire_api = \"responses\"\n" +
 			"experimental_bearer_token = \"sk-abc\"\n"),
-		model.PathClaudeCreds:  []byte(`{"token":"c1"}`),
-		model.PathClaudeConfig: []byte(`{"hasCompletedOnboarding":true}`),
 	}
 
 	first, err := WriteToProfileReport(dir, set)

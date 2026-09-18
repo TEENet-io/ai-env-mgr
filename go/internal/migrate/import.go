@@ -150,7 +150,7 @@ func (im *Importer) upsertEmployee(ctx context.Context, tx repo.Store, entry mod
 	case errors.Is(err, repo.ErrNotFound):
 		created, err := tx.Employees().Create(ctx, repo.NewEmployee{
 			WindowsUser: user, Name: entry.Name, Department: entry.Department,
-			CodexAccount: entry.CodexAccount, ClaudeAccount: entry.ClaudeAccount,
+			CodexAccount: entry.CodexAccount,
 		})
 		if err != nil {
 			return repo.Employee{}, false, err
@@ -171,8 +171,8 @@ func (im *Importer) upsertEmployee(ctx context.Context, tx repo.Store, entry mod
 	// employee is using right now -- during a migration nobody has asked for.
 	updated, err := tx.Employees().UpdateProfile(ctx, existing.ID, existing.Version, repo.Profile{
 		Name: entry.Name, Department: entry.Department,
-		CodexAccount: entry.CodexAccount, ClaudeAccount: entry.ClaudeAccount,
-		ExternalID: existing.ExternalID,
+		CodexAccount: entry.CodexAccount,
+		ExternalID:   existing.ExternalID,
 	})
 	if err != nil {
 		return repo.Employee{}, false, err

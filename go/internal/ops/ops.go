@@ -58,14 +58,13 @@ const (
 
 // OnboardSpec is everything opening an account needs.
 type OnboardSpec struct {
-	WindowsUser   string
-	Name          string
-	Department    string
-	CodexAccount  string
-	ClaudeAccount string
-	ExternalID    string
-	Quota         repo.Quota
-	Models        []string
+	WindowsUser  string
+	Name         string
+	Department   string
+	CodexAccount string
+	ExternalID   string
+	Quota        repo.Quota
+	Models       []string
 
 	// Actor is the administrator's user name, for the audit trail.
 	Actor string
@@ -94,8 +93,7 @@ func (s *Service) Onboard(ctx context.Context, spec OnboardSpec) (repo.Employee,
 		case errors.Is(err, repo.ErrNotFound):
 			employee, err = tx.Employees().Create(ctx, repo.NewEmployee{
 				WindowsUser: user, Name: spec.Name, Department: spec.Department,
-				CodexAccount: spec.CodexAccount, ClaudeAccount: spec.ClaudeAccount,
-				ExternalID: spec.ExternalID,
+				CodexAccount: spec.CodexAccount, ExternalID: spec.ExternalID,
 			})
 			if err != nil {
 				return err
@@ -178,10 +176,8 @@ func (s *Service) Offboard(ctx context.Context, employeeID, actor, requestID str
 		if _, err := tx.Tasks().SupersedeOpenForEmployee(ctx, employee.ID, employee.AuthEpoch); err != nil {
 			return err
 		}
-		for _, purpose := range []string{repo.PurposeCodexGateway, repo.PurposeClaudeLogin} {
-			if _, err := tx.Credentials().Retire(ctx, employee.ID, purpose); err != nil {
-				return err
-			}
+		if _, err := tx.Credentials().Retire(ctx, employee.ID, repo.PurposeCodexGateway); err != nil {
+			return err
 		}
 		if err := s.revokeGrant(ctx, tx, employee); err != nil {
 			return err
@@ -624,11 +620,10 @@ func (s *Service) applyProfile(ctx context.Context, tx repo.Store, employee repo
 	// Empty fields leave what is on the roster alone: re-opening an account
 	// from a form somebody did not re-type must not blank the notes.
 	profile := repo.Profile{
-		Name:          firstNonEmpty(spec.Name, employee.Name),
-		Department:    firstNonEmpty(spec.Department, employee.Department),
-		CodexAccount:  firstNonEmpty(spec.CodexAccount, employee.CodexAccount),
-		ClaudeAccount: firstNonEmpty(spec.ClaudeAccount, employee.ClaudeAccount),
-		ExternalID:    firstNonEmpty(spec.ExternalID, employee.ExternalID),
+		Name:         firstNonEmpty(spec.Name, employee.Name),
+		Department:   firstNonEmpty(spec.Department, employee.Department),
+		CodexAccount: firstNonEmpty(spec.CodexAccount, employee.CodexAccount),
+		ExternalID:   firstNonEmpty(spec.ExternalID, employee.ExternalID),
 	}
 	return tx.Employees().UpdateProfile(ctx, employee.ID, employee.Version, profile)
 }

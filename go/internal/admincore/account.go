@@ -20,13 +20,11 @@ type AccountSpec struct {
 	Quota       litellm.Quota
 	Models      []string
 
-	// CodexAccount and ClaudeAccount are administrator notes -- which login
-	// this Windows account uses for each tool -- not read by anything in
-	// admincore. Empty leaves whatever is already on the roster alone, so
-	// reopening an account (adminweb's actionAccountReopen) never blanks a
-	// note nobody re-typed.
-	CodexAccount  string
-	ClaudeAccount string
+	// CodexAccount is an administrator's note -- which login this Windows
+	// account uses -- not read by anything in admincore. Empty leaves whatever
+	// is already on the roster alone, so reopening an account (adminweb's
+	// actionAccountReopen) never blanks a note nobody re-typed.
+	CodexAccount string
 }
 
 // Onboard opens an account: roster entry, gateway user with its limits, a
@@ -72,9 +70,6 @@ func (m *Manager) Onboard(ctx context.Context, gw Gateway, cfg GatewayConfig, sp
 	e.Name, e.Department, e.Enabled = spec.Name, spec.Department, true
 	if spec.CodexAccount != "" {
 		e.CodexAccount = spec.CodexAccount
-	}
-	if spec.ClaudeAccount != "" {
-		e.ClaudeAccount = spec.ClaudeAccount
 	}
 	if err := m.SaveUsers(us); err != nil {
 		return err
@@ -212,7 +207,7 @@ func (m *Manager) requireActive(windowsUser string) (model.UserEntry, error) {
 // creating one here would leave it without the limits Onboard gives it. A
 // user whose stored limits are unusable is left alone rather than being
 // written back with them, since UpsertUser would send them on as they are.
-func (m *Manager) UpdateProfile(ctx context.Context, gw Gateway, windowsUser, name, department, codexAccount, claudeAccount string) error {
+func (m *Manager) UpdateProfile(ctx context.Context, gw Gateway, windowsUser, name, department, codexAccount string) error {
 	defer lockProvision(windowsUser)()
 
 	us, err := m.LoadUsers()
@@ -227,7 +222,7 @@ func (m *Manager) UpdateProfile(ctx context.Context, gw Gateway, windowsUser, na
 		return fmt.Errorf("user %q is offboarded; reopen the account first", e.WindowsUser)
 	}
 	e.Name, e.Department = name, department
-	e.CodexAccount, e.ClaudeAccount = codexAccount, claudeAccount
+	e.CodexAccount = codexAccount
 	if err := m.SaveUsers(us); err != nil {
 		return err
 	}

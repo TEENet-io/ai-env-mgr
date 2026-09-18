@@ -147,8 +147,8 @@ func TestUsageHelpers(t *testing.T) {
 func TestAccountPagesRender(t *testing.T) {
 	s := newTestServer(t, newFakeStore())
 	row := accountRow{WindowsUser: "alice", Name: "Alice Wang", Department: "研发", Enabled: true,
-		CodexAccount: "alice@codex.example", ClaudeAccount: "alice@claude.example",
-		HasUser: true, HasToken: true, Models: []string{"glm-5.2"}, Spend: 17, Budget: 20,
+		CodexAccount: "alice@codex.example",
+		HasUser:      true, HasToken: true, Models: []string{"glm-5.2"}, Spend: 17, Budget: 20,
 		BudgetResetAt: "2026-10-01T00:00:00Z", Quota: litellm.Quota{MonthlyBudgetUSD: 20, RPM: 60, TPM: 200000, Parallel: 4},
 		Machines: []string{"PC-1"}, OnRoster: true}
 	flagged := accountRow{WindowsUser: "carol", Enabled: false, HasToken: true, OnRoster: true,
@@ -193,7 +193,7 @@ func TestAccountPagesRender(t *testing.T) {
 	}
 	for _, want := range []string{
 		"/users/quota", "/users/models", "/users/reissue", "/users/offboard", "onboard", "PC-1", `value="60"`,
-		"alice@codex.example", "alice@claude.example",
+		"alice@codex.example",
 		// 基本信息 (spec 4.2): the form and its prefilled fields.
 		"/users/profile", "基本信息", `value="Alice Wang"`, `value="研发"`,
 		`name="codexAccount" value="alice@codex.example"`,

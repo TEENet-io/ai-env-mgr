@@ -22,7 +22,7 @@ type Putter interface {
 // SessionFile is one raw AI session file found under an employee profile.
 type SessionFile struct {
 	Path    string    // absolute source path on this machine
-	Rel     string    // path relative to the profile, posix (".claude/projects/...")
+	Rel     string    // path relative to the profile, posix (".codex/sessions/...")
 	ModTime time.Time // last modification time
 	Size    int64     // size in bytes
 }

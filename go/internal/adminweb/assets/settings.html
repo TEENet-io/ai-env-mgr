@@ -44,11 +44,10 @@
   <h2>已采集</h2>
   <div class="panel scroll">
   <table>
-    <thead><tr><th>员工</th><th>CODEX</th><th>CLAUDE</th><th>合计</th></tr></thead>
+    <thead><tr><th>员工</th><th>CODEX</th><th>合计</th></tr></thead>
     <tbody>
     {{range .Stats}}
-      <tr><td class="id">{{.User}}</td><td class="num">{{.Codex}}</td>
-        <td class="num">{{.Claude}}</td><td class="num">{{.Total}}</td></tr>
+      <tr><td class="id">{{.User}}</td><td class="num">{{.Codex}}</td><td class="num">{{.Total}}</td></tr>
     {{end}}
     </tbody>
   </table>

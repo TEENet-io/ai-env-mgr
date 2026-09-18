@@ -49,7 +49,7 @@ func TestCollectFirstRunUploadsAllWithCorrectKeys(t *testing.T) {
 	now := time.Date(2026, 8, 5, 12, 0, 0, 0, time.UTC)
 	old := now.Add(-time.Hour) // well past the debounce window
 	src := &fakeSource{}
-	src.add(".claude/projects/p/a.jsonl", "line1\n", old)
+	src.add(".codex/sessions/p/a.jsonl", "line1\n", old)
 	src.add(".codex/sessions/2026/rollout-x.jsonl", "line2\n", old)
 	store := newFakeStore()
 
@@ -58,7 +58,7 @@ func TestCollectFirstRunUploadsAllWithCorrectKeys(t *testing.T) {
 	if res.Uploaded != 2 {
 		t.Fatalf("uploaded=%d errors=%v want 2", res.Uploaded, res.Errors)
 	}
-	if got := store.puts["agent_workdir/work1/data_collect/.claude/projects/p/a.jsonl"]; string(got) != "line1\n" {
+	if got := store.puts["agent_workdir/work1/data_collect/.codex/sessions/p/a.jsonl"]; string(got) != "line1\n" {
 		t.Errorf("uploaded content = %q want %q", got, "line1\n")
 	}
 	if _, ok := store.puts["agent_workdir/work1/data_collect/.codex/sessions/2026/rollout-x.jsonl"]; !ok {
@@ -78,7 +78,7 @@ func TestCollectSkipsUnchanged(t *testing.T) {
 	now := time.Date(2026, 8, 5, 12, 0, 0, 0, time.UTC)
 	old := now.Add(-time.Hour)
 	src := &fakeSource{}
-	src.add(".claude/projects/p/a.jsonl", "x\n", old)
+	src.add(".codex/sessions/p/a.jsonl", "x\n", old)
 	store := newFakeStore()
 	c := newCollector(t, store, src, now)
 
@@ -94,7 +94,7 @@ func TestCollectReuploadsModified(t *testing.T) {
 	now := time.Date(2026, 8, 5, 12, 0, 0, 0, time.UTC)
 	old := now.Add(-time.Hour)
 	src := &fakeSource{}
-	src.add(".claude/projects/p/a.jsonl", "x\n", old)
+	src.add(".codex/sessions/p/a.jsonl", "x\n", old)
 	store := newFakeStore()
 	c := newCollector(t, store, src, now)
 	c.CollectOnce("work1", 60, "")
@@ -118,7 +118,7 @@ func TestCollectReuploadsModified(t *testing.T) {
 func TestCollectDebounceSkipsFreshFile(t *testing.T) {
 	now := time.Date(2026, 8, 5, 12, 0, 0, 0, time.UTC)
 	src := &fakeSource{}
-	src.add(".claude/projects/p/a.jsonl", "x\n", now.Add(-10*time.Second)) // within 60s quiet
+	src.add(".codex/sessions/p/a.jsonl", "x\n", now.Add(-10*time.Second)) // within 60s quiet
 	store := newFakeStore()
 
 	if r := newCollector(t, store, src, now).CollectOnce("work1", 60, ""); r.Uploaded != 0 {
@@ -130,7 +130,7 @@ func TestCollectFailedUploadRetries(t *testing.T) {
 	now := time.Date(2026, 8, 5, 12, 0, 0, 0, time.UTC)
 	old := now.Add(-time.Hour)
 	src := &fakeSource{}
-	src.add(".claude/projects/p/a.jsonl", "x\n", old)
+	src.add(".codex/sessions/p/a.jsonl", "x\n", old)
 	store := newFakeStore()
 	store.putErr = errNotFound // any error: proves state was not recorded
 	c := newCollector(t, store, src, now)
@@ -148,7 +148,7 @@ func TestCollectPrunesDeletedSourceKeepsOSSCopy(t *testing.T) {
 	now := time.Date(2026, 8, 5, 12, 0, 0, 0, time.UTC)
 	old := now.Add(-time.Hour)
 	src := &fakeSource{}
-	src.add(".claude/projects/p/a.jsonl", "x\n", old)
+	src.add(".codex/sessions/p/a.jsonl", "x\n", old)
 	store := newFakeStore()
 	c := newCollector(t, store, src, now)
 	c.CollectOnce("work1", 60, "")
@@ -157,11 +157,11 @@ func TestCollectPrunesDeletedSourceKeepsOSSCopy(t *testing.T) {
 	c.CollectOnce("work1", 60, "")
 
 	// OSS copy remains
-	if _, ok := store.puts["agent_workdir/work1/data_collect/.claude/projects/p/a.jsonl"]; !ok {
+	if _, ok := store.puts["agent_workdir/work1/data_collect/.codex/sessions/p/a.jsonl"]; !ok {
 		t.Error("uploaded object should remain after source deletion")
 	}
 	// state no longer tracks it -> if the same path reappears it uploads again
-	src.add(".claude/projects/p/a.jsonl", "x\n", old)
+	src.add(".codex/sessions/p/a.jsonl", "x\n", old)
 	if r := c.CollectOnce("work1", 60, ""); r.Uploaded != 1 {
 		t.Fatalf("uploaded=%d want 1 after source reappears", r.Uploaded)
 	}
@@ -175,7 +175,7 @@ func TestCollectSaveStateFailureSurfaces(t *testing.T) {
 	now := time.Date(2026, 8, 5, 12, 0, 0, 0, time.UTC)
 	old := now.Add(-time.Hour)
 	src := &fakeSource{}
-	src.add(".claude/projects/p/a.jsonl", "x\n", old)
+	src.add(".codex/sessions/p/a.jsonl", "x\n", old)
 	store := newFakeStore()
 
 	// A regular file where a directory is expected: os.MkdirAll on a path
@@ -211,21 +211,21 @@ func TestCollectSaveStateFailureSurfaces(t *testing.T) {
 func TestCollectSinceSkipsHistory(t *testing.T) {
 	now := time.Date(2026, 8, 5, 12, 0, 0, 0, time.UTC)
 	src := &fakeSource{}
-	src.add(".claude/projects/p/old.jsonl", "x\n", time.Date(2026, 7, 1, 0, 0, 0, 0, time.UTC))
-	src.add(".claude/projects/p/new.jsonl", "y\n", time.Date(2026, 8, 4, 0, 0, 0, 0, time.UTC))
+	src.add(".codex/sessions/p/old.jsonl", "x\n", time.Date(2026, 7, 1, 0, 0, 0, 0, time.UTC))
+	src.add(".codex/sessions/p/new.jsonl", "y\n", time.Date(2026, 8, 4, 0, 0, 0, 0, time.UTC))
 	// exactly on the cutoff date: the comparison is `< since`, so an equal
 	// date must be kept, not skipped.
-	src.add(".claude/projects/p/boundary.jsonl", "z\n", time.Date(2026, 8, 1, 0, 0, 0, 0, time.UTC))
+	src.add(".codex/sessions/p/boundary.jsonl", "z\n", time.Date(2026, 8, 1, 0, 0, 0, 0, time.UTC))
 	store := newFakeStore()
 
 	r := newCollector(t, store, src, now).CollectOnce("work1", 60, "2026-08-01")
 	if r.Uploaded != 2 {
 		t.Fatalf("uploaded=%d want 2 (only files on/after 2026-08-01)", r.Uploaded)
 	}
-	if _, ok := store.puts["agent_workdir/work1/data_collect/.claude/projects/p/new.jsonl"]; !ok {
+	if _, ok := store.puts["agent_workdir/work1/data_collect/.codex/sessions/p/new.jsonl"]; !ok {
 		t.Error("the newer file should have been uploaded")
 	}
-	if _, ok := store.puts["agent_workdir/work1/data_collect/.claude/projects/p/boundary.jsonl"]; !ok {
+	if _, ok := store.puts["agent_workdir/work1/data_collect/.codex/sessions/p/boundary.jsonl"]; !ok {
 		t.Error("a file dated exactly on the since cutoff should have been uploaded")
 	}
 }
@@ -236,18 +236,18 @@ func TestCollectSinceSkipsHistory(t *testing.T) {
 func TestCollectDefaultQuietWhenZero(t *testing.T) {
 	now := time.Date(2026, 8, 5, 12, 0, 0, 0, time.UTC)
 	src := &fakeSource{}
-	src.add(".claude/projects/p/fresh.jsonl", "a\n", now.Add(-30*time.Second))   // inside default 60s -> skip
-	src.add(".claude/projects/p/settled.jsonl", "b\n", now.Add(-90*time.Second)) // outside default 60s -> upload
+	src.add(".codex/sessions/p/fresh.jsonl", "a\n", now.Add(-30*time.Second))   // inside default 60s -> skip
+	src.add(".codex/sessions/p/settled.jsonl", "b\n", now.Add(-90*time.Second)) // outside default 60s -> upload
 	store := newFakeStore()
 
 	r := newCollector(t, store, src, now).CollectOnce("work1", 0, "")
 	if r.Uploaded != 1 {
 		t.Fatalf("uploaded=%d errors=%v want 1 (default 60s quiet window)", r.Uploaded, r.Errors)
 	}
-	if _, ok := store.puts["agent_workdir/work1/data_collect/.claude/projects/p/settled.jsonl"]; !ok {
+	if _, ok := store.puts["agent_workdir/work1/data_collect/.codex/sessions/p/settled.jsonl"]; !ok {
 		t.Error("the file older than the default 60s quiet window should have been uploaded")
 	}
-	if _, ok := store.puts["agent_workdir/work1/data_collect/.claude/projects/p/fresh.jsonl"]; ok {
+	if _, ok := store.puts["agent_workdir/work1/data_collect/.codex/sessions/p/fresh.jsonl"]; ok {
 		t.Error("the file within the default 60s quiet window should not have been uploaded")
 	}
 }

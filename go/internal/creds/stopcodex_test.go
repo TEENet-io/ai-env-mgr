@@ -15,7 +15,6 @@ func TestStopCodexArgsAreScopedToTheUser(t *testing.T) {
 	want := [][]string{
 		{"/F", "/FI", "USERNAME eq work1", "/IM", "ChatGPT.exe"},
 		{"/F", "/FI", "USERNAME eq work1", "/IM", "codex.exe"},
-		{"/F", "/FI", "USERNAME eq work1", "/IM", "claude.exe"},
 	}
 	got, err := stopCodexArgs("work1")
 	if err != nil {

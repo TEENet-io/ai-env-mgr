@@ -121,13 +121,16 @@ func TestTheExportPutsAWorkingConfigWhereTheAgentLooks(t *testing.T) {
 	}
 }
 
-func TestTheExportKeepsWhatItDidNotPublish(t *testing.T) {
+func TestTheExportKeepsWhatItDidNotPublishAndDropsWhatNobodyPublishesAnyMore(t *testing.T) {
 	_, service, objects, w, ctx := exporting(t)
 
-	// Claude's credentials are published by a different path; overwriting the
-	// archive outright would log the employee out of a tool nobody touched.
+	// An archive from before: an entry this export does not produce, which
+	// must survive, and the Claude login an earlier console published, which
+	// must not -- Claude Code is no longer managed.
 	existing, err := creds.Pack(model.CredentialSet{
-		model.PathClaudeCreds: []byte(`{"claude":"token"}`),
+		model.PathCodexAuth:        []byte(`{"auth_mode":"chatgpt"}`),
+		"claude/.credentials.json": []byte(`{"claude":"token"}`),
+		"claude.json":              []byte(`{"hasCompletedOnboarding":true}`),
 	})
 	if err != nil {
 		t.Fatalf("pack: %v", err)
@@ -144,11 +147,16 @@ func TestTheExportKeepsWhatItDidNotPublish(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unpack: %v", err)
 	}
-	if string(set[model.PathClaudeCreds]) != `{"claude":"token"}` {
-		t.Error("publishing the Codex config dropped the Claude credentials")
+	if string(set[model.PathCodexAuth]) != `{"auth_mode":"chatgpt"}` {
+		t.Error("publishing the Codex config dropped an entry it did not produce")
 	}
 	if len(set[model.PathCodexConfig]) == 0 {
 		t.Error("the Codex config was not published")
+	}
+	for _, legacy := range model.LegacyClaudeEntries {
+		if _, ok := set[legacy]; ok {
+			t.Errorf("%s is still in the archive; the machine would keep a login for a tool nobody manages", legacy)
+		}
 	}
 }
 
@@ -316,41 +324,5 @@ func TestForgettingAMachineRemovesItsObjects(t *testing.T) {
 	}
 	if _, ok := objects.get(ossclient.StatusKey("DESKTOP-01")); ok {
 		t.Error("the status object survived forgetting")
-	}
-}
-
-func TestClaudeFilesRideAlongWithTheCodexConfig(t *testing.T) {
-	store, service, objects, w, ctx := exporting(t)
-	ring := testKeyring(t)
-	_ = store
-	employee := onboard(t, ctx, service, "work1")
-	drain(t, ctx, w)
-
-	// Wired with the same keyring the handler uses.
-	w.Register(repo.TaskOSSExport, OSSExport{
-		Store: store, Objects: objects, Keyring: ring,
-		Catalog:        fakeCatalog{names: []string{"claude-4.5-sonnet"}},
-		GatewayBaseURL: "https://litellm.teenet.app",
-	})
-	if err := service.PublishClaudeCredentials(ctx, ring, employee.ID, model.CredentialSet{
-		model.PathClaudeCreds: []byte(`{"claudeAiOauth":{"accessToken":"sk-ant-secret"}}`),
-	}, "zhang", ""); err != nil {
-		t.Fatalf("publish claude: %v", err)
-	}
-	drain(t, ctx, w)
-
-	blob, ok := objects.get(ossclient.UserKey("work1", "credentials.zip"))
-	if !ok {
-		t.Fatal("nothing published")
-	}
-	set, err := creds.Unpack(blob)
-	if err != nil {
-		t.Fatalf("unpack: %v", err)
-	}
-	if !strings.Contains(string(set[model.PathClaudeCreds]), "sk-ant-secret") {
-		t.Error("the Claude credentials did not reach the archive")
-	}
-	if len(set[model.PathCodexConfig]) == 0 {
-		t.Error("the Codex config was dropped when the Claude files were added")
 	}
 }

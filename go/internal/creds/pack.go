@@ -79,8 +79,8 @@ func Unpack(blob []byte) (model.CredentialSet, error) {
 
 // Merge overlays new entries onto existing ones, returning a fresh set.
 //
-// Publishing only Claude credentials must not drop the Codex ones already
-// stored for that user, so the admin merges before uploading.
+// A partial publish must not drop the entries already stored for that user,
+// so the admin merges before uploading.
 func Merge(existing, incoming model.CredentialSet) model.CredentialSet {
 	out := model.CredentialSet{}
 	for k, v := range existing {

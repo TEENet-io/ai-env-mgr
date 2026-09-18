@@ -119,17 +119,17 @@ func newManager() (*Manager, *fakeStore) {
 // admincore.AddUser used to (find-or-create, mark enabled): Onboard is the
 // real entry point since Task 10, but most of the tests here only need a
 // roster row to exist and do not care how it got there.
-func addTestUser(t *testing.T, m *Manager, windowsUser, codexAccount, claudeAccount string) {
+func addTestUser(t *testing.T, m *Manager, windowsUser, codexAccount string) {
 	t.Helper()
 	us, err := m.LoadUsers()
 	if err != nil {
 		t.Fatalf("LoadUsers: %v", err)
 	}
 	if e := us.Find(windowsUser); e != nil {
-		e.CodexAccount, e.ClaudeAccount, e.Enabled = codexAccount, claudeAccount, true
+		e.CodexAccount, e.Enabled = codexAccount, true
 	} else {
 		us.Users = append(us.Users, model.UserEntry{
-			WindowsUser: windowsUser, CodexAccount: codexAccount, ClaudeAccount: claudeAccount, Enabled: true,
+			WindowsUser: windowsUser, CodexAccount: codexAccount, Enabled: true,
 		})
 	}
 	if err := m.SaveUsers(us); err != nil {
@@ -157,7 +157,7 @@ func TestSetUserEnabledUnknownUserErrors(t *testing.T) {
 
 func TestSetUserEnabledPersists(t *testing.T) {
 	m, _ := newManager()
-	addTestUser(t, m, "work1", "c", "cl")
+	addTestUser(t, m, "work1", "c")
 	if err := m.SetUserEnabled("work1", false); err != nil {
 		t.Fatal(err)
 	}
@@ -175,8 +175,8 @@ func TestSetUserEnabledPersists(t *testing.T) {
 // not stop a machine from being locked down.
 func TestPolicyIsASingleObjectIndependentOfTheRoster(t *testing.T) {
 	m, store := newManager()
-	addTestUser(t, m, "work1", "", "")
-	addTestUser(t, m, "work2", "", "")
+	addTestUser(t, m, "work1", "")
+	addTestUser(t, m, "work2", "")
 	if err := m.SetUserEnabled("work2", false); err != nil {
 		t.Fatal(err)
 	}
@@ -227,7 +227,7 @@ func containsString(list []string, want string) bool {
 
 func TestMutateDomainsAddsRemovesDedupsAndSorts(t *testing.T) {
 	m, store := newManager()
-	addTestUser(t, m, "work1", "", "")
+	addTestUser(t, m, "work1", "")
 	if err := m.PublishPolicy(model.Policy{BlockEnabled: true, BlockedDomains: []string{"B.com", "a.com"}}); err != nil {
 		t.Fatal(err)
 	}
@@ -353,7 +353,7 @@ func TestMutateAppLockerAllowPathsCapsTheListLength(t *testing.T) {
 
 func TestSetBlockEnabledPersists(t *testing.T) {
 	m, store := newManager()
-	addTestUser(t, m, "work1", "", "")
+	addTestUser(t, m, "work1", "")
 	if err := m.PublishPolicy(model.Policy{BlockEnabled: true}); err != nil {
 		t.Fatal(err)
 	}
@@ -378,7 +378,7 @@ func TestSetBlockEnabledPersists(t *testing.T) {
 
 func TestSetSyncIntervalClamps(t *testing.T) {
 	m, _ := newManager()
-	addTestUser(t, m, "work1", "", "")
+	addTestUser(t, m, "work1", "")
 	if err := m.PublishPolicy(model.Policy{SyncIntervalMinutes: 30}); err != nil {
 		t.Fatal(err)
 	}
@@ -414,8 +414,8 @@ func TestCurrentPolicyDefaultsWhenNoneReadable(t *testing.T) {
 
 func TestCurrentPolicyReadsFirstEnabledUser(t *testing.T) {
 	m, store := newManager()
-	addTestUser(t, m, "work1", "", "")
-	addTestUser(t, m, "work2", "", "")
+	addTestUser(t, m, "work1", "")
+	addTestUser(t, m, "work2", "")
 	if err := m.SetUserEnabled("work1", false); err != nil {
 		t.Fatal(err)
 	}
@@ -462,7 +462,7 @@ func TestAdminKeysStayUnderRoot(t *testing.T) {
 // credentials is what reaches them.
 func TestDisableUserRevokesStoredCredentials(t *testing.T) {
 	m, store := newManager()
-	addTestUser(t, m, "work1", "", "")
+	addTestUser(t, m, "work1", "")
 	if err := m.PublishCredentials("work1", model.CredentialSet{
 		model.PathCodexAuth: []byte(`{"tokens":{}}`),
 	}); err != nil {
@@ -485,7 +485,7 @@ func TestDisableUserRevokesStoredCredentials(t *testing.T) {
 // revocation.
 func TestEnablingAfterDisableDoesNotRestoreCredentials(t *testing.T) {
 	m, store := newManager()
-	addTestUser(t, m, "work1", "", "")
+	addTestUser(t, m, "work1", "")
 	if err := m.PublishCredentials("work1", model.CredentialSet{
 		model.PathCodexAuth: []byte(`{"tokens":{}}`),
 	}); err != nil {
@@ -506,8 +506,8 @@ func TestEnablingAfterDisableDoesNotRestoreCredentials(t *testing.T) {
 // holding two entries for one person.
 func TestRosterMatchesUserNamesIgnoringCase(t *testing.T) {
 	m, _ := newManager()
-	addTestUser(t, m, "work1", "a@x.com", "")
-	addTestUser(t, m, "WORK1", "b@x.com", "")
+	addTestUser(t, m, "work1", "a@x.com")
+	addTestUser(t, m, "WORK1", "b@x.com")
 	us, err := m.LoadUsers()
 	if err != nil {
 		t.Fatal(err)

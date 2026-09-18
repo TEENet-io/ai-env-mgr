@@ -149,7 +149,7 @@ func TestRequestCodexRestartIsAudited(t *testing.T) {
 	}
 	m, _ := newManager()
 	m.Events = events
-	addTestUser(t, m, "alice", "", "")
+	addTestUser(t, m, "alice", "")
 	if err := m.BindMachine("work1", "alice", ""); err != nil {
 		t.Fatal(err)
 	}
@@ -185,7 +185,7 @@ func TestRequestCodexRestartIsAudited(t *testing.T) {
 // developer runs it. A button must not panic there.
 func TestRequestCodexRestartWithoutAnEventLog(t *testing.T) {
 	m, _ := newManager()
-	addTestUser(t, m, "alice", "", "")
+	addTestUser(t, m, "alice", "")
 	if err := m.BindMachine("work1", "alice", ""); err != nil {
 		t.Fatal(err)
 	}

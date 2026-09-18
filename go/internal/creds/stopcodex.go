@@ -11,12 +11,12 @@ import (
 // Codex.vbs); codex.exe and claude.exe are the CLIs beside it.
 //
 // Why kill them at all: these tools read their token once at startup and do
-// not watch auth.json (or the Claude equivalents) for changes -- Codex's own
+// not watch auth.json for changes -- Codex's own
 // source is explicit that an external edit is not picked up until the process
 // reloads. Overwriting the files on disk while the tool keeps running
 // therefore changes nothing until it restarts, and a token that has since
 // been revoked goes on working.
-var aiToolProcesses = []string{"ChatGPT.exe", "codex.exe", "claude.exe"}
+var aiToolProcesses = []string{"ChatGPT.exe", "codex.exe"}
 
 // localAccountPattern is what a Windows local account name may look like
 // before it is pasted into a taskkill filter.

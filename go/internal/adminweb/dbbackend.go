@@ -53,7 +53,7 @@ func (b dbBackend) Roster(ctx context.Context) ([]model.UserEntry, error) {
 func entryFrom(e repo.Employee) model.UserEntry {
 	return model.UserEntry{
 		WindowsUser: e.WindowsUser, Name: e.Name, Department: e.Department,
-		CodexAccount: e.CodexAccount, ClaudeAccount: e.ClaudeAccount, Enabled: e.Active(),
+		CodexAccount: e.CodexAccount, Enabled: e.Active(),
 	}
 }
 
@@ -314,7 +314,7 @@ func (b dbBackend) AccountRow(ctx context.Context, windowsUser string, _ []litel
 func (b dbBackend) accountRow(ctx context.Context, e repo.Employee, gwUsers []litellm.User) (accountRow, error) {
 	row := accountRow{
 		WindowsUser: e.WindowsUser, Name: e.Name, Department: e.Department, Enabled: e.Active(),
-		OnRoster: true, CodexAccount: e.CodexAccount, ClaudeAccount: e.ClaudeAccount,
+		OnRoster: true, CodexAccount: e.CodexAccount,
 	}
 	if q, err := b.store.Quotas().Get(ctx, e.ID); err == nil {
 		if gq, err := gatewayQuota(q); err == nil {
@@ -381,8 +381,8 @@ func (b dbBackend) accountRow(ctx context.Context, e repo.Employee, gwUsers []li
 func (b dbBackend) Onboard(ctx context.Context, _ *litellm.Client, _ admincore.GatewayConfig, spec admincore.AccountSpec) error {
 	_, err := b.ops.Onboard(ctx, ops.OnboardSpec{
 		WindowsUser: spec.WindowsUser, Name: spec.Name, Department: spec.Department,
-		CodexAccount: spec.CodexAccount, ClaudeAccount: spec.ClaudeAccount,
-		Quota: storedQuota(spec.Quota), Models: spec.Models,
+		CodexAccount: spec.CodexAccount,
+		Quota:        storedQuota(spec.Quota), Models: spec.Models,
 		Actor: b.actor, RequestID: b.requestID,
 	})
 	return err
@@ -427,13 +427,13 @@ func (b dbBackend) SetModels(ctx context.Context, _ *litellm.Client, _ admincore
 	return b.ops.SetModels(ctx, e.ID, models, b.actor, b.requestID)
 }
 
-func (b dbBackend) UpdateProfile(ctx context.Context, _ *litellm.Client, windowsUser, name, department, codexAccount, claudeAccount string) error {
+func (b dbBackend) UpdateProfile(ctx context.Context, _ *litellm.Client, windowsUser, name, department, codexAccount string) error {
 	e, err := b.employee(ctx, windowsUser)
 	if err != nil {
 		return err
 	}
 	return b.ops.UpdateProfile(ctx, e.ID, e.Version, repo.Profile{
-		Name: name, Department: department, CodexAccount: codexAccount, ClaudeAccount: claudeAccount,
+		Name: name, Department: department, CodexAccount: codexAccount,
 		ExternalID: e.ExternalID,
 	}, b.actor, b.requestID)
 }

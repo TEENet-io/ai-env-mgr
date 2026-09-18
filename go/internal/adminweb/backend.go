@@ -39,7 +39,7 @@ type backend interface {
 	Offboard(ctx context.Context, gw *litellm.Client, windowsUser string) error
 	SetQuota(ctx context.Context, gw *litellm.Client, windowsUser string, q litellm.Quota) error
 	SetModels(ctx context.Context, gw *litellm.Client, cfg admincore.GatewayConfig, windowsUser string, models []string) error
-	UpdateProfile(ctx context.Context, gw *litellm.Client, windowsUser, name, department, codexAccount, claudeAccount string) error
+	UpdateProfile(ctx context.Context, gw *litellm.Client, windowsUser, name, department, codexAccount string) error
 	Reissue(ctx context.Context, gw *litellm.Client, cfg admincore.GatewayConfig, windowsUser string) error
 
 	BindMachine(ctx context.Context, machine, windowsUser, note string) error
@@ -142,8 +142,8 @@ func (b legacyBackend) SetModels(ctx context.Context, gw *litellm.Client, cfg ad
 	return b.mgr.SetModels(ctx, gw, cfg, windowsUser, models)
 }
 
-func (b legacyBackend) UpdateProfile(ctx context.Context, gw *litellm.Client, windowsUser, name, department, codexAccount, claudeAccount string) error {
-	return b.mgr.UpdateProfile(ctx, gw, windowsUser, name, department, codexAccount, claudeAccount)
+func (b legacyBackend) UpdateProfile(ctx context.Context, gw *litellm.Client, windowsUser, name, department, codexAccount string) error {
+	return b.mgr.UpdateProfile(ctx, gw, windowsUser, name, department, codexAccount)
 }
 
 func (b legacyBackend) Reissue(ctx context.Context, gw *litellm.Client, cfg admincore.GatewayConfig, windowsUser string) error {

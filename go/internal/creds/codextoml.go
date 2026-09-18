@@ -13,8 +13,8 @@ import (
 // Everything outside this list belongs to the employee: approval policy,
 // sandbox settings, MCP servers they wired up themselves. Delivering a
 // gateway configuration must not cost them any of that, which is why this
-// merges rather than overwrites -- the same reason mergeClaudeConfig exists
-// for .claude.json.
+// merges rather than overwrites: the file also holds the employee's own
+// settings, and replacing it would wipe them on every token refresh.
 var codexManagedKeys = map[string]bool{
 	"model":                  true,
 	"model_provider":         true,

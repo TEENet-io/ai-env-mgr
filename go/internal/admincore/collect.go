@@ -36,7 +36,6 @@ func (m *Manager) SetCollect(enabled bool, since *string, quiet *int) (model.Pol
 // have been uploaded, split by tool, and when the most recent one arrived.
 type CollectStat struct {
 	User   string
-	Claude int
 	Codex  int
 	Total  int
 	Latest time.Time // zero when nothing has been uploaded
@@ -106,10 +105,7 @@ func CollectStatsFor(store Store, rosterUsers []string) ([]CollectStat, error) {
 		s := ensure(user)
 		// The key mirrors the source tree, so the first segment of rel tells us
 		// which tool the file came from.
-		switch {
-		case strings.HasPrefix(rel, ".claude/"):
-			s.Claude++
-		case strings.HasPrefix(rel, ".codex/"):
+		if strings.HasPrefix(rel, ".codex/") {
 			s.Codex++
 		}
 		s.Total++

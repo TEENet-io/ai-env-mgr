@@ -133,7 +133,6 @@ agent 以 SYSTEM 身份运行，`os.UserHomeDir()` 会返回 system profile 而�
     {
       "windowsUser": "work1",
       "codexAccount": "ai-work1@company.com",
-      "claudeAccount": "ai-work1@company.com",
       "enabled": true
     }
   ],
@@ -206,8 +205,6 @@ zip 内的路径固定，agent 按下表映射到员工 profile：
 |---|---|
 | `codex/auth.json` | `C:\Users\{员工}\.codex\auth.json` |
 | `codex/config.toml` | `C:\Users\{员工}\.codex\config.toml` |
-| `claude/.credentials.json` | `C:\Users\{员工}\.claude\.credentials.json` |
-| `claude.json` | `C:\Users\{员工}\.claude.json` |
 
 管理员执行 `admin.exe login` 时，OAuth 结果在内存里打包直接上传，**不落管理员本地磁盘**。
 
@@ -292,11 +289,10 @@ agent **明确不能做的**：读员工名单、写任何策略或凭据、删�
 
 ## 6. `{员工}/data_collect/`（本版已实现，默认关闭）
 
-用于采集**绑定员工**与 Codex / Claude 的原始会话数据，供离线分析。采集端本版**已实现**，代码在 `go/internal/agentcore/collect.go`，但**默认关闭**——`policy.json` 里的 `collectEnabled` 默认为 `false`，且 agent 的 RAM 授权默认不含 `data_collect` 的写权限。两者任一没打开都不会有对象写进来。
+用于采集**绑定员工**与 Codex 的原始会话数据，供离线分析。采集端本版**已实现**，代码在 `go/internal/agentcore/collect.go`，但**默认关闭**——`policy.json` 里的 `collectEnabled` 默认为 `false`，且 agent 的 RAM 授权默认不含 `data_collect` 的写权限。两者任一没打开都不会有对象写进来。
 
 **采什么**：只采**绑定员工**本人的 profile 下：
 
-- `.claude/projects/**/*.jsonl`
 - `.codex/sessions/**/rollout-*.jsonl`
 
 原文照传，**不做任何脱敏或解析**。
@@ -304,11 +300,10 @@ agent **明确不能做的**：读员工名单、写任何策略或凭据、删�
 **键结构**：与源目录一致，前缀是 `agent_workdir/{员工}/data_collect/`：
 
 ```
-agent_workdir/work1/data_collect/.claude/projects/{project}/{session}.jsonl
 agent_workdir/work1/data_collect/.codex/sessions/{y}/{m}/{d}/rollout-....jsonl
 ```
 
-即 `DataCollectKey(user, rel)` = `DataCollectPrefix(user)` + 该文件相对 profile 目录的路径（`.claude/...` 或 `.codex/...`），大小写与目录层级原样保留。
+即 `DataCollectKey(user, rel)` = `DataCollectPrefix(user)` + 该文件相对 profile 目录的路径（`.codex/...`），大小写与目录层级原样保留。
 
 **开关字段**（`policy.json`，见 §4.4）：
 
