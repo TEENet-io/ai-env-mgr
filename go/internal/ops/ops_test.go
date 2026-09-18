@@ -21,6 +21,12 @@ func newService(t *testing.T) (*Service, *dbstore.Store, context.Context) {
 		t.Skip("TEST_PG_DSN is not set; skipping the PostgreSQL integration tests")
 	}
 	ctx := context.Background()
+	// A database of this package's own: `go test ./...` runs packages in
+	// parallel and each of these suites empties the schema it is about to use.
+	dsn, err := dbstore.TestDatabaseDSN(ctx, dsn, "aienv_test_ops")
+	if err != nil {
+		t.Fatalf("test database: %v", err)
+	}
 	database, err := dbstore.Open(ctx, dsn)
 	if err != nil {
 		t.Fatalf("open: %v", err)

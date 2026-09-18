@@ -517,6 +517,12 @@ type Tasks interface {
 	// broken task into a permanent load on whatever it is calling.
 	Fail(ctx context.Context, id, owner string, retryAt time.Time, errorClass, detail, externalRef string) (Task, error)
 
+	// FailPermanently closes a task that will never succeed however often it
+	// is tried: an unknown kind, a malformed payload, an upstream that says
+	// the request itself is wrong. Retrying those is load without hope, and it
+	// buries the real failures in a list that never empties.
+	FailPermanently(ctx context.Context, id, owner, errorClass, detail, externalRef string) (Task, error)
+
 	// Supersede abandons a task that has been overtaken by events.
 	Supersede(ctx context.Context, id, reason string) error
 

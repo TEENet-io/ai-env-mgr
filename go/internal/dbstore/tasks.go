@@ -259,6 +259,38 @@ func (r taskRepo) Fail(ctx context.Context, id, owner string, retryAt time.Time,
 	return t, nil
 }
 
+// FailPermanently closes a task without another attempt.
+//
+// It is the same shape as Fail, minus the arithmetic about attempts: some
+// failures are facts about the request rather than about the moment, and
+// trying them nine more times only delays somebody noticing.
+func (r taskRepo) FailPermanently(ctx context.Context, id, owner, errorClass, detail, externalRef string) (repo.Task, error) {
+	t, err := scanTask(r.q.QueryRow(ctx,
+		`with closed as (
+		   update tasks
+		      set status = 'failed', finished_at = now(), next_run_at = now(),
+		          last_error = left($3, 2000), lease_owner = null, lease_until = null,
+		          updated_at = now()
+		    where id = $1 and lease_owner = $2 and status = 'running' and lease_until > now()
+		    returning `+taskColumns+`
+		 ), logged as (
+		   update task_attempts a
+		      set ended_at = now(), outcome = 'failed', error_class = $4,
+		          error_detail = left($3, 2000), external_ref = $5
+		     from closed
+		    where a.task_id = closed.id and a.attempt = closed.attempts
+		 )
+		 select `+taskColumns+` from closed`,
+		id, owner, detail, errorClass, externalRef))
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return repo.Task{}, fmt.Errorf("fail task: %w", repo.ErrLeaseLost)
+		}
+		return repo.Task{}, mapError(err, "fail task")
+	}
+	return t, nil
+}
+
 func (r taskRepo) Supersede(ctx context.Context, id, reason string) error {
 	tag, err := r.q.Exec(ctx,
 		`update tasks

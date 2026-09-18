@@ -27,6 +27,12 @@ func testDB(t *testing.T) *DB {
 		t.Skip("TEST_PG_DSN is not set; skipping the PostgreSQL integration tests")
 	}
 	ctx := context.Background()
+	// A database of this package's own: `go test ./...` runs packages in
+	// parallel and each of these suites empties the schema it is about to use.
+	dsn, err := TestDatabaseDSN(ctx, dsn, "aienv_test_dbstore")
+	if err != nil {
+		t.Fatalf("test database: %v", err)
+	}
 	database, err := Open(ctx, dsn)
 	if err != nil {
 		t.Fatalf("open: %v", err)
