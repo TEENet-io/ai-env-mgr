@@ -38,6 +38,13 @@ func NewStore(db *DB) *Store { return &Store{db: db, q: db.pool} }
 
 func (s *Store) Employees() repo.Employees { return employeeRepo{s.q} }
 func (s *Store) Quotas() repo.Quotas       { return quotaRepo{s.q} }
+func (s *Store) Devices() repo.Devices     { return deviceRepo{s.q} }
+func (s *Store) Bindings() repo.Bindings   { return bindingRepo{s.q} }
+
+// errNoRow is what an Exec that matched nothing reports, so that a statement
+// written as an UPDATE goes through the same mapping as one written with
+// RETURNING and both come out as repo.ErrNotFound.
+var errNoRow = pgx.ErrNoRows
 
 // InTx runs fn against a transactional Store.
 //
