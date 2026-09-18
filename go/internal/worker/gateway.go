@@ -21,6 +21,7 @@ type Gateway interface {
 	GenerateKey(ctx context.Context, alias, userID string, models []string, metadata map[string]string) (litellm.Key, error)
 	FindKeyByAlias(ctx context.Context, alias string) (litellm.Key, bool, error)
 	DeleteKeyByAlias(ctx context.Context, alias string) error
+	UpdateKey(ctx context.Context, handle string, models []string) error
 }
 
 // GatewayUserID is the gateway's id for an employee.
@@ -109,7 +110,7 @@ func (h GatewayProvision) Run(ctx context.Context, task repo.Task) (Result, erro
 	}
 
 	alias := KeyAlias(employee.WindowsUser, payload.Epoch)
-	if done, err := h.alreadyIssued(ctx, employee, alias); err != nil || done {
+	if done, err := h.alreadyIssued(ctx, employee, alias, models); err != nil || done {
 		return Result{Note: "already issued"}, err
 	}
 
@@ -189,8 +190,11 @@ var errSuperseded = errors.New("superseded")
 
 // alreadyIssued reports whether this alias is fully provisioned: a grant, a
 // live credential and an observed state to match. A retry after a successful
-// run must do nothing.
-func (h GatewayProvision) alreadyIssued(ctx context.Context, employee repo.Employee, alias string) (bool, error) {
+// run must not mint again -- but it must still push the current allowlist to
+// the token, because on the gateway the key's own model list takes precedence
+// over the user's, and a model change is exactly what brings a task back here
+// at an epoch that already has a token.
+func (h GatewayProvision) alreadyIssued(ctx context.Context, employee repo.Employee, alias string, models []string) (bool, error) {
 	grant, err := h.Store.Grants().ByKeyAlias(ctx, "", alias)
 	if errors.Is(err, repo.ErrNotFound) {
 		return false, nil
@@ -211,12 +215,48 @@ func (h GatewayProvision) alreadyIssued(ctx context.Context, employee repo.Emplo
 	if credential.ID != grant.CredentialID {
 		return false, nil
 	}
+
+	if !sameSet(grant.Models, models) {
+		key, found, err := h.Gateway.FindKeyByAlias(ctx, alias)
+		if err != nil {
+			return false, gatewayError("find_key", err)
+		}
+		if !found {
+			// The token we hold is not on the gateway: fall through to
+			// re-issue rather than update something that is not there.
+			return false, nil
+		}
+		if err := h.Gateway.UpdateKey(ctx, key.Handle(), models); err != nil {
+			return false, gatewayError("update_key", err)
+		}
+		if _, err := h.Store.Grants().SetModels(ctx, grant.ID, models); err != nil {
+			return false, err
+		}
+	}
 	if grant.Actual != repo.ActualActive {
 		if _, err := h.Store.Grants().RecordActual(ctx, grant.ID, repo.ActualActive, ""); err != nil {
 			return false, err
 		}
 	}
 	return true, nil
+}
+
+// sameSet compares two model lists regardless of order.
+func sameSet(a, b []string) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	seen := make(map[string]int, len(a))
+	for _, m := range a {
+		seen[m]++
+	}
+	for _, m := range b {
+		if seen[m] == 0 {
+			return false
+		}
+		seen[m]--
+	}
+	return true
 }
 
 // retireOldKeys deletes the tokens of grants we no longer want.

@@ -596,3 +596,36 @@ func finish(t *testing.T, ctx context.Context, store *dbstore.Store) {
 	}
 	t.Fatal("the queue did not empty")
 }
+
+// A quota change after onboarding has finished must reach the gateway. The
+// provisioning task is keyed on the epoch, and a quota change does not move
+// the epoch -- so the key matches the task that already ran.
+func TestAQuotaChangeAfterOnboardingReachesTheGateway(t *testing.T) {
+	svc, store, ctx := newService(t)
+	employee, err := svc.Onboard(ctx, OnboardSpec{
+		WindowsUser: "work1", Quota: testQuota(), Models: []string{"claude-4.5-sonnet"}, Actor: "zhang",
+	})
+	if err != nil {
+		t.Fatalf("onboard: %v", err)
+	}
+	finish(t, ctx, store)
+
+	current, err := store.Quotas().Get(ctx, employee.ID)
+	if err != nil {
+		t.Fatalf("quota: %v", err)
+	}
+	raised := testQuota()
+	raised.MonthlyBudget = "100"
+	if err := svc.SetQuota(ctx, employee.ID, raised, current.Version, "zhang", ""); err != nil {
+		t.Fatalf("set quota: %v", err)
+	}
+	var provision bool
+	for _, task := range openTasks(t, ctx, store) {
+		if task.Kind == repo.TaskGatewayProvision {
+			provision = true
+		}
+	}
+	if !provision {
+		t.Fatal("changing the quota queued no gateway work; the gateway would keep the old limits")
+	}
+}

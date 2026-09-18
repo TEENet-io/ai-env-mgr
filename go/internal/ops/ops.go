@@ -184,7 +184,7 @@ func (s *Service) Offboard(ctx context.Context, employeeID, actor, requestID str
 		if err := s.revokeGrant(ctx, tx, employee); err != nil {
 			return err
 		}
-		if err := s.enqueueGatewayWork(ctx, tx, employee, repo.TaskGatewayRevoke); err != nil {
+		if err := s.enqueueGatewayWork(ctx, tx, employee, repo.TaskGatewayRevoke, ""); err != nil {
 			return err
 		}
 		// The export removes the delivered credentials. Every machine bound to
@@ -258,7 +258,8 @@ func (s *Service) SetQuota(ctx context.Context, employeeID string, q repo.Quota,
 		if err != nil {
 			return err
 		}
-		if err := s.enqueueGatewayWork(ctx, tx, employee, repo.TaskGatewayProvision); err != nil {
+		if err := s.enqueueGatewayWork(ctx, tx, employee, repo.TaskGatewayProvision,
+			"quota:v"+strconv.Itoa(after.Version)); err != nil {
 			return err
 		}
 		return s.audit(ctx, tx, actor, requestID, ActionSetQuota, employee, before, after)
@@ -287,12 +288,13 @@ func (s *Service) SetModels(ctx context.Context, employeeID string, models []str
 		if err != nil {
 			return err
 		}
-		if err := s.enqueueGatewayWork(ctx, tx, employee, repo.TaskGatewayProvision); err != nil {
+		modelsMarker := "models:" + strconv.Itoa(len(after)) + ":" + strings.Join(after, ",")
+		if err := s.enqueueGatewayWork(ctx, tx, employee, repo.TaskGatewayProvision, modelsMarker); err != nil {
 			return err
 		}
 		// The models decide both what the token may call and what the picker
 		// shows, so the delivered catalog has to be rewritten as well.
-		if err := s.enqueueEmployeeExport(ctx, tx, employee, "models:"+strconv.Itoa(len(after))+":"+strings.Join(after, ",")); err != nil {
+		if err := s.enqueueEmployeeExport(ctx, tx, employee, modelsMarker); err != nil {
 			return err
 		}
 		return s.audit(ctx, tx, actor, requestID, ActionSetModels, employee,
@@ -316,7 +318,8 @@ func (s *Service) UpdateProfile(ctx context.Context, employeeID string, version 
 		if err != nil {
 			return err
 		}
-		if err := s.enqueueGatewayWork(ctx, tx, after, repo.TaskGatewayProvision); err != nil {
+		if err := s.enqueueGatewayWork(ctx, tx, after, repo.TaskGatewayProvision,
+			"profile:v"+strconv.Itoa(after.Version)); err != nil {
 			return err
 		}
 		return s.audit(ctx, tx, actor, requestID, ActionUpdateProfile, after, before, after)
@@ -495,7 +498,7 @@ func (s *Service) replaceOutstandingWork(ctx context.Context, tx repo.Store, emp
 	if err := s.revokeGrant(ctx, tx, employee); err != nil {
 		return err
 	}
-	if err := s.enqueueGatewayWork(ctx, tx, employee, repo.TaskGatewayProvision); err != nil {
+	if err := s.enqueueGatewayWork(ctx, tx, employee, repo.TaskGatewayProvision, ""); err != nil {
 		return err
 	}
 	return s.enqueueEmployeeExport(ctx, tx, employee, epochMarker(employee))
@@ -523,11 +526,21 @@ func (s *Service) revokeGrant(ctx context.Context, tx repo.Store, employee repo.
 // never from the time -- so that a repeated request, a double-clicked button
 // or a retry after an ambiguous failure all find the task that is already
 // there instead of creating a second one.
-func (s *Service) enqueueGatewayWork(ctx context.Context, tx repo.Store, employee repo.Employee, kind string) error {
+//
+// marker distinguishes work at the same epoch. Issuing a token is keyed on the
+// epoch alone, because the epoch is what a token belongs to; a quota, model or
+// label change does not move the epoch, and without a marker its key matched
+// the provisioning that had already run and the gateway never heard about it.
+// The handler converges on current state, so a second run is always safe.
+func (s *Service) enqueueGatewayWork(ctx context.Context, tx repo.Store, employee repo.Employee, kind, marker string) error {
 	epoch := employee.AuthEpoch
+	key := fmt.Sprintf("%s:%s:%d", kind, employee.ID, epoch)
+	if marker != "" {
+		key += ":" + marker
+	}
 	_, _, err := tx.Tasks().Enqueue(ctx, repo.NewTask{
 		Kind:           kind,
-		IdempotencyKey: fmt.Sprintf("%s:%s:%d", kind, employee.ID, epoch),
+		IdempotencyKey: key,
 		Payload: mustJSON(map[string]any{
 			"employee_id": employee.ID, "windows_user": employee.WindowsUser, "epoch": epoch,
 		}),

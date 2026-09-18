@@ -122,6 +122,20 @@ func (r grantRepo) RecordActual(ctx context.Context, id, actual, reason string) 
 	return g, nil
 }
 
+func (r grantRepo) SetModels(ctx context.Context, id string, models []string) (repo.Grant, error) {
+	if models == nil {
+		models = []string{}
+	}
+	g, err := scanGrant(r.q.QueryRow(ctx,
+		`update gateway_grants set models = $2, updated_at = now()
+		  where id = $1
+		  returning `+grantColumns, id, models))
+	if err != nil {
+		return repo.Grant{}, mapError(err, "record grant models")
+	}
+	return g, nil
+}
+
 // NeedsReconcile lists the grants worth asking the gateway about: never
 // checked, checked too long ago, or where what we last saw does not match what
 // we asked for.

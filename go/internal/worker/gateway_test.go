@@ -95,6 +95,22 @@ func (g *fakeGateway) DeleteKeyByAlias(_ context.Context, alias string) error {
 	return nil
 }
 
+func (g *fakeGateway) UpdateKey(_ context.Context, handle string, models []string) error {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	if err := g.record("UpdateKey"); err != nil {
+		return err
+	}
+	for alias, key := range g.keys {
+		if key.Key == handle || key.Token == handle {
+			key.Models = models
+			g.keys[alias] = key
+			return nil
+		}
+	}
+	return &litellm.APIError{Status: 404, Path: "/key/update", Body: "no such key"}
+}
+
 func (g *fakeGateway) aliases() []string {
 	g.mu.Lock()
 	defer g.mu.Unlock()
@@ -411,5 +427,38 @@ func TestAnOrphanedKeyIsReplacedRatherThanAdopted(t *testing.T) {
 	}
 	if gateway.minted < 2 {
 		t.Error("the orphaned key was adopted instead of replaced")
+	}
+}
+
+// Changing the models after a token exists has to change the token: on the
+// gateway the key's own allowlist takes precedence over the user's, so pushing
+// the user and leaving the key would let the old models through.
+func TestChangingModelsUpdatesTheExistingToken(t *testing.T) {
+	store, service, gateway, _, w, ctx := provisioned(t)
+	employee := onboard(t, ctx, service, "work1")
+	drain(t, ctx, w)
+	minted := gateway.minted
+
+	if err := service.SetModels(ctx, employee.ID, []string{"gemini-2.5-pro"}, "zhang", ""); err != nil {
+		t.Fatalf("set models: %v", err)
+	}
+	drain(t, ctx, w)
+
+	alias := KeyAlias("work1", employee.AuthEpoch)
+	gateway.mu.Lock()
+	key := gateway.keys[alias]
+	gateway.mu.Unlock()
+	if len(key.Models) != 1 || key.Models[0] != "gemini-2.5-pro" {
+		t.Errorf("the token still allows %v", key.Models)
+	}
+	if gateway.minted != minted {
+		t.Error("a model change minted a new token instead of updating the existing one")
+	}
+	grant, err := store.Grants().Active(ctx, "", employee.ID)
+	if err != nil {
+		t.Fatalf("grant: %v", err)
+	}
+	if len(grant.Models) != 1 || grant.Models[0] != "gemini-2.5-pro" {
+		t.Errorf("the grant records %v", grant.Models)
 	}
 }

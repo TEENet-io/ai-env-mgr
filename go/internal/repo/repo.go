@@ -677,6 +677,9 @@ type Grants interface {
 	// kept for a grant that could not be checked.
 	RecordActual(ctx context.Context, id, actual, reason string) (Grant, error)
 
+	// SetModels records the allowlist the token on the gateway now carries.
+	SetModels(ctx context.Context, id string, models []string) (Grant, error)
+
 	// NeedsReconcile lists grants whose observed state is unknown or does not
 	// match the intent, oldest check first.
 	NeedsReconcile(ctx context.Context, gateway string, staleAfter time.Duration, limit int) ([]Grant, error)
