@@ -32,6 +32,20 @@ func cmdWeb(args []string) error {
 		// to look. Empty project means no log page at all.
 		SLSProject:  os.Getenv("AIENVMGR_SLS_PROJECT"),
 		SLSEndpoint: envOr("AIENVMGR_SLS_ENDPOINT", slsclient.DefaultEndpoint),
+		PublicHost:  os.Getenv("AIENVMGR_PUBLIC_HOST"),
+	}
+	// The database mode is switched on by the connection string alone. The
+	// rest of its configuration is secrets, and all of it comes from the
+	// environment -- systemd's EnvironmentFile, mode 600 -- never a flag.
+	if dsn := os.Getenv("AIENVMGR_DB_DSN"); dsn != "" {
+		opts.Database = &adminweb.DatabaseOptions{
+			DSN:                dsn,
+			MasterKeyFile:      os.Getenv("AIENVMGR_MASTER_KEY_FILE"),
+			OSSAccessKeyID:     os.Getenv("AIENVMGR_OSS_ACCESS_KEY_ID"),
+			OSSAccessKeySecret: os.Getenv("AIENVMGR_OSS_ACCESS_KEY_SECRET"),
+			FirstAdminEmail:    os.Getenv("AIENVMGR_FIRST_ADMIN_EMAIL"),
+			Worker:             os.Getenv("AIENVMGR_WORKER") != "off",
+		}
 	}
 	for i := 0; i < len(args); i++ {
 		switch args[i] {
@@ -112,8 +126,12 @@ func cmdWeb(args []string) error {
 		scheme = "https"
 	}
 	fmt.Printf("admin console on %s://%s\n", scheme, opts.Listen)
-	fmt.Println("sign in with the OSS credentials; they stay in this process's memory only.")
-	fmt.Println("stopping the server signs everyone out.")
+	if opts.Database != nil {
+		fmt.Println("database mode: sign in with an administrator account; the Worker runs in this process.")
+	} else {
+		fmt.Println("sign in with the OSS credentials; they stay in this process's memory only.")
+		fmt.Println("stopping the server signs everyone out.")
+	}
 	return srv.ListenAndServe()
 }
 

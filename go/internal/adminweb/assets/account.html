@@ -1,0 +1,22 @@
+{{define "account.html"}}{{template "head" "我的账号"}}
+<body>
+<div class="app">
+{{template "nav" .}}
+<main class="sheet">
+  <header class="pagehead"><h1>我的账号</h1></header>
+  {{template "notices" .}}
+  <p>当前登录：<b>{{.Admin}}</b>（{{.Role}}）</p>
+
+  <h2>修改密码</h2>
+  <form method="post" action="/account" class="form" autocomplete="off">
+    <input type="hidden" name="csrf" value="{{.CSRF}}">
+    <label>当前密码<input name="current" type="password" required autocomplete="current-password"></label>
+    <label>新密码<input name="new" type="password" required minlength="12" autocomplete="new-password"></label>
+    <label>再输一次<input name="again" type="password" required minlength="12" autocomplete="new-password"></label>
+    <button type="submit">修改</button>
+  </form>
+  <p class="hint">至少 12 个字符。修改后这个账号的所有登录会话都会失效，需要重新登录。</p>
+</main>
+</div>
+</body>
+</html>{{end}}

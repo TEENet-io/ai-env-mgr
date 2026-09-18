@@ -342,6 +342,13 @@ func parseQuotaForm(form url.Values) (litellm.Quota, error) {
 }
 
 func (s *Server) accountContext(r *http.Request) (*litellm.Client, admincore.GatewayConfig, context.Context, context.CancelFunc, error) {
+	if s.dbm != nil {
+		// The database mode never calls the gateway from a request: the
+		// Worker does, later, with retries. A missing gateway is the Worker's
+		// problem to report, not a reason to refuse the click.
+		ctx, cancel := context.WithTimeout(r.Context(), gatewayTimeout)
+		return nil, admincore.GatewayConfig{BaseURL: s.opts.GatewayURL}, ctx, cancel, nil
+	}
 	gw, err := s.gateway()
 	if err != nil {
 		return nil, admincore.GatewayConfig{}, nil, nil, err
@@ -399,6 +406,23 @@ func (s *Server) actionAccountReopen(sess *session, r *http.Request) error {
 	defaults, err := sess.be.QuotaDefaults(ctx)
 	if err != nil {
 		return err
+	}
+	if gw == nil {
+		// Database mode: what the account had is in the tables, not on the
+		// gateway. Re-open with the stored limits and allowlist, falling back
+		// to the defaults for an account that never had a quota.
+		row, err := sess.be.AccountRow(ctx, e.WindowsUser, nil, nil)
+		if err != nil {
+			return err
+		}
+		spec := admincore.AccountSpec{WindowsUser: e.WindowsUser, Name: e.Name, Department: e.Department, Quota: defaults}
+		if row != nil {
+			if row.Quota.Validate() == nil {
+				spec.Quota = row.Quota
+			}
+			spec.Models = row.Models
+		}
+		return sess.be.Onboard(ctx, gw, cfg, spec)
 	}
 	alias := admincore.KeyAlias(e.WindowsUser)
 	u, userFound, err := gw.UserInfo(ctx, alias)

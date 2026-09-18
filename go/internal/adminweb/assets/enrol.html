@@ -1,0 +1,29 @@
+{{define "enrol.html"}}{{template "head" "绑定验证器"}}
+<body class="gate">
+<main class="card">
+  <h1>绑定验证器</h1>
+  {{if .Error}}<p class="note note-err">{{.Error}}</p>{{end}}
+  {{with .Enrol}}
+  {{if .Codes}}
+  <p class="lede">验证器已绑定。下面是 {{len .Codes}} 个恢复码，<b>每个只能用一次</b>，请现在抄下来放到安全的地方——手机丢了它们是唯一的入口，这个页面关掉就不会再显示。</p>
+  <div class="panel">
+    <table><tbody>
+    {{range .Codes}}<tr><td class="id">{{.}}</td></tr>{{end}}
+    </tbody></table>
+  </div>
+  <p><a href="/">我已保存，去登录</a></p>
+  {{else}}
+  <p class="lede">账号 <b>{{.Username}}</b> 还没有验证器。在手机的验证器应用（Google Authenticator、Microsoft Authenticator、1Password 等）里添加一个账号，手动输入下面的密钥，然后把它显示的六位数字填在这里。</p>
+  <div class="panel">
+    <p>密钥（手动输入用）：<code class="id">{{.Secret}}</code></p>
+    <p class="hint">支持链接的应用可以直接用：<code>{{.URI}}</code></p>
+  </div>
+  <form method="post" action="/enrol" autocomplete="off">
+    <label>验证器显示的六位数字<input name="code" inputmode="numeric" required autofocus autocomplete="one-time-code"></label>
+    <button type="submit">完成绑定</button>
+  </form>
+  {{end}}
+  {{end}}
+</main>
+</body>
+</html>{{end}}

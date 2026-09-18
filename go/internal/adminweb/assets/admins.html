@@ -1,0 +1,64 @@
+{{define "admins.html"}}{{template "head" "管理员"}}
+<body>
+<div class="app">
+{{template "nav" .}}
+<main class="sheet">
+  <header class="pagehead"><h1>管理员</h1></header>
+  {{template "notices" .}}
+  {{if .NewPassword}}
+  <p class="note note-ok">已创建 <b>{{.NewUsername}}</b>，初始密码：<code class="id">{{.NewPassword}}</code><br>
+  <span class="dim">只显示这一次。把它交给对方，第一次登录会引导绑定验证器。</span></p>
+  {{end}}
+
+  <div class="panel scroll">
+  <table>
+    <thead><tr><th>用户名</th><th>邮箱</th><th>角色</th><th>验证器</th><th>恢复码</th><th>最近登录</th><th>状态</th><th></th></tr></thead>
+    <tbody>
+    {{range .Admins}}
+      <tr>
+        <td class="id">{{.Username}}{{if .Self}} <span class="dim">（我）</span>{{end}}</td>
+        <td class="dim">{{if .Email}}{{.Email}}{{else}}—{{end}}</td>
+        <td>{{.Role}}</td>
+        <td>{{if .Enrolled}}<span class="tag tag-ok">已绑定</span>{{else}}<span class="tag tag-warn">未绑定</span>{{end}}</td>
+        <td class="num">{{.RecoveryCodes}}</td>
+        <td class="dim">{{if .LastLogin}}{{.LastLogin}}{{else}}从未{{end}}</td>
+        <td>{{if .Enabled}}<span class="tag tag-ok">启用</span>{{else}}<span class="tag tag-bad">停用</span>{{end}}</td>
+        <td>
+          {{if not .Self}}
+          {{if .Enabled}}
+          <form method="post" action="/admins/disable"><input type="hidden" name="csrf" value="{{$.CSRF}}"><input type="hidden" name="username" value="{{.Username}}"><button class="link danger">停用</button></form>
+          {{else}}
+          <form method="post" action="/admins/enable"><input type="hidden" name="csrf" value="{{$.CSRF}}"><input type="hidden" name="username" value="{{.Username}}"><button class="link">启用</button></form>
+          {{end}}
+          {{end}}
+        </td>
+      </tr>
+    {{else}}
+      <tr><td colspan="8" class="empty">还没有管理员。</td></tr>
+    {{end}}
+    </tbody>
+  </table>
+  </div>
+
+  {{if eq .Role "admin"}}
+  <h2>添加管理员</h2>
+  <form method="post" action="/admins/create" class="form" autocomplete="off">
+    <input type="hidden" name="csrf" value="{{.CSRF}}">
+    <label>用户名<input name="username" required placeholder="zhang"></label>
+    <label>邮箱<input name="email" type="email" placeholder="zhang@example.com"></label>
+    <label>角色
+      <select name="role">
+        <option value="admin">admin</option>
+        <option value="operator">operator</option>
+        <option value="security">security</option>
+        <option value="viewer">viewer</option>
+      </select>
+    </label>
+    <button type="submit">创建</button>
+  </form>
+  <p class="hint">初始密码随机生成、只显示一次；对方第一次登录时绑定验证器。停用一个账号会立即结束它的所有登录会话。</p>
+  {{end}}
+</main>
+</div>
+</body>
+</html>{{end}}

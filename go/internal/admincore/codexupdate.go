@@ -39,7 +39,7 @@ func (m *Manager) PublishCodexUpdate(version string, installer []byte, onProgres
 	hexsum := hex.EncodeToString(sum[:])
 
 	key := ossclient.CodexInstallerKey(version)
-	if err := putReporting(m.Store, key, installer, onProgress); err != nil {
+	if err := PutReporting(m.Store, key, installer, onProgress); err != nil {
 		return "", fmt.Errorf("upload Codex installer: %w", err)
 	}
 	p, err := m.CurrentPolicy()

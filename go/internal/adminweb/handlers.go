@@ -32,6 +32,9 @@ func (s *Server) requireSession(next func(http.ResponseWriter, *http.Request, *s
 }
 
 func (s *Server) currentSession(r *http.Request) *session {
+	if s.dbm != nil {
+		return s.dbSession(r)
+	}
 	c, err := r.Cookie(sessionCookie)
 	if err != nil {
 		return nil
@@ -44,8 +47,22 @@ type pageData struct {
 	Endpoint string
 	Fixed    bool // the OSS location is baked in, so sign-in only asks for the key
 	CSRF     string
-	Error    string
-	OK       bool
+
+	// Database mode. DBLogin switches the sign-in form to account and code;
+	// DB draws the extra nav entries; Admin is who is signed in.
+	DBLogin bool
+	DB      bool
+	Admin   string
+	Role    string
+	Enrol   *enrolPage
+	Admins  []adminRow
+	// NewPassword and NewUsername carry a freshly generated password through
+	// the redirect after creating an account: shown once.
+	NewPassword string
+	NewUsername string
+	Tasks       []taskRow
+	Error       string
+	OK          bool
 	// Notice replaces the standard "已保存" for an action whose outcome needs
 	// explaining -- see requirePostNotice.
 	Notice string
@@ -99,7 +116,7 @@ type pageData struct {
 // newPage seeds the fields every page needs, including the notices carried
 // through the redirect that follows a POST.
 func newPage(sess *session, r *http.Request, nav string) pageData {
-	return pageData{
+	data := pageData{
 		Bucket:   sess.bucket,
 		Endpoint: sess.endpoint,
 		CSRF:     sess.csrf,
@@ -108,6 +125,10 @@ func newPage(sess *session, r *http.Request, nav string) pageData {
 		OK:       r.URL.Query().Get("ok") == "1",
 		Notice:   r.URL.Query().Get("msg"),
 	}
+	if sess.admin != nil {
+		data.DB, data.Admin, data.Role = true, sess.admin.Username, sess.admin.Role
+	}
+	return data
 }
 
 func (s *Server) render(w http.ResponseWriter, name string, code int, data pageData) {
@@ -132,7 +153,9 @@ func (s *Server) handleIndex(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, "/overview", http.StatusSeeOther)
 		return
 	}
-	s.render(w, "login.html", http.StatusOK, s.loginPage(""))
+	page := s.loginPage(r.URL.Query().Get("err"))
+	page.Notice = r.URL.Query().Get("msg")
+	s.render(w, "login.html", http.StatusOK, page)
 }
 
 // loginPage seeds the sign-in form, telling it whether the OSS location is
@@ -143,6 +166,7 @@ func (s *Server) loginPage(errMsg string) pageData {
 		Endpoint: s.opts.Endpoint,
 		Fixed:    s.opts.Bucket != "" && s.opts.Endpoint != "",
 		Error:    errMsg,
+		DBLogin:  s.dbm != nil,
 	}
 }
 
@@ -153,6 +177,10 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 	}
 	if !s.limiter.allow(s.clientKey(r)) {
 		s.render(w, "login.html", http.StatusTooManyRequests, s.loginPage(errRateLimited.Error()))
+		return
+	}
+	if s.dbm != nil {
+		s.dbLogin(w, r)
 		return
 	}
 	if err := r.ParseForm(); err != nil {
@@ -235,6 +263,10 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleLogout(w http.ResponseWriter, r *http.Request) {
+	if s.dbm != nil {
+		s.dbLogout(w, r)
+		return
+	}
 	if c, err := r.Cookie(sessionCookie); err == nil {
 		s.sessions.destroy(c.Value)
 	}

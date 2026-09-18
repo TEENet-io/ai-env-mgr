@@ -11,11 +11,11 @@ type progressPutter interface {
 	PutProgress(key string, data []byte, onProgress func(done, total int64)) error
 }
 
-// putReporting uploads, reporting progress when the store can.
+// PutReporting uploads, reporting progress when the store can.
 //
 // onProgress may be nil, and the total it reports is the payload size, so a
 // caller can render a bar without knowing which path was taken.
-func putReporting(s Store, key string, data []byte, onProgress func(done, total int64)) error {
+func PutReporting(s Store, key string, data []byte, onProgress func(done, total int64)) error {
 	if onProgress == nil {
 		return s.Put(key, data)
 	}

@@ -19,6 +19,7 @@ import (
 	"time"
 
 	"github.com/TEENet-io/ai-env-mgr/internal/admincore"
+	"github.com/TEENet-io/ai-env-mgr/internal/repo"
 	"github.com/TEENet-io/ai-env-mgr/internal/slsclient"
 )
 
@@ -29,8 +30,10 @@ const sessionCookie = "aem_session"
 type session struct {
 	// be is what every page reads from and acts through. mgr stays for the
 	// legacy path's own use and is nil for a database session.
-	be       backend
-	actor    string // who is signed in, for the audit trail
+	be    backend
+	actor string // who is signed in, for the audit trail
+	// admin is the signed-in account in the database mode; nil otherwise.
+	admin    *repo.Admin
 	mgr      *admincore.Manager
 	bucket   string // shown in the UI so an operator can tell environments apart
 	endpoint string

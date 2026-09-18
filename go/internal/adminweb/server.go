@@ -106,6 +106,15 @@ type Options struct {
 	// reads with the AccessKey the administrator signed in with, so a console
 	// that nobody is signed in to holds nothing that could read the logs.
 	SLSEndpoint string
+
+	// Database switches the console to the database-backed mode. nil keeps
+	// the OSS-backed console exactly as it was.
+	Database *DatabaseOptions
+
+	// PublicHost is the name administrators reach the console by. It is what
+	// the authenticator app shows, so somebody with three of these on their
+	// phone can tell them apart.
+	PublicHost string
 }
 
 // store is what the console needs from OSS: everything admincore.Manager uses,
@@ -135,6 +144,10 @@ type Server struct {
 	// events is the unified log. Never nil after New; every session's
 	// Manager shares this one writer, which is safe for concurrent use.
 	events *eventlog.Writer
+
+	// dbm is set in the database mode and nil otherwise. Every place that
+	// behaves differently between the two checks it, and there are few.
+	dbm *dbState
 }
 
 // New validates the options and builds the server.
@@ -202,7 +215,7 @@ func New(opts Options) (*Server, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &Server{
+	s := &Server{
 		opts:     opts,
 		events:   events,
 		sessions: newSessionStore(opts.IdleTTL, opts.AbsTTL),
@@ -215,7 +228,36 @@ func New(opts Options) (*Server, error) {
 			}
 			return ossclient.NewSplit(data, cfg.Endpoint, cfg.Bucket, cfg.AccessKeyID, cfg.AccessKeySecret)
 		},
-	}, nil
+	}
+	if opts.Database != nil {
+		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+		defer cancel()
+		if err := s.openDatabaseMode(ctx, *opts.Database); err != nil {
+			return nil, err
+		}
+	}
+	return s, nil
+}
+
+// NewWithStore is New for tests that already hold a database: the same
+// wiring, with the OSS dial seam replaced before the database mode opens.
+func NewWithStore(opts Options, dialOSS func(cfg config.Config) (store, error)) (*Server, error) {
+	database := opts.Database
+	opts.Database = nil
+	s, err := New(opts)
+	if err != nil {
+		return nil, err
+	}
+	s.dialOSS = dialOSS
+	if database != nil {
+		s.opts.Database = database
+		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+		defer cancel()
+		if err := s.openDatabaseMode(ctx, *database); err != nil {
+			return nil, err
+		}
+	}
+	return s, nil
 }
 
 // reachability describes who can open a connection to a listen address.
@@ -305,6 +347,19 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("/codex/publish", s.requirePost("/rollout", s.actionCodexPublish))
 	mux.HandleFunc("/codex/cancel", s.requirePost("/rollout", s.actionCodexCancel))
 	mux.HandleFunc("/machines/forget", s.requirePost("/overview", s.actionMachineForget))
+
+	// Database mode only: accounts, the authenticator, the queue, health.
+	if s.dbm != nil {
+		mux.HandleFunc("/enrol", s.handleEnrol)
+		mux.HandleFunc("/account", s.requireSession(s.handleAccount))
+		mux.HandleFunc("/admins", s.requireSession(s.handleAdmins))
+		mux.HandleFunc("/admins/create", s.requireSession(s.handleAdminCreate))
+		mux.HandleFunc("/admins/disable", s.requirePost("/admins", s.actionAdminSetDisabled(true)))
+		mux.HandleFunc("/admins/enable", s.requirePost("/admins", s.actionAdminSetDisabled(false)))
+		mux.HandleFunc("/tasks", s.requireSession(s.handleTasks))
+		mux.HandleFunc("/tasks/reconcile", s.requirePostNotice("/tasks", s.actionReconcileNow))
+		mux.HandleFunc("/healthz", s.handleHealthz)
+	}
 	// Serve only assets/static, so the templates next to it are never handed
 	// out as raw files, and strip the prefix so paths resolve inside it.
 	staticFS, err := fs.Sub(assetFS, "assets/static")
@@ -400,6 +455,9 @@ func (s *Server) ListenAndServe() error {
 	defer s.events.Ops("info", "platform_event", "console stopping", map[string]any{
 		"version": s.opts.Version,
 	})
+
+	stopWorker := s.runWorker(context.Background())
+	defer stopWorker()
 
 	srv := &http.Server{
 		Addr:    s.opts.Listen,

@@ -1,0 +1,37 @@
+{{define "tasks.html"}}{{template "head" "任务"}}
+<body>
+<div class="app">
+{{template "nav" .}}
+<main class="sheet">
+  <header class="pagehead"><h1>任务</h1></header>
+  {{template "notices" .}}
+  <p class="hint">后台的每次操作都会排一个或几个任务：调网关、写 OSS 对象、投递审计、对账。失败的任务会按退避重试；判定为永久失败的不再重试，需要人来看。</p>
+  <form method="post" action="/tasks/reconcile" class="form">
+    <input type="hidden" name="csrf" value="{{.CSRF}}">
+    <button type="submit">立即对账网关</button>
+  </form>
+
+  <div class="panel scroll">
+  <table>
+    <thead><tr><th>时间</th><th>类型</th><th>员工</th><th>状态</th><th>次数</th><th>下次</th><th>最近错误</th></tr></thead>
+    <tbody>
+    {{range .Tasks}}
+      <tr>
+        <td class="dim">{{.Updated}}</td>
+        <td class="id">{{.Kind}}</td>
+        <td class="id">{{.Employee}}</td>
+        <td>{{if eq .Status "succeeded"}}<span class="tag tag-ok">{{.Status}}</span>{{else if eq .Status "failed"}}<span class="tag tag-bad">{{.Status}}</span>{{else if .Open}}<span class="tag tag-warn">{{.Status}}</span>{{else}}<span class="dim">{{.Status}}</span>{{end}}</td>
+        <td class="num">{{.Attempts}}</td>
+        <td class="dim">{{.NextRun}}</td>
+        <td class="dim">{{.LastError}}</td>
+      </tr>
+    {{else}}
+      <tr><td colspan="7" class="empty">还没有任务。</td></tr>
+    {{end}}
+    </tbody>
+  </table>
+  </div>
+</main>
+</div>
+</body>
+</html>{{end}}

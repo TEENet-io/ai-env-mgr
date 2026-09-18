@@ -60,11 +60,27 @@ func (m *Manager) CollectStats() ([]CollectStat, bool, error) {
 	if err != nil {
 		return nil, false, err
 	}
-	// Collection is machine-wide and keyed by the Windows user whose profile a
-	// session came from, which can include accounts that were never added to
-	// the roster. So the stats are built from the objects themselves rather
-	// than from the roster; roster employees are seeded at zero so they still
-	// show before any upload arrives.
+	users := make([]string, 0, len(us.Users))
+	for _, e := range us.Users {
+		users = append(users, e.WindowsUser)
+	}
+	stats, err := CollectStatsFor(m.Store, users)
+	if err != nil {
+		return nil, false, err
+	}
+	return stats, pol.CollectEnabled, nil
+}
+
+// CollectStatsFor counts the collected session files under every employee's
+// data_collect prefix. It is shared by the OSS-backed Manager and the
+// database-backed console: both read the same objects, so one counting rule.
+//
+// Collection is machine-wide and keyed by the Windows user whose profile a
+// session came from, which can include accounts that were never added to the
+// roster. So the stats are built from the objects themselves rather than from
+// the roster; roster employees are seeded at zero so they still show before
+// any upload arrives.
+func CollectStatsFor(store Store, rosterUsers []string) ([]CollectStat, error) {
 	byUser := map[string]*CollectStat{}
 	ensure := func(u string) *CollectStat {
 		s := byUser[u]
@@ -74,13 +90,13 @@ func (m *Manager) CollectStats() ([]CollectStat, bool, error) {
 		}
 		return s
 	}
-	for _, e := range us.Users {
-		ensure(e.WindowsUser)
+	for _, u := range rosterUsers {
+		ensure(u)
 	}
 
-	infos, err := m.Store.ListInfo(ossclient.Root)
+	infos, err := store.ListInfo(ossclient.Root)
 	if err != nil {
-		return nil, false, fmt.Errorf("list collected data: %w", err)
+		return nil, fmt.Errorf("list collected data: %w", err)
 	}
 	for _, o := range infos {
 		user, rel, ok := ossclient.DataCollectUser(o.Key)
@@ -107,5 +123,5 @@ func (m *Manager) CollectStats() ([]CollectStat, bool, error) {
 		stats = append(stats, *s)
 	}
 	sort.Slice(stats, func(i, j int) bool { return stats[i].User < stats[j].User })
-	return stats, pol.CollectEnabled, nil
+	return stats, nil
 }
