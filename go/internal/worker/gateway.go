@@ -1,0 +1,339 @@
+package worker
+
+import (
+	"context"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"strconv"
+	"strings"
+
+	"github.com/TEENet-io/ai-env-mgr/internal/litellm"
+	"github.com/TEENet-io/ai-env-mgr/internal/repo"
+	"github.com/TEENet-io/ai-env-mgr/internal/secrets"
+)
+
+// Gateway is what the provisioning handlers need from LiteLLM. It is an
+// interface so the handlers can be tested without a gateway, and so a second
+// gateway type is a new implementation rather than a rewrite.
+type Gateway interface {
+	UpsertUser(ctx context.Context, spec litellm.UserSpec) error
+	GenerateKey(ctx context.Context, alias, userID string, models []string, metadata map[string]string) (litellm.Key, error)
+	FindKeyByAlias(ctx context.Context, alias string) (litellm.Key, bool, error)
+	DeleteKeyByAlias(ctx context.Context, alias string) error
+}
+
+// GatewayUserID is the gateway's id for an employee.
+//
+// It is derived from the Windows user name and deliberately does not carry the
+// epoch: the user owns the spend history, and minting a new one on every
+// re-issue would scatter one person's usage across a row of accounts.
+func GatewayUserID(windowsUser string) string { return "emp-" + strings.ToLower(windowsUser) }
+
+// KeyAlias is the gateway's name for one issued token. Unlike the user id it
+// does carry the epoch, so that a re-issue is a new alias rather than a
+// collision, and so that an alias on the gateway can be matched to the row
+// that created it.
+func KeyAlias(windowsUser string, epoch int) string {
+	return fmt.Sprintf("emp-%s-e%d", strings.ToLower(windowsUser), epoch)
+}
+
+// taskPayload is what ops writes into a task. It carries references only.
+type taskPayload struct {
+	EmployeeID  string `json:"employee_id"`
+	WindowsUser string `json:"windows_user"`
+	Epoch       int    `json:"epoch"`
+}
+
+// GatewayProvision makes the gateway match what the console has decided for
+// one employee: a user with the right limits, exactly one live token, and no
+// leftovers from previous epochs.
+//
+// It is written as a convergence rather than a sequence of steps, because it
+// runs at least once and may run after a previous attempt failed anywhere in
+// the middle. Asking "what is there now" and fixing the difference is the only
+// version of this that is safe to retry.
+type GatewayProvision struct {
+	Store   repo.Store
+	Gateway Gateway
+	Keyring secrets.Keyring
+}
+
+// Run provisions one employee.
+func (h GatewayProvision) Run(ctx context.Context, task repo.Task) (Result, error) {
+	payload, employee, err := h.load(ctx, task)
+	if err != nil {
+		return Result{}, err
+	}
+	if !employee.Active() {
+		// Offboarding queues its own revoke; provisioning somebody who has
+		// left would undo it.
+		return Result{}, Permanent(fmt.Errorf("employee %s is offboarded", employee.WindowsUser))
+	}
+
+	quota, err := h.Store.Quotas().Get(ctx, employee.ID)
+	if err != nil {
+		if errors.Is(err, repo.ErrNotFound) {
+			return Result{}, Permanent(fmt.Errorf("employee %s has no quota", employee.WindowsUser))
+		}
+		return Result{}, err
+	}
+	models, err := h.Store.Employees().Models(ctx, employee.ID)
+	if err != nil {
+		return Result{}, err
+	}
+
+	userID := GatewayUserID(employee.WindowsUser)
+	budget, err := strconv.ParseFloat(quota.MonthlyBudget, 64)
+	if err != nil {
+		// The column cannot hold anything else, so this is a bug rather than
+		// a fact about the data; either way, retrying cannot help.
+		return Result{}, Permanent(fmt.Errorf("quota %q is not a number: %w", quota.MonthlyBudget, err))
+	}
+	// The limits live on the user rather than the key, so that re-issuing a
+	// token does not reset the month's spend to zero.
+	if err := h.Gateway.UpsertUser(ctx, litellm.UserSpec{
+		UserID:     userID,
+		Alias:      employee.Name,
+		Department: employee.Department,
+		Quota: litellm.Quota{
+			MonthlyBudgetUSD: budget, RPM: quota.RPM, TPM: quota.TPM, Parallel: quota.Parallel,
+		},
+		Models: models,
+	}); err != nil {
+		return Result{}, gatewayError("upsert_user", err)
+	}
+
+	if err := h.retireOldKeys(ctx, employee); err != nil {
+		return Result{}, err
+	}
+
+	alias := KeyAlias(employee.WindowsUser, payload.Epoch)
+	if done, err := h.alreadyIssued(ctx, employee, alias); err != nil || done {
+		return Result{Note: "already issued"}, err
+	}
+
+	// We hold no token for this alias. If the gateway has one, it is from an
+	// attempt that got as far as minting a key and no further -- and its
+	// plaintext is gone for good, since /key/generate returns it once. The
+	// only way back to a known state is to replace it.
+	if _, found, err := h.Gateway.FindKeyByAlias(ctx, alias); err != nil {
+		return Result{}, gatewayError("find_key", err)
+	} else if found {
+		if err := h.Gateway.DeleteKeyByAlias(ctx, alias); err != nil {
+			return Result{}, gatewayError("delete_key", err)
+		}
+	}
+
+	key, err := h.Gateway.GenerateKey(ctx, alias, userID, models, map[string]string{
+		"windows_user": employee.WindowsUser,
+		"epoch":        strconv.Itoa(payload.Epoch),
+	})
+	if err != nil {
+		return Result{}, gatewayError("generate_key", err)
+	}
+
+	sealed, keyVersion, err := h.Keyring.Seal(ctx, []byte(key.Key),
+		secrets.AAD("credential_versions", employee.ID, repo.PurposeCodexGateway))
+	if err != nil {
+		// The token exists on the gateway and we cannot store it. Take it back
+		// out rather than leaving a live token nobody has a record of.
+		if delErr := h.Gateway.DeleteKeyByAlias(ctx, alias); delErr != nil {
+			return Result{}, fmt.Errorf("seal the token: %w (and the key %s could not be withdrawn: %v)", err, alias, delErr)
+		}
+		return Result{}, fmt.Errorf("seal the token: %w", err)
+	}
+
+	err = h.Store.InTx(ctx, func(tx repo.Store) error {
+		// Re-read inside the transaction: the employee may have been
+		// offboarded while the gateway call was in flight, and storing this
+		// token would hand working credentials to somebody who has left.
+		current, err := tx.Employees().ByID(ctx, employee.ID)
+		if err != nil {
+			return err
+		}
+		if current.AuthEpoch != payload.Epoch {
+			return errSuperseded
+		}
+		credential, err := tx.Credentials().Store(ctx, repo.NewCredential{
+			EmployeeID: employee.ID, Epoch: payload.Epoch,
+			Purpose: repo.PurposeCodexGateway, Ciphertext: sealed, KeyVersion: keyVersion,
+		})
+		if err != nil {
+			return err
+		}
+		grant, err := tx.Grants().Create(ctx, repo.NewGrant{
+			EmployeeID: employee.ID, Epoch: payload.Epoch,
+			ExternalUser: userID, KeyAlias: alias, Models: models, CredentialID: credential.ID,
+		})
+		if err != nil {
+			return err
+		}
+		// Observed, not assumed: the gateway has just told us it made this.
+		_, err = tx.Grants().RecordActual(ctx, grant.ID, repo.ActualActive, "")
+		return err
+	})
+	if errors.Is(err, errSuperseded) {
+		if delErr := h.Gateway.DeleteKeyByAlias(ctx, alias); delErr != nil {
+			return Result{}, fmt.Errorf("the employee moved on while provisioning, and the key %s could not be withdrawn: %w", alias, delErr)
+		}
+		return Result{}, Permanent(fmt.Errorf("the employee moved to a newer epoch while this ran"))
+	}
+	if err != nil {
+		return Result{}, err
+	}
+	return Result{ExternalRef: alias}, nil
+}
+
+var errSuperseded = errors.New("superseded")
+
+// alreadyIssued reports whether this alias is fully provisioned: a grant, a
+// live credential and an observed state to match. A retry after a successful
+// run must do nothing.
+func (h GatewayProvision) alreadyIssued(ctx context.Context, employee repo.Employee, alias string) (bool, error) {
+	grant, err := h.Store.Grants().ByKeyAlias(ctx, "", alias)
+	if errors.Is(err, repo.ErrNotFound) {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	if grant.Desired != repo.GrantActive {
+		return false, nil
+	}
+	credential, err := h.Store.Credentials().Live(ctx, employee.ID, repo.PurposeCodexGateway)
+	if errors.Is(err, repo.ErrNotFound) {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	if credential.ID != grant.CredentialID {
+		return false, nil
+	}
+	if grant.Actual != repo.ActualActive {
+		if _, err := h.Store.Grants().RecordActual(ctx, grant.ID, repo.ActualActive, ""); err != nil {
+			return false, err
+		}
+	}
+	return true, nil
+}
+
+// retireOldKeys deletes the tokens of grants we no longer want.
+//
+// A key the gateway still serves for a grant we consider revoked is a token
+// nobody thinks exists, which is the worst of the states this whole design is
+// arranged to avoid.
+func (h GatewayProvision) retireOldKeys(ctx context.Context, employee repo.Employee) error {
+	grants, err := h.Store.Grants().ByEmployee(ctx, employee.ID)
+	if err != nil {
+		return err
+	}
+	for _, grant := range grants {
+		if grant.Desired != repo.GrantRevoked {
+			continue
+		}
+		if grant.Actual == repo.ActualRevoked || grant.Actual == repo.ActualMissing {
+			continue
+		}
+		if err := h.Gateway.DeleteKeyByAlias(ctx, grant.KeyAlias); err != nil {
+			return gatewayError("delete_key", err)
+		}
+		if _, err := h.Store.Grants().RecordActual(ctx, grant.ID, repo.ActualRevoked, ""); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (h GatewayProvision) load(ctx context.Context, task repo.Task) (taskPayload, repo.Employee, error) {
+	var payload taskPayload
+	if err := json.Unmarshal(task.Payload, &payload); err != nil {
+		return payload, repo.Employee{}, Permanent(fmt.Errorf("unreadable task payload: %w", err))
+	}
+	if payload.EmployeeID == "" {
+		return payload, repo.Employee{}, Permanent(errors.New("task payload names no employee"))
+	}
+	employee, err := h.Store.Employees().ByID(ctx, payload.EmployeeID)
+	if errors.Is(err, repo.ErrNotFound) {
+		return payload, repo.Employee{}, Permanent(fmt.Errorf("employee %s no longer exists", payload.EmployeeID))
+	}
+	if err != nil {
+		return payload, repo.Employee{}, err
+	}
+	if employee.AuthEpoch != payload.Epoch {
+		// Claim already skips these; this is the belt to that braces, for a
+		// task handed to a handler by anything else.
+		return payload, employee, Permanent(fmt.Errorf(
+			"this task is for epoch %d and the employee is on %d", payload.Epoch, employee.AuthEpoch))
+	}
+	return payload, employee, nil
+}
+
+// GatewayRevoke takes an employee's tokens off the gateway.
+//
+// It does not delete the gateway user. The user owns the spend history and the
+// audit trail of what this person actually used, and deleting it also deletes
+// every key under it -- which was verified against the live gateway on
+// 2026-09-18 and is the reason offboarding revokes keys instead.
+type GatewayRevoke struct {
+	Store   repo.Store
+	Gateway Gateway
+}
+
+// Run revokes every token the console no longer wants for this employee.
+func (h GatewayRevoke) Run(ctx context.Context, task repo.Task) (Result, error) {
+	var payload taskPayload
+	if err := json.Unmarshal(task.Payload, &payload); err != nil {
+		return Result{}, Permanent(fmt.Errorf("unreadable task payload: %w", err))
+	}
+	if payload.EmployeeID == "" {
+		return Result{}, Permanent(errors.New("task payload names no employee"))
+	}
+
+	grants, err := h.Store.Grants().ByEmployee(ctx, payload.EmployeeID)
+	if err != nil {
+		return Result{}, err
+	}
+	revoked := 0
+	for _, grant := range grants {
+		if grant.Desired != repo.GrantRevoked {
+			continue
+		}
+		if grant.Actual == repo.ActualRevoked || grant.Actual == repo.ActualMissing {
+			continue
+		}
+		// Deleting a key that is not there is success: this runs at least
+		// once, and the second run must not report a failure.
+		if err := h.Gateway.DeleteKeyByAlias(ctx, grant.KeyAlias); err != nil {
+			return Result{}, gatewayError("delete_key", err)
+		}
+		if _, err := h.Store.Grants().RecordActual(ctx, grant.ID, repo.ActualRevoked, ""); err != nil {
+			return Result{}, err
+		}
+		revoked++
+	}
+	return Result{Note: fmt.Sprintf("revoked %d token(s)", revoked)}, nil
+}
+
+// gatewayError labels a gateway failure and decides whether trying again could
+// help.
+//
+// A 4xx is the gateway saying the request itself is wrong, and the tenth
+// identical request will be wrong too. A 5xx, a timeout or a connection
+// refused is a fact about this moment.
+func gatewayError(class string, err error) error {
+	var apiErr *litellm.APIError
+	if errors.As(err, &apiErr) {
+		switch {
+		case apiErr.Status == 404:
+			// Gone is what a delete wanted and what a lookup can live with.
+			return nil
+		case apiErr.Status == 429, apiErr.Status >= 500:
+			return ClassError("upstream_"+strconv.Itoa(apiErr.Status), err)
+		case apiErr.Status >= 400:
+			return Permanent(ClassError("gateway_rejected", err))
+		}
+	}
+	return ClassError(class, err)
+}
