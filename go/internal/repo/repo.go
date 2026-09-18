@@ -593,6 +593,19 @@ type Audit interface {
 	// Delivery is at-least-once, so the far side may hold duplicates and
 	// queries there deduplicate on event id.
 	PendingDelivery(ctx context.Context, target string, limit int) ([]AuditEvent, error)
+
+	// MarkDeliveryWritten records that the event has been handed to whatever
+	// ships it -- written to the file the collector tails, in today's setup.
+	// That is not the same as having arrived, which is why it is a separate
+	// column and a separate call: a collector that dies with a full disk hands
+	// back no error to anybody.
+	MarkDeliveryWritten(ctx context.Context, eventID, target string) error
+
+	// AwaitingConfirmation lists events written before the given moment that
+	// have still not been seen at the far end. Old ones that never arrive are
+	// the whole point of keeping the two apart.
+	AwaitingConfirmation(ctx context.Context, target string, writtenBefore time.Time, limit int) ([]AuditEvent, error)
+
 	ConfirmDelivery(ctx context.Context, eventID, target string) error
 	RecordDeliveryFailure(ctx context.Context, eventID, target, reason string) error
 }

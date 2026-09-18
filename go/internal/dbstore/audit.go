@@ -126,9 +126,34 @@ func (r auditRepo) PendingDelivery(ctx context.Context, target string, limit int
 		   from audit_events
 		   join event_deliveries d
 		     on d.event_id = audit_events.event_id and d.target = $1
-		  where d.confirmed_at is null
+		  where d.confirmed_at is null and d.written_at is null
 		  order by audit_events.occurred_at
 		  limit $2`, target)
+}
+
+func (r auditRepo) MarkDeliveryWritten(ctx context.Context, eventID, target string) error {
+	tag, err := r.q.Exec(ctx,
+		`update event_deliveries
+		    set written_at = now(), attempts = attempts + 1, last_error = ''
+		  where event_id = $1 and target = $2`, eventID, target)
+	if err != nil {
+		return mapError(err, "record audit delivery")
+	}
+	if tag.RowsAffected() == 0 {
+		return mapError(errNoRow, "record audit delivery")
+	}
+	return nil
+}
+
+func (r auditRepo) AwaitingConfirmation(ctx context.Context, target string, writtenBefore time.Time, limit int) ([]repo.AuditEvent, error) {
+	return r.query(ctx, "list audit events awaiting confirmation", limit,
+		`select `+auditColumnsQualified+`
+		   from audit_events
+		   join event_deliveries d
+		     on d.event_id = audit_events.event_id and d.target = $1
+		  where d.confirmed_at is null and d.written_at is not null and d.written_at < $2
+		  order by audit_events.occurred_at
+		  limit $3`, target, writtenBefore.UTC())
 }
 
 func (r auditRepo) ConfirmDelivery(ctx context.Context, eventID, target string) error {
