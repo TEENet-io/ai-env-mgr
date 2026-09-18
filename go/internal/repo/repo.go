@@ -708,7 +708,12 @@ type Credential struct {
 }
 
 // Credential purposes.
-const PurposeCodexGateway = "codex_gateway"
+const (
+	PurposeCodexGateway = "codex_gateway"
+	// PurposeClaudeLogin is the files a manual Claude sign-in produced, sealed
+	// as one JSON blob of path -> bytes.
+	PurposeClaudeLogin = "claude_login"
+)
 
 // NewCredential is what Store needs. The plaintext never appears: the caller
 // seals it first (internal/secrets) and passes the blob.

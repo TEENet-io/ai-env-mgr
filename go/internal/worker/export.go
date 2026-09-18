@@ -110,6 +110,18 @@ func (h OSSExport) exportBinding(ctx context.Context, deviceID string) (Result, 
 	if err != nil {
 		return Result{}, err
 	}
+	if device.Status == repo.DeviceRevoked {
+		// Forgotten: both its binding and its status report go, so it
+		// disappears from the console. A machine that is still switched on
+		// will write a new status on its next sync, which is the cue that the
+		// wrong one was forgotten.
+		for _, key := range []string{ossclient.BindingKey(device.Hostname), ossclient.StatusKey(device.Hostname)} {
+			if err := h.Objects.Delete(key); err != nil {
+				return Result{}, ClassError("oss_delete", err)
+			}
+		}
+		return Result{Note: "forgotten"}, nil
+	}
 
 	binding, err := h.Store.Bindings().Open(ctx, device.ID)
 	if errors.Is(err, repo.ErrNotFound) {
@@ -167,9 +179,21 @@ func (h OSSExport) exportEmployee(ctx context.Context, employeeID string) (Resul
 		return Result{}, err
 	}
 
-	credential, err := h.Store.Credentials().Live(ctx, employee.ID, repo.PurposeCodexGateway)
-	switch {
-	case errors.Is(err, repo.ErrNotFound):
+	codex, err := h.Store.Credentials().Live(ctx, employee.ID, repo.PurposeCodexGateway)
+	hasCodex := err == nil
+	if err != nil && !errors.Is(err, repo.ErrNotFound) {
+		return Result{}, err
+	}
+	set := model.CredentialSet{}
+	hasClaude, err := h.addClaudeFiles(ctx, employee, set)
+	if err != nil {
+		return Result{}, err
+	}
+
+	// Nothing to deliver -- offboarded, or a fresh account whose token has not
+	// arrived -- means no object. The agent reports the absence as "no
+	// credentials published yet" for the second case and revokes for the first.
+	if !employee.Active() || (!hasCodex && !hasClaude) {
 		if err := h.withdraw(ctx, employee); err != nil {
 			return Result{}, err
 		}
@@ -177,55 +201,75 @@ func (h OSSExport) exportEmployee(ctx context.Context, employeeID string) (Resul
 			return Result{}, err
 		}
 		return Result{Note: "credentials withdrawn"}, nil
-	case err != nil:
-		return Result{}, err
-	}
-	if !employee.Active() {
-		// A live credential for somebody who has left is a state the database
-		// should not be in; say so rather than publishing it.
-		return Result{}, Permanent(fmt.Errorf(
-			"employee %s is offboarded but still holds a live credential", employee.WindowsUser))
 	}
 
-	token, err := h.Keyring.Open(ctx, credential.Ciphertext, credential.KeyVersion,
-		secrets.AAD("credential_versions", employee.ID, repo.PurposeCodexGateway))
-	if err != nil {
-		// A wrong master key or a tampered row. Retrying cannot help, and
-		// publishing nothing is better than publishing something wrong.
-		return Result{}, Permanent(fmt.Errorf("open the stored token for %s: %w", employee.WindowsUser, err))
-	}
-	defer wipeBytes(token)
+	allowed := 0
+	if hasCodex {
+		token, err := h.Keyring.Open(ctx, codex.Ciphertext, codex.KeyVersion,
+			secrets.AAD("credential_versions", employee.ID, repo.PurposeCodexGateway))
+		if err != nil {
+			// A wrong master key or a tampered row. Retrying cannot help, and
+			// publishing nothing is better than publishing something wrong.
+			return Result{}, Permanent(fmt.Errorf("open the stored token for %s: %w", employee.WindowsUser, err))
+		}
+		defer wipeBytes(token)
 
-	models, err := h.Store.Employees().Models(ctx, employee.ID)
-	if err != nil {
-		return Result{}, err
-	}
-	available, err := h.Catalog.Models(ctx)
-	if err != nil {
-		return Result{}, ClassError("gateway_catalog", err)
-	}
-	allowed := intersect(available, models)
-	if len(allowed) == 0 {
-		return Result{}, Permanent(fmt.Errorf(
-			"none of %s's models are on the gateway; the machine would get a config pointing at nothing", employee.WindowsUser))
-	}
-	catalogJSON, err := catalog.Build(available, allowed)
-	if err != nil {
-		return Result{}, Permanent(fmt.Errorf("build the model catalog: %w", err))
+		models, err := h.Store.Employees().Models(ctx, employee.ID)
+		if err != nil {
+			return Result{}, err
+		}
+		available, err := h.Catalog.Models(ctx)
+		if err != nil {
+			return Result{}, ClassError("gateway_catalog", err)
+		}
+		routable := intersect(available, models)
+		if len(routable) == 0 {
+			return Result{}, Permanent(fmt.Errorf(
+				"none of %s's models are on the gateway; the machine would get a config pointing at nothing", employee.WindowsUser))
+		}
+		catalogJSON, err := catalog.Build(available, routable)
+		if err != nil {
+			return Result{}, Permanent(fmt.Errorf("build the model catalog: %w", err))
+		}
+		set[model.PathCodexConfig] = []byte(creds.RenderGatewayConfig(
+			h.GatewayBaseURL, employee.WindowsUser, routable, string(token)))
+		set[model.PathCodexModels] = catalogJSON
+		allowed = len(routable)
 	}
 
-	set := model.CredentialSet{
-		model.PathCodexConfig: []byte(creds.RenderGatewayConfig(
-			h.GatewayBaseURL, employee.WindowsUser, allowed, string(token))),
-		model.PathCodexModels: catalogJSON,
-	}
 	if err := h.publish(ctx, employee, set); err != nil {
 		return Result{}, err
 	}
 	if err := h.refreshBindings(ctx, employee); err != nil {
 		return Result{}, err
 	}
-	return Result{Note: fmt.Sprintf("published %d model(s) to %s", len(allowed), employee.WindowsUser)}, nil
+	return Result{Note: fmt.Sprintf("published %d model(s) to %s", allowed, employee.WindowsUser)}, nil
+}
+
+// addClaudeFiles adds the manually published Claude sign-in, if there is one.
+// They are sealed as one blob of path -> bytes under their own purpose.
+func (h OSSExport) addClaudeFiles(ctx context.Context, employee repo.Employee, set model.CredentialSet) (bool, error) {
+	credential, err := h.Store.Credentials().Live(ctx, employee.ID, repo.PurposeClaudeLogin)
+	if errors.Is(err, repo.ErrNotFound) {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	plain, err := h.Keyring.Open(ctx, credential.Ciphertext, credential.KeyVersion,
+		secrets.AAD("credential_versions", employee.ID, repo.PurposeClaudeLogin))
+	if err != nil {
+		return false, Permanent(fmt.Errorf("open the stored Claude credentials for %s: %w", employee.WindowsUser, err))
+	}
+	defer wipeBytes(plain)
+	var files model.CredentialSet
+	if err := json.Unmarshal(plain, &files); err != nil {
+		return false, Permanent(fmt.Errorf("the stored Claude credentials for %s are not readable: %w", employee.WindowsUser, err))
+	}
+	for path, data := range files {
+		set[path] = data
+	}
+	return len(files) > 0, nil
 }
 
 // publish merges into whatever archive is already there.

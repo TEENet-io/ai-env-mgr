@@ -178,8 +178,10 @@ func (s *Service) Offboard(ctx context.Context, employeeID, actor, requestID str
 		if _, err := tx.Tasks().SupersedeOpenForEmployee(ctx, employee.ID, employee.AuthEpoch); err != nil {
 			return err
 		}
-		if _, err := tx.Credentials().Retire(ctx, employee.ID, repo.PurposeCodexGateway); err != nil {
-			return err
+		for _, purpose := range []string{repo.PurposeCodexGateway, repo.PurposeClaudeLogin} {
+			if _, err := tx.Credentials().Retire(ctx, employee.ID, purpose); err != nil {
+				return err
+			}
 		}
 		if err := s.revokeGrant(ctx, tx, employee); err != nil {
 			return err
@@ -457,21 +459,9 @@ func (s *Service) PublishPolicy(ctx context.Context, content []byte, note, actor
 		if err != nil && !errors.Is(err, repo.ErrNotFound) {
 			return err
 		}
-		published, err := tx.Policies().Publish(ctx, content, note, actor)
+		published, err := s.publishPolicyTx(ctx, tx, content, note, actor, requestID, before.Version,
+			json.RawMessage(nonEmpty(before.Content)), json.RawMessage(content))
 		if err != nil {
-			return err
-		}
-		if _, _, err := tx.Tasks().Enqueue(ctx, repo.NewTask{
-			Kind:           repo.TaskOSSExport,
-			IdempotencyKey: fmt.Sprintf("oss_export:policy:%d", published.Version),
-			Payload:        mustJSON(map[string]any{"policy_version": published.Version}),
-		}); err != nil {
-			return err
-		}
-		if err := s.auditTarget(ctx, tx, actor, requestID, ActionPublishPolicy, "policy",
-			strconv.FormatInt(published.Version, 10),
-			map[string]any{"version": before.Version},
-			map[string]any{"version": published.Version, "note": note}); err != nil {
 			return err
 		}
 		result = published
@@ -481,6 +471,29 @@ func (s *Service) PublishPolicy(ctx context.Context, content []byte, note, actor
 		return repo.PolicyVersion{}, fmt.Errorf("publish policy: %w", err)
 	}
 	return result, nil
+}
+
+// publishPolicyTx is the shared tail of every policy change: store the
+// version, point the fleet at it, queue the export, write the audit row.
+func (s *Service) publishPolicyTx(ctx context.Context, tx repo.Store, content []byte, note, actor, requestID string, beforeVersion int64, before, after any) (repo.PolicyVersion, error) {
+	published, err := tx.Policies().Publish(ctx, content, note, actor)
+	if err != nil {
+		return repo.PolicyVersion{}, err
+	}
+	if _, _, err := tx.Tasks().Enqueue(ctx, repo.NewTask{
+		Kind:           repo.TaskOSSExport,
+		IdempotencyKey: fmt.Sprintf("oss_export:policy:%d", published.Version),
+		Payload:        mustJSON(map[string]any{"policy_version": published.Version}),
+	}); err != nil {
+		return repo.PolicyVersion{}, err
+	}
+	if err := s.auditTarget(ctx, tx, actor, requestID, ActionPublishPolicy, "policy",
+		strconv.FormatInt(published.Version, 10),
+		map[string]any{"version": beforeVersion, "policy": before},
+		map[string]any{"version": published.Version, "note": note, "policy": after}); err != nil {
+		return repo.PolicyVersion{}, err
+	}
+	return published, nil
 }
 
 // replaceOutstandingWork is what "this employee's credentials have changed"

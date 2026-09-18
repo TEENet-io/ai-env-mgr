@@ -295,3 +295,62 @@ func TestAnOSSFailureDelaysTheDeliveryRatherThanLosingIt(t *testing.T) {
 		t.Error("the delivery never happened after OSS recovered")
 	}
 }
+
+func TestForgettingAMachineRemovesItsObjects(t *testing.T) {
+	_, service, objects, w, ctx := exporting(t)
+	employee := onboard(t, ctx, service, "work1")
+	if _, err := service.BindMachine(ctx, "DESKTOP-01", employee.ID, "", "zhang", ""); err != nil {
+		t.Fatalf("bind: %v", err)
+	}
+	objects.mu.Lock()
+	objects.objects[ossclient.StatusKey("DESKTOP-01")] = []byte(`{"machine":"DESKTOP-01"}`)
+	objects.mu.Unlock()
+	drain(t, ctx, w)
+
+	if err := service.ForgetMachine(ctx, "desktop-01", "zhang", ""); err != nil {
+		t.Fatalf("forget: %v", err)
+	}
+	drain(t, ctx, w)
+	if _, ok := objects.get(ossclient.BindingKey("DESKTOP-01")); ok {
+		t.Error("the binding object survived forgetting")
+	}
+	if _, ok := objects.get(ossclient.StatusKey("DESKTOP-01")); ok {
+		t.Error("the status object survived forgetting")
+	}
+}
+
+func TestClaudeFilesRideAlongWithTheCodexConfig(t *testing.T) {
+	store, service, objects, w, ctx := exporting(t)
+	ring := testKeyring(t)
+	_ = store
+	employee := onboard(t, ctx, service, "work1")
+	drain(t, ctx, w)
+
+	// Wired with the same keyring the handler uses.
+	w.Register(repo.TaskOSSExport, OSSExport{
+		Store: store, Objects: objects, Keyring: ring,
+		Catalog:        fakeCatalog{names: []string{"claude-4.5-sonnet"}},
+		GatewayBaseURL: "https://litellm.teenet.app",
+	})
+	if err := service.PublishClaudeCredentials(ctx, ring, employee.ID, model.CredentialSet{
+		model.PathClaudeCreds: []byte(`{"claudeAiOauth":{"accessToken":"sk-ant-secret"}}`),
+	}, "zhang", ""); err != nil {
+		t.Fatalf("publish claude: %v", err)
+	}
+	drain(t, ctx, w)
+
+	blob, ok := objects.get(ossclient.UserKey("work1", "credentials.zip"))
+	if !ok {
+		t.Fatal("nothing published")
+	}
+	set, err := creds.Unpack(blob)
+	if err != nil {
+		t.Fatalf("unpack: %v", err)
+	}
+	if !strings.Contains(string(set[model.PathClaudeCreds]), "sk-ant-secret") {
+		t.Error("the Claude credentials did not reach the archive")
+	}
+	if len(set[model.PathCodexConfig]) == 0 {
+		t.Error("the Codex config was dropped when the Claude files were added")
+	}
+}
