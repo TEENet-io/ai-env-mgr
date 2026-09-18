@@ -361,6 +361,30 @@ func (r taskRepo) ListOpen(ctx context.Context, limit int) ([]repo.Task, error) 
 	return out, nil
 }
 
+func (r taskRepo) ListRecent(ctx context.Context, limit int) ([]repo.Task, error) {
+	if limit <= 0 {
+		limit = 100
+	}
+	rows, err := r.q.Query(ctx,
+		`select `+taskColumns+` from tasks order by updated_at desc limit $1`, limit)
+	if err != nil {
+		return nil, mapError(err, "list recent tasks")
+	}
+	defer rows.Close()
+	out := []repo.Task{}
+	for rows.Next() {
+		t, err := scanTask(rows)
+		if err != nil {
+			return nil, mapError(err, "scan task")
+		}
+		out = append(out, t)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, mapError(err, "list recent tasks")
+	}
+	return out, nil
+}
+
 func (r taskRepo) Attempts(ctx context.Context, taskID string) ([]repo.TaskAttempt, error) {
 	rows, err := r.q.Query(ctx,
 		`select id, task_id, attempt, owner, started_at, ended_at,

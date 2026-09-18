@@ -102,37 +102,47 @@ func (m *Manager) CollectMachines(staleAfter time.Duration) ([]MachineState, err
 			return nil, err
 		}
 
-		state := MachineState{
-			Machine: machine,
-			Status:  st,
-			Binding: binding,
-			Bound:   bound,
-			Missing: bound && !hasStatus,
-			Unbound: !bound && hasStatus,
-		}
-
-		// A machine that has never reported has no timestamp to trust, so it
-		// is treated as stale the same way agentcore treats a corrupt report:
-		// silence must never be mistaken for health.
-		if hasStatus {
-			state.Stale = status.Age(st) > staleAfter
-		} else {
-			state.Stale = true
-		}
-
+		disabled := false
 		if bound {
 			if e := roster.Find(binding.User); e != nil && !e.Enabled {
-				state.Disabled = true
+				disabled = true
 			}
 		}
-		if bound && hasStatus {
-			state.UserMissing = !st.HasLocalUser(binding.User)
-		}
-		state.ExtraUsers = extraLocalUsers(st.LocalUsers, binding.User, bound)
-
+		state := AssembleMachineState(machine, st, hasStatus, binding, bound, disabled, staleAfter)
 		states = append(states, state)
 	}
 	return states, nil
+}
+
+// AssembleMachineState applies the rules that turn a report and a binding into
+// what the console shows: stale, missing, unbound, user missing, extra users.
+//
+// It is the one place those rules live. The OSS-backed CollectMachines and the
+// database-backed console both call it, so the two cannot drift into showing
+// the same machine in two different states.
+func AssembleMachineState(machine string, st model.Status, hasStatus bool, binding model.Binding, bound, disabled bool, staleAfter time.Duration) MachineState {
+	state := MachineState{
+		Machine:  machine,
+		Status:   st,
+		Binding:  binding,
+		Bound:    bound,
+		Missing:  bound && !hasStatus,
+		Unbound:  !bound && hasStatus,
+		Disabled: bound && disabled,
+	}
+	// A machine that has never reported has no timestamp to trust, so it is
+	// treated as stale the same way agentcore treats a corrupt report: silence
+	// must never be mistaken for health.
+	if hasStatus {
+		state.Stale = status.Age(st) > staleAfter
+	} else {
+		state.Stale = true
+	}
+	if bound && hasStatus {
+		state.UserMissing = !st.HasLocalUser(binding.User)
+	}
+	state.ExtraUsers = extraLocalUsers(st.LocalUsers, binding.User, bound)
+	return state
 }
 
 // loadMachineStatus reads one machine's status report. A missing or corrupt

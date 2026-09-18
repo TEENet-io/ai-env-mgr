@@ -201,18 +201,7 @@ func (s *Server) handleUsers(w http.ResponseWriter, r *http.Request, sess *sessi
 	data := newPage(sess, r, "users")
 	data.GatewayURL = s.opts.GatewayURL
 
-	us, err := sess.mgr.LoadUsers()
-	if err != nil {
-		data.Error = "could not read the roster"
-		log.Printf("adminweb: LoadUsers: %v", err)
-		s.render(w, "users.html", http.StatusOK, data)
-		return
-	}
-	bindings, err := sess.mgr.ListBindings()
-	if err != nil {
-		log.Printf("adminweb: ListBindings: %v", err)
-	}
-	if q, err := sess.mgr.LoadQuotaDefaults(); err == nil {
+	if q, err := sess.be.QuotaDefaults(r.Context()); err == nil {
 		data.QuotaDefaults = q
 	} else {
 		data.QuotaDefaults = admincore.DefaultQuota
@@ -245,7 +234,14 @@ func (s *Server) handleUsers(w http.ResponseWriter, r *http.Request, sess *sessi
 			data.GatewayEnabled = false
 		}
 	}
-	data.Accounts = reconcileAccounts(us.Users, keys, gwUsers, bindings)
+	rows, err := sess.be.AccountRows(r.Context(), keys, gwUsers)
+	if err != nil {
+		data.Error = "could not read the roster"
+		log.Printf("adminweb: accounts: %v", err)
+		s.render(w, "users.html", http.StatusOK, data)
+		return
+	}
+	data.Accounts = rows
 	if !data.GatewayEnabled {
 		data.Accounts = dropGatewayFlags(data.Accounts)
 	}
@@ -262,19 +258,7 @@ func (s *Server) handleUserDetail(w http.ResponseWriter, r *http.Request, sess *
 	data := newPage(sess, r, "users")
 	data.GatewayURL = s.opts.GatewayURL
 
-	us, err := sess.mgr.LoadUsers()
-	if err != nil {
-		data.Error = "could not read the roster"
-		s.render(w, "user.html", http.StatusOK, data)
-		return
-	}
-	e := us.Find(user)
-	if e == nil {
-		http.NotFound(w, r)
-		return
-	}
-	bindings, _ := sess.mgr.ListBindings()
-	data.Audit, _ = sess.mgr.ReadAudit(e.WindowsUser)
+	data.Audit, _ = sess.be.Audit(r.Context(), user)
 
 	var keys []litellm.Key
 	var gwUsers []litellm.User
@@ -287,12 +271,12 @@ func (s *Server) handleUserDetail(w http.ResponseWriter, r *http.Request, sess *
 		if data.GatewayModels, err = gw.Models(ctx); err != nil {
 			data.GatewayUnusable = "无法读取网关模型清单：" + err.Error()
 		}
-		if k, found, err := gw.FindKeyByAlias(ctx, admincore.KeyAlias(e.WindowsUser)); err != nil {
+		if k, found, err := gw.FindKeyByAlias(ctx, admincore.KeyAlias(user)); err != nil {
 			data.GatewayUnusable = "无法读取网关令牌：" + err.Error()
 		} else if found {
 			keys = []litellm.Key{k}
 		}
-		if u, found, err := gw.UserInfo(ctx, admincore.KeyAlias(e.WindowsUser)); err != nil {
+		if u, found, err := gw.UserInfo(ctx, admincore.KeyAlias(user)); err != nil {
 			data.GatewayUnusable = "无法读取网关用户：" + err.Error()
 		} else if found {
 			gwUsers = []litellm.User{u}
@@ -301,11 +285,21 @@ func (s *Server) handleUserDetail(w http.ResponseWriter, r *http.Request, sess *
 			data.GatewayEnabled = false
 		}
 	}
-	rows := reconcileAccounts([]model.UserEntry{*e}, keys, gwUsers, bindings)
-	if !data.GatewayEnabled {
-		rows = dropGatewayFlags(rows)
+	row, err := sess.be.AccountRow(r.Context(), user, keys, gwUsers)
+	if err != nil {
+		data.Error = "could not read the roster"
+		s.render(w, "user.html", http.StatusOK, data)
+		return
 	}
-	data.Account = &rows[0]
+	if row == nil {
+		http.NotFound(w, r)
+		return
+	}
+	if !data.GatewayEnabled {
+		rows := dropGatewayFlags([]accountRow{*row})
+		row = &rows[0]
+	}
+	data.Account = row
 	s.render(w, "user.html", http.StatusOK, data)
 }
 
@@ -370,7 +364,7 @@ func (s *Server) actionAccountOnboard(sess *session, r *http.Request) error {
 	if err != nil {
 		return err
 	}
-	return sess.mgr.Onboard(ctx, gw, cfg, admincore.AccountSpec{
+	return sess.be.Onboard(ctx, gw, cfg, admincore.AccountSpec{
 		WindowsUser:   user,
 		Name:          formValue(r, "name"),
 		Department:    formValue(r, "department"),
@@ -394,15 +388,15 @@ func (s *Server) actionAccountReopen(sess *session, r *http.Request) error {
 	if user == "" {
 		return fmt.Errorf("a Windows user name is required")
 	}
-	us, err := sess.mgr.LoadUsers()
+	roster, err := sess.be.Roster(ctx)
 	if err != nil {
 		return err
 	}
-	e := us.Find(user)
+	e := (&model.Users{Users: roster}).Find(user)
 	if e == nil {
 		return fmt.Errorf("user %q not found in roster", user)
 	}
-	defaults, err := sess.mgr.LoadQuotaDefaults()
+	defaults, err := sess.be.QuotaDefaults(ctx)
 	if err != nil {
 		return err
 	}
@@ -418,7 +412,7 @@ func (s *Server) actionAccountReopen(sess *session, r *http.Request) error {
 			return fmt.Errorf("look up gateway token: %w", err)
 		}
 	}
-	return sess.mgr.Onboard(ctx, gw, cfg, reopenSpec(*e, defaults, u, userFound, k, keyFound))
+	return sess.be.Onboard(ctx, gw, cfg, reopenSpec(*e, defaults, u, userFound, k, keyFound))
 }
 
 // reopenSpec decides what a row-button reopen re-onboards with: the labels
@@ -458,7 +452,7 @@ func (s *Server) actionAccountOffboard(sess *session, r *http.Request) error {
 	if user == "" {
 		return fmt.Errorf("a Windows user name is required")
 	}
-	return sess.mgr.Offboard(ctx, gw, user)
+	return sess.be.Offboard(ctx, gw, user)
 }
 
 func (s *Server) actionAccountQuota(sess *session, r *http.Request) error {
@@ -475,7 +469,7 @@ func (s *Server) actionAccountQuota(sess *session, r *http.Request) error {
 	if err != nil {
 		return err
 	}
-	return sess.mgr.SetQuota(ctx, gw, user, quota)
+	return sess.be.SetQuota(ctx, gw, user, quota)
 }
 
 func (s *Server) actionAccountModels(sess *session, r *http.Request) error {
@@ -488,7 +482,7 @@ func (s *Server) actionAccountModels(sess *session, r *http.Request) error {
 	if user == "" {
 		return fmt.Errorf("a Windows user name is required")
 	}
-	return sess.mgr.SetModels(ctx, gw, cfg, user, r.PostForm["models"])
+	return sess.be.SetModels(ctx, gw, cfg, user, r.PostForm["models"])
 }
 
 // actionAccountProfile saves the detail page's 基本信息 form. Every field is
@@ -504,7 +498,7 @@ func (s *Server) actionAccountProfile(sess *session, r *http.Request) error {
 	if user == "" {
 		return fmt.Errorf("a Windows user name is required")
 	}
-	return sess.mgr.UpdateProfile(ctx, gw, user,
+	return sess.be.UpdateProfile(ctx, gw, user,
 		formValue(r, "name"), formValue(r, "department"),
 		formValue(r, "codexAccount"), formValue(r, "claudeAccount"))
 }
@@ -519,7 +513,7 @@ func (s *Server) actionAccountReissue(sess *session, r *http.Request) error {
 	if user == "" {
 		return fmt.Errorf("a Windows user name is required")
 	}
-	return sess.mgr.Reissue(ctx, gw, cfg, user)
+	return sess.be.Reissue(ctx, gw, cfg, user)
 }
 
 // backToAccount sends a detail-page form back to the detail page, and a

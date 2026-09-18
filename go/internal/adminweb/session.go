@@ -27,6 +27,10 @@ import (
 const sessionCookie = "aem_session"
 
 type session struct {
+	// be is what every page reads from and acts through. mgr stays for the
+	// legacy path's own use and is nil for a database session.
+	be       backend
+	actor    string // who is signed in, for the audit trail
 	mgr      *admincore.Manager
 	bucket   string // shown in the UI so an operator can tell environments apart
 	endpoint string
@@ -101,7 +105,7 @@ func (s *sessionStore) create(mgr *admincore.Manager, bucket, endpoint string, c
 		return "", errTooManySessions
 	}
 	now := s.now()
-	s.byID[id] = &session{mgr: mgr, bucket: bucket, endpoint: endpoint, csrf: csrf, cloud: cloud, sls: sls, created: now, lastSeen: now}
+	s.byID[id] = &session{be: legacyBackend{mgr}, actor: "oss:" + bucket, mgr: mgr, bucket: bucket, endpoint: endpoint, csrf: csrf, cloud: cloud, sls: sls, created: now, lastSeen: now}
 	return id, nil
 }
 

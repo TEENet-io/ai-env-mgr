@@ -123,7 +123,7 @@ func (s *Server) actionMachineBind(sess *session, r *http.Request) error {
 	if machine == "" || user == "" {
 		return fmt.Errorf("both a machine and a user are required")
 	}
-	return sess.mgr.BindMachine(machine, user, formValue(r, "note"))
+	return sess.be.BindMachine(r.Context(), machine, user, formValue(r, "note"))
 }
 
 // actionMachineRestartCodex asks one machine's agent to end its employee's
@@ -138,11 +138,11 @@ func (s *Server) actionMachineRestartCodex(sess *session, r *http.Request) (stri
 	if machine == "" {
 		return "", fmt.Errorf("a machine is required")
 	}
-	if err := sess.mgr.RequestCodexRestart(machine); err != nil {
+	if err := sess.be.RequestCodexRestart(r.Context(), machine); err != nil {
 		return "", err
 	}
 	minutes := model.DefaultSyncInterval
-	if p, err := sess.mgr.CurrentPolicy(); err == nil {
+	if p, err := sess.be.Policy(r.Context()); err == nil {
 		minutes = model.ClampInterval(p.SyncIntervalMinutes, model.DefaultSyncInterval)
 	}
 	return fmt.Sprintf("已下发，Agent 下个同步周期执行（当前间隔 %d 分钟）", minutes), nil
@@ -153,7 +153,7 @@ func (s *Server) actionMachineUnbind(sess *session, r *http.Request) error {
 	if machine == "" {
 		return fmt.Errorf("a machine is required")
 	}
-	return sess.mgr.UnbindMachine(machine)
+	return sess.be.UnbindMachine(r.Context(), machine)
 }
 
 // --- website blocking ---
@@ -164,8 +164,7 @@ func (s *Server) actionSites(sess *session, r *http.Request) error {
 	if len(add) == 0 && len(remove) == 0 {
 		return fmt.Errorf("nothing to add or remove")
 	}
-	_, err := sess.mgr.MutateDomains(add, remove)
-	return err
+	return sess.be.MutateDomains(r.Context(), add, remove)
 }
 
 // splitDomains accepts the several separators an operator might paste in:
@@ -200,21 +199,18 @@ func (s *Server) actionAppLocker(sess *session, r *http.Request) error {
 	if len(add) == 0 && len(remove) == 0 {
 		return fmt.Errorf("nothing to add or remove")
 	}
-	_, err := sess.mgr.MutateAppLockerAllowPaths(add, remove)
-	return err
+	return sess.be.MutateAppLockerAllowPaths(r.Context(), add, remove)
 }
 
 // actionAppLockerMode switches AppLocker enforcement on every machine. The
 // value is passed through unchanged so the manager's validation is the only
 // gate; a spelling it does not know is refused rather than guessed at.
 func (s *Server) actionAppLockerMode(sess *session, r *http.Request) error {
-	_, err := sess.mgr.SetAppLockerMode(formValue(r, "mode"))
-	return err
+	return sess.be.SetAppLockerMode(r.Context(), formValue(r, "mode"))
 }
 
 func (s *Server) actionBlockEnabled(sess *session, r *http.Request) error {
-	_, err := sess.mgr.SetBlockEnabled(formValue(r, "enabled") == "1")
-	return err
+	return sess.be.SetBlockEnabled(r.Context(), formValue(r, "enabled") == "1")
 }
 
 // --- settings ---
@@ -224,8 +220,7 @@ func (s *Server) actionSyncInterval(sess *session, r *http.Request) error {
 	if err != nil {
 		return fmt.Errorf("the interval must be a whole number of minutes")
 	}
-	_, err = sess.mgr.SetSyncInterval(minutes)
-	return err
+	return sess.be.SetSyncInterval(r.Context(), minutes)
 }
 
 // actionQuotaDefaults saves the quota new accounts are pre-filled with. It
@@ -235,7 +230,7 @@ func (s *Server) actionQuotaDefaults(sess *session, r *http.Request) error {
 	if err != nil {
 		return err
 	}
-	return sess.mgr.SaveQuotaDefaults(q)
+	return sess.be.SaveQuotaDefaults(r.Context(), q)
 }
 
 func (s *Server) actionCollect(sess *session, r *http.Request) error {
@@ -252,6 +247,5 @@ func (s *Server) actionCollect(sess *session, r *http.Request) error {
 		}
 		quiet = &n
 	}
-	_, err := sess.mgr.SetCollect(enabled, since, quiet)
-	return err
+	return sess.be.SetCollect(r.Context(), enabled, since, quiet)
 }

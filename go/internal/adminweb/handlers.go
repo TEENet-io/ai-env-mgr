@@ -280,13 +280,13 @@ func (s *Server) handleOverview(w http.ResponseWriter, r *http.Request, sess *se
 	ctx, cancel := context.WithTimeout(r.Context(), overviewBudget)
 	defer cancel()
 
-	if us, err := sess.mgr.LoadUsers(); err == nil {
-		data.Users = us.Users // the bind form offers the roster
+	if users, err := sess.be.Roster(ctx); err == nil {
+		data.Users = users // the bind form offers the roster
 	}
 
 	// The policy is read once and used twice: for its own panel, and for the
 	// Codex column, which compares each machine against the published target.
-	if p, err := sess.mgr.CurrentPolicy(); err != nil {
+	if p, err := sess.be.Policy(ctx); err != nil {
 		data.PolicyError = "could not read the policy"
 		log.Printf("adminweb: CurrentPolicy: %v", err)
 	} else {
@@ -295,7 +295,7 @@ func (s *Server) handleOverview(w http.ResponseWriter, r *http.Request, sess *se
 
 	// Same freshness window the CLI uses (cmd/admin/status_cmd.go), so the two
 	// front ends never disagree about whether a machine is alive.
-	if machines, err := sess.mgr.CollectMachines(freshAfter); err != nil {
+	if machines, err := sess.be.Machines(ctx); err != nil {
 		data.MachinesError = "could not list machines"
 		log.Printf("adminweb: CollectMachines: %v", err)
 	} else {
@@ -328,7 +328,7 @@ func (s *Server) handleOverview(w http.ResponseWriter, r *http.Request, sess *se
 
 func (s *Server) handleSites(w http.ResponseWriter, r *http.Request, sess *session) {
 	data := newPage(sess, r, "sites")
-	p, err := sess.mgr.CurrentPolicy()
+	p, err := sess.be.Policy(r.Context())
 	if err != nil {
 		data.Error = "could not read the policy"
 		log.Printf("adminweb: CurrentPolicy: %v", err)
@@ -340,7 +340,7 @@ func (s *Server) handleSites(w http.ResponseWriter, r *http.Request, sess *sessi
 
 func (s *Server) handleSettings(w http.ResponseWriter, r *http.Request, sess *session) {
 	data := newPage(sess, r, "settings")
-	p, err := sess.mgr.CurrentPolicy()
+	p, err := sess.be.Policy(r.Context())
 	if err != nil {
 		data.Error = "could not read the policy"
 		log.Printf("adminweb: CurrentPolicy: %v", err)
@@ -349,12 +349,12 @@ func (s *Server) handleSettings(w http.ResponseWriter, r *http.Request, sess *se
 	}
 	// Collection stats are informational; a failure here should not hide the
 	// settings themselves.
-	if stats, _, err := sess.mgr.CollectStats(); err == nil {
+	if stats, _, err := sess.be.CollectStats(r.Context()); err == nil {
 		data.Stats = stats
 	}
 	// A failed read is shown, not papered over: the form would otherwise
 	// prefill with zeros and look like somebody had configured them.
-	if q, err := sess.mgr.LoadQuotaDefaults(); err == nil {
+	if q, err := sess.be.QuotaDefaults(r.Context()); err == nil {
 		data.QuotaDefaults = q
 	} else {
 		data.QuotaDefaults = admincore.DefaultQuota
@@ -371,7 +371,7 @@ func (s *Server) handleLog(w http.ResponseWriter, r *http.Request, sess *session
 	// The machine's own errors and warnings, so the page explains the state
 	// rather than leaving the reader to find it in the log.
 	if machine != "" {
-		if all, err := sess.mgr.CollectMachines(freshAfter); err == nil {
+		if all, err := sess.be.Machines(r.Context()); err == nil {
 			for i := range all {
 				if strings.EqualFold(all[i].Machine, machine) {
 					data.Notes = &all[i]
@@ -382,7 +382,7 @@ func (s *Server) handleLog(w http.ResponseWriter, r *http.Request, sess *session
 	}
 	if machine == "" {
 		data.Error = "no machine given"
-	} else if b, err := sess.mgr.FetchLog(machine); err != nil {
+	} else if b, err := sess.be.FetchLog(r.Context(), machine); err != nil {
 		data.Error = "no log uploaded for this machine yet"
 	} else {
 		data.Log = string(b)
@@ -394,14 +394,14 @@ func (s *Server) handleLog(w http.ResponseWriter, r *http.Request, sess *session
 func (s *Server) handleRollout(w http.ResponseWriter, r *http.Request, sess *session) {
 	data := newPage(sess, r, "rollout")
 	data.Job = s.jobs.snapshot()
-	p, err := sess.mgr.CurrentPolicy()
+	p, err := sess.be.Policy(r.Context())
 	if err != nil {
 		data.Error = "could not read the policy"
 		log.Printf("adminweb: CurrentPolicy: %v", err)
 	} else {
 		data.Policy = &p
 	}
-	if machines, err := sess.mgr.CollectMachines(freshAfter); err == nil {
+	if machines, err := sess.be.Machines(r.Context()); err == nil {
 		sess.cloud.annotate(machines)
 		data.Machines = machines // so the operator can see what is actually installed
 		data.Fleet = summariseFleet(machines)

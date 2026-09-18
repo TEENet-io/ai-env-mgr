@@ -1,6 +1,7 @@
 package adminweb
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"net/http"
@@ -108,7 +109,7 @@ func (s *Server) actionAgentPublish(sess *session, r *http.Request) error {
 	if err != nil {
 		return err
 	}
-	mgr, client := sess.mgr, s.clientKey(r)
+	be, client := sess.be, s.clientKey(r)
 	return s.jobs.start("agent", version, func(setStep func(string), setProgress func(done, total int64)) error {
 		setStep("获取二进制")
 		data, err := fetch(setProgress)
@@ -116,7 +117,8 @@ func (s *Server) actionAgentPublish(sess *session, r *http.Request) error {
 			return err
 		}
 		setStep("上传到 OSS")
-		sum, err := mgr.PublishAgentUpdate(version, data, setProgress)
+		// The job outlives the request, so it gets its own context.
+		sum, err := be.PublishAgentUpdate(context.Background(), version, data, setProgress)
 		if err != nil {
 			return err
 		}
@@ -127,7 +129,7 @@ func (s *Server) actionAgentPublish(sess *session, r *http.Request) error {
 }
 
 func (s *Server) actionAgentCancel(sess *session, r *http.Request) error {
-	if err := sess.mgr.CancelAgentUpdate(); err != nil {
+	if err := sess.be.CancelAgentUpdate(r.Context()); err != nil {
 		return err
 	}
 	logAudit(s.clientKey(r), "cleared the agent update target")
@@ -148,7 +150,7 @@ func (s *Server) actionCodexPublish(sess *session, r *http.Request) error {
 	if err != nil {
 		return err
 	}
-	mgr, client := sess.mgr, s.clientKey(r)
+	be, client := sess.be, s.clientKey(r)
 	return s.jobs.start("codex", version, func(setStep func(string), setProgress func(done, total int64)) error {
 		setStep("下载安装包")
 		data, err := fetch(setProgress)
@@ -156,7 +158,7 @@ func (s *Server) actionCodexPublish(sess *session, r *http.Request) error {
 			return err
 		}
 		setStep("上传到 OSS")
-		sum, err := mgr.PublishCodexUpdate(version, data, setProgress)
+		sum, err := be.PublishCodexUpdate(context.Background(), version, data, setProgress)
 		if err != nil {
 			return err
 		}
@@ -166,7 +168,7 @@ func (s *Server) actionCodexPublish(sess *session, r *http.Request) error {
 }
 
 func (s *Server) actionCodexCancel(sess *session, r *http.Request) error {
-	if err := sess.mgr.CancelCodexUpdate(); err != nil {
+	if err := sess.be.CancelCodexUpdate(r.Context()); err != nil {
 		return err
 	}
 	logAudit(s.clientKey(r), "cleared the Codex target")
@@ -183,7 +185,7 @@ func (s *Server) actionMachineForget(sess *session, r *http.Request) error {
 	if err := confirmMatches(r, "confirm", machine); err != nil {
 		return err
 	}
-	if err := sess.mgr.ForgetMachine(machine); err != nil {
+	if err := sess.be.ForgetMachine(r.Context(), machine); err != nil {
 		return err
 	}
 	logAudit(s.clientKey(r), "forgot machine %s", machine)

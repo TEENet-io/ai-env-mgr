@@ -681,12 +681,12 @@ func (s *Server) loadProbe(ctx context.Context, sess *session, page *logsPage) {
 // log page is still worth drawing without it: the dropdown goes empty and no
 // employee id is judged against a roster nobody has seen.
 func loadRoster(sess *session) *model.Users {
-	us, err := sess.mgr.LoadUsers()
+	users, err := sess.be.Roster(context.Background())
 	if err != nil {
 		log.Printf("adminweb: LoadUsers for the log page: %v", err)
 		return nil
 	}
-	return &us
+	return &model.Users{Users: users}
 }
 
 // employeeIDs is the dropdown: everyone on the roster, so filtering does not

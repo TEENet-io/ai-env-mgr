@@ -535,6 +535,9 @@ type Tasks interface {
 
 	ByID(ctx context.Context, id string) (Task, error)
 	ListOpen(ctx context.Context, limit int) ([]Task, error)
+	// ListRecent is the newest tasks in any state, for the console's task
+	// page: what is queued, what failed, what just ran.
+	ListRecent(ctx context.Context, limit int) ([]Task, error)
 	Attempts(ctx context.Context, taskID string) ([]TaskAttempt, error)
 
 	// ReleaseExpiredLeases puts tasks whose worker died back on the queue. A
