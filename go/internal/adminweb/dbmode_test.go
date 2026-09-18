@@ -347,12 +347,14 @@ func TestDatabaseModePolicyEditsAndMachinesRender(t *testing.T) {
 
 	// Administrators: create one, see the password once.
 	csrf = csrfFrom(t, s, session, "/admins")
+	// The password is shown in the response to the POST and never put in a
+	// URL, where history, proxy logs and the Referer would keep it.
 	rec = dbPost(t, h, "/admins/create", url.Values{"csrf": {csrf}, "username": {"Li"}, "role": {"operator"}}, session)
-	if rec.Code != http.StatusSeeOther || !strings.Contains(rec.Header().Get("Location"), "pw=") {
-		t.Fatalf("admins/create = %d -> %q", rec.Code, rec.Header().Get("Location"))
+	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), "初始密码") {
+		t.Fatalf("admins/create = %d; the generated password is not shown", rec.Code)
 	}
-	if body := dbGet(t, h, rec.Header().Get("Location"), session).Body.String(); !strings.Contains(body, "初始密码") {
-		t.Error("the generated password is not shown")
+	if loc := rec.Header().Get("Location"); strings.Contains(loc, "pw=") {
+		t.Errorf("the password is in a redirect: %q", loc)
 	}
 	li, err := s.dbm.store.Admins().ByUsername(context.Background(), "li")
 	if err != nil || li.Role != repo.RoleOperator {

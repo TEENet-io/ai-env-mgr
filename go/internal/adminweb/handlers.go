@@ -56,8 +56,9 @@ type pageData struct {
 	Role    string
 	Enrol   *enrolPage
 	Admins  []adminRow
-	// NewPassword and NewUsername carry a freshly generated password through
-	// the redirect after creating an account: shown once.
+	// NewPassword and NewUsername are a freshly generated password, rendered
+	// straight from the POST that created the account and never carried in
+	// a URL: shown once.
 	NewPassword string
 	NewUsername string
 	Tasks       []taskRow
