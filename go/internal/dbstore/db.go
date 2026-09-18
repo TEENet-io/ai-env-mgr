@@ -258,14 +258,25 @@ func (d *DB) Applied(ctx context.Context) ([]AppliedMigration, error) {
 func appliedOn(ctx context.Context, conn *pgxpool.Conn) ([]AppliedMigration, error) {
 	// The bookkeeping table is created outside any migration, because it is
 	// what tells us which migrations to run.
-	if _, err := conn.Exec(ctx, `
-		create table if not exists schema_migrations (
-			version    integer primary key,
-			name       text not null,
-			checksum   text not null,
-			applied_at timestamptz not null default now()
-		)`); err != nil {
-		return nil, fmt.Errorf("create schema_migrations: %w", err)
+	//
+	// Looked for before it is created: CREATE TABLE IF NOT EXISTS still needs
+	// CREATE on the schema even when the table is there, and the account the
+	// console runs as deliberately does not have it. Only the account that
+	// runs migrations creates anything.
+	var exists *string
+	if err := conn.QueryRow(ctx, `select to_regclass('public.schema_migrations')::text`).Scan(&exists); err != nil {
+		return nil, fmt.Errorf("look for schema_migrations: %w", err)
+	}
+	if exists == nil {
+		if _, err := conn.Exec(ctx, `
+			create table schema_migrations (
+				version    integer primary key,
+				name       text not null,
+				checksum   text not null,
+				applied_at timestamptz not null default now()
+			)`); err != nil {
+			return nil, fmt.Errorf("create schema_migrations: %w", err)
+		}
 	}
 	rows, err := conn.Query(ctx,
 		`select version, name, checksum, applied_at from schema_migrations order by version`)

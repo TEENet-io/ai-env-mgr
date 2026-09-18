@@ -4,6 +4,13 @@
 //	migrate status          # what has run, what is pending
 //	migrate up              # apply everything pending
 //	migrate down            # reverse the newest applied migration, one step
+//	migrate probe           # read-only: what is in the bucket and on the gateway
+//	migrate import          # bring the OSS objects and gateway state into the database
+//	migrate compare         # read-only: would a database in charge publish anything different?
+//
+// import and compare read OSS with AIENVMGR_OSS_ACCESS_KEY_ID / _SECRET and
+// the gateway with AIENVMGR_GATEWAY_URL / _ADMIN_KEY, all from the environment.
+// Neither writes to OSS or to the gateway.
 //
 // The DSN comes from -dsn or, preferably, from AIENVMGR_DB_DSN: a connection
 // string carries a password, and a password on a command line is in every
@@ -26,6 +33,9 @@ import (
 
 	"github.com/TEENet-io/ai-env-mgr/db"
 	"github.com/TEENet-io/ai-env-mgr/internal/dbstore"
+	"github.com/TEENet-io/ai-env-mgr/internal/litellm"
+	"github.com/TEENet-io/ai-env-mgr/internal/migrate"
+	"github.com/TEENet-io/ai-env-mgr/internal/ossclient"
 )
 
 func main() {
@@ -39,8 +49,10 @@ func run() error {
 	dsn := flag.String("dsn", os.Getenv("AIENVMGR_DB_DSN"),
 		"PostgreSQL connection string; prefer the AIENVMGR_DB_DSN environment variable")
 	timeout := flag.Duration("timeout", 2*time.Minute, "give up after this long")
+	bucket := flag.String("bucket", envOr("AIENVMGR_OSS_BUCKET", "ai-collect-sg"), "OSS bucket")
+	endpoint := flag.String("endpoint", envOr("AIENVMGR_OSS_ENDPOINT", "oss-ap-southeast-1.aliyuncs.com"), "OSS endpoint")
 	flag.Usage = func() {
-		fmt.Fprintf(flag.CommandLine.Output(), "usage: migrate [flags] <status|up|down>\n\n")
+		fmt.Fprintf(flag.CommandLine.Output(), "usage: migrate [flags] <status|up|down|probe|import|compare>\n\n")
 		flag.PrintDefaults()
 	}
 	flag.Parse()
@@ -49,6 +61,9 @@ func run() error {
 	if command == "" {
 		flag.Usage()
 		return errors.New("no command given")
+	}
+	if command == "probe" {
+		return probe(*bucket, *endpoint)
 	}
 	if *dsn == "" {
 		return errors.New("no database DSN: set AIENVMGR_DB_DSN or pass -dsn")
@@ -69,6 +84,35 @@ func run() error {
 	defer database.Close()
 
 	switch command {
+	case "probe":
+		return probe(*bucket, *endpoint)
+	case "import", "compare":
+		objects, err := openOSS(*bucket, *endpoint)
+		if err != nil {
+			return err
+		}
+		store := dbstore.NewStore(database)
+		if command == "compare" {
+			result, err := (&migrate.Comparer{Store: store, Objects: objects}).Run(ctx)
+			if err != nil {
+				return err
+			}
+			fmt.Println(result)
+			return nil
+		}
+		im := &migrate.Importer{Store: store, Objects: objects, Actor: "migrate import"}
+		if url, key := os.Getenv("AIENVMGR_GATEWAY_URL"), os.Getenv("AIENVMGR_GATEWAY_ADMIN_KEY"); url != "" && key != "" {
+			im.Gateway = litellm.New(url, key)
+		}
+		report, err := im.Run(ctx)
+		if err != nil {
+			return err
+		}
+		fmt.Println(report)
+		for _, w := range report.Warnings {
+			fmt.Println("  warning:", w)
+		}
+		return nil
 	case "status":
 		return status(ctx, database)
 	case "up":
@@ -131,4 +175,63 @@ func status(ctx context.Context, database *dbstore.DB) error {
 		fmt.Fprintf(w, "%04d\t%s\t%s\t%s\n", m.Version, m.Name, state, stamp)
 	}
 	return w.Flush()
+}
+
+func envOr(key, fallback string) string {
+	if v := os.Getenv(key); v != "" {
+		return v
+	}
+	return fallback
+}
+
+// openOSS connects with the server identity from the environment. The key
+// never appears on the command line, where every local account could read it
+// off the process table.
+func openOSS(bucket, endpoint string) (*ossclient.Client, error) {
+	id, secret := os.Getenv("AIENVMGR_OSS_ACCESS_KEY_ID"), os.Getenv("AIENVMGR_OSS_ACCESS_KEY_SECRET")
+	if id == "" || secret == "" {
+		return nil, errors.New("set AIENVMGR_OSS_ACCESS_KEY_ID and AIENVMGR_OSS_ACCESS_KEY_SECRET")
+	}
+	return ossclient.New(endpoint, bucket, id, secret)
+}
+
+// probe says what a read of the bucket and the gateway finds, and nothing
+// else. It is the first thing to run with a new identity.
+func probe(bucket, endpoint string) error {
+	objects, err := openOSS(bucket, endpoint)
+	if err != nil {
+		return err
+	}
+	if err := objects.Verify(); err != nil {
+		return fmt.Errorf("the identity cannot read %s: %w", bucket, err)
+	}
+	for _, prefix := range []string{ossclient.AdminKey(""), ossclient.BindingPrefix, ossclient.StatusPrefix} {
+		keys, err := objects.List(prefix)
+		if err != nil {
+			return fmt.Errorf("list %s: %w", prefix, err)
+		}
+		fmt.Printf("%-32s %d object(s)\n", prefix, len(keys))
+	}
+	if _, _, err := objects.Get(ossclient.PolicyKey()); err != nil {
+		fmt.Printf("%-32s %v\n", ossclient.PolicyKey(), err)
+	} else {
+		fmt.Printf("%-32s present\n", ossclient.PolicyKey())
+	}
+	if url, key := os.Getenv("AIENVMGR_GATEWAY_URL"), os.Getenv("AIENVMGR_GATEWAY_ADMIN_KEY"); url != "" && key != "" {
+		ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+		defer cancel()
+		gw := litellm.New(url, key)
+		users, err := gw.ListUsers(ctx)
+		if err != nil {
+			return fmt.Errorf("gateway users: %w", err)
+		}
+		keys, err := gw.ListKeys(ctx)
+		if err != nil {
+			return fmt.Errorf("gateway keys: %w", err)
+		}
+		fmt.Printf("%-32s %d user(s), %d key(s)\n", "gateway", len(users), len(keys))
+	} else {
+		fmt.Println("gateway: not configured (AIENVMGR_GATEWAY_URL / _ADMIN_KEY), skipped")
+	}
+	return nil
 }
