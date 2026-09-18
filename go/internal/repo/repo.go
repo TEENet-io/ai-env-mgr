@@ -57,6 +57,7 @@ type Store interface {
 	Credentials() Credentials
 	Admins() Admins
 	LegacyIDs() LegacyIDs
+	Reports() Reports
 
 	// InTx runs fn in a transaction, committing if it returns nil. The Store
 	// passed to fn is the transactional one: using the outer Store inside fn
@@ -590,6 +591,11 @@ type Audit interface {
 	Recent(ctx context.Context, limit int) ([]AuditEvent, error)
 	ByID(ctx context.Context, eventID string) (AuditEvent, error)
 
+	// CountByRequestPrefix counts events whose request id starts with prefix.
+	// The importer uses it to know how much of an append-only history file
+	// it has already brought in, so re-running does not duplicate the rest.
+	CountByRequestPrefix(ctx context.Context, prefix string) (int, error)
+
 	// PendingDelivery lists events not yet confirmed in target (SLS, today).
 	// Delivery is at-least-once, so the far side may hold duplicates and
 	// queries there deduplicate on event id.
@@ -880,3 +886,48 @@ const (
 	LegacyEmployee = "employee"
 	LegacyDevice   = "device"
 )
+
+// DeviceReport is what a machine last said about itself: the newest
+// _status/<machine> object, imported by the Worker.
+//
+// It is a cache of the agent's report and never a source of truth about what
+// the machine is supposed to have. The typed columns are the ones the console
+// lists and filters on; Report keeps the whole object so a field added to the
+// agent is visible before any migration.
+type DeviceReport struct {
+	DeviceID          string
+	ImportedAt        time.Time
+	LastSyncAt        *time.Time
+	AgentVersion      string
+	BoundWindowsUser  string
+	BoundUserExists   *bool
+	PolicyETag        string
+	CredsETag         string
+	CredsApplied      *bool
+	AppLockerMode     string
+	CollectEnabled    *bool
+	CollectUploaded   int
+	CodexVersion      string
+	CodexState        string
+	CodexRestartNonce string
+	CodexRestartAt    *time.Time
+	CodexRestartNote  string
+	LastEvent         string
+	LastEventAt       *time.Time
+	ErrorCount        int
+	WarningCount      int
+	Report            []byte
+	SourceETag        string
+}
+
+// Reports is the machines' own account of themselves.
+type Reports interface {
+	Get(ctx context.Context, deviceID string) (DeviceReport, error)
+	List(ctx context.Context) ([]DeviceReport, error)
+
+	// Import stores a report unless it is unchanged (same source etag) or
+	// older than the one already held. Object stores do not promise read
+	// ordering, and a stale status overwriting a fresh one reads as a machine
+	// going dark. It reports whether anything was written.
+	Import(ctx context.Context, r DeviceReport) (bool, error)
+}

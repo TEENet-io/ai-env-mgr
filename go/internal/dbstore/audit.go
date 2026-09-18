@@ -131,6 +131,15 @@ func (r auditRepo) PendingDelivery(ctx context.Context, target string, limit int
 		  limit $2`, target)
 }
 
+func (r auditRepo) CountByRequestPrefix(ctx context.Context, prefix string) (int, error) {
+	var n int
+	if err := r.q.QueryRow(ctx,
+		`select count(*) from audit_events where left(request_id, length($1)) = $1`, prefix).Scan(&n); err != nil {
+		return 0, mapError(err, "count audit events")
+	}
+	return n, nil
+}
+
 func (r auditRepo) MarkDeliveryWritten(ctx context.Context, eventID, target string) error {
 	tag, err := r.q.Exec(ctx,
 		`update event_deliveries

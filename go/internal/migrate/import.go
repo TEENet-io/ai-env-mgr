@@ -38,6 +38,11 @@ type ObjectSource interface {
 type Importer struct {
 	Store   repo.Store
 	Objects ObjectSource
+	// Gateway is read for each employee's limits, models and existing token.
+	// Nil is allowed and reported: the result is a database that cannot
+	// provision or revoke anybody, which is fine for a dry run and for
+	// nothing else.
+	Gateway Gateway
 	// Actor is recorded on the audit events the import writes, so the trail
 	// says how these rows came to exist.
 	Actor string
@@ -50,6 +55,8 @@ type Report struct {
 	Devices     int
 	Bindings    int
 	Grants      int
+	AuditLines  int
+	Settings    int
 	PolicyFound bool
 	// Warnings are things worth a human's attention that did not stop the
 	// import: a binding naming somebody who is not on the roster, a status
@@ -58,8 +65,8 @@ type Report struct {
 }
 
 func (r Report) String() string {
-	return fmt.Sprintf("%d employees, %d quotas, %d machines, %d bindings, %d grants, policy=%v, %d warning(s)",
-		r.Employees, r.Quotas, r.Devices, r.Bindings, r.Grants, r.PolicyFound, len(r.Warnings))
+	return fmt.Sprintf("%d employees, %d quotas, %d machines, %d bindings, %d grants, %d audit lines, %d settings, policy=%v, %d warning(s)",
+		r.Employees, r.Quotas, r.Devices, r.Bindings, r.Grants, r.AuditLines, r.Settings, r.PolicyFound, len(r.Warnings))
 }
 
 // Run imports everything, in one transaction.
@@ -98,10 +105,19 @@ func (im *Importer) run(ctx context.Context, tx repo.Store) (Report, error) {
 		}
 	}
 
+	if err := im.importGateway(ctx, tx, byUser, &report); err != nil {
+		return report, err
+	}
 	if err := im.importPolicy(ctx, tx, &report); err != nil {
 		return report, err
 	}
+	if err := im.importSettings(ctx, tx, &report); err != nil {
+		return report, err
+	}
 	if err := im.importBindings(ctx, tx, byUser, &report); err != nil {
+		return report, err
+	}
+	if err := im.importHistory(ctx, tx, byUser, &report); err != nil {
 		return report, err
 	}
 	return report, nil

@@ -7,8 +7,10 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/TEENet-io/ai-env-mgr/internal/dbstore"
+	"github.com/TEENet-io/ai-env-mgr/internal/litellm"
 	"github.com/TEENet-io/ai-env-mgr/internal/model"
 	"github.com/TEENet-io/ai-env-mgr/internal/ossclient"
 	"github.com/TEENet-io/ai-env-mgr/internal/repo"
@@ -220,12 +222,18 @@ func TestImportSurfacesWhatItCannotResolve(t *testing.T) {
 	// employee for them would bury exactly the thing worth finding.
 	objects.put(t, ossclient.BindingKey("DESKTOP-09"), model.Binding{User: "contractor"})
 
-	im := &Importer{Store: store, Objects: objects, Actor: "migration"}
+	im := &Importer{Store: store, Objects: objects, Gateway: liveGateway(), Actor: "migration"}
 	report, err := im.Run(ctx)
 	if err != nil {
 		t.Fatalf("import: %v", err)
 	}
-	if len(report.Warnings) != 1 || !strings.Contains(report.Warnings[0], "contractor") {
+	var named bool
+	for _, w := range report.Warnings {
+		if strings.Contains(w, "contractor") {
+			named = true
+		}
+	}
+	if !named {
 		t.Fatalf("warnings = %v, want the unknown user named", report.Warnings)
 	}
 	if _, err := store.Employees().ByWindowsUser(ctx, "contractor"); err == nil {
@@ -370,5 +378,158 @@ func TestTheComparisonNoticesABindingThatOnlyExistsInTheDatabase(t *testing.T) {
 	}
 	if !found {
 		t.Errorf("differences = %v, want the unpublished binding", result.Differences)
+	}
+}
+
+// fakeGateway is LiteLLM as the old console left it: one user and one token
+// per employee, both named emp-<user>.
+type fakeGateway struct {
+	users []litellm.User
+	keys  []litellm.Key
+}
+
+func (g *fakeGateway) ListUsers(context.Context) ([]litellm.User, error) { return g.users, nil }
+func (g *fakeGateway) ListKeys(context.Context) ([]litellm.Key, error)   { return g.keys, nil }
+
+func f64(v float64) *float64 { return &v }
+func i(v int) *int           { return &v }
+
+func liveGateway() *fakeGateway {
+	return &fakeGateway{
+		users: []litellm.User{
+			{UserID: "emp-work1", Alias: "张三", MaxBudget: f64(50), RPMLimit: i(60), TPMLimit: i(2000000), MaxParallel: i(8),
+				Models: []string{"claude-4.5-sonnet", "gemini-2.5-pro"}},
+			{UserID: "emp-work2", Alias: "李四", MaxBudget: f64(20), RPMLimit: i(60), TPMLimit: i(200000), MaxParallel: i(4)},
+		},
+		keys: []litellm.Key{
+			{Token: "hash-1", KeyAlias: "emp-work1", UserID: "emp-work1", Models: []string{"claude-4.5-sonnet"}},
+			{Token: "hash-2", KeyAlias: "emp-work2", UserID: "emp-work2"},
+			{Token: "hash-9", KeyAlias: "emp-stranger", UserID: "emp-stranger"},
+		},
+	}
+}
+
+func TestImportBringsInWhatTheGatewayHolds(t *testing.T) {
+	store, ctx := newStore(t)
+	objects := liveBucket(t)
+	im := &Importer{Store: store, Objects: objects, Gateway: liveGateway(), Actor: "migration"}
+	report, err := im.Run(ctx)
+	if err != nil {
+		t.Fatalf("import: %v", err)
+	}
+	if report.Quotas != 2 || report.Grants != 2 {
+		t.Fatalf("report = %s", report)
+	}
+
+	work1, err := store.Employees().ByWindowsUser(ctx, "work1")
+	if err != nil {
+		t.Fatalf("work1: %v", err)
+	}
+	quota, err := store.Quotas().Get(ctx, work1.ID)
+	if err != nil {
+		t.Fatalf("quota: %v", err)
+	}
+	if quota.MonthlyBudget != "50.000000" || quota.TPM != 2000000 {
+		t.Errorf("quota = %+v", quota)
+	}
+	// The key's own list governs on the gateway, and it is narrower than the
+	// user's.
+	models, err := store.Employees().Models(ctx, work1.ID)
+	if err != nil {
+		t.Fatalf("models: %v", err)
+	}
+	if len(models) != 1 || models[0] != "claude-4.5-sonnet" {
+		t.Errorf("models = %v", models)
+	}
+
+	// The token they are using today, by its old alias: the only handle a
+	// revoke has. No credential -- its plaintext is gone.
+	grant, err := store.Grants().Active(ctx, "", work1.ID)
+	if err != nil {
+		t.Fatalf("grant: %v", err)
+	}
+	if grant.KeyAlias != "emp-work1" || grant.Actual != repo.ActualActive || grant.CredentialID != "" {
+		t.Errorf("grant = %+v", grant)
+	}
+
+	// A token for somebody not on the roster is reported, not adopted.
+	var stranger bool
+	for _, w := range report.Warnings {
+		if strings.Contains(w, "emp-stranger") {
+			stranger = true
+		}
+	}
+	if !stranger {
+		t.Errorf("warnings = %v, want the stranger's token named", report.Warnings)
+	}
+
+	// Running again records nothing twice.
+	again, err := im.Run(ctx)
+	if err != nil {
+		t.Fatalf("second import: %v", err)
+	}
+	if again.Grants != 0 || again.Quotas != 0 {
+		t.Errorf("the second import re-recorded gateway state: %s", again)
+	}
+}
+
+func TestImportBringsInHistoryAndSettingsWithoutDuplicating(t *testing.T) {
+	store, ctx := newStore(t)
+	objects := liveBucket(t)
+	objects.objects[ossclient.AdminKey("audit/work1.jsonl")] = []byte(
+		`{"at":"2026-09-01T08:00:00Z","action":"onboard","user":"work1","detail":{"models":["claude-4.5-sonnet"]}}` + "\n" +
+			`{"at":"2026-09-02T08:00:00Z","action":"quota","user":"work1","detail":{"budget":50}}` + "\n")
+	objects.objects[ossclient.AdminKey("quota-defaults.json")] = []byte(
+		`{"monthlyBudgetUSD":30,"rpm":60,"tpm":500000,"parallel":4}`)
+
+	im := &Importer{Store: store, Objects: objects, Actor: "migration"}
+	report, err := im.Run(ctx)
+	if err != nil {
+		t.Fatalf("import: %v", err)
+	}
+	if report.AuditLines != 2 || report.Settings != 1 {
+		t.Fatalf("report = %s", report)
+	}
+
+	work1, _ := store.Employees().ByWindowsUser(ctx, "work1")
+	history, err := store.Audit().ByTarget(ctx, "employee", work1.ID, 0)
+	if err != nil {
+		t.Fatalf("history: %v", err)
+	}
+	if len(history) != 2 || history[0].Action != "quota" || history[1].Action != "onboard" {
+		t.Fatalf("history = %v", history)
+	}
+	if !history[1].OccurredAt.Equal(time.Date(2026, 9, 1, 8, 0, 0, 0, time.UTC)) {
+		t.Errorf("the imported line lost its time: %v", history[1].OccurredAt)
+	}
+	if history[1].ActorID != legacyActor {
+		t.Errorf("actor = %q, want the import to say where the line came from", history[1].ActorID)
+	}
+
+	// A third line lands later; only it is imported.
+	objects.objects[ossclient.AdminKey("audit/work1.jsonl")] = append(
+		objects.objects[ossclient.AdminKey("audit/work1.jsonl")],
+		[]byte(`{"at":"2026-09-03T08:00:00Z","action":"reissue","user":"work1"}`+"\n")...)
+	again, err := im.Run(ctx)
+	if err != nil {
+		t.Fatalf("second import: %v", err)
+	}
+	if again.AuditLines != 1 {
+		t.Errorf("the second import brought in %d lines, want just the new one", again.AuditLines)
+	}
+	history, _ = store.Audit().ByTarget(ctx, "employee", work1.ID, 0)
+	if len(history) != 3 {
+		t.Errorf("%d audit events after two imports, want 3", len(history))
+	}
+
+	setting, err := store.Settings().Get(ctx, repo.SettingQuotaDefaults)
+	if err != nil {
+		t.Fatalf("settings: %v", err)
+	}
+	if !strings.Contains(string(setting.Value), "500000") {
+		t.Errorf("quota defaults = %s", setting.Value)
+	}
+	if again.Settings != 0 {
+		t.Error("the second import re-recorded the settings")
 	}
 }
