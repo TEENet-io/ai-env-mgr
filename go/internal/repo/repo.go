@@ -56,6 +56,7 @@ type Store interface {
 	Grants() Grants
 	Credentials() Credentials
 	Admins() Admins
+	LegacyIDs() LegacyIDs
 
 	// InTx runs fn in a transaction, committing if it returns nil. The Store
 	// passed to fn is the transactional one: using the outer Store inside fn
@@ -859,3 +860,20 @@ type Admins interface {
 	DeleteSessionsFor(ctx context.Context, principalID string) (int, error)
 	DeleteExpiredSessions(ctx context.Context) (int, error)
 }
+
+// LegacyIDs is the bridge to the world of names.
+//
+// Before the database, an employee was a Windows user name and a machine was a
+// host name. Those names appear in old audit lines, in OSS keys and in the
+// gateway's own records, and long after the migration somebody will need to
+// know which row "work1" was. The map stays; it costs a row each.
+type LegacyIDs interface {
+	Record(ctx context.Context, kind, legacyKey, newID string) error
+	Lookup(ctx context.Context, kind, legacyKey string) (string, error)
+}
+
+// Kinds of legacy key.
+const (
+	LegacyEmployee = "employee"
+	LegacyDevice   = "device"
+)
