@@ -2,6 +2,7 @@ package admincore
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 
 	"github.com/TEENet-io/ai-env-mgr/internal/litellm"
@@ -28,15 +29,22 @@ type quotaDefaultsFile struct {
 func (m *Manager) LoadQuotaDefaults() (litellm.Quota, error) {
 	data, _, err := m.Store.Get(QuotaDefaultsKey())
 	if err != nil {
-		return DefaultQuota, nil
+		// Nothing stored yet -> the built-in default. Any other failure is
+		// reported: onboarding falls back to these numbers when the form
+		// leaves the quota blank, and silently using the built-ins would
+		// open an account on a budget nobody chose.
+		if errors.Is(err, ossclient.ErrNotFound) {
+			return DefaultQuota, nil
+		}
+		return litellm.Quota{}, fmt.Errorf("read quota defaults: %w", err)
 	}
 	var f quotaDefaultsFile
 	if err := json.Unmarshal(data, &f); err != nil {
-		return DefaultQuota, nil
+		return litellm.Quota{}, fmt.Errorf("parse quota defaults: %w", err)
 	}
 	q := litellm.Quota{MonthlyBudgetUSD: f.MonthlyBudgetUSD, RPM: f.RPM, TPM: f.TPM, Parallel: f.Parallel}
 	if err := q.Validate(); err != nil {
-		return DefaultQuota, nil
+		return litellm.Quota{}, fmt.Errorf("stored quota defaults are invalid: %w", err)
 	}
 	return q, nil
 }

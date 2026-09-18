@@ -214,6 +214,10 @@ func (s *Server) handleUsers(w http.ResponseWriter, r *http.Request, sess *sessi
 	}
 	if q, err := sess.mgr.LoadQuotaDefaults(); err == nil {
 		data.QuotaDefaults = q
+	} else {
+		data.QuotaDefaults = admincore.DefaultQuota
+		data.Error = "读取开户默认额度失败，开户表单显示的是内置默认值：" + err.Error()
+		log.Printf("adminweb: LoadQuotaDefaults: %v", err)
 	}
 
 	var keys []litellm.Key

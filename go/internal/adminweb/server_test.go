@@ -21,6 +21,11 @@ import (
 type fakeStore struct {
 	objects map[string][]byte
 	fail    bool
+
+	// getErrFor / getErr make one specific key fail to read, which is how a
+	// transient OSS error is reproduced without touching the others.
+	getErrFor string
+	getErr    error
 }
 
 func newFakeStore() *fakeStore {
@@ -36,6 +41,9 @@ func (f *fakeStore) Verify() error {
 }
 
 func (f *fakeStore) Get(key string) ([]byte, string, error) {
+	if f.getErrFor != "" && key == f.getErrFor {
+		return nil, "", f.getErr
+	}
 	b, ok := f.objects[key]
 	if !ok {
 		// The real store answers a missing object with ossclient.ErrNotFound,
@@ -594,5 +602,31 @@ func TestMachinesPageRendersAppLockerColumn(t *testing.T) {
 	// other columns already render that as a dim dash.
 	if strings.Contains(body, "Unknown") {
 		t.Error("an unreadable mode must render as the dim dash, not as Unknown")
+	}
+}
+
+// A settings page whose quota defaults cannot be read must say so rather than
+// prefill the form with zeros that look like somebody chose them.
+func TestSettingsPageSaysWhenQuotaDefaultsCannotBeRead(t *testing.T) {
+	fs := newFakeStore()
+	fs.getErrFor = admincore.QuotaDefaultsKey()
+	fs.getErr = errors.New("dial tcp: i/o timeout")
+	s := newTestServer(t, fs)
+	c := signIn(t, s)
+
+	req := httptest.NewRequest(http.MethodGet, "/settings", nil)
+	req.AddCookie(c)
+	rec := httptest.NewRecorder()
+	s.Handler().ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("settings returned %d, want 200", rec.Code)
+	}
+	body := rec.Body.String()
+	if !strings.Contains(body, "读取开户默认额度失败") {
+		t.Error("the page does not mention the failed read")
+	}
+	if strings.Contains(body, `value="0"`) {
+		t.Error("the form was prefilled with zeros")
 	}
 }

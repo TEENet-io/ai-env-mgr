@@ -352,8 +352,14 @@ func (s *Server) handleSettings(w http.ResponseWriter, r *http.Request, sess *se
 	if stats, _, err := sess.mgr.CollectStats(); err == nil {
 		data.Stats = stats
 	}
+	// A failed read is shown, not papered over: the form would otherwise
+	// prefill with zeros and look like somebody had configured them.
 	if q, err := sess.mgr.LoadQuotaDefaults(); err == nil {
 		data.QuotaDefaults = q
+	} else {
+		data.QuotaDefaults = admincore.DefaultQuota
+		data.Error = "读取开户默认额度失败，下面显示的是内置默认值：" + err.Error()
+		log.Printf("adminweb: LoadQuotaDefaults: %v", err)
 	}
 	s.render(w, "settings.html", http.StatusOK, data)
 }

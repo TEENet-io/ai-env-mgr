@@ -141,11 +141,23 @@ func (m *Manager) SetUserEnabled(windowsUser string, enabled bool) error {
 func (m *Manager) CurrentPolicy() (model.Policy, error) {
 	data, _, err := m.Store.Get(ossclient.PolicyKey())
 	if err != nil {
-		return model.DefaultPolicy(), nil
+		// "Not there" is a real answer: a fresh bucket has no policy yet and
+		// the first publish has to start from the defaults. Anything else --
+		// a timeout, a throttle, a permission change -- is NOT an answer.
+		// Returning defaults there would let a mutator build the next version
+		// on top of them and publish a policy with no blocked domains, no
+		// AppLocker allow list and no target versions, which reaches every
+		// machine on its next sync.
+		if errors.Is(err, ossclient.ErrNotFound) {
+			return model.DefaultPolicy(), nil
+		}
+		return model.Policy{}, fmt.Errorf("read policy: %w", err)
 	}
 	var p model.Policy
 	if err := json.Unmarshal(data, &p); err != nil {
-		return model.DefaultPolicy(), nil
+		// A damaged object is not an empty one either: refuse, and let an
+		// administrator look at it.
+		return model.Policy{}, fmt.Errorf("parse policy: %w", err)
 	}
 	return p, nil
 }
