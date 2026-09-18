@@ -52,6 +52,9 @@ type Store interface {
 	Policies() Policies
 	Settings() Settings
 	Tasks() Tasks
+	Audit() Audit
+	Grants() Grants
+	Credentials() Credentials
 
 	// InTx runs fn in a transaction, committing if it returns nil. The Store
 	// passed to fn is the transactional one: using the outer Store inside fn
@@ -528,4 +531,178 @@ type Tasks interface {
 	// ReleaseExpiredLeases puts tasks whose worker died back on the queue. A
 	// lease is not a lock: a worker that stops holds nothing.
 	ReleaseExpiredLeases(ctx context.Context) (int, error)
+}
+
+// Actor types for audit events.
+const (
+	ActorAdmin  = "admin"
+	ActorDevice = "device"
+	ActorWorker = "worker"
+	ActorSystem = "system"
+)
+
+// AuditEvent is one recorded action.
+//
+// Before and After are the redacted values the console shows. Secrets are
+// replaced upstream, in eventlog.Redact, before they ever reach a column: a
+// table that the application account can only append to is still a table
+// people read.
+//
+// EventID is generated on insert and is the same id as the SLS audit copy, so
+// the two can be reconciled line by line.
+type AuditEvent struct {
+	EventID    string
+	OccurredAt time.Time
+	ActorType  string
+	ActorID    string
+	Action     string
+	TargetType string
+	TargetID   string
+	Before     []byte
+	After      []byte
+	Detail     []byte
+	Result     string
+	TaskID     string
+	RequestID  string
+}
+
+// Audit is the append-only history.
+//
+// There is no Update and no Delete, and the application database account does
+// not hold those rights either. A convention in Go would not survive a bug; a
+// grant survives both a bug and a stolen password.
+type Audit interface {
+	// Append records an event and returns its id. Call it inside the same
+	// transaction as the change it describes, so an action that happened
+	// cannot end up unrecorded, and one that was rolled back cannot end up
+	// recorded.
+	Append(ctx context.Context, ev AuditEvent) (string, error)
+
+	ByTarget(ctx context.Context, targetType, targetID string, limit int) ([]AuditEvent, error)
+	Recent(ctx context.Context, limit int) ([]AuditEvent, error)
+	ByID(ctx context.Context, eventID string) (AuditEvent, error)
+
+	// PendingDelivery lists events not yet confirmed in target (SLS, today).
+	// Delivery is at-least-once, so the far side may hold duplicates and
+	// queries there deduplicate on event id.
+	PendingDelivery(ctx context.Context, target string, limit int) ([]AuditEvent, error)
+	ConfirmDelivery(ctx context.Context, eventID, target string) error
+	RecordDeliveryFailure(ctx context.Context, eventID, target, reason string) error
+}
+
+// Grant states. desired is what the console wants; actual is what it last
+// observed on the gateway. They are separate because a provisioning call that
+// times out leaves us genuinely unsure, and a single state column would have to
+// lie in one direction or the other.
+const (
+	GrantActive  = "active"
+	GrantRevoked = "revoked"
+
+	ActualUnknown = "unknown"
+	ActualActive  = "active"
+	ActualRevoked = "revoked"
+	// ActualMissing is the gateway saying the key is not there: success for a
+	// revoke, a fault for a grant that is supposed to be live.
+	ActualMissing = "missing"
+)
+
+// Grant is one employee's authorisation on one gateway.
+type Grant struct {
+	ID           string
+	EmployeeID   string
+	Epoch        int
+	Gateway      string
+	ExternalUser string // emp-<windows user>, kept across a rename
+	KeyAlias     string
+	Models       []string
+	Desired      string
+	Actual       string
+	// CredentialID points at the encrypted token this grant issued. The token
+	// itself is never on this row.
+	CredentialID string
+	ReconciledAt *time.Time
+	LastError    string
+	CreatedAt    time.Time
+	UpdatedAt    time.Time
+}
+
+// NewGrant is what Create needs.
+type NewGrant struct {
+	EmployeeID   string
+	Epoch        int
+	Gateway      string
+	ExternalUser string
+	KeyAlias     string
+	Models       []string
+	CredentialID string
+}
+
+// Grants is what the console has asked each gateway for.
+type Grants interface {
+	// Active returns the employee's live grant on a gateway, ErrNotFound if
+	// there is none. At most one can exist: two live tokens for one person
+	// means revoking "the" token leaves the other one working.
+	Active(ctx context.Context, gateway, employeeID string) (Grant, error)
+	ByEmployee(ctx context.Context, employeeID string) ([]Grant, error)
+	ByKeyAlias(ctx context.Context, gateway, keyAlias string) (Grant, error)
+
+	Create(ctx context.Context, g NewGrant) (Grant, error)
+
+	// Revoke records the intent. The gateway call is a task; what the gateway
+	// actually did comes back through RecordActual.
+	Revoke(ctx context.Context, id string) (Grant, error)
+
+	// RecordActual stores what the gateway was observed to hold. reason is
+	// kept for a grant that could not be checked.
+	RecordActual(ctx context.Context, id, actual, reason string) (Grant, error)
+
+	// NeedsReconcile lists grants whose observed state is unknown or does not
+	// match the intent, oldest check first.
+	NeedsReconcile(ctx context.Context, gateway string, staleAfter time.Duration, limit int) ([]Grant, error)
+}
+
+// Credential is one stored secret, encrypted.
+//
+// ContentSHA256 is the hash of the delivered bytes, so "has this machine
+// already got this version" can be answered without decrypting anything.
+type Credential struct {
+	ID            string
+	EmployeeID    string
+	Epoch         int
+	Purpose       string
+	Ciphertext    []byte
+	KeyVersion    string
+	ContentSHA256 []byte
+	CreatedAt     time.Time
+	RetiredAt     *time.Time
+}
+
+// Credential purposes.
+const PurposeCodexGateway = "codex_gateway"
+
+// NewCredential is what Store needs. The plaintext never appears: the caller
+// seals it first (internal/secrets) and passes the blob.
+type NewCredential struct {
+	EmployeeID    string
+	Epoch         int
+	Purpose       string
+	Ciphertext    []byte
+	KeyVersion    string
+	ContentSHA256 []byte
+}
+
+// Credentials holds the encrypted values.
+type Credentials interface {
+	// Live returns the current credential for an employee and purpose.
+	Live(ctx context.Context, employeeID, purpose string) (Credential, error)
+	ByID(ctx context.Context, id string) (Credential, error)
+
+	// Store saves a new credential and retires the previous live one in the
+	// same statement. Two live credentials for one purpose would mean the
+	// exporter could deliver either.
+	Store(ctx context.Context, c NewCredential) (Credential, error)
+
+	// Retire ends the live credential without issuing a replacement, which is
+	// what offboarding does. It is not an error if there is none.
+	Retire(ctx context.Context, employeeID, purpose string) (int, error)
 }
