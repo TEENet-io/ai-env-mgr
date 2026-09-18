@@ -11,6 +11,8 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
@@ -143,10 +145,17 @@ func (s *Server) openDatabaseMode(ctx context.Context, opts DatabaseOptions) err
 		return fmt.Errorf("first administrator: %w", err)
 	}
 	if created {
-		// Printed once, to the console's own output and nowhere else. Sign
-		// in, set up the authenticator, and change it.
-		log.Printf("adminweb: FIRST ADMINISTRATOR CREATED  user=%s  password=%s  -- shown once; sign in and set up the authenticator",
+		// Not into the log: journald keeps a line for months, and this one
+		// would be a working password. It goes into a root-only file next to
+		// the master key, to be read once and deleted.
+		path := filepath.Join(filepath.Dir(opts.MasterKeyFile), "first-admin.txt")
+		body := fmt.Sprintf("user: %s\npassword: %s\n\nSign in, set up the authenticator, change the password, then delete this file.\n",
 			admin.Username, password)
+		if err := os.WriteFile(path, []byte(body), 0o600); err != nil {
+			return fmt.Errorf("write the first administrator's password to %s: %w", path, err)
+		}
+		log.Printf("adminweb: first administrator %q created; the password is in %s (read it, then delete the file)",
+			admin.Username, path)
 	}
 
 	if opts.Worker {
