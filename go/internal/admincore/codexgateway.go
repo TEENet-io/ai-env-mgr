@@ -9,6 +9,7 @@ import (
 	"sync"
 
 	"github.com/TEENet-io/ai-env-mgr/internal/catalog"
+	"github.com/TEENet-io/ai-env-mgr/internal/creds"
 	"github.com/TEENet-io/ai-env-mgr/internal/litellm"
 	"github.com/TEENet-io/ai-env-mgr/internal/model"
 )
@@ -344,22 +345,10 @@ func resolveAllowlist(available []litellm.Model, requested []string) ([]string, 
 
 // renderCodexConfig produces the config.toml fragment.
 //
-// Only the keys this tool owns appear here; the agent merges the fragment
-// into whatever the employee already has rather than replacing the file.
+// The rendering itself lives in internal/creds, because the Worker that
+// exports credentials from the database has to produce the identical file:
+// two renderings of one config is how a machine ends up pointed at a base URL
+// nobody meant.
 func renderCodexConfig(cfg GatewayConfig, windowsUser string, allowed []string, token string) string {
-	var b strings.Builder
-	fmt.Fprintf(&b, "model              = %q\n", allowed[0])
-	fmt.Fprintf(&b, "model_provider     = \"gateway\"\n")
-	// Windows paths are written with forward slashes in TOML.
-	fmt.Fprintf(&b, "model_catalog_json = \"C:/Users/%s/.codex/models.json\"\n", windowsUser)
-	fmt.Fprintf(&b, "web_search         = \"live\"\n")
-	// Codex agent runs go for many minutes without emitting a token; the
-	// default idle timeout would cut them off mid-task.
-	fmt.Fprintf(&b, "stream_idle_timeout_ms = 7200000\n\n")
-	fmt.Fprintf(&b, "[model_providers.gateway]\n")
-	fmt.Fprintf(&b, "name     = \"Gateway\"\n")
-	fmt.Fprintf(&b, "base_url = %q\n", strings.TrimRight(cfg.BaseURL, "/")+"/v1")
-	fmt.Fprintf(&b, "wire_api = \"responses\"\n")
-	fmt.Fprintf(&b, "experimental_bearer_token = %q\n", token)
-	return b.String()
+	return creds.RenderGatewayConfig(cfg.BaseURL, windowsUser, allowed, token)
 }

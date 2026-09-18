@@ -516,3 +516,83 @@ func actions(events []repo.AuditEvent) []string {
 	}
 	return out
 }
+
+// Keying an export on the employee and epoch alone looked tidy and was wrong:
+// binding a machine does not change the epoch, so the key matched the export
+// that had already run during onboarding, Enqueue handed back that finished
+// task, and the new binding was never written.
+func TestEveryThingThatMustReachADesktopQueuesItsOwnExport(t *testing.T) {
+	svc, store, ctx := newService(t)
+	employee, err := svc.Onboard(ctx, OnboardSpec{
+		WindowsUser: "work1", Quota: testQuota(), Models: []string{"claude-4.5-sonnet"}, Actor: "zhang",
+	})
+	if err != nil {
+		t.Fatalf("onboard: %v", err)
+	}
+	// Stand in for the Worker: everything queued so far has been done.
+	finish(t, ctx, store)
+
+	if _, err := svc.BindMachine(ctx, "desktop-01", employee.ID, "", "zhang", ""); err != nil {
+		t.Fatalf("bind: %v", err)
+	}
+	if got := len(openTasks(t, ctx, store)); got == 0 {
+		t.Fatal("binding a machine queued no export at all")
+	}
+	finish(t, ctx, store)
+
+	if _, err := svc.RequestCodexRestart(ctx, "desktop-01", "zhang", ""); err != nil {
+		t.Fatalf("restart: %v", err)
+	}
+	first := openTasks(t, ctx, store)
+	if len(first) != 1 {
+		t.Fatalf("a restart request queued %v", kinds(first))
+	}
+	finish(t, ctx, store)
+
+	// Asking again asks again: the point of a one-shot instruction is that a
+	// second press reaches the machine a second time.
+	if _, err := svc.RequestCodexRestart(ctx, "desktop-01", "zhang", ""); err != nil {
+		t.Fatalf("second restart: %v", err)
+	}
+	second := openTasks(t, ctx, store)
+	if len(second) != 1 {
+		t.Fatalf("the second restart request queued %v", kinds(second))
+	}
+	if second[0].ID == first[0].ID {
+		t.Error("the second restart request reused the first one's task")
+	}
+
+	finish(t, ctx, store)
+	if err := svc.SetModels(ctx, employee.ID, []string{"gemini-2.5-pro"}, "zhang", ""); err != nil {
+		t.Fatalf("set models: %v", err)
+	}
+	// The models decide what the picker shows as well as what the token may
+	// call, so the delivered catalog has to be rewritten too.
+	var sawExport bool
+	for _, task := range openTasks(t, ctx, store) {
+		if task.Kind == repo.TaskOSSExport {
+			sawExport = true
+		}
+	}
+	if !sawExport {
+		t.Error("changing the models queued no export, so the picker would keep the old list")
+	}
+}
+
+// finish marks everything queued as done, standing in for the Worker.
+func finish(t *testing.T, ctx context.Context, store *dbstore.Store) {
+	t.Helper()
+	for range 20 {
+		task, err := store.Tasks().Claim(ctx, "test-worker", nil, 0)
+		if errors.Is(err, repo.ErrNotFound) {
+			return
+		}
+		if err != nil {
+			t.Fatalf("claim: %v", err)
+		}
+		if err := store.Tasks().Succeed(ctx, task.ID, "test-worker", ""); err != nil {
+			t.Fatalf("succeed: %v", err)
+		}
+	}
+	t.Fatal("the queue did not empty")
+}

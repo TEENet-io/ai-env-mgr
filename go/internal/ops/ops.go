@@ -23,6 +23,7 @@ import (
 	"errors"
 	"fmt"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/TEENet-io/ai-env-mgr/internal/repo"
@@ -183,13 +184,13 @@ func (s *Service) Offboard(ctx context.Context, employeeID, actor, requestID str
 		if err := s.revokeGrant(ctx, tx, employee); err != nil {
 			return err
 		}
-		if err := s.enqueue(ctx, tx, employee, repo.TaskGatewayRevoke, nil); err != nil {
+		if err := s.enqueueGatewayWork(ctx, tx, employee, repo.TaskGatewayRevoke); err != nil {
 			return err
 		}
 		// The export removes the delivered credentials. Every machine bound to
 		// this person reads that object each cycle, and its disappearance is
 		// how the revocation reaches the desktop.
-		if err := s.enqueue(ctx, tx, employee, repo.TaskOSSExport, nil); err != nil {
+		if err := s.enqueueEmployeeExport(ctx, tx, employee, epochMarker(employee)); err != nil {
 			return err
 		}
 		if err := s.audit(ctx, tx, actor, requestID, ActionOffboard, employee, before, employee); err != nil {
@@ -257,7 +258,7 @@ func (s *Service) SetQuota(ctx context.Context, employeeID string, q repo.Quota,
 		if err != nil {
 			return err
 		}
-		if err := s.enqueue(ctx, tx, employee, repo.TaskGatewayProvision, nil); err != nil {
+		if err := s.enqueueGatewayWork(ctx, tx, employee, repo.TaskGatewayProvision); err != nil {
 			return err
 		}
 		return s.audit(ctx, tx, actor, requestID, ActionSetQuota, employee, before, after)
@@ -286,7 +287,12 @@ func (s *Service) SetModels(ctx context.Context, employeeID string, models []str
 		if err != nil {
 			return err
 		}
-		if err := s.enqueue(ctx, tx, employee, repo.TaskGatewayProvision, nil); err != nil {
+		if err := s.enqueueGatewayWork(ctx, tx, employee, repo.TaskGatewayProvision); err != nil {
+			return err
+		}
+		// The models decide both what the token may call and what the picker
+		// shows, so the delivered catalog has to be rewritten as well.
+		if err := s.enqueueEmployeeExport(ctx, tx, employee, "models:"+strconv.Itoa(len(after))+":"+strings.Join(after, ",")); err != nil {
 			return err
 		}
 		return s.audit(ctx, tx, actor, requestID, ActionSetModels, employee,
@@ -310,7 +316,7 @@ func (s *Service) UpdateProfile(ctx context.Context, employeeID string, version 
 		if err != nil {
 			return err
 		}
-		if err := s.enqueue(ctx, tx, after, repo.TaskGatewayProvision, nil); err != nil {
+		if err := s.enqueueGatewayWork(ctx, tx, after, repo.TaskGatewayProvision); err != nil {
 			return err
 		}
 		return s.audit(ctx, tx, actor, requestID, ActionUpdateProfile, after, before, after)
@@ -354,9 +360,13 @@ func (s *Service) BindMachine(ctx context.Context, hostname, employeeID, note, a
 		if err != nil {
 			return err
 		}
-		// Both the new holder and, if there was one, the previous holder need
-		// their delivered files rewritten.
-		if err := s.enqueue(ctx, tx, employee, repo.TaskOSSExport, nil); err != nil {
+		// The machine's binding object, and both people's delivered files --
+		// the one who lost the machine as much as the one who got it.
+		marker := "bind:" + strconv.Itoa(binding.Epoch)
+		if err := s.enqueueDeviceExport(ctx, tx, device, marker); err != nil {
+			return err
+		}
+		if err := s.enqueueEmployeeExport(ctx, tx, employee, marker+":"+device.ID); err != nil {
 			return err
 		}
 		if previous.EmployeeID != "" && previous.EmployeeID != employee.ID {
@@ -364,7 +374,7 @@ func (s *Service) BindMachine(ctx context.Context, hostname, employeeID, note, a
 			if err != nil {
 				return err
 			}
-			if err := s.enqueue(ctx, tx, former, repo.TaskOSSExport, nil); err != nil {
+			if err := s.enqueueEmployeeExport(ctx, tx, former, marker+":"+device.ID); err != nil {
 				return err
 			}
 		}
@@ -393,11 +403,8 @@ func (s *Service) UnbindMachine(ctx context.Context, hostname, actor, requestID 
 		if err != nil {
 			return err
 		}
-		employee, err := tx.Employees().ByID(ctx, binding.EmployeeID)
-		if err != nil {
-			return err
-		}
-		if err := s.enqueue(ctx, tx, employee, repo.TaskOSSExport, nil); err != nil {
+		if err := s.enqueueDeviceExport(ctx, tx, device,
+			"unbind:"+strconv.Itoa(binding.Epoch)); err != nil {
 			return err
 		}
 		return s.auditTarget(ctx, tx, actor, requestID, ActionUnbind, "device", device.ID,
@@ -419,15 +426,12 @@ func (s *Service) RequestCodexRestart(ctx context.Context, hostname, actor, requ
 		if err != nil {
 			return err
 		}
-		binding, err := tx.Bindings().RequestCodexRestart(ctx, device.ID, nonce)
-		if err != nil {
+		if _, err := tx.Bindings().RequestCodexRestart(ctx, device.ID, nonce); err != nil {
 			return err
 		}
-		employee, err := tx.Employees().ByID(ctx, binding.EmployeeID)
-		if err != nil {
-			return err
-		}
-		if err := s.enqueue(ctx, tx, employee, repo.TaskOSSExport, nil); err != nil {
+		// Keyed on the nonce: every request is its own task, because the point
+		// of a one-shot instruction is that asking again asks again.
+		if err := s.enqueueDeviceExport(ctx, tx, device, "restart:"+nonce); err != nil {
 			return err
 		}
 		return s.auditTarget(ctx, tx, actor, requestID, ActionRestartCodex, "device", device.ID,
@@ -491,10 +495,10 @@ func (s *Service) replaceOutstandingWork(ctx context.Context, tx repo.Store, emp
 	if err := s.revokeGrant(ctx, tx, employee); err != nil {
 		return err
 	}
-	if err := s.enqueue(ctx, tx, employee, repo.TaskGatewayProvision, nil); err != nil {
+	if err := s.enqueueGatewayWork(ctx, tx, employee, repo.TaskGatewayProvision); err != nil {
 		return err
 	}
-	return s.enqueue(ctx, tx, employee, repo.TaskOSSExport, nil)
+	return s.enqueueEmployeeExport(ctx, tx, employee, epochMarker(employee))
 }
 
 // revokeGrant marks the employee's live gateway grant as unwanted, if there is
@@ -512,27 +516,61 @@ func (s *Service) revokeGrant(ctx context.Context, tx repo.Store, employee repo.
 	return err
 }
 
-// enqueue adds one task for an employee at their current epoch.
+// enqueueGatewayWork adds a gateway task for an employee at their current
+// epoch.
 //
 // The idempotency key is derived from the employee, the epoch and the kind --
 // never from the time -- so that a repeated request, a double-clicked button
 // or a retry after an ambiguous failure all find the task that is already
 // there instead of creating a second one.
-func (s *Service) enqueue(ctx context.Context, tx repo.Store, employee repo.Employee, kind string, payload map[string]any) error {
+func (s *Service) enqueueGatewayWork(ctx context.Context, tx repo.Store, employee repo.Employee, kind string) error {
 	epoch := employee.AuthEpoch
-	if payload == nil {
-		payload = map[string]any{}
-	}
-	payload["employee_id"] = employee.ID
-	payload["windows_user"] = employee.WindowsUser
-	payload["epoch"] = epoch
-
 	_, _, err := tx.Tasks().Enqueue(ctx, repo.NewTask{
 		Kind:           kind,
 		IdempotencyKey: fmt.Sprintf("%s:%s:%d", kind, employee.ID, epoch),
-		Payload:        mustJSON(payload),
-		TargetEpoch:    &epoch,
-		EmployeeID:     employee.ID,
+		Payload: mustJSON(map[string]any{
+			"employee_id": employee.ID, "windows_user": employee.WindowsUser, "epoch": epoch,
+		}),
+		TargetEpoch: &epoch,
+		EmployeeID:  employee.ID,
+	})
+	return err
+}
+
+// enqueueEmployeeExport asks for this employee's delivered files to be
+// rewritten.
+//
+// marker is what makes a second export a second task. Keying an export on the
+// employee and epoch alone looked tidy and was wrong: binding a machine does
+// not change the epoch, so the key matched the export that had already run
+// during onboarding, Enqueue handed back that finished task, and the new
+// binding was never written. Anything that should reach a desktop needs a
+// marker that moves.
+func (s *Service) enqueueEmployeeExport(ctx context.Context, tx repo.Store, employee repo.Employee, marker string) error {
+	epoch := employee.AuthEpoch
+	_, _, err := tx.Tasks().Enqueue(ctx, repo.NewTask{
+		Kind:           repo.TaskOSSExport,
+		IdempotencyKey: fmt.Sprintf("oss_export:employee:%s:%s", employee.ID, marker),
+		Payload: mustJSON(map[string]any{
+			"employee_id": employee.ID, "windows_user": employee.WindowsUser, "epoch": epoch,
+		}),
+		TargetEpoch: &epoch,
+		EmployeeID:  employee.ID,
+	})
+	return err
+}
+
+// enqueueDeviceExport asks for one machine's binding object to be rewritten.
+//
+// It is not tied to an employee epoch: unbinding leaves no employee to aim at,
+// and a restart request has to reach the machine whatever epoch the person is
+// on.
+func (s *Service) enqueueDeviceExport(ctx context.Context, tx repo.Store, device repo.Device, marker string) error {
+	_, _, err := tx.Tasks().Enqueue(ctx, repo.NewTask{
+		Kind:           repo.TaskOSSExport,
+		IdempotencyKey: fmt.Sprintf("oss_export:device:%s:%s", device.ID, marker),
+		Payload:        mustJSON(map[string]any{"device_id": device.ID, "hostname": device.Hostname}),
+		DeviceID:       device.ID,
 	})
 	return err
 }
@@ -584,6 +622,12 @@ func (s *Service) applyQuota(ctx context.Context, tx repo.Store, employeeID stri
 		_, err = tx.Quotas().Set(ctx, employeeID, q, current.Version)
 	}
 	return err
+}
+
+// epochMarker is the export marker for a credential change: the epoch, which
+// moves every time the token does.
+func epochMarker(employee repo.Employee) string {
+	return "e" + strconv.Itoa(employee.AuthEpoch)
 }
 
 func firstNonEmpty(values ...string) string {
