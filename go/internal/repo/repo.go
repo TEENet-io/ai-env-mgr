@@ -51,6 +51,7 @@ type Store interface {
 	Bindings() Bindings
 	Policies() Policies
 	Settings() Settings
+	Tasks() Tasks
 
 	// InTx runs fn in a transaction, committing if it returns nil. The Store
 	// passed to fn is the transactional one: using the outer Store inside fn
@@ -381,4 +382,150 @@ type Settings interface {
 	Set(ctx context.Context, key string, value []byte, expectVersion int, by string) (Setting, error)
 
 	List(ctx context.Context) ([]Setting, error)
+}
+
+// ErrLeaseLost means the worker no longer holds the task it is reporting on:
+// its lease expired, or somebody else has taken it. The result is not recorded
+// and the task is left for whoever holds it now. Reconciliation, not a retry,
+// is the answer -- the work may well have been done.
+var ErrLeaseLost = errors.New("task lease is no longer held")
+
+// TaskStatus is where a task is.
+//
+// retry_wait and pending are both runnable; the difference is only whether it
+// has failed before, which is worth seeing in a list. superseded is for work
+// that was overtaken -- a provision for an epoch the employee has moved past.
+type TaskStatus string
+
+const (
+	TaskPending    TaskStatus = "pending"
+	TaskRunning    TaskStatus = "running"
+	TaskRetryWait  TaskStatus = "retry_wait"
+	TaskSucceeded  TaskStatus = "succeeded"
+	TaskFailed     TaskStatus = "failed"
+	TaskSuperseded TaskStatus = "superseded"
+)
+
+// Task kinds. Everything the console does outside its own database is one of
+// these, committed with the change that asked for it.
+const (
+	TaskGatewayProvision = "gateway_provision"
+	TaskGatewayRevoke    = "gateway_revoke"
+	TaskOSSExport        = "oss_export"
+	TaskAuditPublish     = "audit_publish"
+	TaskReconcile        = "reconcile"
+)
+
+// Task is one unit of work for the Worker.
+//
+// Payload holds references, never secrets: a credential row id, not a token.
+// Tasks are listed in the console, dumped during an incident and pasted into
+// tickets.
+type Task struct {
+	ID             string
+	Kind           string
+	IdempotencyKey string
+	Payload        []byte
+	Status         TaskStatus
+	Attempts       int
+	MaxAttempts    int
+	LeaseUntil     *time.Time
+	LeaseOwner     string
+	NextRunAt      time.Time
+	LastError      string
+	// TargetEpoch is the employee epoch this task was created for. A task that
+	// comes back from a retry after the employee has moved on is superseded
+	// rather than applied.
+	TargetEpoch *int
+	EmployeeID  string
+	DeviceID    string
+	CreatedAt   time.Time
+	UpdatedAt   time.Time
+	FinishedAt  *time.Time
+}
+
+// Open reports whether this task still has work to do.
+func (t Task) Open() bool {
+	return t.Status == TaskPending || t.Status == TaskRunning || t.Status == TaskRetryWait
+}
+
+// NewTask is what Enqueue needs.
+//
+// IdempotencyKey is what makes at-least-once delivery safe. Derive it from the
+// change, not from the moment -- employee id, epoch and kind -- so that a retry
+// after an ambiguous failure finds the existing task instead of provisioning a
+// second time.
+type NewTask struct {
+	Kind           string
+	IdempotencyKey string
+	Payload        []byte
+	TargetEpoch    *int
+	EmployeeID     string
+	DeviceID       string
+	MaxAttempts    int
+	// NotBefore delays the first attempt. Zero means now.
+	NotBefore time.Time
+}
+
+// TaskAttempt is one execution of a task, kept whether it worked or not:
+// "it succeeded on the fourth try, ninety minutes late" is the interesting
+// case and a table of failures alone cannot show it.
+type TaskAttempt struct {
+	ID          int64
+	TaskID      string
+	Attempt     int
+	Owner       string
+	StartedAt   time.Time
+	EndedAt     *time.Time
+	Outcome     string
+	ErrorClass  string
+	ErrorDetail string
+	// ExternalRef is the upstream's own request id when it gives one. It is
+	// what turns "the gateway rejected it" into something the gateway's
+	// operator can look up.
+	ExternalRef string
+}
+
+// Tasks is the persistent queue.
+type Tasks interface {
+	// Enqueue adds a task, or returns the one that is already there for this
+	// idempotency key. created says which happened, so a caller can tell a
+	// fresh request from a repeat without comparing timestamps.
+	Enqueue(ctx context.Context, t NewTask) (task Task, created bool, err error)
+
+	// Claim takes one runnable task and leases it. kinds narrows what this
+	// worker will take; empty means anything. ErrNotFound when there is
+	// nothing to do, which is the ordinary case and not a fault.
+	//
+	// Two workers claiming at once get different tasks, or one gets nothing.
+	Claim(ctx context.Context, owner string, kinds []string, lease time.Duration) (Task, error)
+
+	// Extend pushes the lease out for work that is taking a while. Without it
+	// a slow task is picked up a second time while it is still running.
+	Extend(ctx context.Context, id, owner string, lease time.Duration) error
+
+	// Succeed closes the task. externalRef is the upstream's request id, if
+	// there is one. ErrLeaseLost if this worker no longer holds it.
+	Succeed(ctx context.Context, id, owner, externalRef string) error
+
+	// Fail records a failed attempt. The task goes back to retry_wait until
+	// its attempts run out, and then to failed -- retrying for ever turns one
+	// broken task into a permanent load on whatever it is calling.
+	Fail(ctx context.Context, id, owner string, retryAt time.Time, errorClass, detail, externalRef string) (Task, error)
+
+	// Supersede abandons a task that has been overtaken by events.
+	Supersede(ctx context.Context, id, reason string) error
+
+	// SupersedeOpenForEmployee abandons every open task for an employee that
+	// targets an epoch older than belowEpoch. This is what offboarding and
+	// re-issuing call, in the same transaction as the epoch bump.
+	SupersedeOpenForEmployee(ctx context.Context, employeeID string, belowEpoch int) (int, error)
+
+	ByID(ctx context.Context, id string) (Task, error)
+	ListOpen(ctx context.Context, limit int) ([]Task, error)
+	Attempts(ctx context.Context, taskID string) ([]TaskAttempt, error)
+
+	// ReleaseExpiredLeases puts tasks whose worker died back on the queue. A
+	// lease is not a lock: a worker that stops holds nothing.
+	ReleaseExpiredLeases(ctx context.Context) (int, error)
 }
