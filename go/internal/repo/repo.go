@@ -55,6 +55,7 @@ type Store interface {
 	Audit() Audit
 	Grants() Grants
 	Credentials() Credentials
+	Admins() Admins
 
 	// InTx runs fn in a transaction, committing if it returns nil. The Store
 	// passed to fn is the transactional one: using the outer Store inside fn
@@ -705,4 +706,137 @@ type Credentials interface {
 	// Retire ends the live credential without issuing a replacement, which is
 	// what offboarding does. It is not an error if there is none.
 	Retire(ctx context.Context, employeeID, purpose string) (int, error)
+}
+
+// Admin roles, least to most. Phase 1 uses admin for everybody; the others
+// exist so that narrowing later is a change of one column, not a migration.
+const (
+	RoleViewer   = "viewer"
+	RoleOperator = "operator"
+	RoleSecurity = "security"
+	RoleAdmin    = "admin"
+)
+
+// Admin is somebody who can sign in to the console.
+//
+// This replaces "paste an OSS AccessKey into the login form". A session must
+// not carry cloud credentials, and taking one person's access away must not
+// mean rotating a key everybody shares.
+//
+// TOTPSecret is the sealed seed, never the seed. Nil means enrolment is not
+// finished: such an account may sign in only to complete it.
+type Admin struct {
+	ID             string
+	Username       string
+	Email          string
+	PasswordHash   string
+	PasswordSetAt  time.Time
+	TOTPSecret     []byte
+	TOTPKeyVersion string
+	TOTPEnrolledAt *time.Time
+	RecoveryHashes []string
+	Role           string
+	CreatedAt      time.Time
+	UpdatedAt      time.Time
+	LastLoginAt    *time.Time
+	DisabledAt     *time.Time
+}
+
+// Enabled reports whether this account may sign in at all.
+func (a Admin) Enabled() bool { return a.DisabledAt == nil }
+
+// TOTPEnrolled reports whether a second factor is set up.
+func (a Admin) TOTPEnrolled() bool { return len(a.TOTPSecret) > 0 && a.TOTPEnrolledAt != nil }
+
+// NewAdmin is what Create needs. The password arrives hashed: this layer never
+// sees a plaintext password, so it cannot log one.
+type NewAdmin struct {
+	Username     string
+	Email        string
+	PasswordHash string
+	Role         string
+}
+
+// Session is a signed-in console session.
+//
+// TokenSHA256 is the hash of the cookie value, never the value: a database
+// dump, a backup or a slow query log must not hand anybody a working session.
+//
+// The two expiry times are separate on purpose. Idle timeout alone would let
+// one sign-in last for ever as long as somebody keeps a tab open.
+type Session struct {
+	TokenSHA256       []byte
+	PrincipalID       string
+	CreatedAt         time.Time
+	ExpiresAt         time.Time
+	AbsoluteExpiresAt time.Time
+	LastSeenAt        time.Time
+	CreatedIP         string
+	UserAgent         string
+}
+
+// Login outcomes, recorded for rate limiting and for noticing a password
+// spray. They are deliberately specific: "bad password" and "unknown user"
+// look the same to the person signing in, and must not look the same to
+// whoever reads the table afterwards.
+const (
+	LoginOK          = "ok"
+	LoginBadPassword = "bad_password"
+	LoginBadTOTP     = "bad_totp"
+	LoginDisabled    = "disabled"
+	LoginUnknownUser = "unknown_user"
+	LoginLocked      = "locked"
+)
+
+// LoginAttempt is one sign-in try.
+type LoginAttempt struct {
+	Username string
+	SourceIP string
+	At       time.Time
+	Outcome  string
+}
+
+// Admins is the console's own account store.
+type Admins interface {
+	ByID(ctx context.Context, id string) (Admin, error)
+	ByUsername(ctx context.Context, username string) (Admin, error)
+	List(ctx context.Context) ([]Admin, error)
+
+	// CountEnabled is what the first-run check asks. Zero means the console
+	// has no way in yet and should offer to create one.
+	CountEnabled(ctx context.Context) (int, error)
+
+	Create(ctx context.Context, a NewAdmin) (Admin, error)
+	SetPasswordHash(ctx context.Context, id, hash string) error
+
+	// SetTOTP stores the sealed seed and the hashed recovery codes together:
+	// enrolling without recovery codes is how somebody locks themselves out
+	// with a lost phone.
+	SetTOTP(ctx context.Context, id string, sealedSecret []byte, keyVersion string, recoveryHashes []string) error
+
+	// ReplaceRecoveryHashes is used when a code is consumed. The whole list is
+	// written back, so a consumed code cannot be used twice.
+	ReplaceRecoveryHashes(ctx context.Context, id string, hashes []string) error
+
+	RecordLogin(ctx context.Context, id string, at time.Time) error
+	SetDisabled(ctx context.Context, id string, disabled bool) (Admin, error)
+
+	// RecordAttempt writes one sign-in attempt, successful or not.
+	RecordAttempt(ctx context.Context, a LoginAttempt) error
+
+	// RecentFailures counts failed attempts in a window, for the lockout. Both
+	// the account and the source address are counted: one protects a person's
+	// password, the other notices somebody trying many accounts.
+	RecentFailures(ctx context.Context, username, sourceIP string, window time.Duration) (byUser, byIP int, err error)
+
+	CreateSession(ctx context.Context, s Session) error
+	// SessionByToken returns the session and its owner, or ErrNotFound if it
+	// does not exist, has expired, or belongs to a disabled account.
+	SessionByToken(ctx context.Context, tokenSHA256 []byte) (Session, Admin, error)
+	TouchSession(ctx context.Context, tokenSHA256 []byte, expiresAt time.Time) error
+	DeleteSession(ctx context.Context, tokenSHA256 []byte) error
+	// DeleteSessionsFor ends every session of one account, which is what a
+	// password change and a disable both have to do.
+	DeleteSessionsFor(ctx context.Context, principalID string) (int, error)
+	DeleteExpiredSessions(ctx context.Context) (int, error)
 }
