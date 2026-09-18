@@ -162,6 +162,27 @@ func (d *DB) Migrate(ctx context.Context) error {
 			return fmt.Errorf("migration %04d_%s: %w", m.Version, m.Name, err)
 		}
 	}
+	// A migration runs once; a grant made once does not cover a table created
+	// later. Re-applying the grid here is what keeps a new table from arriving
+	// unreadable by the account the console runs as.
+	return applyGrants(ctx, conn)
+}
+
+// ApplyGrants re-applies the privilege grid. Migrate does this itself; the
+// command exposes it for a database whose grants were changed by hand.
+func (d *DB) ApplyGrants(ctx context.Context) error {
+	conn, err := d.pool.Acquire(ctx)
+	if err != nil {
+		return fmt.Errorf("acquire connection: %w", err)
+	}
+	defer conn.Release()
+	return applyGrants(ctx, conn)
+}
+
+func applyGrants(ctx context.Context, conn *pgxpool.Conn) error {
+	if _, err := conn.Exec(ctx, db.Grants); err != nil {
+		return fmt.Errorf("apply privilege grid: %w", err)
+	}
 	return nil
 }
 

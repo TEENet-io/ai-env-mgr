@@ -10,21 +10,24 @@
 - 两个进程同时迁移时靠 `pg_advisory_lock` 排队,拿到锁后重新计算待执行清单。
 - 数据库里有本二进制不认识的迁移版本时拒绝启动:那说明新版本迁过库又回滚了代码,继续跑只会在某个页面上报"列不存在"。
 
-## 三个数据库账号(0002_roles)
+## 数据库账号
 
 | 账号 | 用途 | 权限 |
 |---|---|---|
-| `aienv_migrate` | 只跑 DDL,人工或 `cmd/migrate` 用 | 建表、建索引 |
-| `aienv_app` | 控制台 + Worker | 业务表增删改查;`audit_events`、`task_attempts` **只能 INSERT/SELECT** |
+| 实例的特权账号(本机 `postgres`,RDS 上是高权限账号) | 只跑迁移:`cmd/migrate up` | 建表、建索引、授权 |
+| `aienv_app` | 控制台 + Worker | 业务表增删改查;`audit_events`、`task_attempts` **只能 INSERT/SELECT**;`schema_migrations` **只读** |
 | `aienv_ro` | 查询、报表、排障 | 只 SELECT |
 
-迁移文件里建的是 `NOLOGIN` 无密码角色,可以安全入库、反复执行。密码在实例上单独设一次:
+授权网格在 `grants.sql`,**由迁移运行器在每批迁移之后重放**(也可手动 `migrate grants`)。它不是迁移:迁移只跑一次,而一次性的授权覆盖不到以后新建的表——原先 `0002` 里那种写法就是这么漏的。
+
+角色以 `NOLOGIN` 无密码建出,可以安全入库、反复执行。密码在实例上单独设一次:
 
 ```sql
-alter role aienv_app     login password '<从秘密存储取>';
-alter role aienv_ro      login password '<...>';
-alter role aienv_migrate login password '<...>';
+alter role aienv_app login password '<从秘密存储取>';
+alter role aienv_ro  login password '<...>';
 ```
+
+控制台用 `aienv_app` 连接;启动时它只读迁移记录,发现有待执行的迁移会拒绝启动并提示先以特权账号跑 `migrate up`。
 
 ## 本地开发库
 

@@ -19,6 +19,12 @@ import (
 //go:embed migrations/*.sql
 var migrationFiles embed.FS
 
+// Grants is the privilege grid, applied after every batch of migrations. See
+// grants.sql for why it is not a migration.
+//
+//go:embed grants.sql
+var Grants string
+
 // Migration is one numbered step. Down may be empty for a step that cannot be
 // reversed; none are today, and the runner refuses to step down past one.
 type Migration struct {

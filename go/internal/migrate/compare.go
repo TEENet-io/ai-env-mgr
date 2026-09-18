@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"sort"
+	"strconv"
 	"strings"
 
 	"github.com/TEENet-io/ai-env-mgr/internal/model"
@@ -59,6 +60,10 @@ func (c Comparison) String() string {
 type Comparer struct {
 	Store   repo.Store
 	Objects ObjectSource
+	// Gateway, when given, is compared as well: the limits and the model
+	// allowlist the database would push against what the gateway holds now.
+	// Nil skips that half and says so in the report.
+	Gateway Gateway
 }
 
 // Run compares every object the export would write.
@@ -73,7 +78,114 @@ func (c *Comparer) Run(ctx context.Context) (Comparison, error) {
 	if err := c.compareCredentials(ctx, &result); err != nil {
 		return result, err
 	}
+	if err := c.compareGateway(ctx, &result); err != nil {
+		return result, err
+	}
 	return result, nil
+}
+
+// compareGateway asks whether the first provisioning run after the switch
+// would change anything on the gateway: the user's limits, the token's model
+// allowlist. A difference here is not a fault -- the database may well be the
+// side that is right -- but it is a change that will happen, and the person
+// switching over should know it before it does.
+func (c *Comparer) compareGateway(ctx context.Context, result *Comparison) error {
+	if c.Gateway == nil {
+		result.Differences = append(result.Differences, Difference{"gateway",
+			"not compared: no gateway configured (set AIENVMGR_GATEWAY_URL / _ADMIN_KEY)"})
+		return nil
+	}
+	users, err := c.Gateway.ListUsers(ctx)
+	if err != nil {
+		return fmt.Errorf("list gateway users: %w", err)
+	}
+	keys, err := c.Gateway.ListKeys(ctx)
+	if err != nil {
+		return fmt.Errorf("list gateway keys: %w", err)
+	}
+	userByID := map[string]int{}
+	for i, u := range users {
+		userByID[u.UserID] = i
+	}
+	keyByAlias := map[string]int{}
+	for i, k := range keys {
+		keyByAlias[k.KeyAlias] = i
+	}
+
+	employees, err := c.Store.Employees().List(ctx, repo.EmployeeFilter{})
+	if err != nil {
+		return err
+	}
+	for _, e := range employees {
+		userID := legacyUserID(e.WindowsUser)
+		object := "gateway:" + userID
+		result.Checked++
+
+		i, ok := userByID[userID]
+		if !ok {
+			result.Differences = append(result.Differences, Difference{object,
+				"the gateway has no user for this employee; the first provisioning would create one"})
+			continue
+		}
+		quota, err := c.Store.Quotas().Get(ctx, e.ID)
+		switch {
+		case errors.Is(err, repo.ErrNotFound):
+			result.Differences = append(result.Differences, Difference{object,
+				"the database holds no quota for this employee; provisioning would fail until one is set"})
+		case err != nil:
+			return err
+		default:
+			live := users[i].Quota()
+			want, _ := strconv.ParseFloat(quota.MonthlyBudget, 64)
+			if want != live.MonthlyBudgetUSD || quota.RPM != live.RPM || quota.TPM != live.TPM || quota.Parallel != live.Parallel {
+				result.Differences = append(result.Differences, Difference{object, fmt.Sprintf(
+					"limits differ: gateway has budget %v rpm %d tpm %d parallel %d, the database would push budget %s rpm %d tpm %d parallel %d",
+					live.MonthlyBudgetUSD, live.RPM, live.TPM, live.Parallel,
+					quota.MonthlyBudget, quota.RPM, quota.TPM, quota.Parallel)})
+			}
+		}
+
+		models, err := c.Store.Employees().Models(ctx, e.ID)
+		if err != nil {
+			return err
+		}
+		grant, err := c.Store.Grants().Active(ctx, "", e.ID)
+		if errors.Is(err, repo.ErrNotFound) {
+			continue // the credential comparison already reports the missing token
+		}
+		if err != nil {
+			return err
+		}
+		k, ok := keyByAlias[grant.KeyAlias]
+		if !ok {
+			result.Differences = append(result.Differences, Difference{object, fmt.Sprintf(
+				"the database records token %q but the gateway does not have it", grant.KeyAlias)})
+			continue
+		}
+		if !sameStringSet(keys[k].Models, models) {
+			result.Differences = append(result.Differences, Difference{object, fmt.Sprintf(
+				"model allowlist differs: token %q allows %v on the gateway, the database would push %v",
+				grant.KeyAlias, keys[k].Models, models)})
+		}
+	}
+	return nil
+}
+
+func sameStringSet(a, b []string) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	seen := make(map[string]int, len(a))
+	for _, x := range a {
+		seen[x]++
+	}
+	for _, y := range b {
+		if seen[y] == 0 {
+			return false
+		}
+		seen[y]--
+	}
+	return true
 }
 
 func (c *Comparer) comparePolicy(ctx context.Context, result *Comparison) error {

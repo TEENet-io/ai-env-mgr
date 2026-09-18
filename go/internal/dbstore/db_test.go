@@ -11,6 +11,7 @@ import (
 	"github.com/jackc/pgx/v5"
 
 	"github.com/TEENet-io/ai-env-mgr/db"
+	"github.com/TEENet-io/ai-env-mgr/internal/repo"
 )
 
 // testDB opens the database named by TEST_PG_DSN, or skips.
@@ -308,5 +309,100 @@ func TestApplicationRoleCannotRewriteAudit(t *testing.T) {
 	}
 	if _, err := conn.Exec(ctx, `reset role`); err != nil {
 		t.Fatalf("reset role: %v", err)
+	}
+}
+
+// A migration runs once; a grant made once does not cover a table created
+// later. The grid has to be re-applied, or the next table arrives unreadable
+// by the account the console runs as.
+func TestGrantsCoverTablesCreatedLater(t *testing.T) {
+	database := testDB(t)
+	ctx := context.Background()
+	if err := database.Migrate(ctx); err != nil {
+		t.Fatalf("migrate: %v", err)
+	}
+	if _, err := database.pool.Exec(ctx, `create table late_arrival (x int)`); err != nil {
+		t.Fatalf("create: %v", err)
+	}
+	if err := database.ApplyGrants(ctx); err != nil {
+		t.Fatalf("grants: %v", err)
+	}
+
+	conn, err := database.pool.Acquire(ctx)
+	if err != nil {
+		t.Fatalf("acquire: %v", err)
+	}
+	defer conn.Release()
+	if _, err := conn.Exec(ctx, `set role aienv_app`); err != nil {
+		t.Fatalf("set role: %v", err)
+	}
+	if _, err := conn.Exec(ctx, `select * from late_arrival`); err != nil {
+		t.Errorf("the application role cannot read a table created after the migrations: %v", err)
+	}
+	// The record of which schema the code is running on is not the code's
+	// to rewrite.
+	for _, statement := range []string{
+		`update schema_migrations set checksum = 'x'`,
+		`delete from schema_migrations`,
+		`insert into schema_migrations (version, name, checksum) values (9, 'x', 'y')`,
+	} {
+		if _, err := conn.Exec(ctx, statement); err == nil {
+			t.Errorf("the application role was allowed to run: %s", statement)
+		}
+	}
+	if _, err := conn.Exec(ctx, `select count(*) from schema_migrations`); err != nil {
+		t.Errorf("the application role cannot read the migration record: %v", err)
+	}
+}
+
+func TestLockSerialisesAcrossTransactions(t *testing.T) {
+	database := testDB(t)
+	ctx := context.Background()
+	if err := database.Migrate(ctx); err != nil {
+		t.Fatalf("migrate: %v", err)
+	}
+	store := NewStore(database)
+
+	// A lock that is released the moment the statement ends protects
+	// nothing, so outside a transaction it is refused.
+	if err := store.Lock(ctx, "x"); err == nil {
+		t.Fatal("Lock outside a transaction was allowed")
+	}
+
+	held := make(chan struct{})
+	release := make(chan struct{})
+	go func() {
+		_ = store.InTx(ctx, func(tx repo.Store) error {
+			if err := tx.Lock(ctx, "oss_export:employee:1"); err != nil {
+				return err
+			}
+			close(held)
+			<-release
+			return nil
+		})
+	}()
+	<-held
+
+	// The second taker waits, rather than proceeding to interleave its writes.
+	acquired := make(chan struct{})
+	go func() {
+		_ = store.InTx(ctx, func(tx repo.Store) error {
+			if err := tx.Lock(ctx, "oss_export:employee:1"); err != nil {
+				return err
+			}
+			close(acquired)
+			return nil
+		})
+	}()
+	select {
+	case <-acquired:
+		t.Fatal("the second transaction took the lock while the first still held it")
+	case <-time.After(200 * time.Millisecond):
+	}
+	close(release)
+	select {
+	case <-acquired:
+	case <-time.After(5 * time.Second):
+		t.Fatal("the second transaction never got the lock after the first released it")
 	}
 }

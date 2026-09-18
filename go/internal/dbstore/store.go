@@ -70,6 +70,19 @@ func (s *Store) InTx(ctx context.Context, fn func(repo.Store) error) error {
 	})
 }
 
+// Lock takes a transaction-scoped advisory lock on name. Refused outside a
+// transaction, because a lock that is released the moment the statement ends
+// protects nothing and would only look as if it did.
+func (s *Store) Lock(ctx context.Context, name string) error {
+	if !s.inTx {
+		return errors.New("dbstore: Lock called outside a transaction")
+	}
+	if _, err := s.q.Exec(ctx, `select pg_advisory_xact_lock(hashtext($1))`, name); err != nil {
+		return mapError(err, "lock "+name)
+	}
+	return nil
+}
+
 // mapError turns a PostgreSQL error into one of the repo sentinels, so callers
 // can tell "somebody else got there first" from "the database is down" without
 // reading error strings.

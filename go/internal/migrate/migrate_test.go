@@ -276,12 +276,13 @@ func TestAHalfImportLeavesNothing(t *testing.T) {
 func TestTheComparisonIsCleanAfterAnImport(t *testing.T) {
 	store, ctx := newStore(t)
 	objects := liveBucket(t)
-	im := &Importer{Store: store, Objects: objects, Actor: "migration"}
+	gateway := liveGateway()
+	im := &Importer{Store: store, Objects: objects, Gateway: gateway, Actor: "migration"}
 	if _, err := im.Run(ctx); err != nil {
 		t.Fatalf("import: %v", err)
 	}
 
-	cmp := &Comparer{Store: store, Objects: objects}
+	cmp := &Comparer{Store: store, Objects: objects, Gateway: gateway}
 	result, err := cmp.Run(ctx)
 	if err != nil {
 		t.Fatalf("compare: %v", err)
@@ -531,5 +532,58 @@ func TestImportBringsInHistoryAndSettingsWithoutDuplicating(t *testing.T) {
 	}
 	if again.Settings != 0 {
 		t.Error("the second import re-recorded the settings")
+	}
+}
+
+// The comparison covers the gateway too: what the first provisioning after
+// the switch would change there is a change worth knowing about beforehand.
+func TestTheComparisonNoticesGatewayDrift(t *testing.T) {
+	store, ctx := newStore(t)
+	objects := liveBucket(t)
+	gateway := liveGateway()
+	im := &Importer{Store: store, Objects: objects, Gateway: gateway, Actor: "migration"}
+	if _, err := im.Run(ctx); err != nil {
+		t.Fatalf("import: %v", err)
+	}
+
+	// Freshly imported, the two sides agree; only the tokens that cannot be
+	// imported are reported.
+	result, err := (&Comparer{Store: store, Objects: objects, Gateway: gateway}).Run(ctx)
+	if err != nil {
+		t.Fatalf("compare: %v", err)
+	}
+	for _, d := range result.Differences {
+		if strings.HasPrefix(d.Object, "gateway:") {
+			t.Errorf("gateway drift reported right after an import: %s", d)
+		}
+	}
+
+	// Somebody raises a limit on the gateway UI and narrows a token by hand.
+	gateway.users[0].MaxBudget = f64(500)
+	gateway.keys[0].Models = []string{"gemini-2.5-pro"}
+	result, err = (&Comparer{Store: store, Objects: objects, Gateway: gateway}).Run(ctx)
+	if err != nil {
+		t.Fatalf("compare: %v", err)
+	}
+	var limits, models bool
+	for _, d := range result.Differences {
+		if d.Object == "gateway:emp-work1" && strings.Contains(d.What, "limits differ") {
+			limits = true
+		}
+		if d.Object == "gateway:emp-work1" && strings.Contains(d.What, "allowlist differs") {
+			models = true
+		}
+	}
+	if !limits || !models {
+		t.Errorf("differences = %v, want the changed limits and allowlist named", result.Differences)
+	}
+
+	// No gateway configured is said out loud, never silently skipped.
+	result, err = (&Comparer{Store: store, Objects: objects}).Run(ctx)
+	if err != nil {
+		t.Fatalf("compare without gateway: %v", err)
+	}
+	if result.Clean() {
+		t.Error("a comparison that skipped the gateway reported itself clean")
 	}
 }

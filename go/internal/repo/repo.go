@@ -63,6 +63,16 @@ type Store interface {
 	// passed to fn is the transactional one: using the outer Store inside fn
 	// would write outside the transaction, which is why fn is given its own.
 	InTx(ctx context.Context, fn func(Store) error) error
+
+	// Lock takes an exclusive lock on a name for the rest of the current
+	// transaction, waiting for whoever holds it. It is only valid inside InTx.
+	//
+	// It serialises work that reads the database and then writes somewhere
+	// the database cannot see -- an OSS object, say. Without it two workers
+	// exporting the same employee, or one whose lease expired and one that
+	// took over, can each read and then write in the wrong order, and the
+	// older bytes land last.
+	Lock(ctx context.Context, name string) error
 }
 
 // EmployeeStatus is where a person is in the lifecycle. Offboarded rows stay:

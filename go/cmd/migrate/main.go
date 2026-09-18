@@ -6,7 +6,8 @@
 //	migrate down            # reverse the newest applied migration, one step
 //	migrate probe           # read-only: what is in the bucket and on the gateway
 //	migrate import          # bring the OSS objects and gateway state into the database
-//	migrate compare         # read-only: would a database in charge publish anything different?
+//	migrate compare         # read-only: would a database in charge publish anything different? exit 2 if so
+//	migrate grants          # re-apply the privilege grid (Migrate does this itself)
 //
 // import and compare read OSS with AIENVMGR_OSS_ACCESS_KEY_ID / _SECRET and
 // the gateway with AIENVMGR_GATEWAY_URL / _ADMIN_KEY, all from the environment.
@@ -52,7 +53,7 @@ func run() error {
 	bucket := flag.String("bucket", envOr("AIENVMGR_OSS_BUCKET", "ai-collect-sg"), "OSS bucket")
 	endpoint := flag.String("endpoint", envOr("AIENVMGR_OSS_ENDPOINT", "oss-ap-southeast-1.aliyuncs.com"), "OSS endpoint")
 	flag.Usage = func() {
-		fmt.Fprintf(flag.CommandLine.Output(), "usage: migrate [flags] <status|up|down|probe|import|compare>\n\n")
+		fmt.Fprintf(flag.CommandLine.Output(), "usage: migrate [flags] <status|up|down|grants|probe|import|compare>\n\n")
 		flag.PrintDefaults()
 	}
 	flag.Parse()
@@ -92,18 +93,25 @@ func run() error {
 			return err
 		}
 		store := dbstore.NewStore(database)
+		var gw migrate.Gateway
+		if url, key := os.Getenv("AIENVMGR_GATEWAY_URL"), os.Getenv("AIENVMGR_GATEWAY_ADMIN_KEY"); url != "" && key != "" {
+			gw = litellm.New(url, key)
+		}
 		if command == "compare" {
-			result, err := (&migrate.Comparer{Store: store, Objects: objects}).Run(ctx)
+			result, err := (&migrate.Comparer{Store: store, Objects: objects, Gateway: gw}).Run(ctx)
 			if err != nil {
 				return err
 			}
 			fmt.Println(result)
+			if !result.Clean() {
+				// The gate: a script that runs this before switching over
+				// stops here, and a person reading the exit code learns the
+				// same thing without parsing the text.
+				os.Exit(2)
+			}
 			return nil
 		}
-		im := &migrate.Importer{Store: store, Objects: objects, Actor: "migrate import"}
-		if url, key := os.Getenv("AIENVMGR_GATEWAY_URL"), os.Getenv("AIENVMGR_GATEWAY_ADMIN_KEY"); url != "" && key != "" {
-			im.Gateway = litellm.New(url, key)
-		}
+		im := &migrate.Importer{Store: store, Objects: objects, Actor: "migrate import", Gateway: gw}
 		report, err := im.Run(ctx)
 		if err != nil {
 			return err
@@ -112,6 +120,12 @@ func run() error {
 		for _, w := range report.Warnings {
 			fmt.Println("  warning:", w)
 		}
+		return nil
+	case "grants":
+		if err := database.ApplyGrants(ctx); err != nil {
+			return err
+		}
+		fmt.Println("privilege grid applied")
 		return nil
 	case "status":
 		return status(ctx, database)

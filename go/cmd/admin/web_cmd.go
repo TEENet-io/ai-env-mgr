@@ -44,7 +44,11 @@ func cmdWeb(args []string) error {
 			OSSAccessKeyID:     os.Getenv("AIENVMGR_OSS_ACCESS_KEY_ID"),
 			OSSAccessKeySecret: os.Getenv("AIENVMGR_OSS_ACCESS_KEY_SECRET"),
 			FirstAdminEmail:    os.Getenv("AIENVMGR_FIRST_ADMIN_EMAIL"),
-			Worker:             os.Getenv("AIENVMGR_WORKER") != "off",
+			// Off unless asked for. During a migration the database is filled
+			// and compared while the old console is still live, and a Worker
+			// that started on its own would begin rewriting the objects those
+			// machines read.
+			Worker: os.Getenv("AIENVMGR_WORKER") == "on",
 		}
 	}
 	for i := 0; i < len(args); i++ {
@@ -130,7 +134,7 @@ func cmdWeb(args []string) error {
 		if opts.Database.Worker {
 			fmt.Println("database mode: sign in with an administrator account; the Worker runs in this process.")
 		} else {
-			fmt.Println("database mode: sign in with an administrator account; the Worker is OFF (AIENVMGR_WORKER=off), nothing reaches OSS or the gateway.")
+			fmt.Println("database mode: sign in with an administrator account; the Worker is OFF (set AIENVMGR_WORKER=on), nothing reaches OSS or the gateway.")
 		}
 	} else {
 		fmt.Println("sign in with the OSS credentials; they stay in this process's memory only.")

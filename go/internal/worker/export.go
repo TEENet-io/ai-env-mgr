@@ -66,16 +66,42 @@ func (h OSSExport) Run(ctx context.Context, task repo.Task) (Result, error) {
 	if err := json.Unmarshal(task.Payload, &payload); err != nil {
 		return Result{}, Permanent(fmt.Errorf("unreadable task payload: %w", err))
 	}
+	var subject string
 	switch {
 	case payload.PolicyVersion > 0:
-		return h.exportPolicy(ctx, payload.PolicyVersion)
+		subject = "policy"
 	case payload.DeviceID != "":
-		return h.exportBinding(ctx, payload.DeviceID)
+		subject = "device:" + payload.DeviceID
 	case payload.EmployeeID != "":
-		return h.exportEmployee(ctx, payload.EmployeeID)
+		subject = "employee:" + payload.EmployeeID
 	default:
 		return Result{}, Permanent(errors.New("the task says nothing about what to export"))
 	}
+
+	// One export per subject at a time, across every worker. The export reads
+	// the database and then writes an object the database cannot see; two of
+	// them interleaved -- a second worker, or one that took over an expired
+	// lease while the first was still writing -- can leave the older bytes in
+	// the bucket. The lock is held for the whole read-then-write.
+	var result Result
+	err := h.Store.InTx(ctx, func(tx repo.Store) error {
+		if err := tx.Lock(ctx, "oss_export:"+subject); err != nil {
+			return err
+		}
+		locked := h
+		locked.Store = tx
+		var err error
+		switch {
+		case payload.PolicyVersion > 0:
+			result, err = locked.exportPolicy(ctx, payload.PolicyVersion)
+		case payload.DeviceID != "":
+			result, err = locked.exportBinding(ctx, payload.DeviceID)
+		default:
+			result, err = locked.exportEmployee(ctx, payload.EmployeeID)
+		}
+		return err
+	})
+	return result, err
 }
 
 // exportPolicy writes the fleet policy.
