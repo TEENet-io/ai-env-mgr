@@ -2,8 +2,6 @@ package adminweb
 
 import (
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -536,48 +534,23 @@ func (b dbBackend) SaveQuotaDefaults(ctx context.Context, q litellm.Quota) error
 	return b.ops.SetQuotaDefaults(ctx, storedQuota(q), version, b.actor, b.requestID)
 }
 
-// PublishAgentUpdate uploads first and points the fleet second. The other
-// order is a fleet of agents retrying a download that is not there yet.
-func (b dbBackend) PublishAgentUpdate(ctx context.Context, version string, binary []byte, onProgress func(done, total int64)) (string, error) {
-	if version == "" {
-		return "", fmt.Errorf("a version is required")
-	}
-	if len(binary) == 0 {
-		return "", fmt.Errorf("the agent binary is empty")
-	}
-	sum := sha256.Sum256(binary)
-	hexsum := hex.EncodeToString(sum[:])
-	if err := admincore.PutReporting(b.objects, ossclient.AgentBinaryKey(), binary, onProgress); err != nil {
-		return "", fmt.Errorf("upload agent binary: %w", err)
-	}
-	if _, err := b.ops.SetAgentUpdate(ctx, version, hexsum, b.actor, b.requestID); err != nil {
-		return "", err
-	}
-	return hexsum, nil
+// PublishAgentUpdate is the legacy whole-package path. In the database mode
+// packages go through the spool and the version library (/releases), which
+// never holds a package in memory; this exists only to satisfy the backend
+// interface and refuses.
+func (b dbBackend) PublishAgentUpdate(context.Context, string, []byte, func(done, total int64)) (string, error) {
+	return "", errNoLegacyPublish
 }
+
+var errNoLegacyPublish = fmt.Errorf("publishing goes through the version library (/releases) in the database mode")
 
 func (b dbBackend) CancelAgentUpdate(ctx context.Context) error {
 	_, err := b.ops.SetAgentUpdate(ctx, "", "", b.actor, b.requestID)
 	return err
 }
 
-func (b dbBackend) PublishCodexUpdate(ctx context.Context, version string, installer []byte, onProgress func(done, total int64)) (string, error) {
-	if version == "" {
-		return "", fmt.Errorf("a version is required")
-	}
-	if len(installer) == 0 {
-		return "", fmt.Errorf("the Codex installer is empty")
-	}
-	sum := sha256.Sum256(installer)
-	hexsum := hex.EncodeToString(sum[:])
-	key := ossclient.CodexInstallerKey(version)
-	if err := admincore.PutReporting(b.objects, key, installer, onProgress); err != nil {
-		return "", fmt.Errorf("upload Codex installer: %w", err)
-	}
-	if _, err := b.ops.SetCodexUpdate(ctx, version, hexsum, key, b.actor, b.requestID); err != nil {
-		return "", err
-	}
-	return hexsum, nil
+func (b dbBackend) PublishCodexUpdate(context.Context, string, []byte, func(done, total int64)) (string, error) {
+	return "", errNoLegacyPublish
 }
 
 func (b dbBackend) CancelCodexUpdate(ctx context.Context) error {

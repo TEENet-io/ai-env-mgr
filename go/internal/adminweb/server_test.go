@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"os"
 	"strings"
 	"testing"
 	"time"
@@ -59,6 +60,18 @@ func (f *fakeStore) ListInfo(string) ([]ossclient.ObjectInfo, error) {
 	return nil, nil
 }
 func (f *fakeStore) Delete(key string) error { delete(f.objects, key); return nil }
+func (f *fakeStore) PutFile(key, path string, onProgress func(done, total int64)) error {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return err
+	}
+	if onProgress != nil {
+		onProgress(int64(len(data)), int64(len(data)))
+	}
+	f.objects[key] = data
+	return nil
+}
+
 func (f *fakeStore) Copy(src, dst string) error {
 	data, ok := f.objects[src]
 	if !ok {

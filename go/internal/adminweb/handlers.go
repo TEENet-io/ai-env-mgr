@@ -86,11 +86,15 @@ type pageData struct {
 	Job           *job                    // a publish in flight, or the last one
 
 	// Account pages.
-	Accounts      []accountRow
-	Show          string                 // the list filter: "", "active", "offboarded", "deleted"
-	Account       *accountRow            // the detail page's subject
-	Audit         []admincore.AuditEntry // that account's history, newest first
-	QuotaDefaults litellm.Quota          // pre-fills the onboarding form
+	Accounts []accountRow
+	Show     string // the list filter: "", "active", "offboarded", "deleted"
+
+	// Version library (database mode).
+	Artifacts     map[string][]artifactRow // by product
+	GlobalTargets map[string]string        // product -> the fleet policy's version
+	Account       *accountRow              // the detail page's subject
+	Audit         []admincore.AuditEntry   // that account's history, newest first
+	QuotaDefaults litellm.Quota            // pre-fills the onboarding form
 
 	// SLS says the deployment has a log project, which is what decides
 	// whether the nav offers the log page. Set centrally in render.

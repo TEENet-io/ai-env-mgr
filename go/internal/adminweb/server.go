@@ -198,6 +198,7 @@ func New(opts Options) (*Server, error) {
 		"usagepct": usagePercent,
 		"usagesev": usageSeverity,
 		"money":    func(v float64) string { return strconv.FormatFloat(v, 'f', 2, 64) },
+		"list":     func(xs ...string) []string { return xs },
 		"has": func(list []string, v string) bool {
 			for _, x := range list {
 				if x == v {
@@ -316,7 +317,12 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("/sites", s.requireSession(s.handleSites))
 	mux.HandleFunc("/settings", s.requireSession(s.handleSettings))
 	mux.HandleFunc("/log", s.requireSession(s.handleLog))
-	mux.HandleFunc("/rollout", s.requireSession(s.handleRollout))
+	if s.dbm != nil {
+		// The fleet-wide publish page is replaced by the version library.
+		mux.HandleFunc("/rollout", movedTo("/releases"))
+	} else {
+		mux.HandleFunc("/rollout", s.requireSession(s.handleRollout))
+	}
 	mux.HandleFunc("/logs", s.requireSession(s.handleLogs))
 
 	// Every state-changing route is POST + CSRF + redirect (see requirePost).
@@ -343,10 +349,19 @@ func (s *Server) Handler() http.Handler {
 	// version or hostname typed back (see confirmMatches) and writes an audit
 	// line, because these are the ones that make every machine run a binary or
 	// that cannot be undone.
-	mux.HandleFunc("/agent/publish", s.requirePost("/rollout", s.actionAgentPublish))
-	mux.HandleFunc("/agent/cancel", s.requirePost("/rollout", s.actionAgentCancel))
-	mux.HandleFunc("/codex/publish", s.requirePost("/rollout", s.actionCodexPublish))
-	mux.HandleFunc("/codex/cancel", s.requirePost("/rollout", s.actionCodexCancel))
+	if s.dbm == nil {
+		mux.HandleFunc("/agent/publish", s.requirePost("/rollout", s.actionAgentPublish))
+		mux.HandleFunc("/agent/cancel", s.requirePost("/rollout", s.actionAgentCancel))
+		mux.HandleFunc("/codex/publish", s.requirePost("/rollout", s.actionCodexPublish))
+		mux.HandleFunc("/codex/cancel", s.requirePost("/rollout", s.actionCodexCancel))
+	} else {
+		// In the database mode a package goes through the spool and the
+		// version library; the old routes, which held a whole package in
+		// memory, lead there.
+		for _, old := range []string{"/agent/publish", "/agent/cancel", "/codex/publish", "/codex/cancel"} {
+			mux.HandleFunc(old, movedTo("/releases"))
+		}
+	}
 	mux.HandleFunc("/machines/forget", s.requirePost("/overview", s.actionMachineForget))
 
 	// Database mode only: accounts, the authenticator, the queue, health.
@@ -359,6 +374,11 @@ func (s *Server) Handler() http.Handler {
 		mux.HandleFunc("/admins/enable", s.requirePost("/admins", s.actionAdminSetDisabled(false)))
 		mux.HandleFunc("/tasks", s.requireSession(s.handleTasks))
 		mux.HandleFunc("/tasks/reconcile", s.requirePostNotice("/tasks", s.actionReconcileNow))
+		mux.HandleFunc("/releases", s.requireSession(s.handleReleases))
+		mux.HandleFunc("/releases/upload", s.requirePost("/releases", s.actionReleaseUpload))
+		mux.HandleFunc("/releases/status", s.requirePost("/releases", s.actionReleaseStatus))
+		mux.HandleFunc("/releases/global", s.requirePost("/releases", s.actionReleaseGlobal))
+		mux.HandleFunc("/releases/global-clear", s.requirePost("/releases", s.actionReleaseGlobalClear))
 		mux.HandleFunc("/healthz", s.handleHealthz)
 	}
 	// Serve only assets/static, so the templates next to it are never handed

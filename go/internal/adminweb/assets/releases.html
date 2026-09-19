@@ -1,0 +1,76 @@
+{{define "releases.html"}}{{template "head" "发布更新"}}
+{{template "refresh-while-running" .}}
+<body>
+<div class="app">
+{{template "nav" .}}
+<main class="sheet">
+  <header class="pagehead"><h1>发布更新</h1></header>
+  {{template "notices" .}}
+
+  {{with .Job}}
+  <section class="panel job">
+    {{if .Running}}
+      <h3>正在处理 {{.Kind}} <span class="mono">{{.Version}}</span></h3>
+      {{if .Measured}}
+      <progress value="{{.Done}}" max="{{.Total}}">{{.Percent}}%</progress>
+      <p>{{.Step}} <span class="mono">{{.Percent}}%</span>
+        <span class="muted">{{.Sized}}</span>——已用时 {{.Elapsed}}。可以离开本页，上传在服务器上继续。</p>
+      {{else}}
+      <progress></progress>
+      <p>{{.Step}}——已用时 {{.Elapsed}}。可以离开本页，上传在服务器上继续。</p>
+      {{end}}
+    {{else if eq (printf "%s" .State) "failed"}}
+      <h3 class="bad">上传失败：{{.Kind}} <span class="mono">{{.Version}}</span></h3>
+      <p class="bad">{{.Err}}</p>
+    {{else}}
+      <h3 class="ok">已登记候选：{{.Kind}} <span class="mono">{{.Version}}</span></h3>
+      <p class="muted">耗时 {{.Elapsed}}。没有任何机器被改变；设为全局目标或创建发布任务才会下发。</p>
+    {{end}}
+  </section>
+  {{end}}
+
+  {{range $product := list "agent" "codex"}}
+  <h2>{{$product}}</h2>
+  <p class="dim">全局目标：{{with index $.GlobalTargets $product}}<span class="mono">{{.}}</span>
+    <form method="post" action="/releases/global-clear" class="inline"><input type="hidden" name="csrf" value="{{$.CSRF}}"><input type="hidden" name="product" value="{{$product}}"><button class="link">清除（尚未更新的机器停止尝试）</button></form>
+    {{else}}未设置{{end}}</p>
+  <div class="panel scroll"><table>
+    <thead><tr><th>版本</th><th>状态</th><th>大小</th><th>SHA-256</th><th>最低 agent</th><th>登记</th><th>验收</th><th>说明</th><th></th></tr></thead>
+    <tbody>{{range index $.Artifacts $product}}
+      <tr>
+        <td class="mono">{{.Version}}{{if .IsGlobal}} <span class="tag tag-ok">全局目标</span>{{end}}</td>
+        <td>{{.Status}}</td><td class="num">{{.SizeMB}} MB</td><td class="mono dim">{{slice .SHA256 0 12}}…</td>
+        <td class="mono">{{.MinAgentVersion}}</td><td class="dim">{{.CreatedBy}} {{.CreatedAt.Format "01-02 15:04"}}</td>
+        <td class="dim">{{if .AcceptedAt}}{{.AcceptedBy}}：{{.AcceptanceNote}}{{end}}</td><td>{{.Notes}}</td>
+        <td>
+          {{if ne (printf "%s" .Status) "retired"}}
+          <form method="post" action="/releases/status" class="inline"><input type="hidden" name="csrf" value="{{$.CSRF}}"><input type="hidden" name="id" value="{{.ID}}"><input type="hidden" name="status" value="accepted"><input name="note" placeholder="验收记录（测试机、日期）" size="18"><button class="link">登记验收</button></form>
+          <form method="post" action="/releases/global" class="inline"><input type="hidden" name="csrf" value="{{$.CSRF}}"><input type="hidden" name="product" value="{{$product}}"><input type="hidden" name="version" value="{{.Version}}"><input name="confirm" placeholder="输入版本号确认" size="12" autocomplete="off"><button class="link danger">设为全局目标</button></form>
+          <a href="/rollouts/new?artifact={{.ID}}">创建发布…</a>
+          <form method="post" action="/releases/status" class="inline"><input type="hidden" name="csrf" value="{{$.CSRF}}"><input type="hidden" name="id" value="{{.ID}}"><input type="hidden" name="status" value="retired"><button class="link">停用</button></form>
+          {{end}}
+        </td>
+      </tr>{{else}}<tr><td colspan="9" class="dim">还没有登记任何版本</td></tr>{{end}}
+    </tbody></table></div>
+  {{end}}
+
+  <h2>上传候选版本</h2>
+  <div class="caution">上传只把包放进版本库，<strong>不会改变任何机器</strong>。「设为全局目标」让所有只读全局策略的机器（含 1.2.16 以前的 agent）一起更新；「创建发布」只对选中的机器（agent 1.2.16 起）下发。</div>
+  <form method="post" action="/releases/upload" enctype="multipart/form-data" class="form">
+    <input type="hidden" name="csrf" value="{{.CSRF}}">
+    <label>产品<select name="product"><option value="agent">agent</option><option value="codex">codex</option></select></label>
+    <label>版本<input name="version" required placeholder="1.2.16"></label>
+    <label>最低 agent 版本<input name="min_agent" placeholder="1.2.16"></label>
+    <label class="wide">URL<input name="url" placeholder="https://github.com/…/releases/download/…"></label>
+    <label>GITHUB TOKEN（私有仓库，只用一次）<input name="token" type="password" autocomplete="off"></label>
+    <label>或选择文件<input type="file" name="file"></label>
+    <label class="wide">变更说明<textarea name="notes" rows="3"></textarea></label>
+    <button type="submit">上传候选</button>
+  </form>
+  <p class="hint">Codex 安装包约 700 MB，用 URL 让服务器直接拉取；包经本机 spool 目录分片上传，不占控制台内存。同一版本号只对应一个包，重新构建请换版本号。</p>
+
+  {{template "fleet" .}}
+</main>
+</div>
+</body>
+</html>{{end}}

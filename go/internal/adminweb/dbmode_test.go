@@ -58,7 +58,7 @@ func newDatabaseServer(t *testing.T) (*Server, *fakeStore) {
 		Database: &DatabaseOptions{
 			DSN: dsn, MasterKeyFile: keyFile,
 			OSSAccessKeyID: "server-key", OSSAccessKeySecret: "server-secret",
-			Worker: false,
+			Worker: false, SpoolDir: filepath.Join(t.TempDir(), "spool"),
 		},
 	}, func(config.Config) (store, error) { return fs, nil })
 	if err != nil {
@@ -197,7 +197,7 @@ func TestDatabaseModeSignInEnrolsThenOpensASession(t *testing.T) {
 		t.Fatal("the session is stored under the raw cookie value")
 	}
 
-	for _, path := range []string{"/overview", "/users", "/sites", "/settings", "/rollout", "/tasks", "/admins", "/account"} {
+	for _, path := range []string{"/overview", "/users", "/sites", "/settings", "/releases", "/tasks", "/admins", "/account"} {
 		rec := dbGet(t, h, path, session)
 		if rec.Code != http.StatusOK {
 			t.Errorf("%s = %d, want 200", path, rec.Code)

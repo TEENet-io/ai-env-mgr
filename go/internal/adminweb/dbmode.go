@@ -53,7 +53,15 @@ type DatabaseOptions struct {
 	// Worker runs the queue in this process. Off only for a second console
 	// instance that should serve pages and nothing else.
 	Worker bool
+
+	// SpoolDir is where a package sits between download and upload. Empty
+	// means /var/lib/ai-env-mgr/spool. It needs room for one Codex
+	// installer; the console's memory does not.
+	SpoolDir string
 }
+
+// defaultSpoolDir is where packages are staged when nothing else is set.
+const defaultSpoolDir = "/var/lib/ai-env-mgr/spool"
 
 // dbState is everything the database mode adds to the server.
 type dbState struct {
@@ -70,6 +78,7 @@ type dbState struct {
 	// else.
 	csrfKey []byte
 	worker  *worker.Worker
+	spool   string
 }
 
 // enrolCookie carries a pending authenticator enrolment between the sign-in
@@ -123,11 +132,21 @@ func (s *Server) openDatabaseMode(ctx context.Context, opts DatabaseOptions) err
 		return err
 	}
 
+	spool := opts.SpoolDir
+	if spool == "" {
+		spool = defaultSpoolDir
+	}
+	if err := os.MkdirAll(spool, 0o700); err != nil {
+		database.Close()
+		return fmt.Errorf("spool directory %s: %w", spool, err)
+	}
+
 	st := &dbState{
 		db: database, store: store, ring: ring, objects: objects,
 		ops:     ops.New(store),
 		auth:    authn.New(store.Admins(), ring, s.issuer()),
 		csrfKey: csrfKey,
+		spool:   spool,
 	}
 	if s.opts.SLSProject != "" {
 		st.sls = slsclient.New(s.opts.SLSEndpoint, s.opts.SLSProject, opts.OSSAccessKeyID, opts.OSSAccessKeySecret)
