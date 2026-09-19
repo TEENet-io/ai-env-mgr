@@ -36,6 +36,12 @@ func (f *fakeCodex) Install(path, version string) error {
 	return nil
 }
 
+// fleetCodexTarget is what a machine with no per-machine target sees.
+func fleetCodexTarget(pol model.Policy) model.ReleaseTarget {
+	_, t := effectiveTargets(pol, model.Binding{})
+	return t
+}
+
 func newCodexSyncer(t *testing.T, store *fakeStore, codex *fakeCodex) *Syncer {
 	t.Helper()
 	s := newSyncer(t, store, &fakeApplier{})
@@ -62,7 +68,8 @@ func TestCodexInstallsWhenEligible(t *testing.T) {
 	pol := codexPolicy(store, "26.810.52044-b1", []byte("setup"))
 
 	var errs []string
-	got, state := s.updateCodex(pol, &errs)
+	out := s.updateCodex(fleetCodexTarget(pol), &errs)
+	got, state := out.Version, out.State
 	if len(errs) > 0 {
 		t.Fatalf("unexpected errors: %v", errs)
 	}
@@ -88,7 +95,8 @@ func TestCodexRefusesAChecksumMismatch(t *testing.T) {
 	pol.CodexSHA256 = strings.Repeat("00", 32)
 
 	var errs []string
-	_, state := s.updateCodex(pol, &errs)
+	out := s.updateCodex(fleetCodexTarget(pol), &errs)
+	_, state := out.Version, out.State
 	if codex.installs != 0 {
 		t.Fatal("installed despite a checksum mismatch")
 	}
@@ -112,8 +120,8 @@ func TestCodexInstallsAnOlderPublishedVersion(t *testing.T) {
 	pol := codexPolicy(store, "1.0.0", []byte("older"))
 
 	var errs []string
-	if _, state := s.updateCodex(pol, &errs); state != CodexIdle {
-		t.Fatalf("state = %q", state)
+	if out := s.updateCodex(fleetCodexTarget(pol), &errs); out.State != CodexIdle {
+		t.Fatalf("state = %q", out.State)
 	}
 	if codex.installedVersion != "1.0.0" {
 		t.Fatalf("did not roll back: %q", codex.installedVersion)
@@ -127,7 +135,7 @@ func TestCodexSkipsWhenAlreadyOnTheTarget(t *testing.T) {
 	pol := codexPolicy(store, "1.0.0", []byte("setup"))
 
 	var errs []string
-	s.updateCodex(pol, &errs)
+	s.updateCodex(fleetCodexTarget(pol), &errs)
 	if codex.installs != 0 {
 		t.Fatal("reinstalled a version already present")
 	}
@@ -140,8 +148,8 @@ func TestCodexDoesNothingWithoutATarget(t *testing.T) {
 	s := newCodexSyncer(t, store, codex)
 
 	var errs []string
-	if _, state := s.updateCodex(model.Policy{}, &errs); state != CodexIdle {
-		t.Fatalf("state = %q", state)
+	if out := s.updateCodex(fleetCodexTarget(model.Policy{}), &errs); out.State != CodexIdle {
+		t.Fatalf("state = %q", out.State)
 	}
 	if codex.installs != 0 || len(errs) > 0 {
 		t.Fatalf("acted with no target: installs=%d errs=%v", codex.installs, errs)
@@ -157,7 +165,8 @@ func TestCodexDefersWhileInUse(t *testing.T) {
 	pol := codexPolicy(store, "1.0.0", []byte("setup"))
 
 	var errs []string
-	_, state := s.updateCodex(pol, &errs)
+	out := s.updateCodex(fleetCodexTarget(pol), &errs)
+	_, state := out.Version, out.State
 	if codex.installs != 0 {
 		t.Fatal("installed while Codex was running")
 	}
@@ -176,7 +185,8 @@ func TestCodexDefersWhenTheDiskIsFull(t *testing.T) {
 	pol := codexPolicy(store, "1.0.0", []byte("setup"))
 
 	var errs []string
-	_, state := s.updateCodex(pol, &errs)
+	out := s.updateCodex(fleetCodexTarget(pol), &errs)
+	_, state := out.Version, out.State
 	if codex.installs != 0 || state != CodexDeferred {
 		t.Fatalf("installs=%d state=%q", codex.installs, state)
 	}
@@ -191,15 +201,15 @@ func TestCodexTriesAFailedVersionOnce(t *testing.T) {
 	pol := codexPolicy(store, "1.0.0", []byte("setup"))
 
 	var errs []string
-	s.updateCodex(pol, &errs)
-	s.updateCodex(pol, &errs)
+	s.updateCodex(fleetCodexTarget(pol), &errs)
+	s.updateCodex(fleetCodexTarget(pol), &errs)
 	if codex.installs != 1 {
 		t.Fatalf("attempted %d times, want 1", codex.installs)
 	}
 
 	// A newly published version is attempted again.
 	pol2 := codexPolicy(store, "1.0.1", []byte("setup2"))
-	s.updateCodex(pol2, &errs)
+	s.updateCodex(fleetCodexTarget(pol2), &errs)
 	if codex.installs != 2 {
 		t.Fatalf("a new version was not attempted: installs=%d", codex.installs)
 	}
@@ -217,7 +227,8 @@ func TestCodexIgnoresTheRolloutField(t *testing.T) {
 	pol.CodexRolloutPct = 0
 
 	var errs []string
-	installed, state := s.updateCodex(pol, &errs)
+	out := s.updateCodex(fleetCodexTarget(pol), &errs)
+	installed, state := out.Version, out.State
 	if codex.installs != 1 {
 		t.Fatalf("rollout 0 blocked the install: installs=%d", codex.installs)
 	}

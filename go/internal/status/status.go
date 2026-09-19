@@ -36,8 +36,15 @@ type Report struct {
 	CodexVersion    string
 	CodexState      string
 	CodexRestart    CodexRestart
-	Warnings        []string
-	Errors          []string
+
+	CodexTarget           string
+	CodexTargetGeneration int
+	CodexDeferReason      string
+	AgentUpdateTarget     string
+	AgentUpdateGeneration int
+	AgentUpdateState      string
+	Warnings              []string
+	Errors                []string
 }
 
 // CodexRestart is the outcome of the console's one-shot restart request: the
@@ -62,28 +69,34 @@ func Build(r Report) model.Status {
 		users = []string{}
 	}
 	return model.Status{
-		Machine:             r.Machine,
-		BoundUser:           r.BoundUser,
-		LocalUsers:          users,
-		BoundUserExists:     r.BoundUserExists,
-		LastSync:            time.Now().UTC().Format(time.RFC3339),
-		AgentVersion:        r.Version,
-		PolicyETag:          r.PolicyETag,
-		CredsETag:           r.CredsETag,
-		BlockEnabled:        r.Policy.BlockEnabled,
-		BlockedDomains:      len(r.Policy.BlockedDomains),
-		SyncIntervalMinutes: r.Interval,
-		CredsApplied:        r.CredsApplied,
-		AppLockerMode:       AppLockerMode(),
-		CollectEnabled:      r.CollectEnabled,
-		CollectUploaded:     r.CollectUploaded,
-		CodexVersion:        r.CodexVersion,
-		CodexState:          r.CodexState,
-		CodexRestartNonce:   r.CodexRestart.Nonce,
-		CodexRestartAt:      r.CodexRestart.At,
-		CodexRestartNote:    r.CodexRestart.Note,
-		Warnings:            r.Warnings,
-		Errors:              errs,
+		Machine:               r.Machine,
+		BoundUser:             r.BoundUser,
+		LocalUsers:            users,
+		BoundUserExists:       r.BoundUserExists,
+		LastSync:              time.Now().UTC().Format(time.RFC3339),
+		AgentVersion:          r.Version,
+		PolicyETag:            r.PolicyETag,
+		CredsETag:             r.CredsETag,
+		BlockEnabled:          r.Policy.BlockEnabled,
+		BlockedDomains:        len(r.Policy.BlockedDomains),
+		SyncIntervalMinutes:   r.Interval,
+		CredsApplied:          r.CredsApplied,
+		AppLockerMode:         AppLockerMode(),
+		CollectEnabled:        r.CollectEnabled,
+		CollectUploaded:       r.CollectUploaded,
+		CodexVersion:          r.CodexVersion,
+		CodexState:            r.CodexState,
+		CodexRestartNonce:     r.CodexRestart.Nonce,
+		CodexRestartAt:        r.CodexRestart.At,
+		CodexRestartNote:      r.CodexRestart.Note,
+		CodexTarget:           r.CodexTarget,
+		CodexTargetGeneration: r.CodexTargetGeneration,
+		CodexDeferReason:      r.CodexDeferReason,
+		AgentUpdateTarget:     r.AgentUpdateTarget,
+		AgentUpdateGeneration: r.AgentUpdateGeneration,
+		AgentUpdateState:      r.AgentUpdateState,
+		Warnings:              r.Warnings,
+		Errors:                errs,
 	}
 }
 

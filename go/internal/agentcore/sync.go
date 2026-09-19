@@ -14,6 +14,7 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -129,6 +130,44 @@ const (
 	// codexRestartMarkerFile lives in codexrestart.go, beside what writes it.
 )
 
+// Agent self-update states, reported in status.
+const (
+	AgentUpdatePending = "pending" // fetched and verified; applied after this report
+	AgentUpdateFailed  = "failed"  // attempted in an earlier cycle and this is still the old binary
+)
+
+// effectiveTargets decides what this machine should be running. A target on
+// the binding replaces the fleet target for that product, even when it says
+// "nothing"; otherwise the fleet policy applies.
+func effectiveTargets(pol model.Policy, b model.Binding) (agent, codex model.ReleaseTarget) {
+	agent = model.ReleaseTarget{Version: pol.AgentUpdateVersion, SHA256: pol.AgentUpdateSHA256, Key: ossclient.AgentBinaryKey()}
+	if b.AgentTarget != nil {
+		agent = *b.AgentTarget
+		if agent.Key == "" {
+			agent.Key = ossclient.AgentBinaryKey()
+		}
+	}
+	codex = model.ReleaseTarget{Version: pol.CodexVersion, SHA256: pol.CodexSHA256, Key: pol.CodexKey}
+	if b.CodexTarget != nil {
+		codex = *b.CodexTarget
+	}
+	return agent, codex
+}
+
+// targetMarker is what the one-attempt markers record: the version and the
+// generation, so a new generation of the same version is a new attempt.
+func targetMarker(t model.ReleaseTarget) string {
+	return t.Version + "@" + strconv.Itoa(t.Generation)
+}
+
+// markerMatches reports whether a stored marker refers to this target.
+// Agents before 1.2.16 wrote the bare version; for a fleet target
+// (generation 0) that still means "tried", so an upgraded machine does not
+// take one more run at a package it already refused.
+func markerMatches(marker string, t model.ReleaseTarget) bool {
+	return marker == targetMarker(t) || (t.Generation == 0 && marker == t.Version)
+}
+
 // Updater replaces the running agent binary with a newer one and restarts the
 // service. It is a platform-specific side effect (Windows renames the exe and
 // restarts the service), injected so the sync logic stays testable.
@@ -225,19 +264,23 @@ func (s *Syncer) DueForSync(interval time.Duration) bool {
 	return elapsed >= interval
 }
 
-// loadBinding reads which employee this machine serves.
+// loadBinding reads which employee this machine serves, and the machine's
+// release targets, which ride on the same object.
+//
 // A missing binding is not an error: a freshly created machine simply has not
-// been assigned yet, and reports itself so the administrator can bind it.
+// been assigned yet, and reports itself so the administrator can bind it. An
+// object with no user is "not bound" too, but its targets still count: a
+// machine nobody is assigned to can still be told what to run.
 func (s *Syncer) loadBinding(machine string) (model.Binding, bool) {
 	data, _, err := s.Store.Get(ossclient.BindingKey(machine))
 	if err != nil {
 		return model.Binding{}, false
 	}
 	var b model.Binding
-	if err := json.Unmarshal(data, &b); err != nil || b.User == "" {
+	if err := json.Unmarshal(data, &b); err != nil {
 		return model.Binding{}, false
 	}
-	return b, true
+	return b, b.User != ""
 }
 
 // RunOnce performs one full cycle: apply the machine-wide block policy, work
@@ -416,13 +459,14 @@ func (s *Syncer) RunOnce() (model.Status, error) {
 	// ---- Codex desktop ----
 	// Before the agent's own update: a self-update restarts this process, and
 	// a Codex install interrupted halfway is worse than one that waits a cycle.
-	codexVersion, codexState := s.updateCodex(pol, &errs)
+	agentTarget, codexTarget := effectiveTargets(pol, binding)
+	codex := s.updateCodex(codexTarget, &errs)
 
 	// ---- self-update: download + verify ----
 	// The binary is fetched and checksummed now so any problem surfaces in this
 	// cycle's status, but it is applied only after status is uploaded (below),
 	// so the machine's pre-update state is recorded before the restart.
-	pendingUpdate := s.prepareUpdate(pol, &errs)
+	pendingUpdate, updateState := s.prepareUpdate(agentTarget, &errs)
 
 	// ---- status ----
 	interval := model.ClampInterval(pol.SyncIntervalMinutes, s.FallbackInterval)
@@ -439,13 +483,19 @@ func (s *Syncer) RunOnce() (model.Status, error) {
 		CredsApplied:    credsApplied,
 		CollectEnabled:  pol.CollectEnabled,
 		CollectUploaded: collectUploaded,
-		CodexVersion:    codexVersion,
-		CodexState:      codexState,
+		CodexVersion:    codex.Version,
+		CodexState:      codex.State,
 		CodexRestart: status.CodexRestart{
 			Nonce: codexRestart.Nonce, At: codexRestart.At, Note: codexRestart.Note,
 		},
-		Errors:   errs,
-		Warnings: warns,
+		CodexTarget:           codexTarget.Version,
+		CodexTargetGeneration: codexTarget.Generation,
+		CodexDeferReason:      codex.Reason,
+		AgentUpdateTarget:     agentTarget.Version,
+		AgentUpdateGeneration: agentTarget.Generation,
+		AgentUpdateState:      updateState,
+		Errors:                errs,
+		Warnings:              warns,
 	})
 
 	if out, err := status.Marshal(st); err != nil {
@@ -471,9 +521,9 @@ func (s *Syncer) RunOnce() (model.Status, error) {
 	// The target is marked before applying so a binary that fails to take does
 	// not loop: the admin must publish a new version (or clear it) to retry.
 	if pendingUpdate != nil {
-		s.writeMarker(updateMarkerFile, pol.AgentUpdateVersion)
+		s.writeMarker(updateMarkerFile, targetMarker(agentTarget))
 		if err := s.Updater.ApplyUpdate(pendingUpdate); err != nil {
-			return st, fmt.Errorf("apply update to %s: %w", pol.AgentUpdateVersion, err)
+			return st, fmt.Errorf("apply update to %s: %w", agentTarget.Version, err)
 		}
 		// On success the process is being replaced and restarted; the next
 		// cycle runs from the new binary and reports the new version.
@@ -482,29 +532,32 @@ func (s *Syncer) RunOnce() (model.Status, error) {
 	return st, nil
 }
 
-// prepareUpdate downloads and verifies the targeted agent binary, returning the
-// bytes to apply or nil. It applies nothing itself. A checksum mismatch or a
-// fetch failure is appended to errs so it shows up in this cycle's status, and
-// a target already attempted is skipped so a bad binary cannot crash-loop the
-// machine.
-func (s *Syncer) prepareUpdate(pol model.Policy, errs *[]string) []byte {
-	if pol.AgentUpdateVersion == "" || pol.AgentUpdateVersion == s.Version || s.Updater == nil {
-		return nil
+// prepareUpdate downloads and verifies the targeted agent binary, returning
+// the bytes to apply (or nil) and the state to report. It applies nothing
+// itself. A checksum mismatch or a fetch failure is appended to errs so it
+// shows up in this cycle's status, and a target already attempted is skipped
+// so a bad binary cannot crash-loop the machine.
+func (s *Syncer) prepareUpdate(target model.ReleaseTarget, errs *[]string) ([]byte, string) {
+	if target.Version == "" || target.Version == s.Version || s.Updater == nil {
+		return nil, ""
 	}
-	if s.readMarker(updateMarkerFile) == pol.AgentUpdateVersion {
-		return nil
+	if markerMatches(s.readMarker(updateMarkerFile), target) {
+		// Tried already and this is still the old binary: the update did not
+		// take. Say so every cycle until the console moves the generation.
+		return nil, AgentUpdateFailed
 	}
-	data, _, err := s.Store.Get(ossclient.AgentBinaryKey())
+	data, _, err := s.Store.Get(target.Key)
 	if err != nil {
 		*errs = append(*errs, fmt.Sprintf("update: fetch binary: %v", err))
-		return nil
+		return nil, AgentUpdateFailed
 	}
 	sum := sha256.Sum256(data)
-	if got := hex.EncodeToString(sum[:]); !strings.EqualFold(got, pol.AgentUpdateSHA256) {
-		*errs = append(*errs, fmt.Sprintf("update: checksum mismatch (got %s, want %s); not applying", got, pol.AgentUpdateSHA256))
-		return nil
+	if got := hex.EncodeToString(sum[:]); !strings.EqualFold(got, target.SHA256) {
+		*errs = append(*errs, fmt.Sprintf("update: checksum mismatch (got %s, want %s); not applying", got, target.SHA256))
+		s.writeMarker(updateMarkerFile, targetMarker(target)) // one attempt per generation, like Codex
+		return nil, AgentUpdateFailed
 	}
-	return data
+	return data, AgentUpdatePending
 }
 
 // UploadLog stores the recent agent log for this machine so the admin can read

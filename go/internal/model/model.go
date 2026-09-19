@@ -136,6 +136,26 @@ type Binding struct {
 	RestartCodex string `json:"restartCodex,omitempty"` // nonce
 	// RestartCodexAt is when the console asked, for display only.
 	RestartCodexAt string `json:"restartCodexAt,omitempty"` // RFC3339
+
+	// AgentTarget and CodexTarget are this machine's release targets (agent
+	// 1.2.16+). Present, they REPLACE the fleet-wide target in policy.json
+	// for this machine -- a present target with an empty Version means "this
+	// machine: nothing". Absent, the fleet policy applies as before, which is
+	// what every binding object already in the bucket says. Older agents
+	// ignore the fields.
+	AgentTarget *ReleaseTarget `json:"agentTarget,omitempty"`
+	CodexTarget *ReleaseTarget `json:"codexTarget,omitempty"`
+}
+
+// ReleaseTarget is one product's target for one machine: the version, the
+// checksum the download must match, where the package is, and a generation
+// that the machine echoes back so the console can tell which decision a
+// report is about. A new generation of the same version is a new attempt.
+type ReleaseTarget struct {
+	Version    string `json:"version"`
+	SHA256     string `json:"sha256"`
+	Key        string `json:"key,omitempty"` // object key; empty = the product's default key
+	Generation int    `json:"generation"`
 }
 
 // Status is written by the agent to agent_workdir/_status/{machine}.json
@@ -185,6 +205,19 @@ type Status struct {
 	// "deferred" (Codex was in use, or the disk was too full) or "failed".
 	CodexVersion string `json:"codexVersion,omitempty"`
 	CodexState   string `json:"codexState,omitempty"`
+
+	// The targets this machine acted on in this cycle, with their
+	// generation, so the console can tell which decision a report answers.
+	// CodexDeferReason says why an eligible install waited: "in_use" or
+	// "disk". AgentUpdateState is "pending" when a verified binary is about
+	// to be applied after this report, and "failed" when an earlier cycle
+	// tried this generation and this is still the old binary.
+	CodexTarget           string `json:"codexTarget,omitempty"`
+	CodexTargetGeneration int    `json:"codexTargetGeneration,omitempty"`
+	CodexDeferReason      string `json:"codexDeferReason,omitempty"`
+	AgentUpdateTarget     string `json:"agentUpdateTarget,omitempty"`
+	AgentUpdateGeneration int    `json:"agentUpdateGeneration,omitempty"`
+	AgentUpdateState      string `json:"agentUpdateState,omitempty"`
 
 	// CodexRestartNonce is the last Binding.RestartCodex this machine acted
 	// on. The console compares it with the nonce it wrote: equal means the
