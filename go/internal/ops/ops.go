@@ -55,6 +55,15 @@ const (
 	ActionUnbind        = "machine.unbind"
 	ActionRestartCodex  = "machine.codex_restart"
 	ActionPublishPolicy = "policy.publish"
+
+	ActionArtifactRegister = "release.artifact_register"
+	ActionArtifactStatus   = "release.artifact_status"
+	ActionGlobalTarget     = "release.global_target"
+	ActionRolloutCreate    = "release.rollout_create"
+	ActionRolloutPause     = "release.rollout_pause"
+	ActionRolloutCancel    = "release.rollout_cancel"
+	ActionTargetExclude    = "release.target_exclude"
+	ActionTargetRetry      = "release.target_retry"
 )
 
 // OnboardSpec is everything opening an account needs.
