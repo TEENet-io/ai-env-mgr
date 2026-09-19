@@ -70,7 +70,8 @@ your-bucket/
     │   └── ...                          一台机器一个文件，按主机名命名
     │
     ├── _agent/                          agent 自更新用（agent 只读，见 §7）
-    │   └── agent.exe                    管理员发布的新版二进制
+    │   ├── agent.exe                    当前全局目标的服务端副本（控制台复制，不再由人直接上传）
+    │   └── {版本}/agent.exe             版本库按版本留存
     │
     ├── _codex/                          Codex 桌面版分发（agent 只读，见 §7b）
     │   └── codex-setup-{版本}.exe       按版本留存，便于回滚
@@ -364,7 +365,23 @@ agent_workdir/work1/data_collect/.codex/sessions/{y}/{m}/{d}/rollout-....jsonl
 
 **权限**:agent 对 `_agent/*` 只需 **GetObject**(读)。`dist/ram-policy-agent.json` 已含这条。**只给读,绝不给写**——给了写就等于任何一台机器都能往这里塞一个所有机器都会执行的二进制。
 
-**风险与边界**(见 `操作手册`):`policy.json` 全局 → **所有机器一起更新**,无灰度;**无自动回滚**。所以:**新 agent 先在一台机器上手动验证能跑,再 `admin agent publish`**;出事用 `admin agent cancel` 急停,并手动把 `agent.exe.old` 换回。
+**风险与边界**(见 `操作手册`):`policy.json` 全局 → **所有只读全局策略的机器一起更新**,无灰度;**无自动回滚**。所以:**新 agent 先在测试机验收,再"设为全局目标"**;出事在版本库页"清除"急停,并手动把 `agent.exe.old` 换回。
+
+### 7.1 版本库之后(控制台数据库模式,2026-09-19 起)
+
+- 每个上传的 agent 包按版本存 `_agent/{版本}/agent.exe`,登记进库(版本、SHA-256、大小);**同一版本号只对应一个包**,重新构建要换号。
+- "设为全局目标"只改 `policy.json`;Worker 在每次导出策略前把该版本**服务端复制**到 `_agent/agent.exe`,所以旧 Agent 读的还是固定 key,内容永远和策略里的 SHA-256 一致。回滚 = 把全局目标设回旧版本,不重传。
+- **按机目标**(agent 1.2.16 起):`_bindings/<机器>` 里可带 `agentTarget` / `codexTarget`:
+
+  | 字段 | 含义 |
+  |---|---|
+  | `version` | 目标版本;**空 = 本机不装**(即使全局策略有目标) |
+  | `sha256` | 包的 SHA-256 |
+  | `key` | 包的对象 key(agent 为空时用固定 key) |
+  | `generation` | 代次。同一版本换代次 = 再试一次;agent 在状态里回报它,控制台据此知道一份回执属于哪次决定 |
+
+  字段**存在即覆盖**全局目标,不存在则沿用全局策略;1.2.16 以前的 agent 忽略它们。未绑定员工的机器也可以有目标(对象里 `user` 为空)。RAM 授权不变:agent 读 `_bindings/*`、`_agent/*`、`_codex/*`。
+- agent 的状态多了 `agentUpdateTarget/agentUpdateGeneration/agentUpdateState`、`codexTarget/codexTargetGeneration/codexDeferReason`,控制台按它们结算设备目标:实际版本 = 目标版本且报告晚于目标创建 → 成功;同代次报 `failed` → 失败;延后/下载中/离线 → 保持待执行。
 
 ---
 
