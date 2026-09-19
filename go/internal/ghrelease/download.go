@@ -7,11 +7,13 @@
 package ghrelease
 
 import (
-	"bytes"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
+	"os"
 	"regexp"
 	"strings"
 	"time"
@@ -45,22 +47,68 @@ func Fetch(url, token string, timeout time.Duration) ([]byte, error) {
 
 // FetchProgress is Fetch, reporting bytes as they arrive.
 //
-// onProgress is called with what has been read and the total the server
-// declared, which is -1 when it declared none. It exists because the caller is
-// a web page watching a ~700 MB transfer: elapsed seconds alone cannot tell a
-// slow download from a stalled one.
+// It goes through a temporary file: the streaming path is the one
+// implementation, and the callers that want bytes (the CLI, packages of a
+// few megabytes) read them back. onProgress is called with what has been
+// read and the total the server declared, -1 when it declared none.
 func FetchProgress(url, token string, timeout time.Duration, onProgress func(done, total int64)) ([]byte, error) {
-	client := &http.Client{Timeout: timeout}
-
-	if m := browserURL.FindStringSubmatch(url); m != nil {
-		owner, repo, tag, name := m[1], m[2], m[3], m[4]
-		assetURL, err := assetAPIURL(client, owner, repo, tag, name, token)
-		if err != nil {
-			return nil, err
-		}
-		url = assetURL
+	tmp, err := os.CreateTemp("", "ghrelease-*")
+	if err != nil {
+		return nil, err
 	}
-	return get(client, url, token, onProgress)
+	name := tmp.Name()
+	tmp.Close()
+	defer os.Remove(name)
+	if _, err := FetchToFile(url, token, timeout, name, 0, onProgress); err != nil {
+		return nil, err
+	}
+	return os.ReadFile(name)
+}
+
+// Fetched describes a download that reached disk whole.
+type Fetched struct {
+	SHA256 string // hex
+	Size   int64
+}
+
+// FetchToFile downloads url to dest, hashing as it goes, and never holds
+// more than a buffer of the body in memory. It refuses a body larger than
+// maxBytes (0 = no limit) and removes dest on any failure, so a caller
+// either has a complete, checksummed file or nothing.
+//
+// A partial file is worse than none: the next step uploads what is on disk,
+// and a truncated installer with a checksum computed over the truncation
+// would pass every check on the way to a desktop.
+func FetchToFile(url, token string, timeout time.Duration, dest string, maxBytes int64, onProgress func(done, total int64)) (Fetched, error) {
+	client := &http.Client{Timeout: timeout}
+	resolved, err := resolveAssetURL(client, url, token)
+	if err != nil {
+		return Fetched{}, err
+	}
+	f, err := os.OpenFile(dest, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o600)
+	if err != nil {
+		return Fetched{}, err
+	}
+	sum := sha256.New()
+	size, err := get(client, resolved, token, maxBytes, io.MultiWriter(f, sum), onProgress)
+	if closeErr := f.Close(); err == nil {
+		err = closeErr
+	}
+	if err != nil {
+		os.Remove(dest)
+		return Fetched{}, err
+	}
+	return Fetched{SHA256: hex.EncodeToString(sum.Sum(nil)), Size: size}, nil
+}
+
+// resolveAssetURL turns a browser-style release URL into the API asset URL
+// a private repository needs; any other URL is returned as it is.
+func resolveAssetURL(client *http.Client, url, token string) (string, error) {
+	m := browserURL.FindStringSubmatch(url)
+	if m == nil {
+		return url, nil
+	}
+	return assetAPIURL(client, m[1], m[2], m[3], m[4], token)
 }
 
 // assetAPIURL asks the API for the download URL of one named asset.
@@ -118,13 +166,13 @@ func assetAPIURL(client *http.Client, owner, repo, tag, name, token string) (str
 		tag, name, strings.Join(names, ", "))
 }
 
-func get(client *http.Client, url, token string, onProgress func(done, total int64)) ([]byte, error) {
+func get(client *http.Client, url, token string, maxBytes int64, w io.Writer, onProgress func(done, total int64)) (int64, error) {
 	if !strings.HasPrefix(url, "https://") && !strings.HasPrefix(url, "http://") {
-		return nil, fmt.Errorf("the URL must start with http:// or https://")
+		return 0, fmt.Errorf("the URL must start with http:// or https://")
 	}
 	req, err := http.NewRequest(http.MethodGet, url, nil)
 	if err != nil {
-		return nil, err
+		return 0, err
 	}
 	// octet-stream is what makes the API return the asset itself rather than
 	// its JSON description.
@@ -134,36 +182,39 @@ func get(client *http.Client, url, token string, onProgress func(done, total int
 	}
 	resp, err := client.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("download: %w", err)
+		return 0, fmt.Errorf("download: %w", err)
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
 		if resp.StatusCode == http.StatusNotFound && token == "" {
-			return nil, fmt.Errorf("the download returned 404; a private release also needs a token")
+			return 0, fmt.Errorf("the download returned 404; a private release also needs a token")
 		}
-		return nil, fmt.Errorf("the download returned HTTP %d", resp.StatusCode)
+		return 0, fmt.Errorf("the download returned HTTP %d", resp.StatusCode)
 	}
 	if ct := resp.Header.Get("Content-Type"); strings.HasPrefix(ct, "text/html") {
-		return nil, fmt.Errorf("the download returned HTML rather than a file, "+
+		return 0, fmt.Errorf("the download returned HTML rather than a file, "+
 			"which usually means an auth wall (Content-Type %q)", ct)
 	}
-	if onProgress == nil {
-		return io.ReadAll(resp.Body)
+	if maxBytes > 0 && resp.ContentLength > maxBytes {
+		return 0, fmt.Errorf("the download is %d MB, larger than the %d MB limit", resp.ContentLength>>20, maxBytes>>20)
 	}
-	// Size the buffer from Content-Length when the server gave one, so a
-	// 700 MB asset is not grown by repeated reallocation.
-	var buf bytes.Buffer
-	if resp.ContentLength > 0 {
-		buf.Grow(int(resp.ContentLength))
+	var body io.Reader = resp.Body
+	if onProgress != nil {
+		onProgress(0, resp.ContentLength)
+		body = &countingReader{r: resp.Body, total: resp.ContentLength, report: onProgress}
 	}
-	onProgress(0, resp.ContentLength)
-	if _, err := io.Copy(&buf, &countingReader{
-		r: resp.Body, total: resp.ContentLength, report: onProgress,
-	}); err != nil {
-		return nil, fmt.Errorf("download: %w", err)
+	if maxBytes > 0 {
+		body = io.LimitReader(body, maxBytes+1)
 	}
-	return buf.Bytes(), nil
+	n, err := io.Copy(w, body)
+	if err != nil {
+		return n, fmt.Errorf("download: %w", err)
+	}
+	if maxBytes > 0 && n > maxBytes {
+		return n, fmt.Errorf("the download is larger than the %d MB limit", maxBytes>>20)
+	}
+	return n, nil
 }
 
 // countingReader reports progress as it is read through.

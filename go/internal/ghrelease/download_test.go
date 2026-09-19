@@ -1,10 +1,15 @@
 package ghrelease
 
 import (
+	"bytes"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -121,5 +126,47 @@ func TestHTMLIsRejected(t *testing.T) {
 	if _, err := Fetch(srv.URL+"/x", "", 10*time.Second); err == nil ||
 		!strings.Contains(err.Error(), "HTML") {
 		t.Fatalf("HTML was accepted as a download: %v", err)
+	}
+}
+
+func TestFetchToFileStreamsAndChecksums(t *testing.T) {
+	payload := bytes.Repeat([]byte("codex"), 200_000) // ~1 MB
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/octet-stream")
+		w.Write(payload)
+	}))
+	defer srv.Close()
+
+	dest := filepath.Join(t.TempDir(), "pkg.bin")
+	var last int64
+	got, err := FetchToFile(srv.URL+"/x", "", time.Minute, dest, 10<<20, func(done, total int64) { last = done })
+	if err != nil {
+		t.Fatalf("FetchToFile: %v", err)
+	}
+	sum := sha256.Sum256(payload)
+	if got.SHA256 != hex.EncodeToString(sum[:]) || got.Size != int64(len(payload)) {
+		t.Fatalf("got %+v", got)
+	}
+	if last != int64(len(payload)) {
+		t.Fatalf("progress ended at %d, want %d", last, len(payload))
+	}
+	onDisk, _ := os.ReadFile(dest)
+	if !bytes.Equal(onDisk, payload) {
+		t.Fatal("the file on disk is not what was served")
+	}
+}
+
+func TestFetchToFileRefusesOversizeAndCleansUp(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Write(bytes.Repeat([]byte("x"), 4096))
+	}))
+	defer srv.Close()
+	dest := filepath.Join(t.TempDir(), "pkg.bin")
+	_, err := FetchToFile(srv.URL+"/x", "", time.Minute, dest, 1024, nil)
+	if err == nil || !strings.Contains(err.Error(), "larger than") {
+		t.Fatalf("err = %v, want an oversize refusal", err)
+	}
+	if _, statErr := os.Stat(dest); !os.IsNotExist(statErr) {
+		t.Fatal("a refused download must not leave a partial file behind")
 	}
 }
