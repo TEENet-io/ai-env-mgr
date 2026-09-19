@@ -204,6 +204,17 @@ const (
 // _agent/*), verify its checksum against the policy, then replace themselves.
 func AgentBinaryKey() string { return AgentPrefix + "agent.exe" }
 
+// AgentVersionKey is where one version of the agent binary is kept.
+//
+// AgentBinaryKey is the single object every agent in the field reads; this
+// is the versioned copy behind it. Setting a version as the fleet target
+// copies it to AgentBinaryKey server-side (see worker.OSSExport), so a
+// rollback is a copy rather than a re-upload, and the bytes a version name
+// refers to never change.
+func AgentVersionKey(version string) string {
+	return AgentPrefix + sanitiseSegment(version) + "/agent.exe"
+}
+
 // CodexPrefix holds the repackaged Codex desktop installers. Agents read it
 // (their RAM policy needs GetObject on _codex/*); only the administrator
 // writes here, via `admin codex publish`.
@@ -308,6 +319,37 @@ func (c *Client) PutProgress(key string, data []byte, onProgress func(done, tota
 	listener := &putProgress{report: onProgress}
 	if err := c.bucket.PutObject(key, bytes.NewReader(data), oss.Progress(listener)); err != nil {
 		return fmt.Errorf("put %q: %w", key, err)
+	}
+	return nil
+}
+
+// Copy duplicates an object inside the bucket without the bytes passing
+// through this process. Used to point the fixed agent key at a versioned
+// artifact.
+func (c *Client) Copy(src, dst string) error {
+	if _, err := c.bucket.CopyObject(src, dst); err != nil {
+		return fmt.Errorf("copy %q to %q: %w", src, dst, err)
+	}
+	return nil
+}
+
+// putFilePartSize is the multipart chunk. 16 MB keeps a 700 MB installer at
+// under fifty parts and bounds what is in memory at any moment to a few
+// parts, whatever the file size.
+const putFilePartSize = 16 << 20
+
+// PutFile uploads a local file in parts, reading it from disk as it goes.
+//
+// This is the only way a large package should ever reach the bucket from
+// the console: Put takes the whole object in memory, and the console runs
+// under a memory cap that a Codex installer alone would exceed.
+func (c *Client) PutFile(key, path string, onProgress func(done, total int64)) error {
+	options := []oss.Option{oss.Routines(3)}
+	if onProgress != nil {
+		options = append(options, oss.Progress(&putProgress{report: onProgress}))
+	}
+	if err := c.bucket.UploadFile(key, path, putFilePartSize, options...); err != nil {
+		return fmt.Errorf("upload %q to %q: %w", path, key, err)
 	}
 	return nil
 }

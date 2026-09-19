@@ -310,3 +310,18 @@ func TestDataCollectUserRoundTrip(t *testing.T) {
 		t.Fatalf("round trip: (%q,%q,%v) want (%q,%q,true)", gotUser, gotRel, ok, user, rel)
 	}
 }
+
+func TestAgentVersionKeyIsUnderTheAgentPrefix(t *testing.T) {
+	got := AgentVersionKey("1.2.16")
+	if got != "agent_workdir/_agent/1.2.16/agent.exe" {
+		t.Fatalf("AgentVersionKey = %q", got)
+	}
+	// The agent's RAM policy grants GetObject on _agent/*, so a versioned
+	// key must stay under that prefix or no machine could fetch it.
+	if !strings.HasPrefix(got, AgentPrefix) {
+		t.Fatalf("%q is outside %q", got, AgentPrefix)
+	}
+	if AgentVersionKey("../x") == "agent_workdir/_agent/../x/agent.exe" {
+		t.Fatal("a version must be sanitised like every other key segment")
+	}
+}
