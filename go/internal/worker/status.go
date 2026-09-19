@@ -72,6 +72,11 @@ func (h StatusImport) Run(ctx context.Context, _ repo.Task) (Result, error) {
 			continue
 		}
 		imported++
+		// What the machine says about its release targets is the only
+		// evidence they are ever settled on.
+		if err := settleTargets(ctx, h.Store, device.ID, status); err != nil {
+			return Result{}, err
+		}
 		lastSeen := time.Now().UTC()
 		if report.LastSyncAt != nil {
 			lastSeen = *report.LastSyncAt
