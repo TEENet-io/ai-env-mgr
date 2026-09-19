@@ -58,6 +58,7 @@ type Store interface {
 	Admins() Admins
 	LegacyIDs() LegacyIDs
 	Reports() Reports
+	Releases() Releases
 
 	// InTx runs fn in a transaction, committing if it returns nil. The Store
 	// passed to fn is the transactional one: using the outer Store inside fn
