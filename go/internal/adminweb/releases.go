@@ -30,6 +30,22 @@ type packageUploader interface {
 	PutFile(key, path string, onProgress func(done, total int64)) error
 }
 
+// packageHasher checksums an object already in the bucket without holding
+// it, for registering a package CI uploaded directly.
+type packageHasher interface {
+	Head(key string) (etag string, exists bool, err error)
+	HashObject(key string) (sha256hex string, size int64, err error)
+}
+
+// artifactKey is where a product's package of a version lives. CI uploads
+// to exactly these keys; the console registers whatever it finds there.
+func artifactKey(product, version string) string {
+	if product == repo.ProductCodex {
+		return ossclient.CodexInstallerKey(version)
+	}
+	return ossclient.AgentVersionKey(version)
+}
+
 // stagedPackage is a package on local disk, complete and checksummed.
 type stagedPackage struct {
 	Path   string
@@ -126,10 +142,7 @@ func (s *Server) actionReleaseUpload(sess *session, r *http.Request) error {
 	if err != nil {
 		return err
 	}
-	key := ossclient.AgentVersionKey(version)
-	if product == repo.ProductCodex {
-		key = ossclient.CodexInstallerKey(version)
-	}
+	key := artifactKey(product, version)
 	actor, requestID := sess.actor, s.clientKey(r)
 	ops := s.dbm.ops
 	return s.jobs.start(product, version, func(setStep func(string), setProgress func(done, total int64)) error {
@@ -153,6 +166,57 @@ func (s *Server) actionReleaseUpload(sess *session, r *http.Request) error {
 			return err
 		}
 		logAudit(requestID, "registered %s %s as a candidate (%d bytes, sha256 %s)", product, version, staged.Size, staged.SHA256)
+		return nil
+	})
+}
+
+// actionReleaseRegister registers a package that is already in the bucket at
+// the conventional key -- the path CI takes, so a 700 MB installer never
+// passes through this host. The object is read once to checksum it; nothing
+// is written to OSS and nobody is aimed at anything.
+func (s *Server) actionReleaseRegister(sess *session, r *http.Request) error {
+	product := formValue(r, "product")
+	version := strings.TrimSpace(formValue(r, "version"))
+	notes := formValue(r, "notes")
+	minAgent := strings.TrimSpace(formValue(r, "min_agent"))
+	if product != repo.ProductAgent && product != repo.ProductCodex {
+		return fmt.Errorf("choose agent or codex")
+	}
+	if version == "" {
+		return fmt.Errorf("a version is required")
+	}
+	if existing, err := s.dbm.store.Releases().ArtifactByVersion(r.Context(), product, version); err == nil {
+		return fmt.Errorf("%s %s is already registered (sha256 %s…)", product, version, existing.SHA256[:12])
+	} else if !errors.Is(err, repo.ErrNotFound) {
+		return err
+	}
+	hasher, ok := s.dbm.objects.(packageHasher)
+	if !ok {
+		return fmt.Errorf("the object store cannot checksum an object")
+	}
+	key := artifactKey(product, version)
+	if _, exists, err := hasher.Head(key); err != nil {
+		return err
+	} else if !exists {
+		return fmt.Errorf("nothing at %s; CI has not uploaded %s %s (or the version is spelled differently)", key, product, version)
+	}
+	actor, requestID := sess.actor, s.clientKey(r)
+	ops := s.dbm.ops
+	return s.jobs.start(product, version, func(setStep func(string), setProgress func(done, total int64)) error {
+		setStep("校验 OSS 里的包")
+		sum, size, err := hasher.HashObject(key)
+		if err != nil {
+			return err
+		}
+		setStep("登记版本")
+		_, err = ops.RegisterArtifact(context.Background(), repo.NewArtifact{
+			Product: product, Version: version, SHA256: sum, SizeBytes: size,
+			ObjectKey: key, Notes: notes, Source: "oss:" + key, MinAgentVersion: minAgent, CreatedBy: actor,
+		}, actor, requestID)
+		if err != nil {
+			return err
+		}
+		logAudit(requestID, "registered %s %s from %s as a candidate (%d bytes, sha256 %s)", product, version, key, size, sum)
 		return nil
 	})
 }

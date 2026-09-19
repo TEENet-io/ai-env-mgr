@@ -2,6 +2,8 @@ package adminweb
 
 import (
 	"bytes"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"net/http"
 	"net/http/httptest"
@@ -70,6 +72,20 @@ func (f *fakeStore) PutFile(key, path string, onProgress func(done, total int64)
 	}
 	f.objects[key] = data
 	return nil
+}
+
+func (f *fakeStore) Head(key string) (string, bool, error) {
+	_, ok := f.objects[key]
+	return "etag", ok, nil
+}
+
+func (f *fakeStore) HashObject(key string) (string, int64, error) {
+	data, ok := f.objects[key]
+	if !ok {
+		return "", 0, ossclient.ErrNotFound
+	}
+	sum := sha256.Sum256(data)
+	return hex.EncodeToString(sum[:]), int64(len(data)), nil
 }
 
 func (f *fakeStore) Copy(src, dst string) error {

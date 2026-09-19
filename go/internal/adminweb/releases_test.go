@@ -169,3 +169,44 @@ func TestUploadingACandidateRegistersItWithoutAimingAnyone(t *testing.T) {
 		t.Fatalf("spool not cleaned: %d file(s)", len(entries))
 	}
 }
+
+func TestRegisteringWhatCIUploadedReadsItOnceAndTouchesNothing(t *testing.T) {
+	s, fs := newDatabaseServer(t)
+	h := s.Handler()
+	cookie := signedIn(t, s)
+	csrf := csrfFrom(t, s, cookie, "/releases")
+	payload := bytes.Repeat([]byte("codex"), 4096)
+	fs.objects["agent_workdir/_codex/codex-setup-0.42.0.exe"] = payload
+	before := len(fs.objects)
+
+	// Nothing there yet for 0.43.0: refused before any job starts.
+	rec := dbPost(t, h, "/releases/register", url.Values{"csrf": {csrf}, "product": {"codex"}, "version": {"0.43.0"}}, cookie)
+	if !strings.Contains(rec.Header().Get("Location"), "err=") {
+		t.Fatal("registering a version CI has not uploaded must be refused")
+	}
+	rec = dbPost(t, h, "/releases/register", url.Values{"csrf": {csrf}, "product": {"codex"}, "version": {"0.42.0"}, "min_agent": {"1.2.16"}, "notes": {"from CI"}}, cookie)
+	if rec.Code != http.StatusSeeOther || strings.Contains(rec.Header().Get("Location"), "err=") {
+		t.Fatalf("register: %d %s", rec.Code, rec.Header().Get("Location"))
+	}
+	if !s.jobs.wait(10e9) {
+		t.Fatal("the job did not finish")
+	}
+	if snap := s.jobs.snapshot(); snap.Err != "" {
+		t.Fatalf("job failed: %s", snap.Err)
+	}
+	a, err := s.dbm.store.Releases().ArtifactByVersion(t.Context(), repo.ProductCodex, "0.42.0")
+	if err != nil {
+		t.Fatalf("not registered: %v", err)
+	}
+	sum := sha256.Sum256(payload)
+	if a.SHA256 != hex.EncodeToString(sum[:]) || a.SizeBytes != int64(len(payload)) || a.MinAgentVersion != "1.2.16" ||
+		a.ObjectKey != "agent_workdir/_codex/codex-setup-0.42.0.exe" || !strings.HasPrefix(a.Source, "oss:") {
+		t.Fatalf("artifact = %+v", a)
+	}
+	if len(fs.objects) != before {
+		t.Fatalf("registering must write nothing to the bucket: %d objects before, %d after", before, len(fs.objects))
+	}
+	if pol, _, _ := s.dbm.ops.CurrentPolicy(t.Context()); pol.CodexVersion != "" {
+		t.Fatal("registering must not aim the fleet")
+	}
+}

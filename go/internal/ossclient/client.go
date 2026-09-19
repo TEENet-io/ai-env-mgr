@@ -333,6 +333,24 @@ func (c *Client) Copy(src, dst string) error {
 	return nil
 }
 
+// HashObject reads an object once, streaming, and returns its SHA-256 and
+// size. Registering a package that CI put in the bucket directly needs the
+// checksum the agents will verify against, and the console must not hold
+// the package to compute it.
+func (c *Client) HashObject(key string) (sha256hex string, size int64, err error) {
+	rc, err := c.bucket.GetObject(key)
+	if err != nil {
+		return "", 0, fmt.Errorf("get %q: %w", key, classify(err))
+	}
+	defer rc.Close()
+	sum := sha256.New()
+	n, err := io.Copy(sum, rc)
+	if err != nil {
+		return "", 0, fmt.Errorf("read %q: %w", key, err)
+	}
+	return hex.EncodeToString(sum.Sum(nil)), n, nil
+}
+
 // putFilePartSize is the multipart chunk. 16 MB keeps a 700 MB installer at
 // under fifty parts and bounds what is in memory at any moment to a few
 // parts, whatever the file size.

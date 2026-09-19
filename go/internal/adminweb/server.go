@@ -376,6 +376,7 @@ func (s *Server) Handler() http.Handler {
 		mux.HandleFunc("/tasks/reconcile", s.requirePostNotice("/tasks", s.actionReconcileNow))
 		mux.HandleFunc("/releases", s.requireSession(s.handleReleases))
 		mux.HandleFunc("/releases/upload", s.requirePost("/releases", s.actionReleaseUpload))
+		mux.HandleFunc("/releases/register", s.requirePost("/releases", s.actionReleaseRegister))
 		mux.HandleFunc("/releases/status", s.requirePost("/releases", s.actionReleaseStatus))
 		mux.HandleFunc("/releases/global", s.requirePost("/releases", s.actionReleaseGlobal))
 		mux.HandleFunc("/releases/global-clear", s.requirePost("/releases", s.actionReleaseGlobalClear))

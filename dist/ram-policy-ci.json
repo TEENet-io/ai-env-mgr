@@ -1,0 +1,15 @@
+{
+  "Version": "1",
+  "Statement": [
+    {
+      "Effect": "Allow",
+      "Action": [
+        "oss:PutObject"
+      ],
+      "Resource": [
+        "acs:oss:*:*:your-bucket-name/agent_workdir/_agent/*/agent.exe",
+        "acs:oss:*:*:your-bucket-name/agent_workdir/_codex/codex-setup-*.exe"
+      ]
+    }
+  ]
+}

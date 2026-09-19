@@ -55,8 +55,19 @@
     </tbody></table></div>
   {{end}}
 
-  <h2>上传候选版本</h2>
-  <div class="caution">上传只把包放进版本库，<strong>不会改变任何机器</strong>。「设为全局目标」让所有只读全局策略的机器（含 1.2.16 以前的 agent）一起更新；「创建发布」只对选中的机器（agent 1.2.16 起）下发。</div>
+  <h2>登记 CI 已上传的包</h2>
+  <div class="caution">登记和上传都只把包放进版本库，<strong>不会改变任何机器</strong>。「设为全局目标」让所有只读全局策略的机器（含 1.2.16 以前的 agent）一起更新；「创建发布」只对选中的机器（agent 1.2.16 起）下发。</div>
+  <form method="post" action="/releases/register" class="form">
+    <input type="hidden" name="csrf" value="{{.CSRF}}">
+    <label>产品<select name="product"><option value="agent">agent</option><option value="codex">codex</option></select></label>
+    <label>版本<input name="version" required placeholder="26.901.51231-b8"></label>
+    <label>最低 agent 版本<input name="min_agent" placeholder="1.2.16"></label>
+    <label class="wide">变更说明<textarea name="notes" rows="2"></textarea></label>
+    <button type="submit">登记</button>
+  </form>
+  <p class="hint">CI 把包传到 <span class="mono">agent_workdir/_codex/codex-setup-&lt;版本&gt;.exe</span> 或 <span class="mono">agent_workdir/_agent/&lt;版本&gt;/agent.exe</span> 后，在这里按版本号登记；控制台流式读一遍算 SHA-256，包不经过这台机器。</p>
+
+  <h2>或由控制台拉取上传</h2>
   <form method="post" action="/releases/upload" enctype="multipart/form-data" class="form">
     <input type="hidden" name="csrf" value="{{.CSRF}}">
     <label>产品<select name="product"><option value="agent">agent</option><option value="codex">codex</option></select></label>
