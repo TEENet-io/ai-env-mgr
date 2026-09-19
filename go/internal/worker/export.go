@@ -21,6 +21,9 @@ type ObjectStore interface {
 	Get(key string) ([]byte, string, error)
 	Put(key string, data []byte) error
 	Delete(key string) error
+	// Copy duplicates an object server-side; the export uses it to put the
+	// chosen agent build behind the fixed key the fleet reads.
+	Copy(src, dst string) error
 }
 
 // ModelCatalog is the gateway's list of routable models, used to build the
@@ -117,6 +120,26 @@ func (h OSSExport) exportPolicy(ctx context.Context, requested int64) (Result, e
 	if err != nil {
 		return Result{}, err
 	}
+	var pol model.Policy
+	if err := json.Unmarshal(current.Content, &pol); err != nil {
+		return Result{}, Permanent(fmt.Errorf("policy version %d is not readable: %w", current.Version, err))
+	}
+	if pol.AgentUpdateVersion != "" {
+		artifact, err := h.Store.Releases().ArtifactByVersion(ctx, repo.ProductAgent, pol.AgentUpdateVersion)
+		switch {
+		case err == nil:
+			// Before the policy, every time: the fixed key must hold the
+			// build the policy names before any agent reads the policy.
+			if err := h.Objects.Copy(artifact.ObjectKey, ossclient.AgentBinaryKey()); err != nil {
+				return Result{}, ClassError("oss_copy", err)
+			}
+		case errors.Is(err, repo.ErrNotFound):
+			// A version set before the version library existed: the fixed
+			// key was written directly and is left as it is.
+		default:
+			return Result{}, err
+		}
+	}
 	if err := h.Objects.Put(ossclient.PolicyKey(), current.Content); err != nil {
 		return Result{}, ClassError("oss_write", err)
 	}
@@ -149,36 +172,50 @@ func (h OSSExport) exportBinding(ctx context.Context, deviceID string) (Result, 
 		return Result{Note: "forgotten"}, nil
 	}
 
+	object, err := h.machineTargets(ctx, device.ID)
+	if err != nil {
+		return Result{}, err
+	}
 	binding, err := h.Store.Bindings().Open(ctx, device.ID)
-	if errors.Is(err, repo.ErrNotFound) {
-		// Nobody is assigned to it. The agent reads the absence as "not
-		// assigned yet" and keeps applying the machine-wide policy, which is
-		// exactly right for a machine that has just been taken back.
+	unbound := errors.Is(err, repo.ErrNotFound)
+	if err != nil && !unbound {
+		return Result{}, err
+	}
+	if unbound && object.AgentTarget == nil && object.CodexTarget == nil {
+		// Nobody is assigned to it and nothing is aimed at it. The agent
+		// reads the absence as "not assigned yet" and keeps applying the
+		// machine-wide policy, which is exactly right for a machine that has
+		// just been taken back.
 		if err := h.Objects.Delete(ossclient.BindingKey(device.Hostname)); err != nil {
 			return Result{}, ClassError("oss_delete", err)
 		}
 		return Result{Note: "unbound"}, nil
 	}
-	if err != nil {
-		return Result{}, err
-	}
 
-	employee, err := h.Store.Employees().ByID(ctx, binding.EmployeeID)
-	if err != nil {
-		return Result{}, err
-	}
-	object := model.Binding{
-		User:    employee.WindowsUser,
-		BoundAt: binding.BoundAt.UTC().Format(time.RFC3339),
-		Note:    binding.Note,
-	}
-	// The one-shot Codex restart rides on the binding because it is the one
-	// object every agent already reads every cycle.
-	if binding.RestartNonce != "" {
-		object.RestartCodex = binding.RestartNonce
-		if binding.RestartAt != nil {
-			object.RestartCodexAt = binding.RestartAt.UTC().Format(time.RFC3339)
+	note := device.Hostname + " -> nobody"
+	if !unbound {
+		employee, err := h.Store.Employees().ByID(ctx, binding.EmployeeID)
+		if err != nil {
+			return Result{}, err
 		}
+		object.User = employee.WindowsUser
+		object.BoundAt = binding.BoundAt.UTC().Format(time.RFC3339)
+		object.Note = binding.Note
+		note = device.Hostname + " -> " + employee.WindowsUser
+		// The one-shot Codex restart rides on the binding because it is the
+		// one object every agent already reads every cycle.
+		if binding.RestartNonce != "" {
+			object.RestartCodex = binding.RestartNonce
+			if binding.RestartAt != nil {
+				object.RestartCodexAt = binding.RestartAt.UTC().Format(time.RFC3339)
+			}
+		}
+	}
+	if object.AgentTarget != nil {
+		note += fmt.Sprintf(", agent %s gen %d", object.AgentTarget.Version, object.AgentTarget.Generation)
+	}
+	if object.CodexTarget != nil {
+		note += fmt.Sprintf(", codex %s gen %d", object.CodexTarget.Version, object.CodexTarget.Generation)
 	}
 	data, err := json.MarshalIndent(object, "", "  ")
 	if err != nil {
@@ -187,7 +224,41 @@ func (h OSSExport) exportBinding(ctx context.Context, deviceID string) (Result, 
 	if err := h.Objects.Put(ossclient.BindingKey(device.Hostname), data); err != nil {
 		return Result{}, ClassError("oss_write", err)
 	}
-	return Result{Note: fmt.Sprintf("%s -> %s", device.Hostname, employee.WindowsUser)}, nil
+	return Result{Note: note}, nil
+}
+
+// machineTargets reads the open targets of one machine into binding fields.
+// A paused rollout's target is withheld: the machine sees nothing to do,
+// and the target stays pending for when the rollout resumes.
+func (h OSSExport) machineTargets(ctx context.Context, deviceID string) (model.Binding, error) {
+	var out model.Binding
+	for _, product := range []string{repo.ProductAgent, repo.ProductCodex} {
+		target, err := h.Store.Releases().OpenTarget(ctx, deviceID, product)
+		if errors.Is(err, repo.ErrNotFound) {
+			continue
+		}
+		if err != nil {
+			return out, err
+		}
+		rollout, err := h.Store.Releases().RolloutByID(ctx, target.RolloutID)
+		if err != nil {
+			return out, err
+		}
+		if rollout.PausedAt != nil {
+			continue
+		}
+		artifact, err := h.Store.Releases().ArtifactByID(ctx, target.ArtifactID)
+		if err != nil {
+			return out, err
+		}
+		rt := &model.ReleaseTarget{Version: artifact.Version, SHA256: artifact.SHA256, Key: artifact.ObjectKey, Generation: target.Generation}
+		if product == repo.ProductAgent {
+			out.AgentTarget = rt
+		} else {
+			out.CodexTarget = rt
+		}
+	}
+	return out, nil
 }
 
 // exportEmployee writes, or removes, one employee's credentials, and refreshes

@@ -59,6 +59,14 @@ func (f *fakeStore) ListInfo(string) ([]ossclient.ObjectInfo, error) {
 	return nil, nil
 }
 func (f *fakeStore) Delete(key string) error { delete(f.objects, key); return nil }
+func (f *fakeStore) Copy(src, dst string) error {
+	data, ok := f.objects[src]
+	if !ok {
+		return ossclient.ErrNotFound
+	}
+	f.objects[dst] = append([]byte(nil), data...)
+	return nil
+}
 func (f *fakeStore) SignedURL(string, time.Duration) (string, error) {
 	return "https://example.invalid/x", nil
 }

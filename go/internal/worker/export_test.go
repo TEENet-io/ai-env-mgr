@@ -24,6 +24,19 @@ type fakeObjects struct {
 	mu      sync.Mutex
 	objects map[string][]byte
 	putErr  error
+	copies  []string
+}
+
+func (f *fakeObjects) Copy(src, dst string) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	data, ok := f.objects[src]
+	if !ok {
+		return ossclient.ErrNotFound
+	}
+	f.objects[dst] = append([]byte(nil), data...)
+	f.copies = append(f.copies, src+" -> "+dst)
+	return nil
 }
 
 func newFakeObjects() *fakeObjects { return &fakeObjects{objects: map[string][]byte{}} }
@@ -324,5 +337,112 @@ func TestForgettingAMachineRemovesItsObjects(t *testing.T) {
 	}
 	if _, ok := objects.get(ossclient.StatusKey("DESKTOP-01")); ok {
 		t.Error("the status object survived forgetting")
+	}
+}
+
+func TestThePolicyExportCopiesTheChosenAgentBuildToTheFixedKey(t *testing.T) {
+	store, ctx := newWorkerStore(t)
+	objects := newFakeObjects()
+	objects.objects[ossclient.AgentVersionKey("1.2.16")] = []byte("agent 1.2.16")
+	if _, err := store.Releases().CreateArtifact(ctx, repo.NewArtifact{Product: repo.ProductAgent, Version: "1.2.16",
+		SHA256: strings.Repeat("a", 64), SizeBytes: 12, ObjectKey: ossclient.AgentVersionKey("1.2.16"), CreatedBy: "t"}); err != nil {
+		t.Fatal(err)
+	}
+	pol := model.DefaultPolicy()
+	pol.AgentUpdateVersion, pol.AgentUpdateSHA256 = "1.2.16", strings.Repeat("a", 64)
+	content, _ := json.Marshal(pol)
+	published, _ := store.Policies().Publish(ctx, content, "aim", "t")
+
+	h := OSSExport{Store: store, Objects: objects}
+	if _, err := h.Run(ctx, repo.Task{Kind: repo.TaskOSSExport,
+		Payload: mustJSON(t, map[string]any{"policy_version": published.Version})}); err != nil {
+		t.Fatalf("export: %v", err)
+	}
+	if got, _ := objects.get(ossclient.AgentBinaryKey()); string(got) != "agent 1.2.16" {
+		t.Fatalf("fixed key holds %q", got)
+	}
+	var written model.Policy
+	if got, _ := objects.get(ossclient.PolicyKey()); json.Unmarshal(got, &written) != nil || written.AgentUpdateVersion != "1.2.16" {
+		t.Fatalf("policy.json was not written after the copy: %s", got)
+	}
+	// The copy comes before the policy: a fleet pointed at a key that does
+	// not hold the build yet is a fleet failing checksums.
+	if len(objects.copies) != 1 {
+		t.Fatalf("copies = %v", objects.copies)
+	}
+}
+
+func TestTheBindingCarriesTheMachinesTargetsAndSurvivesUnbinding(t *testing.T) {
+	store, ctx := newWorkerStore(t)
+	objects := newFakeObjects()
+	device, _ := store.Devices().EnsureByHostname(ctx, "PC-7")
+	store.Devices().MarkSeen(ctx, device.ID, "1.2.16", time.Now())
+	a, err := store.Releases().CreateArtifact(ctx, repo.NewArtifact{Product: repo.ProductCodex, Version: "0.42.0",
+		SHA256: strings.Repeat("c", 64), SizeBytes: 1, ObjectKey: "agent_workdir/_codex/codex-setup-0.42.0.exe", CreatedBy: "t"})
+	if err != nil {
+		t.Fatalf("artifact: %v", err)
+	}
+	r, err := store.Releases().CreateRollout(ctx, repo.NewRollout{Product: repo.ProductCodex, ArtifactID: a.ID, Kind: repo.RolloutRelease, CreatedBy: "t"})
+	if err != nil {
+		t.Fatalf("rollout: %v", err)
+	}
+	target, err := store.Releases().CreateTarget(ctx, device.ID, repo.ProductCodex, a.ID, r.ID)
+	if err != nil {
+		t.Fatalf("target: %v", err)
+	}
+
+	h := OSSExport{Store: store, Objects: objects}
+	run := func() model.Binding {
+		t.Helper()
+		res, err := h.Run(ctx, repo.Task{Kind: repo.TaskOSSExport, Payload: mustJSON(t, map[string]any{"device_id": device.ID})})
+		if err != nil {
+			t.Fatalf("export: %v", err)
+		}
+		data, ok := objects.get(ossclient.BindingKey("PC-7"))
+		if !ok {
+			t.Fatalf("no binding object (export said %q)", res.Note)
+		}
+		var b model.Binding
+		json.Unmarshal(data, &b)
+		return b
+	}
+
+	// Unbound, but with a target: the object exists, with no user.
+	b := run()
+	if b.User != "" || b.CodexTarget == nil || b.CodexTarget.Version != "0.42.0" ||
+		b.CodexTarget.Generation != target.Generation || b.CodexTarget.SHA256 != a.SHA256 || b.CodexTarget.Key != a.ObjectKey {
+		t.Fatalf("unbound binding = %+v", b)
+	}
+	if b.AgentTarget != nil {
+		t.Fatal("no agent target was opened, so none may be written")
+	}
+
+	// Paused: the target is withheld, not cancelled. With nobody bound and
+	// nothing to say, the object goes; a bound machine would keep its
+	// binding minus the target.
+	store.Releases().SetRolloutPaused(ctx, r.ID, true, "t")
+	if _, err := h.Run(ctx, repo.Task{Kind: repo.TaskOSSExport, Payload: mustJSON(t, map[string]any{"device_id": device.ID})}); err != nil {
+		t.Fatalf("export while paused: %v", err)
+	}
+	if data, ok := objects.get(ossclient.BindingKey("PC-7")); ok {
+		var paused model.Binding
+		json.Unmarshal(data, &paused)
+		if paused.CodexTarget != nil {
+			t.Fatalf("a paused rollout must not reach the machine: %+v", paused)
+		}
+	}
+	if got, _ := store.Releases().TargetByID(ctx, target.ID); got.Status != repo.TargetPending {
+		t.Fatalf("pausing must not settle the target: %s", got.Status)
+	}
+	store.Releases().SetRolloutPaused(ctx, r.ID, false, "t")
+	if b = run(); b.CodexTarget == nil {
+		t.Fatal("resuming must put the target back")
+	}
+
+	// Finished: nothing left to say, and with nobody bound the object goes.
+	store.Releases().FinishTarget(ctx, target.ID, repo.TargetSucceeded, "", "0.42.0")
+	h.Run(ctx, repo.Task{Kind: repo.TaskOSSExport, Payload: mustJSON(t, map[string]any{"device_id": device.ID})})
+	if _, ok := objects.get(ossclient.BindingKey("PC-7")); ok {
+		t.Fatal("no user and no target: the binding object should be deleted")
 	}
 }

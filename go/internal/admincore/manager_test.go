@@ -94,6 +94,15 @@ func (f *fakeStore) Delete(key string) error {
 	return nil
 }
 
+func (f *fakeStore) Copy(src, dst string) error {
+	data, ok := f.objects[src]
+	if !ok {
+		return ossclient.ErrNotFound
+	}
+	f.objects[dst] = append([]byte(nil), data...)
+	return nil
+}
+
 // SignedURL stands in for OSS presigning: the real one produces an opaque
 // URL, and all the caller can meaningfully assert is that a link came back
 // for the right key with the right lifetime.

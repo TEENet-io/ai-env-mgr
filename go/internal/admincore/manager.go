@@ -34,6 +34,9 @@ type Store interface {
 	// summarise collected session data without downloading it.
 	ListInfo(prefix string) ([]ossclient.ObjectInfo, error)
 	Delete(key string) error
+	// Copy duplicates an object server-side. The export uses it to put the
+	// chosen agent build behind the fixed key the fleet reads.
+	Copy(src, dst string) error
 	// SignedURL grants temporary read access to one object without the
 	// holder needing credentials. Nothing in the console mints one today --
 	// the file-transfer page that did was removed -- but it stays on the
