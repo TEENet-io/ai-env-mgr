@@ -12,6 +12,7 @@ import (
 	"github.com/TEENet-io/ai-env-mgr/internal/ecdclient"
 	"github.com/TEENet-io/ai-env-mgr/internal/litellm"
 	"github.com/TEENet-io/ai-env-mgr/internal/model"
+	"github.com/TEENet-io/ai-env-mgr/internal/repo"
 	"github.com/TEENet-io/ai-env-mgr/internal/slsclient"
 )
 
@@ -92,9 +93,13 @@ type pageData struct {
 	// Version library (database mode).
 	Artifacts     map[string][]artifactRow // by product
 	GlobalTargets map[string]string        // product -> the fleet policy's version
-	Account       *accountRow              // the detail page's subject
-	Audit         []admincore.AuditEntry   // that account's history, newest first
-	QuotaDefaults litellm.Quota            // pre-fills the onboarding form
+	Rollouts      []rolloutView
+	Rollout       *rolloutView
+	Artifact      *repo.Artifact         // the "new rollout" page's subject
+	Candidates    []deviceCandidate      // machines to choose from
+	Account       *accountRow            // the detail page's subject
+	Audit         []admincore.AuditEntry // that account's history, newest first
+	QuotaDefaults litellm.Quota          // pre-fills the onboarding form
 
 	// SLS says the deployment has a log project, which is what decides
 	// whether the nav offers the log page. Set centrally in render.

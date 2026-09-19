@@ -379,6 +379,16 @@ func (s *Server) Handler() http.Handler {
 		mux.HandleFunc("/releases/status", s.requirePost("/releases", s.actionReleaseStatus))
 		mux.HandleFunc("/releases/global", s.requirePost("/releases", s.actionReleaseGlobal))
 		mux.HandleFunc("/releases/global-clear", s.requirePost("/releases", s.actionReleaseGlobalClear))
+		mux.HandleFunc("/rollouts", s.requireSession(s.handleRollouts))
+		mux.HandleFunc("/rollouts/new", s.requireSession(s.handleRolloutNew))
+		mux.HandleFunc("/rollouts/detail", s.requireSession(s.handleRolloutDetail))
+		mux.HandleFunc("/rollouts/create", s.requirePostBack(backToRollout, s.actionRolloutCreate))
+		mux.HandleFunc("/rollouts/pause", s.requirePostBack(backToRollout, s.actionRolloutPause))
+		mux.HandleFunc("/rollouts/resume", s.requirePostBack(backToRollout, s.actionRolloutResume))
+		mux.HandleFunc("/rollouts/cancel", s.requirePostBack(backToRollout, s.actionRolloutCancel))
+		mux.HandleFunc("/rollouts/exclude", s.requirePostBack(backToRollout, s.actionRolloutExclude))
+		mux.HandleFunc("/rollouts/retry", s.requirePostBack(backToRollout, s.actionRolloutRetry))
+		mux.HandleFunc("/rollouts/rollback", s.requirePostBack(backToRollout, s.actionRolloutRollback))
 		mux.HandleFunc("/healthz", s.handleHealthz)
 	}
 	// Serve only assets/static, so the templates next to it are never handed

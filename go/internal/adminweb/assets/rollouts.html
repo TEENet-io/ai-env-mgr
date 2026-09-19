@@ -1,0 +1,24 @@
+{{define "rollouts.html"}}{{template "head" "发布任务"}}
+<body>
+<div class="app">
+{{template "nav" .}}
+<main class="sheet">
+  <header class="pagehead"><h1>发布任务</h1></header>
+  {{template "notices" .}}
+  <p class="dim"><a href="/releases">← 版本库</a>。要新建任务，在版本库里选一个版本点「创建发布」。</p>
+  <div class="panel scroll"><table>
+    <thead><tr><th>创建</th><th>产品</th><th>版本</th><th>类型</th><th>成功</th><th>失败</th><th>待执行</th><th>已排除</th><th>状态</th><th>说明</th></tr></thead>
+    <tbody>{{range .Rollouts}}
+      <tr>
+        <td class="dim"><a href="/rollouts/detail?id={{.ID}}">{{.CreatedAt.Format "01-02 15:04"}}</a> {{.CreatedBy}}</td>
+        <td>{{.Product}}</td><td class="mono">{{.Artifact.Version}}</td>
+        <td>{{if eq (printf "%s" .Kind) "rollback"}}回滚{{else}}发布{{end}}</td>
+        <td class="num">{{.Summary.Succeeded}}</td><td class="num">{{.Summary.Failed}}</td><td class="num">{{.Summary.Pending}}</td><td class="num">{{.Summary.Excluded}}</td>
+        <td>{{if .Paused}}<span class="tag tag-warn">已暂停</span>{{else if .Summary.Complete}}<span class="tag tag-ok">已完成</span>{{else}}<span class="tag">进行中</span>{{end}}</td>
+        <td>{{.Note}}</td>
+      </tr>{{else}}<tr><td colspan="10" class="dim">还没有发布任务</td></tr>{{end}}
+    </tbody></table></div>
+</main>
+</div>
+</body>
+</html>{{end}}

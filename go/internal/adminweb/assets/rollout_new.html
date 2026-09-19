@@ -1,0 +1,32 @@
+{{define "rollout_new.html"}}{{template "head" "创建发布"}}
+<body>
+<div class="app">
+{{template "nav" .}}
+<main class="sheet">
+  <header class="pagehead"><h1>创建发布：{{.Artifact.Product}} <span class="mono">{{.Artifact.Version}}</span></h1></header>
+  {{template "notices" .}}
+  <p class="dim">状态 {{.Artifact.Status}}{{if .Artifact.MinAgentVersion}} · 最低 agent {{.Artifact.MinAgentVersion}}{{end}}{{if .Artifact.AcceptedAt}} · 验收：{{.Artifact.AcceptedBy}} {{.Artifact.AcceptanceNote}}{{end}}</p>
+  <div class="caution">只有勾选的机器会收到这个目标；范围是当时的快照，之后新增的机器不会自动加入。先选 1～2 台试发，观察一个工作日再扩大范围。</div>
+  <form method="post" action="/rollouts/create" class="form">
+    <input type="hidden" name="csrf" value="{{.CSRF}}">
+    <input type="hidden" name="product" value="{{.Artifact.Product}}">
+    <input type="hidden" name="artifact" value="{{.Artifact.ID}}">
+    <div class="panel scroll"><table>
+      <thead><tr><th></th><th>主机名</th><th>agent</th><th>codex</th><th>最后联系</th><th>能否下发</th></tr></thead>
+      <tbody>{{range .Candidates}}
+        <tr>
+          <td>{{if .Compatible}}<input type="checkbox" name="device" value="{{.ID}}">{{end}}</td>
+          <td class="id">{{.Hostname}}</td>
+          <td class="mono">{{.AgentVersion}}</td>
+          <td class="mono">{{.CodexVersion}}</td>
+          <td class="dim">{{if .LastSync}}{{.LastSync.Format "01-02 15:04"}} {{if .Online}}<span class="tag tag-ok">在线</span>{{else}}<span class="tag">离线</span>{{end}}{{else}}从未上报{{end}}</td>
+          <td class="dim">{{if .Compatible}}{{if .HasOpen}}<span class="tag tag-warn">已有未完成目标，会被取代</span>{{else}}可以{{end}}{{else}}<span class="tag tag-bad">不能</span> {{.Why}}{{end}}</td>
+        </tr>{{else}}<tr><td colspan="6" class="dim">没有机器</td></tr>{{end}}
+      </tbody></table></div>
+    <label class="wide">说明<input name="note" placeholder="试发 / 扩大范围 / 紧急修复…"></label>
+    <button type="submit" class="danger">对选中的机器下发</button>
+  </form>
+</main>
+</div>
+</body>
+</html>{{end}}
