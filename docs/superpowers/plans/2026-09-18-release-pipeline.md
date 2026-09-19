@@ -28,7 +28,7 @@
 
 | 文件 | 职责 |
 |---|---|
-| `go/db/migrations/0006_releases.{up,down}.sql` | 三张表 |
+| `go/db/migrations/0007_releases.{up,down}.sql` | 三张表 |
 | `go/internal/repo/releases.go` | 制品、发布任务、设备目标的类型与仓储接口 |
 | `go/internal/dbstore/releases.go` (+`_test.go`) | 仓储实现 |
 | `go/internal/model/version.go` (+`_test.go`) | 版本号比较、定向最低 Agent 版本 |
@@ -459,7 +459,7 @@ Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>"
 ### Task 3: 三张表、仓储接口与实现
 
 **Files:**
-- Create: `go/db/migrations/0006_releases.up.sql`, `go/db/migrations/0006_releases.down.sql`, `go/internal/repo/releases.go`, `go/internal/dbstore/releases.go`, `go/internal/dbstore/releases_test.go`
+- Create: `go/db/migrations/0007_releases.up.sql`, `go/db/migrations/0007_releases.down.sql`, `go/internal/repo/releases.go`, `go/internal/dbstore/releases.go`, `go/internal/dbstore/releases_test.go`
 - Modify: `go/internal/repo/repo.go:47-63`(Store 接口加 `Releases()`), `go/internal/dbstore/store.go:39-52`
 
 **Interfaces:**
@@ -578,7 +578,7 @@ type Releases interface {
 
 - [ ] **Step 1: 写迁移**
 
-`go/db/migrations/0006_releases.up.sql`:
+`go/db/migrations/0007_releases.up.sql`:
 
 ```sql
 -- Release pipeline (spec 2026-09-18): what has been built, what has been
@@ -655,7 +655,7 @@ create unique index release_targets_one_open
 create index release_targets_by_rollout on release_targets (rollout_id);
 ```
 
-`0006_releases.down.sql`:
+`0007_releases.down.sql`:
 
 ```sql
 drop table release_targets;
@@ -1094,7 +1094,7 @@ Expected: PASS(`grants.sql` 用 `grant ... on all tables in schema public`,迁�
 - [ ] **Step 8: 提交**
 
 ```bash
-cd go && git add db/migrations/0006_releases.up.sql db/migrations/0006_releases.down.sql internal/repo/releases.go internal/repo/repo.go internal/dbstore/releases.go internal/dbstore/releases_test.go internal/dbstore/store.go
+cd go && git add db/migrations/0007_releases.up.sql db/migrations/0007_releases.down.sql internal/repo/releases.go internal/repo/repo.go internal/dbstore/releases.go internal/dbstore/releases_test.go internal/dbstore/store.go
 git commit -m "Release artifacts, rollouts and per-device targets
 
 Three tables: what was built, the decision to hand it to some machines,
@@ -3255,7 +3255,7 @@ sleep 2 && curl -s -o /dev/null -w '%{http_code}\n' http://127.0.0.1:8090/health
 sudo journalctl -u ai-env-mgr-console -n 5 --no-pager
 ```
 
-Expected: healthz `200`;日志里有迁移 0006 已应用(控制台以 `aienv_app` 启动只读迁移记录,所以先以特权账号跑 `AIENVMGR_DB_DSN='postgres://postgres:...' go run ./cmd/migrate up`,再重启);回滚:`go run ./cmd/migrate down 5`,换回上一个二进制。
+Expected: healthz `200`;日志里有迁移 0007 已应用(控制台以 `aienv_app` 启动只读迁移记录,所以先以特权账号跑 `AIENVMGR_DB_DSN='postgres://postgres:...' go run ./cmd/migrate up`,再重启);回滚:`go run ./cmd/migrate down 6`,换回上一个二进制。
 
 - [ ] **Step 5: 用真实包走一遍(Worker 仍 OFF)**
 

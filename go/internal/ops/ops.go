@@ -47,6 +47,7 @@ const (
 	ActionReopen        = "account.reopen"
 	ActionOffboard      = "account.offboard"
 	ActionReissue       = "account.reissue"
+	ActionDelete        = "account.delete"
 	ActionSetQuota      = "account.quota"
 	ActionSetModels     = "account.models"
 	ActionUpdateProfile = "account.profile"
@@ -199,6 +200,47 @@ func (s *Service) Offboard(ctx context.Context, employeeID, actor, requestID str
 	})
 	if err != nil {
 		return repo.Employee{}, fmt.Errorf("offboard: %w", err)
+	}
+	return result, nil
+}
+
+// Delete removes a closed account from the console: the gateway user goes,
+// whatever the export still publishes for them is withdrawn, and the name is
+// free for the next person. The row and its history stay. An open account is
+// refused -- closing is the step that ends their access, and it has its own
+// confirmation.
+func (s *Service) Delete(ctx context.Context, employeeID, actor, requestID string) (repo.Employee, error) {
+	var result repo.Employee
+	err := s.store.InTx(ctx, func(tx repo.Store) error {
+		employee, err := tx.Employees().ByID(ctx, employeeID)
+		if err != nil {
+			return err
+		}
+		if employee.Active() {
+			return errors.New("the account is still open; close it first")
+		}
+		before := employee
+		employee, err = tx.Employees().Delete(ctx, employee.ID, employee.Version)
+		if err != nil {
+			return err
+		}
+		if _, err := tx.Tasks().SupersedeOpenForEmployee(ctx, employee.ID, employee.AuthEpoch+1); err != nil {
+			return err
+		}
+		if err := s.enqueueGatewayWork(ctx, tx, employee, repo.TaskGatewayDelete, "delete"); err != nil {
+			return err
+		}
+		if err := s.enqueueEmployeeExport(ctx, tx, employee, "delete"); err != nil {
+			return err
+		}
+		if err := s.audit(ctx, tx, actor, requestID, ActionDelete, employee, before, employee); err != nil {
+			return err
+		}
+		result = employee
+		return nil
+	})
+	if err != nil {
+		return repo.Employee{}, fmt.Errorf("delete account: %w", err)
 	}
 	return result, nil
 }

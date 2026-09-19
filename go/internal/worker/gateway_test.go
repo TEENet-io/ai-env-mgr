@@ -95,6 +95,16 @@ func (g *fakeGateway) DeleteKeyByAlias(_ context.Context, alias string) error {
 	return nil
 }
 
+func (g *fakeGateway) DeleteUser(_ context.Context, userID string) error {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	if err := g.record("DeleteUser"); err != nil {
+		return err
+	}
+	delete(g.users, userID)
+	return nil
+}
+
 func (g *fakeGateway) UpdateKey(_ context.Context, handle string, models []string) error {
 	g.mu.Lock()
 	defer g.mu.Unlock()
@@ -460,5 +470,43 @@ func TestChangingModelsUpdatesTheExistingToken(t *testing.T) {
 	}
 	if len(grant.Models) != 1 || grant.Models[0] != "gemini-2.5-pro" {
 		t.Errorf("the grant records %v", grant.Models)
+	}
+}
+
+func TestDeletingAnAccountRemovesTheGatewayUserAndItsTokens(t *testing.T) {
+	store, ctx := newWorkerStore(t)
+	gw := newFakeGateway()
+	e, err := store.Employees().Create(ctx, repo.NewEmployee{WindowsUser: "work1"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	gw.users["emp-work1"] = litellm.UserSpec{UserID: "emp-work1"}
+	// A token the offboarding never got to revoke.
+	cred, _ := store.Credentials().Store(ctx, repo.NewCredential{
+		EmployeeID: e.ID, Epoch: 1, Purpose: repo.PurposeCodexGateway, Ciphertext: []byte("x"), KeyVersion: "k1"})
+	grant, err := store.Grants().Create(ctx, repo.NewGrant{
+		EmployeeID: e.ID, Epoch: 1, ExternalUser: "emp-work1", KeyAlias: "emp-work1-e1", CredentialID: cred.ID})
+	if err != nil {
+		t.Fatal(err)
+	}
+	gw.keys["emp-work1-e1"] = litellm.Key{KeyAlias: "emp-work1-e1"}
+
+	h := GatewayDelete{Store: store, Gateway: gw}
+	task := repo.Task{Payload: mustJSON(t, map[string]any{"employee_id": e.ID, "windows_user": "work1"})}
+	if _, err := h.Run(ctx, task); err != nil {
+		t.Fatalf("run: %v", err)
+	}
+	if _, still := gw.users["emp-work1"]; still {
+		t.Fatal("the gateway user is still there")
+	}
+	if _, still := gw.keys["emp-work1-e1"]; still {
+		t.Fatal("the token outlived its user")
+	}
+	if got, _ := store.Grants().ByEmployee(ctx, e.ID); len(got) != 1 || got[0].Actual != repo.ActualRevoked || got[0].ID != grant.ID {
+		t.Fatalf("grant after delete = %+v", got)
+	}
+	// Running again finds nothing to do and is not an error.
+	if _, err := h.Run(ctx, task); err != nil {
+		t.Fatalf("second run: %v", err)
 	}
 }

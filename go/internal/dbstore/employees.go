@@ -18,22 +18,23 @@ type employeeRepo struct{ q querier }
 // in one place, not in six that must agree.
 const employeeColumns = `id, windows_user, coalesce(external_id, ''), name, department,
 	codex_account, status, auth_epoch, version,
-	created_at, updated_at, offboarded_at`
+	created_at, updated_at, offboarded_at, deleted_at`
 
 type scanner interface{ Scan(dest ...any) error }
 
 func scanEmployee(row scanner) (repo.Employee, error) {
 	var e repo.Employee
 	var status string
-	var offboardedAt *time.Time
+	var offboardedAt, deletedAt *time.Time
 	err := row.Scan(&e.ID, &e.WindowsUser, &e.ExternalID, &e.Name, &e.Department,
 		&e.CodexAccount, &status, &e.AuthEpoch, &e.Version,
-		&e.CreatedAt, &e.UpdatedAt, &offboardedAt)
+		&e.CreatedAt, &e.UpdatedAt, &offboardedAt, &deletedAt)
 	if err != nil {
 		return repo.Employee{}, err
 	}
 	e.Status = repo.EmployeeStatus(status)
 	e.OffboardedAt = offboardedAt
+	e.DeletedAt = deletedAt
 	return e, nil
 }
 
@@ -48,7 +49,8 @@ func (r employeeRepo) ByID(ctx context.Context, id string) (repo.Employee, error
 
 func (r employeeRepo) ByWindowsUser(ctx context.Context, windowsUser string) (repo.Employee, error) {
 	e, err := scanEmployee(r.q.QueryRow(ctx,
-		`select `+employeeColumns+` from employees where windows_user = $1`,
+		`select `+employeeColumns+` from employees
+		  where windows_user = $1 and deleted_at is null`,
 		repo.NormalizeWindowsUser(windowsUser)))
 	if err != nil {
 		return repo.Employee{}, mapError(err, "read employee")
@@ -59,8 +61,8 @@ func (r employeeRepo) ByWindowsUser(ctx context.Context, windowsUser string) (re
 func (r employeeRepo) List(ctx context.Context, filter repo.EmployeeFilter) ([]repo.Employee, error) {
 	rows, err := r.q.Query(ctx,
 		`select `+employeeColumns+` from employees
-		 where $1 or status = 'active'
-		 order by windows_user`, filter.IncludeOffboarded)
+		 where ($1 or status = 'active') and ($2 or deleted_at is null)
+		 order by windows_user`, filter.IncludeOffboarded, filter.IncludeDeleted)
 	if err != nil {
 		return nil, mapError(err, "list employees")
 	}
@@ -161,6 +163,31 @@ func (r employeeRepo) Reopen(ctx context.Context, id string, version int) (repo.
 		return repo.Employee{}, r.explainMiss(ctx, id, version, "reopen employee")
 	}
 	return repo.Employee{}, mapError(err, "reopen employee")
+}
+
+func (r employeeRepo) Delete(ctx context.Context, id string, version int) (repo.Employee, error) {
+	e, err := scanEmployee(r.q.QueryRow(ctx,
+		`update employees
+		    set deleted_at = now(), version = version + 1, updated_at = now()
+		  where id = $1 and version = $2 and status = 'offboarded' and deleted_at is null
+		  returning `+employeeColumns,
+		id, version))
+	if err == nil {
+		return e, nil
+	}
+	if errors.Is(err, pgx.ErrNoRows) {
+		current, lookupErr := r.ByID(ctx, id)
+		switch {
+		case lookupErr != nil:
+			return repo.Employee{}, fmt.Errorf("delete employee: %w", lookupErr)
+		case current.Deleted():
+			return current, nil
+		case current.Active():
+			return repo.Employee{}, errors.New("delete employee: the account is still open; close it first")
+		}
+		return repo.Employee{}, r.explainMiss(ctx, id, version, "delete employee")
+	}
+	return repo.Employee{}, mapError(err, "delete employee")
 }
 
 func (r employeeRepo) BumpAuthEpoch(ctx context.Context, id string, version int) (repo.Employee, error) {

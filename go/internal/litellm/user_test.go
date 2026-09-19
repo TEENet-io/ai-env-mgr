@@ -174,3 +174,25 @@ func TestQuotaValidate(t *testing.T) {
 		}
 	}
 }
+
+func TestDeleteUserTreatsAMissingUserAsGone(t *testing.T) {
+	var got string
+	c := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(r.Body)
+		got = r.URL.Path + " " + string(body)
+		w.WriteHeader(http.StatusNotFound)
+		_, _ = io.WriteString(w, `{"error":{"message":"User not found","code":"404"}}`)
+	})
+	if err := c.DeleteUser(context.Background(), "emp-x"); err != nil {
+		t.Fatalf("404 must read as already gone: %v", err)
+	}
+	if !strings.Contains(got, "/user/delete") || !strings.Contains(got, `"user_ids":["emp-x"]`) {
+		t.Fatalf("request = %q", got)
+	}
+	c = newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+	})
+	if err := c.DeleteUser(context.Background(), "emp-x"); err == nil {
+		t.Fatal("a 500 is a failure, not a deletion")
+	}
+}

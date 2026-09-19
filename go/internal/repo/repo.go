@@ -107,10 +107,16 @@ type Employee struct {
 	CreatedAt    time.Time
 	UpdatedAt    time.Time
 	OffboardedAt *time.Time
+	// DeletedAt is set when an offboarded account is removed from the
+	// console: the row stays for history, the name is free for reuse.
+	DeletedAt *time.Time
 }
 
 // Active reports whether this employee should have working credentials.
 func (e Employee) Active() bool { return e.Status == StatusActive }
+
+// Deleted reports whether the account has been removed from the console.
+func (e Employee) Deleted() bool { return e.DeletedAt != nil }
 
 // NewEmployee is what Create needs. Everything else has a default.
 type NewEmployee struct {
@@ -134,6 +140,9 @@ type EmployeeFilter struct {
 	// IncludeOffboarded brings back people who have left. The console's main
 	// list leaves them out; the audit views want them.
 	IncludeOffboarded bool
+	// IncludeDeleted brings back accounts that were deleted. Only the list
+	// page's "deleted" filter wants them; nothing else should see them.
+	IncludeDeleted bool
 }
 
 // Employees is the roster.
@@ -161,6 +170,12 @@ type Employees interface {
 	// Reopen is the reverse. The epoch is raised again rather than reused: the
 	// credentials from before the departure must not come back to life.
 	Reopen(ctx context.Context, id string, version int) (Employee, error)
+
+	// Delete removes an offboarded account from the console. The row is
+	// kept; List and ByWindowsUser stop returning it, and its Windows user
+	// name may be used again. Deleting an active account is refused, and
+	// deleting twice is not an error.
+	Delete(ctx context.Context, id string, version int) (Employee, error)
 
 	// BumpAuthEpoch invalidates what is outstanding without changing status --
 	// re-issuing a token, or a suspected leak.
@@ -424,6 +439,7 @@ const (
 const (
 	TaskGatewayProvision = "gateway_provision"
 	TaskGatewayRevoke    = "gateway_revoke"
+	TaskGatewayDelete    = "gateway_delete"
 	TaskOSSExport        = "oss_export"
 	TaskAuditPublish     = "audit_publish"
 	TaskReconcile        = "reconcile"

@@ -2,6 +2,7 @@ package litellm
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/url"
@@ -127,6 +128,22 @@ func (c *Client) UpsertUser(ctx context.Context, spec UserSpec) error {
 	// The console mints keys itself, under its own alias scheme.
 	body["auto_create_key"] = false
 	return c.do(ctx, http.MethodPost, "/user/new", body, nil)
+}
+
+// DeleteUser removes a gateway user and, with it, the gateway's record of
+// their spend. A user that is not there is treated as gone: this runs from a
+// queue that retries, and the second attempt must not fail on the first
+// having worked.
+func (c *Client) DeleteUser(ctx context.Context, userID string) error {
+	if userID == "" {
+		return fmt.Errorf("delete user: empty user id")
+	}
+	err := c.do(ctx, http.MethodPost, "/user/delete", map[string]any{"user_ids": []string{userID}}, nil)
+	var apiErr *APIError
+	if errors.As(err, &apiErr) && apiErr.Status == http.StatusNotFound {
+		return nil
+	}
+	return err
 }
 
 // UserInfo fetches one user. An unknown id is (User{}, false, nil): the

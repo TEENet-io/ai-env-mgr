@@ -2,6 +2,7 @@ package adminweb
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/TEENet-io/ai-env-mgr/internal/admincore"
 	"github.com/TEENet-io/ai-env-mgr/internal/litellm"
@@ -37,6 +38,11 @@ type backend interface {
 
 	Onboard(ctx context.Context, gw *litellm.Client, cfg admincore.GatewayConfig, spec admincore.AccountSpec) error
 	Offboard(ctx context.Context, gw *litellm.Client, windowsUser string) error
+	// DeleteAccount removes a closed account from the console (database mode
+	// only); DeletedAccounts lists what has been removed, for the one list
+	// filter that shows them.
+	DeleteAccount(ctx context.Context, windowsUser string) error
+	DeletedAccounts(ctx context.Context) ([]accountRow, error)
 	SetQuota(ctx context.Context, gw *litellm.Client, windowsUser string, q litellm.Quota) error
 	SetModels(ctx context.Context, gw *litellm.Client, cfg admincore.GatewayConfig, windowsUser string, models []string) error
 	UpdateProfile(ctx context.Context, gw *litellm.Client, windowsUser, name, department, codexAccount string) error
@@ -133,6 +139,12 @@ func (b legacyBackend) Onboard(ctx context.Context, gw *litellm.Client, cfg admi
 func (b legacyBackend) Offboard(ctx context.Context, gw *litellm.Client, windowsUser string) error {
 	return b.mgr.Offboard(ctx, gw, windowsUser)
 }
+
+func (b legacyBackend) DeleteAccount(context.Context, string) error {
+	return fmt.Errorf("deleting an account needs the database mode; the object store keeps the roster as one file")
+}
+
+func (b legacyBackend) DeletedAccounts(context.Context) ([]accountRow, error) { return nil, nil }
 
 func (b legacyBackend) SetQuota(ctx context.Context, gw *litellm.Client, windowsUser string, q litellm.Quota) error {
 	return b.mgr.SetQuota(ctx, gw, windowsUser, q)

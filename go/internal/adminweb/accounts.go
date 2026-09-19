@@ -32,6 +32,11 @@ type accountRow struct {
 	// would 404: the list renders the name as plain text, not a link.
 	OnRoster bool
 
+	// Deleted rows are shown only by the list's "deleted" filter, as a
+	// record: no link, no actions. DeletedAt is the date, for the label.
+	Deleted   bool
+	DeletedAt string
+
 	// Administrator note, carried through from the roster untouched by
 	// anything here -- see admincore.AccountSpec.
 	CodexAccount string
@@ -233,18 +238,59 @@ func (s *Server) handleUsers(w http.ResponseWriter, r *http.Request, sess *sessi
 			data.GatewayEnabled = false
 		}
 	}
-	rows, err := sess.be.AccountRows(r.Context(), keys, gwUsers)
+	data.Show = r.URL.Query().Get("show")
+	var rows []accountRow
+	if data.Show == "deleted" {
+		rows, err = sess.be.DeletedAccounts(r.Context())
+	} else {
+		rows, err = sess.be.AccountRows(r.Context(), keys, gwUsers)
+	}
 	if err != nil {
 		data.Error = "could not read the roster"
 		log.Printf("adminweb: accounts: %v", err)
 		s.render(w, "users.html", http.StatusOK, data)
 		return
 	}
-	data.Accounts = rows
+	data.Accounts = filterAccounts(rows, data.Show)
 	if !data.GatewayEnabled {
 		data.Accounts = dropGatewayFlags(data.Accounts)
 	}
 	s.render(w, "users.html", http.StatusOK, data)
+}
+
+// filterAccounts applies the list page's filter. The default shows everyone
+// on the roster, open or closed; "deleted" rows come from a different query
+// and pass through untouched.
+func filterAccounts(rows []accountRow, show string) []accountRow {
+	switch show {
+	case "active", "offboarded":
+	default:
+		return rows
+	}
+	out := []accountRow{}
+	for _, row := range rows {
+		if row.Enabled == (show == "active") {
+			out = append(out, row)
+		}
+	}
+	return out
+}
+
+// actionAccountDelete removes a closed account. The name has to be typed:
+// this is the one account action that takes something off the list.
+func (s *Server) actionAccountDelete(sess *session, r *http.Request) error {
+	user := formValue(r, "windowsUser")
+	if user == "" {
+		return fmt.Errorf("a Windows user name is required")
+	}
+	if err := confirmMatches(r, "confirm", user); err != nil {
+		return err
+	}
+	if err := sess.be.DeleteAccount(r.Context(), user); err != nil {
+		return err
+	}
+	logAudit(s.clientKey(r), "deleted account %s", user)
+	return nil
 }
 
 // handleUserDetail is one account: editing forms and history.
@@ -375,7 +421,7 @@ func (s *Server) actionAccountOnboard(sess *session, r *http.Request) error {
 		Name:         formValue(r, "name"),
 		Department:   formValue(r, "department"),
 		Quota:        quota,
-		Models:       r.PostForm["models"], // none selected = everything the gateway offers
+		Models:       chosenModels(r), // none selected = everything the gateway offers
 		CodexAccount: formValue(r, "codexAccount"),
 	})
 }
@@ -504,7 +550,17 @@ func (s *Server) actionAccountModels(sess *session, r *http.Request) error {
 	if user == "" {
 		return fmt.Errorf("a Windows user name is required")
 	}
-	return sess.be.SetModels(ctx, gw, cfg, user, r.PostForm["models"])
+	return sess.be.SetModels(ctx, gw, cfg, user, chosenModels(r))
+}
+
+// chosenModels reads the model checklist. The "all" box wins over any ticks:
+// it means no allowlist, which is every model the gateway offers, including
+// ones added later.
+func chosenModels(r *http.Request) []string {
+	if formValue(r, "all") == "1" {
+		return nil
+	}
+	return r.PostForm["models"]
 }
 
 // actionAccountProfile saves the detail page's 基本信息 form. Every field is

@@ -87,6 +87,7 @@ type pageData struct {
 
 	// Account pages.
 	Accounts      []accountRow
+	Show          string                 // the list filter: "", "active", "offboarded", "deleted"
 	Account       *accountRow            // the detail page's subject
 	Audit         []admincore.AuditEntry // that account's history, newest first
 	QuotaDefaults litellm.Quota          // pre-fills the onboarding form

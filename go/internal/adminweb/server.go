@@ -323,6 +323,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("/users/onboard", s.requirePostBack(backToAccount, s.actionAccountOnboard))
 	mux.HandleFunc("/users/reopen", s.requirePostBack(backToAccount, s.actionAccountReopen))
 	mux.HandleFunc("/users/offboard", s.requirePostBack(backToAccount, s.actionAccountOffboard))
+	mux.HandleFunc("/users/delete", s.requirePostBack(backToAccount, s.actionAccountDelete))
 	mux.HandleFunc("/users/quota", s.requirePostBack(backToAccount, s.actionAccountQuota))
 	mux.HandleFunc("/users/models", s.requirePostBack(backToAccount, s.actionAccountModels))
 	mux.HandleFunc("/users/reissue", s.requirePostBack(backToAccount, s.actionAccountReissue))

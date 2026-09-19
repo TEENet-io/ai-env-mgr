@@ -405,6 +405,35 @@ func (b dbBackend) Offboard(ctx context.Context, _ *litellm.Client, windowsUser 
 	return err
 }
 
+func (b dbBackend) DeleteAccount(ctx context.Context, windowsUser string) error {
+	e, err := b.employee(ctx, windowsUser)
+	if err != nil {
+		return err
+	}
+	_, err = b.ops.Delete(ctx, e.ID, b.actor, b.requestID)
+	return err
+}
+
+// DeletedAccounts lists removed accounts as rows with no actions and no
+// link: there is no detail page behind a deleted account.
+func (b dbBackend) DeletedAccounts(ctx context.Context) ([]accountRow, error) {
+	employees, err := b.store.Employees().List(ctx, repo.EmployeeFilter{IncludeOffboarded: true, IncludeDeleted: true})
+	if err != nil {
+		return nil, err
+	}
+	rows := []accountRow{}
+	for _, e := range employees {
+		if !e.Deleted() {
+			continue
+		}
+		rows = append(rows, accountRow{
+			WindowsUser: e.WindowsUser, Name: e.Name, Department: e.Department,
+			CodexAccount: e.CodexAccount, Deleted: true, DeletedAt: e.DeletedAt.Format("2006-01-02"),
+		})
+	}
+	return rows, nil
+}
+
 func (b dbBackend) SetQuota(ctx context.Context, _ *litellm.Client, windowsUser string, q litellm.Quota) error {
 	e, err := b.employee(ctx, windowsUser)
 	if err != nil {

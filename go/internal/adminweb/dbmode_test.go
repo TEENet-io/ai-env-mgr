@@ -361,3 +361,79 @@ func TestDatabaseModePolicyEditsAndMachinesRender(t *testing.T) {
 		t.Errorf("li = %+v (%v)", li, err)
 	}
 }
+
+func TestDeletedAccountsLeaveTheListUntilAskedFor(t *testing.T) {
+	s, _ := newDatabaseServer(t)
+	h := s.Handler()
+	cookie := signedIn(t, s)
+	csrf := csrfFrom(t, s, cookie, "/users")
+	form := func(extra url.Values) url.Values {
+		v := url.Values{"csrf": {csrf}, "windowsUser": {"work5"}}
+		for k, vals := range extra {
+			v[k] = vals
+		}
+		return v
+	}
+	if rec := dbPost(t, h, "/users/onboard", form(url.Values{"budget": {"20"}, "rpm": {"60"}, "tpm": {"100000"}, "parallel": {"4"}}), cookie); rec.Code != http.StatusSeeOther {
+		t.Fatalf("onboard: %d %s", rec.Code, rec.Body.String())
+	}
+	// Open accounts cannot be deleted, even with the name typed.
+	rec := dbPost(t, h, "/users/delete", form(url.Values{"confirm": {"work5"}}), cookie)
+	if rec.Code == http.StatusSeeOther && !strings.Contains(rec.Header().Get("Location"), "err") {
+		if list := dbGet(t, h, "/users", cookie); !strings.Contains(list.Body.String(), "work5") {
+			t.Fatal("an open account was deleted")
+		}
+	}
+	if rec := dbPost(t, h, "/users/offboard", form(nil), cookie); rec.Code != http.StatusSeeOther {
+		t.Fatalf("offboard: %d", rec.Code)
+	}
+	// The wrong confirmation does nothing.
+	dbPost(t, h, "/users/delete", form(url.Values{"confirm": {"work6"}}), cookie)
+	if list := dbGet(t, h, "/users", cookie); !strings.Contains(list.Body.String(), "work5") {
+		t.Fatal("a mistyped confirmation deleted the account")
+	}
+	if rec := dbPost(t, h, "/users/delete", form(url.Values{"confirm": {"work5"}}), cookie); rec.Code != http.StatusSeeOther {
+		t.Fatalf("delete: %d %s", rec.Code, rec.Body.String())
+	}
+	if list := dbGet(t, h, "/users", cookie); strings.Contains(list.Body.String(), "work5") {
+		t.Fatal("the deleted account is still on the default list")
+	}
+	deleted := dbGet(t, h, "/users?show=deleted", cookie)
+	if !strings.Contains(deleted.Body.String(), "work5") || !strings.Contains(deleted.Body.String(), "已删除") {
+		t.Fatal("the deleted filter does not show the account")
+	}
+	if strings.Contains(deleted.Body.String(), `href="/users/detail?user=work5"`) {
+		t.Fatal("a deleted account must not link to a detail page")
+	}
+	// The name is free again.
+	if rec := dbPost(t, h, "/users/onboard", form(url.Values{"budget": {"20"}, "rpm": {"60"}, "tpm": {"100000"}, "parallel": {"4"}}), cookie); rec.Code != http.StatusSeeOther {
+		t.Fatalf("re-onboard: %d %s", rec.Code, rec.Body.String())
+	}
+	if list := dbGet(t, h, "/users?show=active", cookie); !strings.Contains(list.Body.String(), "work5") {
+		t.Fatal("the name could not be reused")
+	}
+}
+
+func TestTheAllBoxMeansNoModelAllowlist(t *testing.T) {
+	s, _ := newDatabaseServer(t)
+	h := s.Handler()
+	cookie := signedIn(t, s)
+	csrf := csrfFrom(t, s, cookie, "/users")
+	dbPost(t, h, "/users/onboard", url.Values{"csrf": {csrf}, "windowsUser": {"work8"},
+		"budget": {"20"}, "rpm": {"60"}, "tpm": {"100000"}, "parallel": {"4"}, "models": {"glm-5"}}, cookie)
+	e, err := s.dbm.store.Employees().ByWindowsUser(t.Context(), "work8")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if models, _ := s.dbm.store.Employees().Models(t.Context(), e.ID); len(models) != 1 {
+		t.Fatalf("after onboarding with one model: %v", models)
+	}
+	rec := dbPost(t, h, "/users/models", url.Values{"csrf": {csrf}, "windowsUser": {"work8"},
+		"all": {"1"}, "models": {"glm-5", "gemini-2.5-pro"}}, cookie)
+	if rec.Code != http.StatusSeeOther {
+		t.Fatalf("models: %d %s", rec.Code, rec.Body.String())
+	}
+	if models, _ := s.dbm.store.Employees().Models(t.Context(), e.ID); len(models) != 0 {
+		t.Fatalf("the all box must clear the allowlist, got %v", models)
+	}
+}

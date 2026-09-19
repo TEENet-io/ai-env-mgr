@@ -22,6 +22,7 @@ type Gateway interface {
 	FindKeyByAlias(ctx context.Context, alias string) (litellm.Key, bool, error)
 	DeleteKeyByAlias(ctx context.Context, alias string) error
 	UpdateKey(ctx context.Context, handle string, models []string) error
+	DeleteUser(ctx context.Context, userID string) error
 }
 
 // GatewayUserID is the gateway's id for an employee.
@@ -354,6 +355,48 @@ func (h GatewayRevoke) Run(ctx context.Context, task repo.Task) (Result, error) 
 		revoked++
 	}
 	return Result{Note: fmt.Sprintf("revoked %d token(s)", revoked)}, nil
+}
+
+// GatewayDelete removes an employee's gateway user once the account has been
+// deleted from the console. Any token still standing is revoked first, so a
+// key cannot outlive the user that owned it.
+type GatewayDelete struct {
+	Store   repo.Store
+	Gateway Gateway
+}
+
+// Run revokes what is left and deletes the user. Both halves are safe to
+// repeat: a missing key or user is the outcome wanted.
+func (h GatewayDelete) Run(ctx context.Context, task repo.Task) (Result, error) {
+	var payload taskPayload
+	if err := json.Unmarshal(task.Payload, &payload); err != nil {
+		return Result{}, Permanent(fmt.Errorf("unreadable task payload: %w", err))
+	}
+	if payload.EmployeeID == "" || payload.WindowsUser == "" {
+		return Result{}, Permanent(errors.New("task payload names no employee"))
+	}
+	grants, err := h.Store.Grants().ByEmployee(ctx, payload.EmployeeID)
+	if err != nil {
+		return Result{}, err
+	}
+	revoked := 0
+	for _, grant := range grants {
+		if grant.Actual == repo.ActualRevoked || grant.Actual == repo.ActualMissing {
+			continue
+		}
+		if err := h.Gateway.DeleteKeyByAlias(ctx, grant.KeyAlias); err != nil {
+			return Result{}, gatewayError("delete_key", err)
+		}
+		if _, err := h.Store.Grants().RecordActual(ctx, grant.ID, repo.ActualRevoked, "account deleted"); err != nil {
+			return Result{}, err
+		}
+		revoked++
+	}
+	userID := GatewayUserID(payload.WindowsUser)
+	if err := h.Gateway.DeleteUser(ctx, userID); err != nil {
+		return Result{}, gatewayError("delete_user", err)
+	}
+	return Result{Note: fmt.Sprintf("revoked %d token(s), removed gateway user %s", revoked, userID)}, nil
 }
 
 // gatewayError labels a gateway failure and decides whether trying again could

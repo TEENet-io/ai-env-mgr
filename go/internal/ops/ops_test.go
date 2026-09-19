@@ -629,3 +629,52 @@ func TestAQuotaChangeAfterOnboardingReachesTheGateway(t *testing.T) {
 		t.Fatal("changing the quota queued no gateway work; the gateway would keep the old limits")
 	}
 }
+
+func TestDeleteIsOnlyForClosedAccountsAndHidesThem(t *testing.T) {
+	svc, store, ctx := newService(t)
+	employee, err := svc.Onboard(ctx, OnboardSpec{WindowsUser: "work7", Quota: testQuota(), Actor: "zhang"})
+	if err != nil {
+		t.Fatalf("onboard: %v", err)
+	}
+	if _, err := svc.Delete(ctx, employee.ID, "zhang", "r1"); err == nil {
+		t.Fatal("an open account must not be deletable")
+	}
+	if _, err := svc.Offboard(ctx, employee.ID, "zhang", "r2"); err != nil {
+		t.Fatalf("offboard: %v", err)
+	}
+	before := len(openTasks(t, ctx, store))
+	deleted, err := svc.Delete(ctx, employee.ID, "zhang", "r3")
+	if err != nil {
+		t.Fatalf("delete: %v", err)
+	}
+	if !deleted.Deleted() {
+		t.Fatalf("not marked deleted: %+v", deleted)
+	}
+	// The gateway user goes and the delivered files are withdrawn; both by
+	// the Worker, both committed with the deletion.
+	kinds := map[string]int{}
+	for _, task := range openTasks(t, ctx, store) {
+		if task.EmployeeID == employee.ID {
+			kinds[task.Kind]++
+		}
+	}
+	if kinds[repo.TaskGatewayDelete] != 1 || kinds[repo.TaskOSSExport] < 1 {
+		t.Fatalf("queued after delete: %v (had %d open before)", kinds, before)
+	}
+	// Gone from the roster, and the name can be used again.
+	if list, _ := store.Employees().List(ctx, repo.EmployeeFilter{IncludeOffboarded: true}); len(list) != 0 {
+		t.Fatalf("roster still lists the deleted account: %+v", list)
+	}
+	fresh, err := svc.Onboard(ctx, OnboardSpec{WindowsUser: "work7", Quota: testQuota(), Actor: "zhang"})
+	if err != nil || fresh.ID == employee.ID {
+		t.Fatalf("re-onboarding the name: %+v, %v", fresh, err)
+	}
+	events, _ := store.Audit().ByTarget(ctx, "employee", employee.ID, 10)
+	found := false
+	for _, ev := range events {
+		found = found || ev.Action == ActionDelete
+	}
+	if !found {
+		t.Fatal("no audit line for the deletion")
+	}
+}

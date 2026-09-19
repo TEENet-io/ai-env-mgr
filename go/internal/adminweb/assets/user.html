@@ -51,7 +51,8 @@
   <form method="post" action="/users/models" class="form">
     <input type="hidden" name="csrf" value="{{$.CSRF}}"><input type="hidden" name="windowsUser" value="{{.WindowsUser}}"><input type="hidden" name="back" value="detail">
     <fieldset class="checks">
-      <legend>全不选 = 网关上的全部</legend>
+      <legend>可用模型</legend>
+      <label class="check"><input type="checkbox" name="all" value="1"{{if not .Models}} checked{{end}}> <strong>全部</strong> <span class="dim">网关上的全部模型，含以后新增的；勾上后下面的选择不再生效</span></label>
       {{$row := .}}{{range $.GatewayModels}}
         <label class="check"><input type="checkbox" name="models" value="{{.Name}}"{{if has $row.Models .Name}} checked{{end}}> {{.Info.DisplayName}} <span class="dim">{{.Name}}</span></label>
       {{end}}
@@ -76,6 +77,13 @@
       <input type="hidden" name="csrf" value="{{$.CSRF}}"><input type="hidden" name="windowsUser" value="{{.WindowsUser}}"><input type="hidden" name="back" value="detail">
       <button{{if not $.GatewayEnabled}} disabled{{end}}>重新开户</button>
     </form>
+    {{if $.DB}}
+    <form method="post" action="/users/delete" class="inline">
+      <input type="hidden" name="csrf" value="{{$.CSRF}}"><input type="hidden" name="windowsUser" value="{{.WindowsUser}}">
+      <input name="confirm" placeholder="输入用户名确认" size="14" autocomplete="off">
+      <button class="danger">删除账号</button>
+    </form>
+    {{end}}
     {{end}}
     {{/* Same request as the 总览 button, reachable from the person rather
     than from the box: the administrator who has just reissued this

@@ -320,3 +320,51 @@ func TestInTxRefusesToNest(t *testing.T) {
 		t.Errorf("nested InTx error = %v, want it to say what went wrong", err)
 	}
 }
+
+func TestDeleteHidesTheAccountAndFreesTheName(t *testing.T) {
+	s, ctx := newTestStore(t)
+	e := mustCreate(t, ctx, s, "work9")
+
+	if _, err := s.Employees().Delete(ctx, e.ID, e.Version); err == nil {
+		t.Fatal("an open account must not be deletable; it has to be closed first")
+	}
+	gone, err := s.Employees().Offboard(ctx, e.ID, e.Version)
+	if err != nil {
+		t.Fatalf("offboard: %v", err)
+	}
+	deleted, err := s.Employees().Delete(ctx, gone.ID, gone.Version)
+	if err != nil {
+		t.Fatalf("delete: %v", err)
+	}
+	if !deleted.Deleted() || deleted.Status != repo.StatusOffboarded {
+		t.Fatalf("after delete: %+v", deleted)
+	}
+	// Deleting again is not an error: the console offers a retry.
+	if again, err := s.Employees().Delete(ctx, deleted.ID, deleted.Version); err != nil || !again.Deleted() {
+		t.Fatalf("second delete: %+v, %v", again, err)
+	}
+
+	// Gone from every list but the one that asks for it.
+	if all, _ := s.Employees().List(ctx, repo.EmployeeFilter{IncludeOffboarded: true}); len(all) != 0 {
+		t.Fatalf("the full list still shows the deleted account: %+v", all)
+	}
+	withDeleted, _ := s.Employees().List(ctx, repo.EmployeeFilter{IncludeOffboarded: true, IncludeDeleted: true})
+	if len(withDeleted) != 1 || !withDeleted[0].Deleted() {
+		t.Fatalf("IncludeDeleted list = %+v", withDeleted)
+	}
+	if _, err := s.Employees().ByWindowsUser(ctx, "work9"); !errors.Is(err, repo.ErrNotFound) {
+		t.Fatalf("ByWindowsUser must not find a deleted account: %v", err)
+	}
+	if _, err := s.Employees().ByID(ctx, e.ID); err != nil {
+		t.Fatalf("ByID must still resolve for history: %v", err)
+	}
+
+	// The name is free again, and the new person is a new row.
+	fresh := mustCreate(t, ctx, s, "work9")
+	if fresh.ID == e.ID || fresh.Deleted() {
+		t.Fatalf("re-creating the name must make a new account: %+v", fresh)
+	}
+	if found, err := s.Employees().ByWindowsUser(ctx, "work9"); err != nil || found.ID != fresh.ID {
+		t.Fatalf("ByWindowsUser after reuse = %+v, %v", found, err)
+	}
+}
