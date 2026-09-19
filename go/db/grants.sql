@@ -6,7 +6,11 @@
 -- creates anything.
 --
 --   aienv_app   the console and Worker: reads and writes business tables;
---               append-only on audit_events and task_attempts; read-only on
+--               append-only on audit_events; on task_attempts it may insert
+--               and update but not delete -- an attempt is opened when a
+--               task is claimed and closed when it finishes, and a grid that
+--               forbade the close left every task "running" forever with
+--               its result unrecorded (2026-09-19); read-only on
 --               schema_migrations, because the account that runs the code
 --               must not be able to rewrite the record of which schema it
 --               is running on.
@@ -35,7 +39,8 @@ revoke all on all sequences in schema public from aienv_app, aienv_ro;
 
 grant select, insert, update, delete on all tables in schema public to aienv_app;
 grant usage, select on all sequences in schema public to aienv_app;
-revoke update, delete, truncate on audit_events, task_attempts from aienv_app;
+revoke update, delete, truncate on audit_events from aienv_app;
+revoke delete, truncate on task_attempts from aienv_app;
 revoke insert, update, delete, truncate on schema_migrations from aienv_app;
 
 grant select on all tables in schema public to aienv_ro;

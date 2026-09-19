@@ -297,10 +297,23 @@ func TestApplicationRoleCannotRewriteAudit(t *testing.T) {
 		 values ('admin', 'tester', 'account.onboard', 'employee', 'work1')`); err != nil {
 		t.Fatalf("the application role must be able to append: %v", err)
 	}
+	// An attempt is opened when a task is claimed and closed when it
+	// finishes, so the row is written twice. A grid that forbade the second
+	// write left every task "running" forever with its result unrecorded.
+	if _, err := conn.Exec(ctx, `insert into tasks (kind, idempotency_key) values ('t', 'k')`); err != nil {
+		t.Fatalf("the application role must be able to enqueue: %v", err)
+	}
+	if _, err := conn.Exec(ctx,
+		`insert into task_attempts (task_id, attempt) select id, 1 from tasks where idempotency_key = 'k'`); err != nil {
+		t.Fatalf("the application role must be able to open an attempt: %v", err)
+	}
+	if _, err := conn.Exec(ctx, `update task_attempts set outcome = 'succeeded', ended_at = now()`); err != nil {
+		t.Fatalf("the application role must be able to close an attempt: %v", err)
+	}
 	for _, statement := range []string{
 		`update audit_events set result = 'tampered'`,
 		`delete from audit_events`,
-		`update task_attempts set outcome = 'succeeded'`,
+		`delete from task_attempts`,
 		`create table sneaky (x int)`,
 	} {
 		if _, err := conn.Exec(ctx, statement); err == nil {

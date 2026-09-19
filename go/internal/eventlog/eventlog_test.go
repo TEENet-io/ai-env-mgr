@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 func readLines(t *testing.T, path string) []map[string]any {
@@ -172,5 +173,36 @@ func TestCommonFieldCollisionIsReportedAndDropped(t *testing.T) {
 		if !strings.Contains(stderr.String(), want) {
 			t.Errorf("stderr does not name the dropped key %s: %q", want, stderr.String())
 		}
+	}
+}
+
+func TestAuditRecordedKeepsTheCallersIdentity(t *testing.T) {
+	dir := t.TempDir()
+	w, err := New(dir, "x")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var stderr bytes.Buffer
+	w.stderr = &stderr
+	at := time.Date(2026, 9, 18, 2, 4, 1, 416_000_000, time.UTC)
+	w.AuditRecorded("ad12ae07c5602cedf0bc0be8b9d5cc37", at, "account.offboard", "offboard", map[string]any{"actor": "admin"})
+
+	lines := readLines(t, filepath.Join(dir, "audit.jsonl"))
+	if len(lines) != 1 {
+		t.Fatalf("want 1 line, got %d", len(lines))
+	}
+	// The archive is asked "is event X there?" by this id; a fresh one
+	// would answer no forever.
+	if lines[0]["event_id"] != "ad12ae07c5602cedf0bc0be8b9d5cc37" {
+		t.Errorf("event_id = %v, want the caller's", lines[0]["event_id"])
+	}
+	if lines[0]["occurred_at"] != "2026-09-18T02:04:01.416Z" {
+		t.Errorf("occurred_at = %v, want the caller's", lines[0]["occurred_at"])
+	}
+	if lines[0]["actor"] != "admin" || lines[0]["module"] != "console" {
+		t.Errorf("other fields lost: %v", lines[0])
+	}
+	if stderr.Len() != 0 {
+		t.Errorf("nothing should have been dropped: %q", stderr.String())
 	}
 }

@@ -18,10 +18,14 @@ type fakeSink struct {
 	events []map[string]any
 }
 
-func (s *fakeSink) Audit(_, _ string, fields map[string]any) {
+func (s *fakeSink) AuditRecorded(eventID string, occurredAt time.Time, _, _ string, fields map[string]any) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	s.events = append(s.events, fields)
+	copied := map[string]any{"event_id": eventID, "occurred_at": occurredAt}
+	for k, v := range fields {
+		copied[k] = v
+	}
+	s.events = append(s.events, copied)
 }
 
 func (s *fakeSink) ids() []string {

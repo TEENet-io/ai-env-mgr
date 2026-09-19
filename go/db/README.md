@@ -15,7 +15,7 @@
 | 账号 | 用途 | 权限 |
 |---|---|---|
 | 实例的特权账号(本机 `postgres`,RDS 上是高权限账号) | 只跑迁移:`cmd/migrate up` | 建表、建索引、授权 |
-| `aienv_app` | 控制台 + Worker | 业务表增删改查;`audit_events`、`task_attempts` **只能 INSERT/SELECT**;`schema_migrations` **只读** |
+| `aienv_app` | 控制台 + Worker | 业务表增删改查;`audit_events` **只能 INSERT/SELECT**;`task_attempts` 可 INSERT/UPDATE 不可 DELETE(领任务时开一行,结束时写结果);`schema_migrations` **只读** |
 | `aienv_ro` | 查询、报表、排障 | 只 SELECT |
 
 授权网格在 `grants.sql`,**由迁移运行器在每批迁移之后重放**(也可手动 `migrate grants`)。它不是迁移:迁移只跑一次,而一次性的授权覆盖不到以后新建的表——原先 `0002` 里那种写法就是这么漏的。

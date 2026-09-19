@@ -15,7 +15,11 @@ const AuditTarget = "sls_audit"
 // AuditSink is where an audit event is handed to whatever ships it. Today that
 // is the console's own event log, which a collector tails.
 type AuditSink interface {
-	Audit(eventType, msg string, fields map[string]any)
+	// AuditRecorded writes an event under the id and time it already has.
+	// The id is the whole point: it is the same id as the row in the
+	// database, which is what lets the two be reconciled line by line. A
+	// sink that minted its own id would make every event unconfirmable.
+	AuditRecorded(eventID string, occurredAt time.Time, eventType, msg string, fields map[string]any)
 }
 
 // AuditPublish ships the audit trail to the long-term archive, and then checks
@@ -66,11 +70,7 @@ func (h AuditPublish) Run(ctx context.Context, _ repo.Task) (Result, error) {
 	}
 	written := 0
 	for _, event := range pending {
-		h.Sink.Audit(event.Action, event.Action, map[string]any{
-			// The id is the whole point: it is the same id as the row in the
-			// database, which is what lets the two be reconciled line by line.
-			"event_id":    event.EventID,
-			"occurred_at": event.OccurredAt.UTC().Format(time.RFC3339Nano),
+		h.Sink.AuditRecorded(event.EventID, event.OccurredAt, event.Action, event.Action, map[string]any{
 			"actor_type":  event.ActorType,
 			"actor":       event.ActorID,
 			"target_type": event.TargetType,

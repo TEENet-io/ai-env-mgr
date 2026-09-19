@@ -55,7 +55,7 @@ func (w *Writer) Ops(level, eventType, msg string, fields map[string]any) {
 	if w == nil {
 		return
 	}
-	w.emit(w.ops, level, eventType, msg, fields)
+	w.emit(w.ops, level, eventType, msg, fields, "", time.Time{})
 }
 
 // Audit records an administrative fact. Always level info.
@@ -63,15 +63,35 @@ func (w *Writer) Audit(eventType, msg string, fields map[string]any) {
 	if w == nil {
 		return
 	}
-	w.emit(w.audit, "info", eventType, msg, fields)
+	w.emit(w.audit, "info", eventType, msg, fields, "", time.Time{})
 }
 
-func (w *Writer) emit(dst *rotatingFile, level, eventType, msg string, fields map[string]any) {
+// AuditRecorded writes an audit event whose identity was fixed elsewhere.
+//
+// The database row is the event; the copy shipped to the archive has to
+// carry the same event_id and occurred_at, or the two can never be
+// reconciled line by line -- the archive is asked "is event X there?", and
+// a copy under a fresh id answers no forever. The common-field rule still
+// applies to every other key.
+func (w *Writer) AuditRecorded(eventID string, occurredAt time.Time, eventType, msg string, fields map[string]any) {
+	if w == nil {
+		return
+	}
+	w.emit(w.audit, "info", eventType, msg, fields, eventID, occurredAt)
+}
+
+func (w *Writer) emit(dst *rotatingFile, level, eventType, msg string, fields map[string]any, eventID string, occurredAt time.Time) {
+	if eventID == "" {
+		eventID = newID()
+	}
+	if occurredAt.IsZero() {
+		occurredAt = time.Now()
+	}
 	ev := map[string]any{
 		"schema_version": SchemaVersion,
-		"event_id":       newID(),
+		"event_id":       eventID,
 		"event_type":     eventType,
-		"occurred_at":    time.Now().UTC().Format("2006-01-02T15:04:05.000Z"),
+		"occurred_at":    occurredAt.UTC().Format("2006-01-02T15:04:05.000Z"),
 		"module":         "console",
 		"source_id":      w.source,
 		"level":          level,
