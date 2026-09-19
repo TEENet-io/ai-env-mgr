@@ -507,13 +507,14 @@ func (s *Server) ListenAndServe() error {
 // secureHeaders applies defence-in-depth headers to every response.
 //
 // The CSP is deliberately strict and the assets are self-contained: no CDN, no
-// inline script. A cross-site script on this origin would be able to drive the
-// console with the operator's session.
+// inline script; the one script file is embedded in the binary. A cross-site
+// script on this origin would be able to drive the console with the
+// operator's session.
 func (s *Server) secureHeaders(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		h := w.Header()
 		h.Set("Content-Security-Policy",
-			"default-src 'none'; style-src 'self'; img-src 'self'; form-action 'self'; frame-ancestors 'none'; base-uri 'none'")
+			"default-src 'none'; style-src 'self'; script-src 'self'; img-src 'self'; form-action 'self'; frame-ancestors 'none'; base-uri 'none'")
 		h.Set("X-Content-Type-Options", "nosniff")
 		h.Set("Referrer-Policy", "no-referrer")
 		h.Set("X-Frame-Options", "DENY")

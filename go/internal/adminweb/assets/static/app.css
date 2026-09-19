@@ -7,7 +7,7 @@
  * and same word -- is used identically in the fleet strip, the row rails and
  * the badges, so the summary and the table are visibly one system.
  *
- * No webfonts and no script: the page is served from a binary with a strict
+ * No webfonts and no inline script: the page is served from a binary with a strict
  * CSP, and this console can push a binary every machine executes, so the
  * absence of script is worth more than anything script would buy.
  */
@@ -657,8 +657,8 @@ ol li { margin: 7px 0; }
 
 /* The model list folds away behind <details>. It is reference material, not
    something an operator checks daily, and unfolded it would push the machine
-   table below the fold on every visit. No script: the element does this
-   itself, and this console serves no JavaScript. */
+   table below the fold on every visit. No script needed: the element does
+   this itself. */
 .summary-row details { margin-top: 8px; }
 .summary-row summary {
   cursor: pointer;

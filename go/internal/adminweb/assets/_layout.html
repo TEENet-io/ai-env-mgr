@@ -5,11 +5,12 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>{{.}} · AI 环境管理</title>
 <link rel="stylesheet" href="/static/app.css">
+<script src="/static/app.js" defer></script>
 </head>{{end}}
 
 {{/* Reload while a publish is running. A meta refresh rather than script:
-this console serves no JavaScript, and the page only needs to update every few
-seconds. */}}
+the page only needs to update every few seconds, and the console's one script
+file stays out of it. */}}
 {{define "refresh-while-running"}}{{with .Job}}{{if .Running}}
 <meta http-equiv="refresh" content="5">
 {{end}}{{end}}{{end}}

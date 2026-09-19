@@ -7,7 +7,7 @@ import "html/template"
 //
 // CloudFlare rewrites anything that looks like an email address into
 // "[email protected]" and injects a script to restore it in the browser. This
-// console's CSP allows no script at all, so that script never runs and the
+// console's CSP allows no inline script, so that script never runs and the
 // address stays unreadable -- the roster's account column would show nothing
 // useful. The <!--email_off--> markers tell CloudFlare to leave the region
 // alone.

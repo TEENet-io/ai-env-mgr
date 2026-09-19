@@ -276,8 +276,19 @@ func TestSecurityHeadersArePresent(t *testing.T) {
 	rec := httptest.NewRecorder()
 	s.Handler().ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/", nil))
 	h := rec.Header()
-	if !strings.Contains(h.Get("Content-Security-Policy"), "default-src 'none'") {
+	csp := h.Get("Content-Security-Policy")
+	if !strings.Contains(csp, "default-src 'none'") {
 		t.Fatal("missing a restrictive CSP")
+	}
+	// The console's own script file may run; nothing inline and nothing
+	// from anywhere else may.
+	if !strings.Contains(csp, "script-src 'self'") || strings.Contains(csp, "unsafe-inline") {
+		t.Fatalf("script policy: %s", csp)
+	}
+	js := httptest.NewRecorder()
+	s.Handler().ServeHTTP(js, httptest.NewRequest(http.MethodGet, "/static/app.js", nil))
+	if js.Code != http.StatusOK || !strings.Contains(js.Header().Get("Content-Type"), "javascript") {
+		t.Fatalf("/static/app.js: %d %s", js.Code, js.Header().Get("Content-Type"))
 	}
 	if h.Get("X-Frame-Options") != "DENY" {
 		t.Fatal("page can be framed")
@@ -402,9 +413,9 @@ func TestUnfixedLocationStillAsks(t *testing.T) {
 	}
 }
 
-// CloudFlare rewrites addresses it finds and injects a script to undo it. The
-// CSP here allows no script, so that rewrite is permanent: the markers have to
-// survive into the output, and the value has to stay escaped.
+// CloudFlare rewrites addresses it finds and injects an inline script to undo
+// it. The CSP here allows no inline script, so that rewrite is permanent: the
+// markers have to survive into the output, and the value has to stay escaped.
 func TestAccountsAreExcludedFromEmailObfuscation(t *testing.T) {
 	got := string(noEmailScan("peter@teenet.io"))
 	if !strings.HasPrefix(got, "<!--email_off-->") || !strings.HasSuffix(got, "<!--email_on-->") {
