@@ -381,6 +381,7 @@ agent_workdir/work1/data_collect/.codex/sessions/{y}/{m}/{d}/rollout-....jsonl
   | `generation` | 代次。同一版本换代次 = 再试一次;agent 在状态里回报它,控制台据此知道一份回执属于哪次决定 |
 
   字段**存在即覆盖**全局目标,不存在则沿用全局策略;1.2.16 以前的 agent 忽略它们。未绑定员工的机器也可以有目标(对象里 `user` 为空)。RAM 授权不变:agent 读 `_bindings/*`、`_agent/*`、`_codex/*`。
+- **按需同步**(agent 1.2.16 起):agent 每分钟心跳时 HEAD 一次 `policy.json` 和自己的绑定对象,ETag 变了就立刻做完整同步,所以后台的任何改动一分钟内到达机器,同步间隔只是兜底。控制台的"立即同步"按钮往绑定对象写一个 `syncRequested` 随机值,让对象内容变化;agent 不解释这个值。1.2.16 以前的 agent 只按同步间隔读取。
 - agent 的状态多了 `agentUpdateTarget/agentUpdateGeneration/agentUpdateState`、`codexTarget/codexTargetGeneration/codexDeferReason`,控制台按它们结算设备目标:实际版本 = 目标版本且报告晚于目标创建 → 成功;同代次报 `failed` → 失败;延后/下载中/离线 → 保持待执行。
 
 ---
