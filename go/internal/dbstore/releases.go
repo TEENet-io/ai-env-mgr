@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/TEENet-io/ai-env-mgr/internal/repo"
 )
@@ -234,6 +235,10 @@ func (r releaseRepo) TargetsByDevice(ctx context.Context, deviceID string) ([]re
 
 func (r releaseRepo) OpenTargets(ctx context.Context) ([]repo.Target, error) {
 	return r.listTargets(ctx, `status = 'pending' and $1 = ''`, "")
+}
+
+func (r releaseRepo) TargetsSince(ctx context.Context, since time.Time) ([]repo.Target, error) {
+	return r.listTargets(ctx, `created_at >= $1`, since.UTC())
 }
 
 func (r releaseRepo) listTargets(ctx context.Context, where string, arg any) ([]repo.Target, error) {

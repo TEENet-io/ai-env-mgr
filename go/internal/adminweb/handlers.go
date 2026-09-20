@@ -98,6 +98,9 @@ type pageData struct {
 	AuditPage     *auditPage
 	MachinePage   *machinePage
 	History       *employeeHistory // the detail page's history (database mode)
+	Report        []versionReport  // the rollouts page's report by version
+	Deferred      []deferredRow    // machines that keep putting an update off
+	Dists         []distribution   // the overview's fleet distributions
 	Rollout       *rolloutView
 	Artifact      *repo.Artifact         // the "new rollout" page's subject
 	Candidates    []deviceCandidate      // machines to choose from
@@ -351,6 +354,9 @@ func (s *Server) handleOverview(w http.ResponseWriter, r *http.Request, sess *se
 		sess.cloud.annotate(machines)
 		data.Machines = machines
 		data.Fleet = summariseFleet(machines)
+		if s.dbm != nil {
+			data.Dists = fleetDistributions(machines, time.Now())
+		}
 	}
 
 	s.loadGatewayPanel(ctx, &data)

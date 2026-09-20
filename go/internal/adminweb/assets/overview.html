@@ -10,6 +10,19 @@
   </header>
   {{template "notices" .}}
   {{template "fleet" .}}
+  {{if .Dists}}
+  <section class="dists">
+    {{range .Dists}}
+    <div class="panel dist">
+      <div class="dist-title">{{.Title}}</div>
+      {{range .Rows}}
+      <div class="dist-row"><span class="dist-label mono">{{.Label}}</span><span class="dist-n">{{.N}}</span>
+        <span class="dist-bar"><span class="w{{.Pct}}"></span></span></div>
+      {{end}}
+    </div>
+    {{end}}
+  </section>
+  {{end}}
 
   <h2>当前策略</h2>
   {{if .PolicyError}}<p class="note note-err">{{.PolicyError}}</p>{{end}}

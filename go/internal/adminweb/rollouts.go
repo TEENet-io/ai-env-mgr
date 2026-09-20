@@ -212,7 +212,40 @@ func (s *Server) handleRollouts(w http.ResponseWriter, r *http.Request, sess *se
 		}
 		data.Rollouts = append(data.Rollouts, view)
 	}
+	data.Report, data.Deferred = s.releaseReport(r)
 	s.render(w, "rollouts.html", http.StatusOK, data)
+}
+
+// releaseReport is the rollouts page's top: the last 90 days by version, and
+// the machines that keep putting an update off.
+func (s *Server) releaseReport(r *http.Request) ([]versionReport, []deferredRow) {
+	ctx := r.Context()
+	targets, err := s.dbm.store.Releases().TargetsSince(ctx, time.Now().Add(-90*24*time.Hour))
+	if err != nil {
+		return nil, nil
+	}
+	artifacts := map[string]repo.Artifact{}
+	if all, err := s.dbm.store.Releases().ListArtifacts(ctx, ""); err == nil {
+		for _, a := range all {
+			artifacts[a.ID] = a
+		}
+	}
+	hostnames := map[string]string{}
+	if devices, err := s.dbm.store.Devices().List(ctx, repo.DeviceFilter{IncludeRevoked: true}); err == nil {
+		for _, d := range devices {
+			hostnames[d.ID] = d.Hostname
+		}
+	}
+	reports := map[string]*model.Status{}
+	if list, err := s.dbm.store.Reports().List(ctx); err == nil {
+		for _, rep := range list {
+			var status model.Status
+			if json.Unmarshal(rep.Report, &status) == nil {
+				reports[rep.DeviceID] = &status
+			}
+		}
+	}
+	return reportByVersion(targets, artifacts), alwaysDeferred(targets, artifacts, hostnames, reports, time.Now())
 }
 
 func (s *Server) handleRolloutNew(w http.ResponseWriter, r *http.Request, sess *session) {

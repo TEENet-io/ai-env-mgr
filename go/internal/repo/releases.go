@@ -124,6 +124,7 @@ type Releases interface {
 	TargetsByRollout(ctx context.Context, rolloutID string) ([]Target, error)
 	TargetsByDevice(ctx context.Context, deviceID string) ([]Target, error) // newest first
 	OpenTargets(ctx context.Context) ([]Target, error)
+	TargetsSince(ctx context.Context, since time.Time) ([]Target, error) // for the report; newest first
 	// FinishTarget moves a pending target to a terminal status. A target that
 	// is not pending is left alone and ErrConflict is returned: a late
 	// receipt must not rewrite a decision already recorded.

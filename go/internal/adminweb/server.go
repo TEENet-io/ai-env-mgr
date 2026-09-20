@@ -201,6 +201,7 @@ func New(opts Options) (*Server, error) {
 		"list":     func(xs ...string) []string { return xs },
 		"astatus":  artifactSeverity,
 		"add":      func(a, b int) int { return a + b },
+		"dur":      humanDuration,
 		"sub":      func(a, b int) int { return a - b },
 		"alabel":   artifactLabel,
 		"has": func(list []string, v string) bool {

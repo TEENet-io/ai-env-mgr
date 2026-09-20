@@ -6,6 +6,28 @@
   <header class="pagehead"><h1>发布任务</h1></header>
   {{template "notices" .}}
   <p class="dim"><a href="/releases">← 版本库</a>。要新建任务，在版本库里选一个版本点「创建发布」。</p>
+
+  <h2>版本报表（最近 90 天，每台机器按最后一次尝试计）</h2>
+  <div class="panel scroll"><table>
+    <thead><tr><th>产品</th><th>版本</th><th>成功</th><th>失败</th><th>待执行</th><th>已排除</th><th>下发到成功（中位）</th><th>失败原因</th></tr></thead>
+    <tbody>{{range .Report}}
+      <tr>
+        <td>{{.Product}}</td><td class="mono">{{.Version}}</td>
+        <td class="num">{{.Succeeded}}</td><td class="num">{{.Failed}}</td><td class="num">{{.Pending}}</td><td class="num">{{.Excluded}}</td>
+        <td class="dim">{{if .HasMedian}}{{dur .MedianToSuccess}}{{else}}—{{end}}</td>
+        <td class="remark">{{range .TopFailures}}{{.N}}× {{.Label}}<br>{{end}}</td>
+      </tr>{{else}}<tr><td colspan="8" class="empty">最近 90 天没有发布</td></tr>{{end}}
+    </tbody></table></div>
+  {{if .Deferred}}
+  <h2>一直延后的机器（目标下发超过一天仍在等）</h2>
+  <div class="panel scroll"><table>
+    <thead><tr><th>机器</th><th>产品</th><th>版本</th><th>原因</th><th>下发于</th></tr></thead>
+    <tbody>{{range .Deferred}}
+      <tr><td class="id"><a href="/machines/detail?machine={{.Hostname}}">{{.Hostname}}</a></td><td>{{.Product}}</td><td class="mono">{{.Version}}</td><td>{{.Reason}}</td><td class="dim">{{.Since.Local.Format "01-02 15:04"}}</td></tr>
+    {{end}}</tbody></table></div>
+  {{end}}
+
+  <h2>发布任务</h2>
   <div class="panel scroll"><table>
     <thead><tr><th>创建</th><th>产品</th><th>版本</th><th>类型</th><th>成功</th><th>失败</th><th>待执行</th><th>已排除</th><th>状态</th><th>说明</th></tr></thead>
     <tbody>{{range .Rollouts}}
