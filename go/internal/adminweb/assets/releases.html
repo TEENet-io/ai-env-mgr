@@ -6,6 +6,17 @@
 <main class="sheet">
   <header class="pagehead"><h1>发布更新</h1></header>
   {{template "notices" .}}
+  <aside class="panel guide">
+    <strong>怎么发一个版本</strong>
+    <ol>
+      <li><b>CI 出包</b>：agent 打 <span class="mono">v&lt;版本&gt;</span> tag；Codex 发 release 后在 codex-kiosk 点 <span class="mono">push-codex-to-oss</span>。包自动进 OSS，不经过这台机器。</li>
+      <li><b>登记</b>：每天自动扫一次；刚传完就点「立即扫描 OSS」，包出现在版本库，状态「候选」。核对 SHA-256 与 CI 日志一致。</li>
+      <li><b>验收</b>：在测试机用普通员工账户手动装一次（升级、回退、配置和会话保留都要试），通过后点该行「登记验收」。</li>
+      <li><b>下发</b>：agent ≥ 1.2.16 的机器用「创建发布…」，先勾 1～2 台试发，观察一个工作日再扩大；更早的 agent 只能「设为全局目标」，全体一起，要输版本号确认。</li>
+      <li><b>看进度</b>：<a href="/rollouts">发布任务</a>页逐台显示待执行/延后/安装中/成功/失败；失败可「重试」，长期离线可「排除」并写原因。机器一分钟内响应（Codex 正在使用则延后）。</li>
+      <li><b>出问题</b>：「清除」全局目标或「暂停」任务只拦住没开始的；已装上的不会自动回退，要在任务页建回滚任务。</li>
+    </ol>
+  </aside>
   <p class="dim"><a href="/rollouts">发布任务与设备进度 →</a></p>
 
   {{with .Job}}

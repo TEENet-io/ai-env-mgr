@@ -411,6 +411,14 @@ ol { margin: 10px 0; padding-left: 19px; }
 ol li { margin: 7px 0; }
 .hint { margin: 9px 0 0; font-size: 12px; color: var(--ink-faint); }
 
+/* A short "how to" beside the releases page. Floats right on a wide
+   screen so the library stays on the left; falls in line when narrow. */
+.guide { float: right; width: 340px; margin: 0 0 16px 20px; padding: 13px 16px; font-size: 12.5px; line-height: 1.5; }
+.guide ol { margin: 6px 0 0; padding-left: 18px; }
+.guide li { margin: 6px 0; }
+.guide li b { color: var(--ink); }
+@media (max-width: 1100px) { .guide { float: none; width: auto; margin: 0 0 14px; } }
+
 @media (max-width: 760px) {
   .app { display: block; }
   .rail {
