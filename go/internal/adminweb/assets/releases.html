@@ -55,17 +55,24 @@
     </tbody></table></div>
   {{end}}
 
-  <h2>登记 CI 已上传的包</h2>
+  <h2>OSS 里还没登记的包</h2>
   <div class="caution">登记和上传都只把包放进版本库，<strong>不会改变任何机器</strong>。「设为全局目标」让所有只读全局策略的机器（含 1.2.16 以前的 agent）一起更新；「创建发布」只对选中的机器（agent 1.2.16 起）下发。</div>
-  <form method="post" action="/releases/register" class="form">
-    <input type="hidden" name="csrf" value="{{.CSRF}}">
-    <label>产品<select name="product"><option value="agent">agent</option><option value="codex">codex</option></select></label>
-    <label>版本<input name="version" required placeholder="26.901.51231-b8"></label>
-    <label>最低 agent 版本<input name="min_agent" placeholder="1.2.16"></label>
-    <label class="wide">变更说明<textarea name="notes" rows="2"></textarea></label>
-    <button type="submit">登记</button>
-  </form>
-  <p class="hint">CI 把包传到 <span class="mono">agent_workdir/_codex/codex-setup-&lt;版本&gt;.exe</span> 或 <span class="mono">agent_workdir/_agent/&lt;版本&gt;/agent.exe</span> 后，在这里按版本号登记；控制台流式读一遍算 SHA-256，包不经过这台机器。</p>
+  <div class="panel scroll"><table>
+    <thead><tr><th>产品</th><th>版本</th><th>大小</th><th>上传时间</th><th>对象</th><th></th></tr></thead>
+    <tbody>{{range .Unregistered}}
+      <tr>
+        <td>{{.Product}}</td><td class="mono">{{.Version}}</td><td class="num">{{.SizeMB}} MB</td>
+        <td class="dim">{{.Modified.Local.Format "01-02 15:04"}}</td><td class="mono dim">{{.Key}}</td>
+        <td>
+          <form method="post" action="/releases/register" class="inline">
+            <input type="hidden" name="csrf" value="{{$.CSRF}}"><input type="hidden" name="product" value="{{.Product}}"><input type="hidden" name="version" value="{{.Version}}">
+            <input name="min_agent" placeholder="最低 agent（如 1.2.16）" size="16"><input name="notes" placeholder="变更说明" size="20">
+            <button>登记</button>
+          </form>
+        </td>
+      </tr>{{else}}<tr><td colspan="6" class="dim">CI 传上来的包都已登记。CI 上传位置：<span class="mono">agent_workdir/_codex/codex-setup-&lt;版本&gt;.exe</span>、<span class="mono">agent_workdir/_agent/&lt;版本&gt;/agent.exe</span>。</td></tr>{{end}}
+    </tbody></table></div>
+  <p class="hint">登记时控制台流式读一遍对象算 SHA-256，包不经过这台机器。</p>
 
   <h2>或由控制台拉取上传</h2>
   <form method="post" action="/releases/upload" enctype="multipart/form-data" class="form">

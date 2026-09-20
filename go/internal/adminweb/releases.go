@@ -221,6 +221,65 @@ func (s *Server) actionReleaseRegister(sess *session, r *http.Request) error {
 	})
 }
 
+// packageRow is an object in the bucket at one of the version library's
+// keys that no artifact row names yet: something CI put there, waiting to be
+// registered. The version is read off the key.
+type packageRow struct {
+	Product, Version, Key string
+	SizeMB                string
+	Modified              time.Time
+}
+
+// versionFromKey reads the version out of a version-library key, or "".
+func versionFromKey(product, key string) string {
+	switch product {
+	case repo.ProductCodex:
+		rest := strings.TrimPrefix(key, ossclient.CodexPrefix)
+		if !strings.HasPrefix(rest, "codex-setup-") || !strings.HasSuffix(rest, ".exe") {
+			return ""
+		}
+		return strings.TrimSuffix(strings.TrimPrefix(rest, "codex-setup-"), ".exe")
+	case repo.ProductAgent:
+		rest := strings.TrimPrefix(key, ossclient.AgentPrefix)
+		parts := strings.Split(rest, "/")
+		if len(parts) != 2 || parts[1] != "agent.exe" || parts[0] == "" {
+			return ""
+		}
+		return parts[0]
+	}
+	return ""
+}
+
+// unregisteredPackages lists what is in the bucket under the library's keys
+// and not yet in the library. Read-only: the page shows it with a
+// one-click "登记".
+func (s *Server) unregisteredPackages(ctx context.Context, known []repo.Artifact) ([]packageRow, error) {
+	registered := map[string]bool{}
+	for _, a := range known {
+		registered[a.Product+"/"+a.Version] = true
+	}
+	var rows []packageRow
+	for _, product := range []string{repo.ProductCodex, repo.ProductAgent} {
+		prefix := ossclient.CodexPrefix
+		if product == repo.ProductAgent {
+			prefix = ossclient.AgentPrefix
+		}
+		objects, err := s.dbm.objects.ListInfo(prefix)
+		if err != nil {
+			return nil, err
+		}
+		for _, o := range objects {
+			version := versionFromKey(product, o.Key)
+			if version == "" || registered[product+"/"+version] {
+				continue
+			}
+			rows = append(rows, packageRow{Product: product, Version: version, Key: o.Key,
+				SizeMB: fmt.Sprintf("%.1f", float64(o.Size)/(1<<20)), Modified: o.LastModified})
+		}
+	}
+	return rows, nil
+}
+
 // artifactRow is one version in the library, as the page shows it.
 type artifactRow struct {
 	repo.Artifact
@@ -239,6 +298,9 @@ func (s *Server) handleReleases(w http.ResponseWriter, r *http.Request, sess *se
 	all, err := s.dbm.store.Releases().ListArtifacts(r.Context(), "")
 	if err != nil {
 		data.Error = "could not list the version library"
+	}
+	if data.Unregistered, err = s.unregisteredPackages(r.Context(), all); err != nil {
+		data.Error = "could not list the bucket: " + err.Error()
 	}
 	data.Artifacts = map[string][]artifactRow{}
 	for _, a := range all {

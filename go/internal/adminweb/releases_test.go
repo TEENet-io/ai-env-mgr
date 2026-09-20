@@ -210,3 +210,51 @@ func TestRegisteringWhatCIUploadedReadsItOnceAndTouchesNothing(t *testing.T) {
 		t.Fatal("registering must not aim the fleet")
 	}
 }
+
+func TestVersionIsReadOffTheLibraryKey(t *testing.T) {
+	cases := map[[2]string]string{
+		{"codex", "agent_workdir/_codex/codex-setup-26.901.51231-b8.exe"}: "26.901.51231-b8",
+		{"codex", "agent_workdir/_codex/notes.txt"}:                       "",
+		{"agent", "agent_workdir/_agent/1.2.16/agent.exe"}:                "1.2.16",
+		{"agent", "agent_workdir/_agent/agent.exe"}:                       "",
+	}
+	for in, want := range cases {
+		if got := versionFromKey(in[0], in[1]); got != want {
+			t.Errorf("versionFromKey(%s, %s) = %q, want %q", in[0], in[1], got, want)
+		}
+	}
+}
+
+func TestThePageListsWhatCIUploadedUntilItIsRegistered(t *testing.T) {
+	s, fs := newDatabaseServer(t)
+	h := s.Handler()
+	cookie := signedIn(t, s)
+	fs.objects["agent_workdir/_codex/codex-setup-0.42.0.exe"] = bytes.Repeat([]byte("codex"), 1024)
+	fs.objects["agent_workdir/_agent/agent.exe"] = []byte("fixed key, not a version")
+
+	page := dbGet(t, h, "/releases", cookie)
+	body := page.Body.String()
+	if !strings.Contains(body, `name="version" value="0.42.0"`) {
+		t.Fatal("the unregistered package is not offered for registration")
+	}
+	if strings.Contains(body, "fixed key") {
+		t.Fatal("the fixed agent key is not a version and must not be listed")
+	}
+	csrf := csrfFrom(t, s, cookie, "/releases")
+	rec := dbPost(t, h, "/releases/register", url.Values{"csrf": {csrf}, "product": {"codex"}, "version": {"0.42.0"}}, cookie)
+	if !s.jobs.wait(10e9) {
+		t.Fatal("job did not finish")
+	}
+	if snap := s.jobs.snapshot(); snap == nil || snap.Err != "" {
+		t.Fatalf("register: redirect %s, job %+v", rec.Header().Get("Location"), snap)
+	}
+	page = dbGet(t, h, "/releases", cookie)
+	// The unregistered table is empty now; the version shows only in the
+	// library table (whose "set as fleet target" form also carries it).
+	if !strings.Contains(page.Body.String(), "都已登记") {
+		t.Fatalf("a registered package must leave the unregistered list (redirect %s)", rec.Header().Get("Location"))
+	}
+	if !strings.Contains(page.Body.String(), `action="/releases/global"`) {
+		t.Fatal("the registered version should now be in the library with its actions")
+	}
+}

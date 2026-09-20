@@ -92,6 +92,7 @@ type pageData struct {
 
 	// Version library (database mode).
 	Artifacts     map[string][]artifactRow // by product
+	Unregistered  []packageRow             // in the bucket, not yet in the library
 	GlobalTargets map[string]string        // product -> the fleet policy's version
 	Rollouts      []rolloutView
 	Rollout       *rolloutView

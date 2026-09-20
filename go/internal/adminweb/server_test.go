@@ -58,8 +58,14 @@ func (f *fakeStore) Get(key string) ([]byte, string, error) {
 }
 func (f *fakeStore) Put(key string, data []byte) error { f.objects[key] = data; return nil }
 func (f *fakeStore) List(string) ([]string, error)     { return nil, nil }
-func (f *fakeStore) ListInfo(string) ([]ossclient.ObjectInfo, error) {
-	return nil, nil
+func (f *fakeStore) ListInfo(prefix string) ([]ossclient.ObjectInfo, error) {
+	var out []ossclient.ObjectInfo
+	for key, data := range f.objects {
+		if strings.HasPrefix(key, prefix) {
+			out = append(out, ossclient.ObjectInfo{Key: key, Size: int64(len(data)), LastModified: time.Now()})
+		}
+	}
+	return out, nil
 }
 func (f *fakeStore) Delete(key string) error { delete(f.objects, key); return nil }
 func (f *fakeStore) PutFile(key, path string, onProgress func(done, total int64)) error {
