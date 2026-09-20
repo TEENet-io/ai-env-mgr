@@ -199,6 +199,8 @@ func New(opts Options) (*Server, error) {
 		"usagesev": usageSeverity,
 		"money":    func(v float64) string { return strconv.FormatFloat(v, 'f', 2, 64) },
 		"list":     func(xs ...string) []string { return xs },
+		"astatus":  artifactSeverity,
+		"alabel":   artifactLabel,
 		"has": func(list []string, v string) bool {
 			for _, x := range list {
 				if x == v {

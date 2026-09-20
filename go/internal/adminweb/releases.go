@@ -126,6 +126,34 @@ func (s *Server) unregisteredPackages(ctx context.Context, known []repo.Artifact
 	return rows, nil
 }
 
+// artifactSeverity maps a version's status onto the tag colours the console
+// uses everywhere: stable is good, accepted is on its way, a candidate is
+// neutral, retired is out.
+func artifactSeverity(status repo.ArtifactStatus) string {
+	switch status {
+	case repo.ArtifactStable:
+		return "ok"
+	case repo.ArtifactAccepted:
+		return "warn"
+	case repo.ArtifactRetired:
+		return "bad"
+	}
+	return "muted"
+}
+
+// artifactLabel is the status in the operator's language.
+func artifactLabel(severity string) string {
+	switch severity {
+	case "ok":
+		return "稳定"
+	case "warn":
+		return "已验收"
+	case "bad":
+		return "已停用"
+	}
+	return "候选"
+}
+
 // artifactRow is one version in the library, as the page shows it.
 type artifactRow struct {
 	repo.Artifact

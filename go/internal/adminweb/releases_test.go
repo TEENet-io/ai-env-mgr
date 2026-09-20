@@ -130,7 +130,7 @@ func TestThePageListsWhatCIUploadedUntilItIsRegistered(t *testing.T) {
 	page = dbGet(t, h, "/releases", cookie)
 	// The unregistered table is empty now; the version shows only in the
 	// library table (whose "set as fleet target" form also carries it).
-	if !strings.Contains(page.Body.String(), "都已登记") {
+	if !strings.Contains(page.Body.String(), "没有待登记的包") {
 		t.Fatalf("a registered package must leave the unregistered list (redirect %s)", rec.Header().Get("Location"))
 	}
 	if !strings.Contains(page.Body.String(), `action="/releases/global"`) {
