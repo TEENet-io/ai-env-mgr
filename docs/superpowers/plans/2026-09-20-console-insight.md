@@ -53,11 +53,11 @@ Search(ctx context.Context, f AuditFilter) (events []AuditEvent, total int, err 
 - `/audit.csv` 同样参数,列:`occurred_at,actor_type,actor,action,target_type,target,result,request_id,before,after`;`Content-Disposition: attachment; filename="audit-<from>-<to>.csv"`;上限 50000 行,超出在最后一行写 `# truncated`。
 - 目标名称解析:`target_type=employee` 的 `target_id` 是 UUID,页面显示 Windows 用户名(一次性把员工表读成 map),device 同理显示主机名。
 
-- [ ] 测试 `TestAuditSearchFiltersAndPages`(dbstore):写 5 条不同 actor/action/时间的事件,按 actor、action、时间段、分页各查一次,核对 total 与顺序(新→旧)。
-- [ ] 实现 `Search`:动态 where(`$1 = '' or actor_id = $1` 这种形式,避免拼 SQL),`count(*) over()` 取 total。
-- [ ] 测试 `TestAuditPageFiltersAndExportsCSV`(adminweb,DB 模式):开户两个人、改一次额度,`/audit?action=account.quota` 只列一条;`/audit.csv?actor=<admin>` 返回 `text/csv`、含表头和 3 行;`target` 列显示用户名不显示 UUID。
-- [ ] 实现页面:筛选表单在顶部(一行),结果表(时间、管理员、操作、对象、变化摘要、请求 ID),分页链接保留筛选参数;"变化摘要"= before/after 里不同的键,`k: a → b`,复用 `describeJSONDiff` 的思路(放到 adminweb 一个纯函数 `summariseChange(before, after []byte) string`,单测)。
-- [ ] 提交:`adminweb: a searchable audit page with CSV export`
+- [x] 测试 `TestAuditSearchFiltersAndPages`(dbstore):写 5 条不同 actor/action/时间的事件,按 actor、action、时间段、分页各查一次,核对 total 与顺序(新→旧)。
+- [x] 实现 `Search`:动态 where(`$1 = '' or actor_id = $1` 这种形式,避免拼 SQL),`count(*) over()` 取 total。
+- [x] 测试 `TestAuditPageFiltersAndExportsCSV`(adminweb,DB 模式):开户两个人、改一次额度,`/audit?action=account.quota` 只列一条;`/audit.csv?actor=<admin>` 返回 `text/csv`、含表头和 3 行;`target` 列显示用户名不显示 UUID。
+- [x] 实现页面:筛选表单在顶部(一行),结果表(时间、管理员、操作、对象、变化摘要、请求 ID),分页链接保留筛选参数;"变化摘要"= before/after 里不同的键,`k: a → b`,复用 `describeJSONDiff` 的思路(放到 adminweb 一个纯函数 `summariseChange(before, after []byte) string`,单测)。
+- [x] 提交:`adminweb: a searchable audit page with CSV export`
 
 ### Task A2: 机器时间线
 
@@ -77,18 +77,18 @@ type machinePage struct {
 }
 ```
 - 数据来源:`Devices().ByHostname`、`Reports().Get`、`Bindings().History`、`Releases()` 加 `TargetsByDevice(ctx, deviceID) ([]Target, error)`、`Audit().Search(target_type=device)`;绑定行里的员工名从 `Employees().ByID`(含已删除:ByID 不过滤)。
-- [ ] 测试 `TestMachinePageTellsTheMachinesStory`:一台机器绑 A 解绑绑 B、一次发布成功一次失败、一次"立即同步",页面按时间倒序都能看到,且已删除员工的名字仍显示。
-- [ ] 实现 + 总览主机名链接 + 导航不加项(从总览进)。
-- [ ] 提交:`adminweb: one page per machine: bindings, targets, audit`
+- [x] 测试 `TestMachinePageTellsTheMachinesStory`:一台机器绑 A 解绑绑 B、一次发布成功一次失败、一次"立即同步",页面按时间倒序都能看到,且已删除员工的名字仍显示。
+- [x] 实现 + 总览主机名链接 + 导航不加项(从总览进)。
+- [x] 提交:`adminweb: one page per machine: bindings, targets, audit`
 
 ### Task A3: 员工履历
 
 **Files:**
 - Modify: `go/internal/adminweb/accounts.go`(`handleUserDetail` 加 `Machines` 历史)、`assets/user.html`(履历一节)、`dbbackend.go`(`Audit` 改走 `Search`,带管理员与变化摘要)
 
-- [ ] 测试 `TestUserDetailShowsTheEmployeesHistory`:开户、改模型、绑机器、解绑、下线 → 详情页履历按时间倒序含这五条和机器名。
-- [ ] 实现:`bindingHistoryByEmployee` 需要 `Bindings().HistoryByEmployee(ctx, employeeID)`(repo + dbstore + 测试)。
-- [ ] 提交:`adminweb: an employee's full history on the detail page`
+- [x] 测试 `TestUserDetailShowsTheEmployeesHistory`:开户、改模型、绑机器、解绑、下线 → 详情页履历按时间倒序含这五条和机器名。
+- [x] 实现:`bindingHistoryByEmployee` 需要 `Bindings().HistoryByEmployee(ctx, employeeID)`(repo + dbstore + 测试)。
+- [x] 提交:`adminweb: an employee's full history on the detail page`
 
 ### Task A4: 发布报表
 
@@ -103,9 +103,9 @@ type countRow struct { Label string; N int }
 func reportByVersion(targets []repo.Target, artifacts map[string]repo.Artifact) []versionReport
 func alwaysDeferred(targets []repo.Target, reports map[string]*model.Status, now time.Time) []deferredRow // pending 超过 24h 且上报 deferred 的机器,带原因
 ```
-- [ ] 测试:三个目标(成功 10 分钟、成功 30 分钟、失败"codex: install: exit 2")→ 中位 20 分钟、失败 Top 1 条;延后 36 小时的机器进列表。
-- [ ] 实现 + `/rollouts` 顶部"版本报表"表格(默认最近 90 天)。
-- [ ] 提交:`adminweb: release report by version`
+- [x] 测试:三个目标(成功 10 分钟、成功 30 分钟、失败"codex: install: exit 2")→ 中位 20 分钟、失败 Top 1 条;延后 36 小时的机器进列表。
+- [x] 实现 + `/rollouts` 顶部"版本报表"表格(默认最近 90 天)。
+- [x] 提交:`adminweb: release report by version`
 
 ### Task A5: 机队看板
 
@@ -117,9 +117,9 @@ func alwaysDeferred(targets []repo.Target, reports map[string]*model.Status, now
 type distribution struct { Title string; Rows []countRow; Total int }
 func fleetDistributions(machines []admincore.MachineState, now time.Time) []distribution // agent 版本、Codex 版本、AppLocker 模式、未上报时长(<15m, <1h, <1d, <7d, ≥7d, 从未)
 ```
-- [ ] 测试:五台机器给定版本与最后上报 → 四个分布的行与计数。
-- [ ] 实现:总览"机队状态"条下面一排四个小面板,每行 `标签 · 数量 · 分段条(宽度=百分比,复用 .bar/.w{n})`。
-- [ ] 提交:`adminweb: fleet distributions on the overview`
+- [x] 测试:五台机器给定版本与最后上报 → 四个分布的行与计数。
+- [x] 实现:总览"机队状态"条下面一排四个小面板,每行 `标签 · 数量 · 分段条(宽度=百分比,复用 .bar/.w{n})`。
+- [x] 提交:`adminweb: fleet distributions on the overview`
 
 ### Task A6: 管理员角色
 
@@ -139,10 +139,10 @@ var minRole = map[string]string{
 func allowed(role, method, path string) bool
 ```
 - `security` 角色暂等同 `viewer` + `/audit`(A1)全量,先不单独区分。
-- [ ] 测试 `TestRolesGateWrites`:viewer 能 GET 总览、POST 开户得 403;operator 能开户、POST /admins/create 得 403;admin 全通;未知路由默认 admin。
-- [ ] 测试 `TestAdminsPageOffersThreeRoles`。
-- [ ] 实现:中间件 `s.requireRole(handler)` 包在 `requireSession` 里,用 `minRole` 判;403 页面复用 `notices` 显示"你的角色是 X,这个操作需要 Y"。
-- [ ] 提交:`adminweb: viewer, operator and admin roles`
+- [x] 测试 `TestRolesGateWrites`:viewer 能 GET 总览、POST 开户得 403;operator 能开户、POST /admins/create 得 403;admin 全通;未知路由默认 admin。
+- [x] 测试 `TestAdminsPageOffersThreeRoles`。
+- [x] 实现:中间件 `s.requireRole(handler)` 包在 `requireSession` 里,用 `minRole` 判;403 页面复用 `notices` 显示"你的角色是 X,这个操作需要 Y"。
+- [x] 提交:`adminweb: viewer, operator and admin roles`
 
 ---
 
@@ -151,3 +151,7 @@ func allowed(role, method, path string) bool
 - A1:对生产库查 `action=account.reissue` 能看到 9 月 19 日三条;CSV 下载在 Excel 打开中文不乱码(UTF-8 BOM)。
 - A2:三台机器各打开一次,绑定历史与总览一致。
 - A6:新建一个 viewer 账号登录,总览可看、关户按钮返回 403。
+
+## 实施记录
+
+2026-09-20:A1–A6 全部完成并部署到 47.84.48.181,提交 `180979b`(审计页)、`090de04`(机器页)、`911663d`(员工履历)、`cc97768`(发布报表与机队分布)、`30558ee`(角色)。生产库里 `account.reissue` 自 9 月 19 日起 3 条,审计页可见;现有管理员保持 `admin`。计划 B(用量快照、告警、凭据轮换)另写。
