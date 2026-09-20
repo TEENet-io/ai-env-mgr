@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -560,4 +561,150 @@ func TestAReusedNameStartsItsAliasesAfresh(t *testing.T) {
 	if a == b || !strings.HasPrefix(a, "emp-work1-0e5b2f1c-e1") {
 		t.Fatalf("aliases %q and %q", a, b)
 	}
+}
+
+// An account provisioned before aliases carried the employee id holds a grant
+// under the old name. The handler must find that grant by employee and epoch
+// and keep using its alias, or every change to the account mints a second
+// token and the one-active-grant rule refuses it.
+func TestAnOldStyleAliasIsReusedNotReplaced(t *testing.T) {
+	store, service, gateway, _, w, ctx := provisioned(t)
+	employee := onboard(t, ctx, service, "work1")
+	oldAlias := "emp-work1-e" + strconv.Itoa(employee.AuthEpoch)
+	cred, err := store.Credentials().Store(ctx, repo.NewCredential{
+		EmployeeID: employee.ID, Epoch: employee.AuthEpoch, Purpose: repo.PurposeCodexGateway,
+		Ciphertext: []byte("sealed"), KeyVersion: "k1"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	grant, err := store.Grants().Create(ctx, repo.NewGrant{
+		EmployeeID: employee.ID, Epoch: employee.AuthEpoch, ExternalUser: "emp-work1",
+		KeyAlias: oldAlias, Models: []string{"claude-4.5-sonnet"}, CredentialID: cred.ID})
+	if err != nil {
+		t.Fatal(err)
+	}
+	store.Grants().RecordActual(ctx, grant.ID, repo.ActualActive, "")
+	gateway.users["emp-work1"] = litellm.UserSpec{UserID: "emp-work1"}
+	gateway.keys[oldAlias] = litellm.Key{KeyAlias: oldAlias, Token: "hash-old", UserID: "emp-work1", Models: []string{"claude-4.5-sonnet"}}
+
+	// The provision queued by onboarding runs against the existing token.
+	drain(t, ctx, w)
+	if gateway.minted != 0 {
+		t.Fatalf("minted %d new token(s) for an account that already has one", gateway.minted)
+	}
+	if err := service.SetModels(ctx, employee.ID, []string{"gemini-2.5-pro"}, "zhang", ""); err != nil {
+		t.Fatalf("set models: %v", err)
+	}
+	drain(t, ctx, w)
+	if gateway.minted != 0 {
+		t.Fatalf("a model change minted %d token(s) instead of updating %s", gateway.minted, oldAlias)
+	}
+	gateway.mu.Lock()
+	key := gateway.keys[oldAlias]
+	gateway.mu.Unlock()
+	if len(key.Models) != 1 || key.Models[0] != "gemini-2.5-pro" {
+		t.Errorf("the old token still allows %v", key.Models)
+	}
+	active, err := store.Grants().Active(ctx, "", employee.ID)
+	if err != nil || active.KeyAlias != oldAlias || len(active.Models) != 1 || active.Models[0] != "gemini-2.5-pro" {
+		t.Errorf("active grant = %+v, %v", active, err)
+	}
+	open, _ := store.Tasks().ListOpen(ctx, 50)
+	for _, task := range open {
+		if task.Kind == repo.TaskGatewayProvision {
+			t.Errorf("a provision task is still open: %+v", task)
+		}
+	}
+}
+
+// The gateway user is named after the Windows user, so when a deleted
+// account's name is reused, the old account's clean-up must not take the
+// new account's user with it.
+func TestDeletingAnOldAccountSparesItsNamesake(t *testing.T) {
+	store, ctx := newWorkerStore(t)
+	gw := newFakeGateway()
+	old, err := store.Employees().Create(ctx, repo.NewEmployee{WindowsUser: "work1"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	cred, _ := store.Credentials().Store(ctx, repo.NewCredential{
+		EmployeeID: old.ID, Epoch: 1, Purpose: repo.PurposeCodexGateway, Ciphertext: []byte("x"), KeyVersion: "k1"})
+	if _, err := store.Grants().Create(ctx, repo.NewGrant{
+		EmployeeID: old.ID, Epoch: 1, ExternalUser: "emp-work1", KeyAlias: "emp-work1-e1", CredentialID: cred.ID}); err != nil {
+		t.Fatal(err)
+	}
+	if old, err = store.Employees().Offboard(ctx, old.ID, old.Version); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.Employees().Delete(ctx, old.ID, old.Version); err != nil {
+		t.Fatal(err)
+	}
+	// The gateway was down for the delete; meanwhile the name was reused
+	// and the new account provisioned.
+	fresh, err := store.Employees().Create(ctx, repo.NewEmployee{WindowsUser: "work1"})
+	if err != nil {
+		t.Fatalf("reuse the name: %v", err)
+	}
+	newAlias := KeyAlias("work1", fresh.ID, 1)
+	gw.users["emp-work1"] = litellm.UserSpec{UserID: "emp-work1", Alias: "new"}
+	gw.keys["emp-work1-e1"] = litellm.Key{KeyAlias: "emp-work1-e1"}
+	gw.keys[newAlias] = litellm.Key{KeyAlias: newAlias}
+
+	h := GatewayDelete{Store: store, Gateway: gw}
+	task := repo.Task{Payload: mustJSON(t, map[string]any{"employee_id": old.ID, "windows_user": "work1"})}
+	if _, err := h.Run(ctx, task); err != nil {
+		t.Fatalf("run: %v", err)
+	}
+	if _, still := gw.keys["emp-work1-e1"]; still {
+		t.Error("the old account's token is still on the gateway")
+	}
+	if _, kept := gw.keys[newAlias]; !kept {
+		t.Error("the new account's token was deleted")
+	}
+	if _, kept := gw.users["emp-work1"]; !kept {
+		t.Error("the gateway user now belongs to the new account and must stay")
+	}
+}
+
+// outerTasksFail is a store whose task queue works inside transactions and
+// fails outside them. It catches a handler that stores a credential in one
+// transaction and queues its delivery in another.
+type outerTasksFail struct{ *dbstore.Store }
+
+func (s outerTasksFail) Tasks() repo.Tasks { return failingTasks{s.Store.Tasks()} }
+
+type failingTasks struct{ repo.Tasks }
+
+func (failingTasks) Enqueue(context.Context, repo.NewTask) (repo.Task, bool, error) {
+	return repo.Task{}, false, errors.New("queue unavailable")
+}
+
+func TestTheTokenAndItsDeliveryAreQueuedTogether(t *testing.T) {
+	store, ctx := newWorkerStore(t)
+	gw := newFakeGateway()
+	ring := testKeyring(t)
+	employee := onboard(t, ctx, ops.New(store), "work1")
+	// The export from onboarding has already run and found nothing.
+	for {
+		c, err := store.Tasks().Claim(ctx, "w", []string{repo.TaskOSSExport}, time.Minute)
+		if err != nil {
+			break
+		}
+		store.Tasks().Succeed(ctx, c.ID, "w", "")
+	}
+	provision, err := store.Tasks().Claim(ctx, "w", []string{repo.TaskGatewayProvision}, time.Minute)
+	if err != nil {
+		t.Fatalf("claim provision: %v", err)
+	}
+	h := GatewayProvision{Store: outerTasksFail{store}, Gateway: gw, Keyring: ring}
+	if _, err := h.Run(ctx, provision); err != nil {
+		t.Fatalf("provision: %v", err)
+	}
+	open, _ := store.Tasks().ListOpen(ctx, 50)
+	for _, task := range open {
+		if task.Kind == repo.TaskOSSExport && task.EmployeeID == employee.ID {
+			return
+		}
+	}
+	t.Fatal("the token is stored but nothing will deliver it")
 }

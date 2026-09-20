@@ -116,7 +116,10 @@ func (h GatewayProvision) Run(ctx context.Context, task repo.Task) (Result, erro
 		return Result{}, err
 	}
 
-	alias := KeyAlias(employee.WindowsUser, employee.ID, payload.Epoch)
+	alias, err := h.aliasFor(ctx, employee, payload.Epoch)
+	if err != nil {
+		return Result{}, err
+	}
 	if done, err := h.alreadyIssued(ctx, employee, alias, models); err != nil || done {
 		return Result{Note: "already issued"}, err
 	}
@@ -178,7 +181,22 @@ func (h GatewayProvision) Run(ctx context.Context, task repo.Task) (Result, erro
 			return err
 		}
 		// Observed, not assumed: the gateway has just told us it made this.
-		_, err = tx.Grants().RecordActual(ctx, grant.ID, repo.ActualActive, "")
+		if _, err := tx.Grants().RecordActual(ctx, grant.ID, repo.ActualActive, ""); err != nil {
+			return err
+		}
+		// The export queued beside this task may already have run and found
+		// no token to deliver. Nothing else would bring it back, so queue it
+		// again now that there is one; the export converges, so one that has
+		// not run yet costs nothing extra. It goes in the same transaction as
+		// the credential: stored-but-never-delivered is a state a retry
+		// cannot see, because on the next run the token counts as issued.
+		_, _, err = tx.Tasks().Enqueue(ctx, repo.NewTask{
+			Kind:           repo.TaskOSSExport,
+			IdempotencyKey: "oss_export:employee:" + employee.ID + ":issued:" + alias,
+			Payload:        task.Payload,
+			TargetEpoch:    &payload.Epoch,
+			EmployeeID:     employee.ID,
+		})
 		return err
 	})
 	if errors.Is(err, errSuperseded) {
@@ -190,20 +208,23 @@ func (h GatewayProvision) Run(ctx context.Context, task repo.Task) (Result, erro
 	if err != nil {
 		return Result{}, err
 	}
-	// The export queued beside this task may already have run and found no
-	// token to deliver. Nothing else would bring it back, so queue it again
-	// now that there is one; the export converges, so one that has not run
-	// yet costs nothing extra.
-	if _, _, err := h.Store.Tasks().Enqueue(ctx, repo.NewTask{
-		Kind:           repo.TaskOSSExport,
-		IdempotencyKey: "oss_export:employee:" + employee.ID + ":issued:" + alias,
-		Payload:        task.Payload,
-		TargetEpoch:    &payload.Epoch,
-		EmployeeID:     employee.ID,
-	}); err != nil {
-		return Result{}, err
-	}
 	return Result{ExternalRef: alias}, nil
+}
+
+// aliasFor names the token for this epoch. An account that already holds a
+// live grant at this epoch keeps that grant's alias, whatever shape it has:
+// grants made before aliases carried the employee id are named emp-<user>-e<n>,
+// and looking them up under the new name would find nothing, mint a second
+// token and then trip over the one-active-grant rule.
+func (h GatewayProvision) aliasFor(ctx context.Context, employee repo.Employee, epoch int) (string, error) {
+	grant, err := h.Store.Grants().Active(ctx, "", employee.ID)
+	if err == nil && grant.Epoch == epoch {
+		return grant.KeyAlias, nil
+	}
+	if err != nil && !errors.Is(err, repo.ErrNotFound) {
+		return "", err
+	}
+	return KeyAlias(employee.WindowsUser, employee.ID, epoch), nil
 }
 
 var errSuperseded = errors.New("superseded")
@@ -411,7 +432,16 @@ func (h GatewayDelete) Run(ctx context.Context, task repo.Task) (Result, error) 
 		}
 		revoked++
 	}
+	// The gateway user is named after the Windows user, not the employee
+	// record. If the name has been given to a new account since this delete
+	// was queued, the user on the gateway is theirs now: their provisioning
+	// re-created it, and deleting it would cut off the wrong person.
 	userID := GatewayUserID(payload.WindowsUser)
+	if current, err := h.Store.Employees().ByWindowsUser(ctx, payload.WindowsUser); err == nil && current.ID != payload.EmployeeID {
+		return Result{Note: fmt.Sprintf("revoked %d token(s); gateway user %s kept, the name is in use again", revoked, userID)}, nil
+	} else if err != nil && !errors.Is(err, repo.ErrNotFound) {
+		return Result{}, err
+	}
 	if err := h.Gateway.DeleteUser(ctx, userID); err != nil {
 		return Result{}, gatewayError("delete_user", err)
 	}
