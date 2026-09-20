@@ -21,7 +21,7 @@ const (
 	TaskReleaseScan = "release_scan"
 
 	EveryStatusImport = time.Minute
-	EveryReleaseScan  = 5 * time.Minute
+	EveryReleaseScan  = 24 * time.Hour
 	EveryAuditPublish = time.Minute
 	EveryReconcile    = time.Hour
 )

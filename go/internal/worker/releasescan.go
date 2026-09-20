@@ -5,11 +5,25 @@ import (
 	"fmt"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/TEENet-io/ai-env-mgr/internal/ops"
 	"github.com/TEENet-io/ai-env-mgr/internal/ossclient"
 	"github.com/TEENet-io/ai-env-mgr/internal/repo"
 )
+
+// EnqueueReleaseScan queues a scan now, outside the daily bucket: the
+// button on the releases page, for an administrator who knows CI has just
+// finished. Keyed on the second, so two clicks are two scans, each cheap
+// when there is nothing new.
+func EnqueueReleaseScan(ctx context.Context, store repo.Store, at time.Time) error {
+	_, _, err := store.Tasks().Enqueue(ctx, repo.NewTask{
+		Kind:           TaskReleaseScan,
+		IdempotencyKey: TaskReleaseScan + ":manual:" + at.UTC().Format(time.RFC3339),
+		MaxAttempts:    2,
+	})
+	return err
+}
 
 // PackageSource is the part of the bucket the scan reads: the version
 // library's prefixes, and one object's checksum.

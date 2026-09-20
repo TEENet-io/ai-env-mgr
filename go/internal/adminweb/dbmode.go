@@ -656,6 +656,15 @@ func (s *Server) actionReconcileNow(_ *session, r *http.Request) (string, error)
 	return "已排队，Worker 会在几秒内开始对账", nil
 }
 
+// actionReleaseScanNow queues a bucket scan for an administrator who knows
+// CI has just uploaded something and does not want to wait for the daily one.
+func (s *Server) actionReleaseScanNow(_ *session, r *http.Request) (string, error) {
+	if err := worker.EnqueueReleaseScan(r.Context(), s.dbm.store, time.Now()); err != nil {
+		return "", err
+	}
+	return "已排队，Worker 几秒内开始扫描 OSS；新包算完 SHA-256 后出现在版本库里，刷新本页查看", nil
+}
+
 // handleHealthz answers the proxy and the service manager: the database is
 // reachable, or it is not.
 func (s *Server) handleHealthz(w http.ResponseWriter, r *http.Request) {

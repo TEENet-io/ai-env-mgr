@@ -55,7 +55,9 @@
     </tbody></table></div>
   {{end}}
 
-  <h2>OSS 里还没登记的包</h2>
+  <h2>OSS 里还没登记的包
+    <form method="post" action="/releases/scan" class="inline"><input type="hidden" name="csrf" value="{{.CSRF}}"><button class="link">立即扫描 OSS</button></form>
+  </h2>
   <div class="caution">登记和上传都只把包放进版本库，<strong>不会改变任何机器</strong>。「设为全局目标」让所有只读全局策略的机器（含 1.2.16 以前的 agent）一起更新；「创建发布」只对选中的机器（agent 1.2.16 起）下发。</div>
   <div class="panel scroll"><table>
     <thead><tr><th>产品</th><th>版本</th><th>大小</th><th>上传时间</th><th>对象</th><th></th></tr></thead>
@@ -72,7 +74,7 @@
         </td>
       </tr>{{else}}<tr><td colspan="6" class="dim">CI 传上来的包都已登记。CI 上传位置：<span class="mono">agent_workdir/_codex/codex-setup-&lt;版本&gt;.exe</span>、<span class="mono">agent_workdir/_agent/&lt;版本&gt;/agent.exe</span>。</td></tr>{{end}}
     </tbody></table></div>
-  <p class="hint">Worker 每 5 分钟扫一次这两个目录，发现新包会自动算 SHA-256 登记成候选；这里列的是还没轮到的，等一会儿或手动点「登记」都行。包不经过这台机器。</p>
+  <p class="hint">Worker 每天扫一次这两个目录，发现新包会自动算 SHA-256 登记成候选。CI 刚传完的包点「立即扫描 OSS」，或在这一行手动「登记」。包不经过这台机器。</p>
 
   {{template "fleet" .}}
 </main>

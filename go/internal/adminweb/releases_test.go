@@ -137,3 +137,26 @@ func TestThePageListsWhatCIUploadedUntilItIsRegistered(t *testing.T) {
 		t.Fatal("the registered version should now be in the library with its actions")
 	}
 }
+
+func TestTheScanButtonQueuesAScan(t *testing.T) {
+	s, _ := newDatabaseServer(t)
+	h := s.Handler()
+	cookie := signedIn(t, s)
+	page := dbGet(t, h, "/releases", cookie)
+	if !strings.Contains(page.Body.String(), `action="/releases/scan"`) {
+		t.Fatal("no scan button")
+	}
+	csrf := csrfFrom(t, s, cookie, "/releases")
+	rec := dbPost(t, h, "/releases/scan", url.Values{"csrf": {csrf}}, cookie)
+	if rec.Code != http.StatusSeeOther || strings.Contains(rec.Header().Get("Location"), "err=") {
+		t.Fatalf("scan: %d %s", rec.Code, rec.Header().Get("Location"))
+	}
+	tasks, _ := s.dbm.store.Tasks().ListOpen(t.Context(), 10)
+	found := false
+	for _, task := range tasks {
+		found = found || task.Kind == "release_scan"
+	}
+	if !found {
+		t.Fatal("no release_scan task was queued")
+	}
+}
