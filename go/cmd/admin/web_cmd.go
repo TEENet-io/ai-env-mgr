@@ -48,8 +48,7 @@ func cmdWeb(args []string) error {
 			// and compared while the old console is still live, and a Worker
 			// that started on its own would begin rewriting the objects those
 			// machines read.
-			Worker:   os.Getenv("AIENVMGR_WORKER") == "on",
-			SpoolDir: os.Getenv("AIENVMGR_SPOOL_DIR"),
+			Worker: os.Getenv("AIENVMGR_WORKER") == "on",
 		}
 	}
 	for i := 0; i < len(args); i++ {

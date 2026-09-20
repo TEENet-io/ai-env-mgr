@@ -355,8 +355,8 @@ func (s *Server) Handler() http.Handler {
 		mux.HandleFunc("/codex/publish", s.requirePost("/rollout", s.actionCodexPublish))
 		mux.HandleFunc("/codex/cancel", s.requirePost("/rollout", s.actionCodexCancel))
 	} else {
-		// In the database mode a package goes through the spool and the
-		// version library; the old routes, which held a whole package in
+		// In the database mode packages come from CI through the bucket and
+		// the version library; the old routes, which held a whole package in
 		// memory, lead there.
 		for _, old := range []string{"/agent/publish", "/agent/cancel", "/codex/publish", "/codex/cancel"} {
 			mux.HandleFunc(old, movedTo("/releases"))
@@ -375,7 +375,6 @@ func (s *Server) Handler() http.Handler {
 		mux.HandleFunc("/tasks", s.requireSession(s.handleTasks))
 		mux.HandleFunc("/tasks/reconcile", s.requirePostNotice("/tasks", s.actionReconcileNow))
 		mux.HandleFunc("/releases", s.requireSession(s.handleReleases))
-		mux.HandleFunc("/releases/upload", s.requirePost("/releases", s.actionReleaseUpload))
 		mux.HandleFunc("/releases/register", s.requirePost("/releases", s.actionReleaseRegister))
 		mux.HandleFunc("/releases/status", s.requirePost("/releases", s.actionReleaseStatus))
 		mux.HandleFunc("/releases/global", s.requirePost("/releases", s.actionReleaseGlobal))

@@ -535,9 +535,9 @@ func (b dbBackend) SaveQuotaDefaults(ctx context.Context, q litellm.Quota) error
 }
 
 // PublishAgentUpdate is the legacy whole-package path. In the database mode
-// packages go through the spool and the version library (/releases), which
-// never holds a package in memory; this exists only to satisfy the backend
-// interface and refuses.
+// packages come from CI through the bucket and are registered in the version
+// library (/releases); nothing holds a package in memory. This exists only to
+// satisfy the backend interface and refuses.
 func (b dbBackend) PublishAgentUpdate(context.Context, string, []byte, func(done, total int64)) (string, error) {
 	return "", errNoLegacyPublish
 }

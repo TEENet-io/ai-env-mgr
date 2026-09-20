@@ -74,20 +74,6 @@
     </tbody></table></div>
   <p class="hint">登记时控制台流式读一遍对象算 SHA-256，包不经过这台机器。</p>
 
-  <h2>或由控制台拉取上传</h2>
-  <form method="post" action="/releases/upload" enctype="multipart/form-data" class="form">
-    <input type="hidden" name="csrf" value="{{.CSRF}}">
-    <label>产品<select name="product"><option value="agent">agent</option><option value="codex">codex</option></select></label>
-    <label>版本<input name="version" required placeholder="1.2.16"></label>
-    <label>最低 agent 版本<input name="min_agent" placeholder="1.2.16"></label>
-    <label class="wide">URL<input name="url" placeholder="https://github.com/…/releases/download/…"></label>
-    <label>GITHUB TOKEN（私有仓库，只用一次）<input name="token" type="password" autocomplete="off"></label>
-    <label>或选择文件<input type="file" name="file"></label>
-    <label class="wide">变更说明<textarea name="notes" rows="3"></textarea></label>
-    <button type="submit">上传候选</button>
-  </form>
-  <p class="hint">Codex 安装包约 700 MB，用 URL 让服务器直接拉取；包经本机 spool 目录分片上传，不占控制台内存。同一版本号只对应一个包，重新构建请换版本号。</p>
-
   {{template "fleet" .}}
 </main>
 </div>

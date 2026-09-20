@@ -58,7 +58,7 @@ func newDatabaseServer(t *testing.T) (*Server, *fakeStore) {
 		Database: &DatabaseOptions{
 			DSN: dsn, MasterKeyFile: keyFile,
 			OSSAccessKeyID: "server-key", OSSAccessKeySecret: "server-secret",
-			Worker: false, SpoolDir: filepath.Join(t.TempDir(), "spool"),
+			Worker: false,
 		},
 	}, func(config.Config) (store, error) { return fs, nil })
 	if err != nil {
