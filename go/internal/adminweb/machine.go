@@ -90,3 +90,38 @@ func (s *Server) handleMachineDetail(w http.ResponseWriter, r *http.Request, ses
 	data.MachinePage = page
 	s.render(w, "machine.html", http.StatusOK, data)
 }
+
+// employeeHistory is the detail page's history in the database mode: every
+// machine the person has held, and every recorded action on their account.
+type employeeHistory struct {
+	EmployeeID string
+	Machines   []employeeMachineRow
+	Events     []auditRow
+}
+
+type employeeMachineRow struct {
+	repo.Binding
+	Hostname string
+}
+
+func (s *Server) employeeHistory(r *http.Request, windowsUser string) *employeeHistory {
+	ctx := r.Context()
+	e, err := s.dbm.store.Employees().ByWindowsUser(ctx, windowsUser)
+	if err != nil {
+		return nil
+	}
+	h := &employeeHistory{EmployeeID: e.ID}
+	if bindings, err := s.dbm.store.Bindings().HistoryByEmployee(ctx, e.ID); err == nil {
+		for _, b := range bindings {
+			row := employeeMachineRow{Binding: b, Hostname: b.DeviceID}
+			if d, err := s.dbm.store.Devices().ByID(ctx, b.DeviceID); err == nil {
+				row.Hostname = d.Hostname
+			}
+			h.Machines = append(h.Machines, row)
+		}
+	}
+	if events, _, err := s.dbm.store.Audit().Search(ctx, repo.AuditFilter{TargetType: "employee", TargetID: e.ID, Limit: 200}); err == nil {
+		h.Events = s.auditRows(r, events)
+	}
+	return h
+}

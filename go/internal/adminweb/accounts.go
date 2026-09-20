@@ -310,6 +310,9 @@ func (s *Server) handleUserDetail(w http.ResponseWriter, r *http.Request, sess *
 	data.GatewayURL = s.opts.GatewayURL
 
 	data.Audit, _ = sess.be.Audit(r.Context(), user)
+	if s.dbm != nil {
+		data.History = s.employeeHistory(r, user)
+	}
 
 	var keys []litellm.Key
 	var gwUsers []litellm.User

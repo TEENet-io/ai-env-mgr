@@ -97,6 +97,7 @@ type pageData struct {
 	Rollouts      []rolloutView
 	AuditPage     *auditPage
 	MachinePage   *machinePage
+	History       *employeeHistory // the detail page's history (database mode)
 	Rollout       *rolloutView
 	Artifact      *repo.Artifact         // the "new rollout" page's subject
 	Candidates    []deviceCandidate      // machines to choose from

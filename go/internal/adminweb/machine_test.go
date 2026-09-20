@@ -62,3 +62,30 @@ func TestMachinePageTellsTheMachinesStory(t *testing.T) {
 		t.Fatalf("unknown machine: %d", rec.Code)
 	}
 }
+
+func TestUserDetailShowsTheEmployeesHistory(t *testing.T) {
+	s, _ := newDatabaseServer(t)
+	h := s.Handler()
+	cookie := signedIn(t, s)
+	ctx := t.Context()
+	csrf := csrfFrom(t, s, cookie, "/users")
+	dbPost(t, h, "/users/onboard", url.Values{"csrf": {csrf}, "windowsUser": {"carol"}, "budget": {"20"}, "rpm": {"60"}, "tpm": {"100000"}, "parallel": {"4"}}, cookie)
+	carol, _ := s.dbm.store.Employees().ByWindowsUser(ctx, "carol")
+	s.dbm.ops.SetModels(ctx, carol.ID, []string{"glm-5"}, "admin", "r1")
+	s.dbm.ops.BindMachine(ctx, "PC-C1", carol.ID, "desk 4", "admin", "r2")
+	s.dbm.ops.UnbindMachine(ctx, "PC-C1", "admin", "r3")
+	s.dbm.ops.BindMachine(ctx, "PC-C2", carol.ID, "", "admin", "r4")
+	s.dbm.ops.Offboard(ctx, carol.ID, "admin", "r5")
+
+	page := dbGet(t, h, "/users/detail?user=carol", cookie)
+	body := page.Body.String()
+	for _, want := range []string{"PC-C1", "PC-C2", "desk 4", "当前", "account.onboard", "account.models", "account.offboard",
+		`href="/machines/detail?machine=PC-C2"`, "target_type=employee&target=" + carol.ID} {
+		if !strings.Contains(body, want) {
+			t.Errorf("detail page lacks %q", want)
+		}
+	}
+	if page.Code != 200 {
+		t.Fatalf("status %d", page.Code)
+	}
+}

@@ -338,6 +338,8 @@ type Bindings interface {
 	OpenByEmployee(ctx context.Context, employeeID string) ([]Binding, error)
 	ListOpen(ctx context.Context) ([]Binding, error)
 	History(ctx context.Context, deviceID string) ([]Binding, error)
+	// HistoryByEmployee is every machine this person has held, newest first.
+	HistoryByEmployee(ctx context.Context, employeeID string) ([]Binding, error)
 
 	// Bind assigns a machine. ErrDuplicate if it already has an open binding.
 	Bind(ctx context.Context, deviceID, employeeID, note, by string) (Binding, error)

@@ -103,6 +103,31 @@
   </div>
   {{end}}
 
+  {{with .History}}
+  <h2>用过的机器</h2>
+  <div class="panel scroll"><table>
+    <thead><tr><th>机器</th><th>绑定</th><th>解绑</th><th>备注</th></tr></thead>
+    <tbody>{{range .Machines}}
+      <tr>
+        <td class="id"><a href="/machines/detail?machine={{.Hostname}}">{{.Hostname}}</a></td>
+        <td class="dim">{{.BoundAt.Local.Format "2006-01-02 15:04"}}{{if .BoundBy}} · {{.BoundBy}}{{end}}</td>
+        <td class="dim">{{if .UnboundAt}}{{.UnboundAt.Local.Format "2006-01-02 15:04"}}{{if .UnboundBy}} · {{.UnboundBy}}{{end}}{{else}}<span class="tag tag-ok">当前</span>{{end}}</td>
+        <td class="remark">{{.Note}}</td>
+      </tr>{{else}}<tr><td colspan="4" class="empty">没有绑定过机器</td></tr>{{end}}
+    </tbody></table></div>
+
+  <h2>操作记录</h2>
+  <div class="panel scroll"><table>
+    <thead><tr><th>时间</th><th>操作者</th><th>操作</th><th>变化</th><th>结果</th></tr></thead>
+    <tbody>{{range .Events}}
+      <tr>
+        <td class="dim">{{.OccurredAt.Local.Format "01-02 15:04:05"}}</td>
+        <td>{{.ActorID}}</td><td class="mono">{{.Action}}</td><td class="remark">{{.Change}}</td>
+        <td>{{if eq .Result "ok"}}<span class="tag tag-ok">ok</span>{{else}}<span class="tag tag-bad">{{.Result}}</span>{{end}}</td>
+      </tr>{{else}}<tr><td colspan="5" class="empty">还没有记录</td></tr>{{end}}
+    </tbody></table></div>
+  <p class="hint"><a href="/audit?target_type=employee&target={{.EmployeeID}}">在审计页里筛选这个人 →</a></p>
+  {{else}}
   <h2>操作记录</h2>
   <div class="panel scroll">
   <table>
@@ -116,6 +141,7 @@
     </tbody>
   </table>
   </div>
+  {{end}}
 </main>
 </div>
 </body>

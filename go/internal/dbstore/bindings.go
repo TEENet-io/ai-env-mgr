@@ -58,6 +58,12 @@ func (r bindingRepo) History(ctx context.Context, deviceID string) ([]repo.Bindi
 		  where device_id = $1 order by epoch desc`, deviceID)
 }
 
+func (r bindingRepo) HistoryByEmployee(ctx context.Context, employeeID string) ([]repo.Binding, error) {
+	return r.query(ctx, "read employee's machines",
+		`select `+bindingColumns+` from device_bindings
+		  where employee_id = $1 order by bound_at desc`, employeeID)
+}
+
 // Bind assigns a machine to an employee.
 //
 // The epoch is the machine's binding count plus one, computed in the same
