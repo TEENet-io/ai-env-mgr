@@ -82,7 +82,6 @@ jobs:
       # an existing key is never overwritten -- a version names one set of
       # bytes -- so a re-cut of the same tag fails here on purpose.
       - name: Upload agent.exe to the OSS version library
-        if: ${{ env.OSS_CI_ACCESS_KEY_ID != '' }}
         env:
           OSS_CI_ACCESS_KEY_ID: ${{ secrets.OSS_CI_ACCESS_KEY_ID }}
           OSS_CI_ACCESS_KEY_SECRET: ${{ secrets.OSS_CI_ACCESS_KEY_SECRET }}
@@ -90,6 +89,13 @@ jobs:
           OSS_CI_ENDPOINT: ${{ secrets.OSS_CI_ENDPOINT }}
         run: |
           set -euo pipefail
+          if [ -z "${OSS_CI_ACCESS_KEY_ID}" ]; then
+            echo "::warning::OSS_CI_ACCESS_KEY_ID is not set; agent.exe was not uploaded to OSS"
+            exit 0
+          fi
+          for v in OSS_CI_ACCESS_KEY_SECRET OSS_CI_BUCKET OSS_CI_ENDPOINT; do
+            [ -n "${!v}" ] || { echo "::error::secret $v is not set"; exit 1; }
+          done
           VER="${GITHUB_REF_NAME#v}"
           KEY="agent_workdir/_agent/${VER}/agent.exe"
           curl -fsSL https://gosspublic.alicdn.com/ossutil/1.7.19/ossutil-v1.7.19-linux-amd64.zip -o /tmp/ossutil.zip
