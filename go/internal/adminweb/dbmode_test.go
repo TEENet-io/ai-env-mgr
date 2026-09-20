@@ -437,3 +437,31 @@ func TestTheAllBoxMeansNoModelAllowlist(t *testing.T) {
 		t.Fatalf("the all box must clear the allowlist, got %v", models)
 	}
 }
+
+func TestSyncNowButtonQueuesTheMachinesExport(t *testing.T) {
+	s, _ := newDatabaseServer(t)
+	h := s.Handler()
+	cookie := signedIn(t, s)
+	ctx := t.Context()
+	device, _ := s.dbm.store.Devices().EnsureByHostname(ctx, "PC-SYNC")
+	page := dbGet(t, h, "/overview", cookie)
+	if !strings.Contains(page.Body.String(), `action="/machines/sync"`) {
+		t.Fatal("no sync-now button on the overview")
+	}
+	csrf := csrfFrom(t, s, cookie, "/overview")
+	rec := dbPost(t, h, "/machines/sync", url.Values{"csrf": {csrf}, "machine": {"PC-SYNC"}}, cookie)
+	if rec.Code != http.StatusSeeOther || strings.Contains(rec.Header().Get("Location"), "err=") {
+		t.Fatalf("sync: %d %s", rec.Code, rec.Header().Get("Location"))
+	}
+	if got, _ := s.dbm.store.Devices().ByID(ctx, device.ID); got.SyncNonce == "" {
+		t.Fatal("no nonce recorded")
+	}
+	tasks, _ := s.dbm.store.Tasks().ListOpen(ctx, 10)
+	found := false
+	for _, task := range tasks {
+		found = found || (task.Kind == repo.TaskOSSExport && task.DeviceID == device.ID)
+	}
+	if !found {
+		t.Fatal("no binding export queued for the machine")
+	}
+}

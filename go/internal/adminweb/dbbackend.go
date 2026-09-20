@@ -496,6 +496,11 @@ func (b dbBackend) RequestCodexRestart(ctx context.Context, machine string) erro
 	return err
 }
 
+func (b dbBackend) RequestSync(ctx context.Context, machine string) error {
+	_, err := b.ops.RequestSync(ctx, machine, b.actor, b.requestID)
+	return err
+}
+
 func (b dbBackend) MutateDomains(ctx context.Context, add, remove []string) error {
 	_, err := b.ops.MutateDomains(ctx, add, remove, b.actor, b.requestID)
 	return err

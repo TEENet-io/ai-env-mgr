@@ -368,3 +368,22 @@ func TestDeleteHidesTheAccountAndFreesTheName(t *testing.T) {
 		t.Fatalf("ByWindowsUser after reuse = %+v, %v", found, err)
 	}
 }
+
+func TestSyncNowLeavesANonceOnTheDevice(t *testing.T) {
+	s, ctx := newTestStore(t)
+	d, _ := s.Devices().EnsureByHostname(ctx, "PC-9")
+	if _, err := s.Devices().RequestSync(ctx, d.ID, ""); err == nil {
+		t.Fatal("a nonce is required")
+	}
+	got, err := s.Devices().RequestSync(ctx, d.ID, "n1")
+	if err != nil || got.SyncNonce != "n1" {
+		t.Fatalf("RequestSync = %+v, %v", got, err)
+	}
+	if again, _ := s.Devices().ByID(ctx, d.ID); again.SyncNonce != "n1" {
+		t.Fatalf("nonce not stored: %+v", again)
+	}
+	s.Devices().Revoke(ctx, d.ID)
+	if _, err := s.Devices().RequestSync(ctx, d.ID, "n2"); !errors.Is(err, repo.ErrNotFound) {
+		t.Fatalf("a revoked machine cannot be asked to sync: %v", err)
+	}
+}

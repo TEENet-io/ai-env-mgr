@@ -148,3 +148,52 @@ func TestTheAgentReportsAFailedUpdateAfterwards(t *testing.T) {
 		t.Fatalf("second cycle: state %q, applied %d", st.AgentUpdateState, len(up.applied))
 	}
 }
+
+func TestTheHeartbeatNoticesWhatTheConsoleChanged(t *testing.T) {
+	store := newFakeStore()
+	store.set(ossclient.PolicyKey(), policyBytes(t, model.DefaultPolicy()), "p1")
+	s := newSyncer(t, store, &fakeApplier{})
+	if _, err := s.RunOnce(); err != nil {
+		t.Fatal(err)
+	}
+	// Nothing bound, nothing changed: the heartbeat has nothing to say.
+	if changed, what := s.ChangedSinceLastSync(); changed {
+		t.Fatalf("nothing changed, yet %q", what)
+	}
+	// A binding appears (a target, a "sync now", an assignment).
+	store.set(ossclient.BindingKey("DESKTOP-A"), bindingBytes(t, model.Binding{SyncRequested: "n1"}), "b1")
+	if changed, what := s.ChangedSinceLastSync(); !changed || what != "binding" {
+		t.Fatalf("a new binding object must be noticed: %v %q", changed, what)
+	}
+	s.RunOnce()
+	if changed, _ := s.ChangedSinceLastSync(); changed {
+		t.Fatal("after a sync the object has been seen")
+	}
+	// The same object rewritten with the same bytes has the same ETag: the
+	// console changes the nonce so that it does not.
+	store.set(ossclient.BindingKey("DESKTOP-A"), bindingBytes(t, model.Binding{SyncRequested: "n2"}), "b2")
+	if changed, _ := s.ChangedSinceLastSync(); !changed {
+		t.Fatal("a rewritten binding must be noticed")
+	}
+	s.RunOnce()
+	// The fleet policy moves.
+	store.set(ossclient.PolicyKey(), policyBytes(t, model.DefaultPolicy()), "p2")
+	if changed, what := s.ChangedSinceLastSync(); !changed || what != "policy" {
+		t.Fatalf("a new policy must be noticed: %v %q", changed, what)
+	}
+	s.RunOnce()
+	// The binding goes away (unbound, nothing aimed): noticed too.
+	delete(store.objects, ossclient.BindingKey("DESKTOP-A"))
+	if changed, _ := s.ChangedSinceLastSync(); !changed {
+		t.Fatal("a removed binding must be noticed")
+	}
+	s.RunOnce()
+	if changed, _ := s.ChangedSinceLastSync(); changed {
+		t.Fatal("absence, once seen, is not a change")
+	}
+	// A store that cannot be reached is not a change.
+	store.failKey(ossclient.BindingKey("DESKTOP-A"), errors.New("network down"))
+	if changed, _ := s.ChangedSinceLastSync(); changed {
+		t.Fatal("an unreachable store must not trigger a sync")
+	}
+}

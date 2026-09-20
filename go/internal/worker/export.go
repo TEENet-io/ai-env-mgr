@@ -181,7 +181,8 @@ func (h OSSExport) exportBinding(ctx context.Context, deviceID string) (Result, 
 	if err != nil && !unbound {
 		return Result{}, err
 	}
-	if unbound && object.AgentTarget == nil && object.CodexTarget == nil {
+	object.SyncRequested = device.SyncNonce
+	if unbound && object.AgentTarget == nil && object.CodexTarget == nil && device.SyncNonce == "" {
 		// Nobody is assigned to it and nothing is aimed at it. The agent
 		// reads the absence as "not assigned yet" and keeps applying the
 		// machine-wide policy, which is exactly right for a machine that has

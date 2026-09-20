@@ -447,3 +447,36 @@ func TestTheBindingCarriesTheMachinesTargetsAndSurvivesUnbinding(t *testing.T) {
 		t.Fatal("no user and no target: the binding object should be deleted")
 	}
 }
+
+func TestSyncNowReachesAnUnboundMachineToo(t *testing.T) {
+	store, ctx := newWorkerStore(t)
+	objects := newFakeObjects()
+	device, _ := store.Devices().EnsureByHostname(ctx, "PC-8")
+	svc := ops.New(store)
+	h := OSSExport{Store: store, Objects: objects}
+	export := func() {
+		t.Helper()
+		if _, err := h.Run(ctx, repo.Task{Kind: repo.TaskOSSExport, Payload: mustJSON(t, map[string]any{"device_id": device.ID})}); err != nil {
+			t.Fatalf("export: %v", err)
+		}
+	}
+	// Nobody bound, nothing aimed, nothing asked: no object.
+	export()
+	if _, ok := objects.get(ossclient.BindingKey("PC-8")); ok {
+		t.Fatal("nothing to say, yet an object was written")
+	}
+	nonce, err := svc.RequestSync(ctx, "PC-8", "t", "r1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	export()
+	data, ok := objects.get(ossclient.BindingKey("PC-8"))
+	if !ok {
+		t.Fatal("a sync request must write the object, or the agent has nothing to notice")
+	}
+	var b model.Binding
+	json.Unmarshal(data, &b)
+	if b.User != "" || b.SyncRequested != nonce {
+		t.Fatalf("binding = %+v", b)
+	}
+}

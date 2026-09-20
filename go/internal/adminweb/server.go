@@ -337,6 +337,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("/machines/bind", s.requirePost("/overview", s.actionMachineBind))
 	mux.HandleFunc("/machines/unbind", s.requirePost("/overview", s.actionMachineUnbind))
 	mux.HandleFunc("/machines/restart-codex", s.requirePostNotice("/overview", s.actionMachineRestartCodex))
+	mux.HandleFunc("/machines/sync", s.requirePostNotice("/overview", s.actionMachineSync))
 	mux.HandleFunc("/sites/mutate", s.requirePost("/sites", s.actionSites))
 	mux.HandleFunc("/sites/enabled", s.requirePost("/sites", s.actionBlockEnabled))
 	mux.HandleFunc("/sites/applocker", s.requirePost("/sites", s.actionAppLocker))

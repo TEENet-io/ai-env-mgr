@@ -54,6 +54,7 @@ const (
 	ActionBind          = "machine.bind"
 	ActionUnbind        = "machine.unbind"
 	ActionRestartCodex  = "machine.codex_restart"
+	ActionRequestSync   = "machine.sync"
 	ActionPublishPolicy = "policy.publish"
 
 	ActionArtifactRegister = "release.artifact_register"
@@ -491,6 +492,32 @@ func (s *Service) RequestCodexRestart(ctx context.Context, hostname, actor, requ
 	})
 	if err != nil {
 		return "", fmt.Errorf("ask %s to restart Codex: %w", hostname, err)
+	}
+	return nonce, nil
+}
+
+// RequestSync asks a machine's agent to run a full sync now. It writes a
+// nonce into the binding object; an agent from 1.2.16 checks that object's
+// ETag every minute and syncs when it moves. Older agents ignore it and
+// sync on their interval as before.
+func (s *Service) RequestSync(ctx context.Context, hostname, actor, requestID string) (string, error) {
+	nonce := strconv.FormatInt(s.now().UnixNano(), 36)
+	err := s.store.InTx(ctx, func(tx repo.Store) error {
+		device, err := tx.Devices().ByHostname(ctx, hostname)
+		if err != nil {
+			return err
+		}
+		if _, err := tx.Devices().RequestSync(ctx, device.ID, nonce); err != nil {
+			return err
+		}
+		if err := s.enqueueDeviceExport(ctx, tx, device, "sync:"+nonce); err != nil {
+			return err
+		}
+		return s.auditTarget(ctx, tx, actor, requestID, ActionRequestSync, "device", device.ID,
+			nil, map[string]any{"hostname": device.Hostname, "nonce": nonce})
+	})
+	if err != nil {
+		return "", fmt.Errorf("ask %s to sync: %w", hostname, err)
 	}
 	return nonce, nil
 }

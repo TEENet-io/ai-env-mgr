@@ -52,6 +52,8 @@ type backend interface {
 	UnbindMachine(ctx context.Context, machine string) error
 	ForgetMachine(ctx context.Context, machine string) error
 	RequestCodexRestart(ctx context.Context, machine string) error
+	// RequestSync asks the machine to sync now (database mode only).
+	RequestSync(ctx context.Context, machine string) error
 
 	MutateDomains(ctx context.Context, add, remove []string) error
 	MutateAppLockerAllowPaths(ctx context.Context, add, remove []string) error
@@ -176,6 +178,10 @@ func (b legacyBackend) ForgetMachine(_ context.Context, machine string) error {
 
 func (b legacyBackend) RequestCodexRestart(_ context.Context, machine string) error {
 	return b.mgr.RequestCodexRestart(machine)
+}
+
+func (b legacyBackend) RequestSync(context.Context, string) error {
+	return fmt.Errorf("sync now needs the database mode")
 }
 
 func (b legacyBackend) MutateDomains(_ context.Context, add, remove []string) error {

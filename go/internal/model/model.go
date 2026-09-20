@@ -145,6 +145,11 @@ type Binding struct {
 	// ignore the fields.
 	AgentTarget *ReleaseTarget `json:"agentTarget,omitempty"`
 	CodexTarget *ReleaseTarget `json:"codexTarget,omitempty"`
+
+	// SyncRequested is the console's "sync now" nonce. The agent does not
+	// act on the value: any change to this object is what its heartbeat
+	// notices, and this field exists so that a request changes the object.
+	SyncRequested string `json:"syncRequested,omitempty"`
 }
 
 // ReleaseTarget is one product's target for one machine: the version, the

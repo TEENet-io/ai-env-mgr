@@ -266,6 +266,9 @@ type Device struct {
 	CreatedAt    time.Time
 	UpdatedAt    time.Time
 	RevokedAt    *time.Time
+	// SyncNonce is the last "sync now" request; it rides in the binding
+	// object so that the object changes and the agent notices.
+	SyncNonce string
 }
 
 // DeviceFilter narrows List.
@@ -289,6 +292,9 @@ type Devices interface {
 	// Revoke stops a machine being served. It does not delete it: the
 	// bindings and the audit trail are the record of what it had.
 	Revoke(ctx context.Context, id string) (Device, error)
+
+	// RequestSync records a "sync now" nonce for the machine.
+	RequestSync(ctx context.Context, id, nonce string) (Device, error)
 }
 
 // Binding is one machine serving one employee, over a span of time.

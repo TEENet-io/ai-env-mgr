@@ -356,6 +356,10 @@ func loop(s *agentcore.Syncer, stop <-chan struct{}, wake <-chan struct{}) {
 			// a resume whose power event was never delivered.
 			if s.DueForSync(interval) {
 				sync("scheduled")
+			} else if changed, what := s.ChangedSinceLastSync(); changed {
+				// The console changed something for this machine; do not
+				// make it wait out the interval.
+				sync(what + " changed")
 			} else if err := s.Heartbeat(); err != nil {
 				// Between full syncs, just refresh "last seen" so the admin can
 				// tell the machine is alive without waiting a whole interval.

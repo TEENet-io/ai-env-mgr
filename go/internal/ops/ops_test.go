@@ -678,3 +678,27 @@ func TestDeleteIsOnlyForClosedAccountsAndHidesThem(t *testing.T) {
 		t.Fatal("no audit line for the deletion")
 	}
 }
+
+func TestSyncNowRewritesTheBindingObject(t *testing.T) {
+	svc, store, ctx := newService(t)
+	device, _ := store.Devices().EnsureByHostname(ctx, "PC-3")
+	nonce, err := svc.RequestSync(ctx, "PC-3", "zhang", "r1")
+	if err != nil || nonce == "" {
+		t.Fatalf("RequestSync: %q, %v", nonce, err)
+	}
+	if got, _ := store.Devices().ByID(ctx, device.ID); got.SyncNonce != nonce {
+		t.Fatalf("device nonce = %q, want %q", got.SyncNonce, nonce)
+	}
+	tasks := openTasks(t, ctx, store)
+	if len(tasks) != 1 || tasks[0].Kind != repo.TaskOSSExport || tasks[0].DeviceID != device.ID {
+		t.Fatalf("want one binding export, got %+v", tasks)
+	}
+	// Asking again is a new request: a new nonce, a new export.
+	second, _ := svc.RequestSync(ctx, "PC-3", "zhang", "r2")
+	if second == nonce || len(openTasks(t, ctx, store)) != 2 {
+		t.Fatal("a second request must be its own export")
+	}
+	if _, err := svc.RequestSync(ctx, "NOPE", "zhang", "r3"); err == nil {
+		t.Fatal("an unknown machine is an error")
+	}
+}

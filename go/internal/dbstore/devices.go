@@ -12,14 +12,14 @@ import (
 type deviceRepo struct{ q querier }
 
 const deviceColumns = `id, hostname, status, agent_version, note,
-	last_seen_at, created_at, updated_at, revoked_at`
+	last_seen_at, created_at, updated_at, revoked_at, sync_nonce`
 
 func scanDevice(row scanner) (repo.Device, error) {
 	var d repo.Device
 	var status string
 	var lastSeen, revoked *time.Time
 	err := row.Scan(&d.ID, &d.Hostname, &status, &d.AgentVersion, &d.Note,
-		&lastSeen, &d.CreatedAt, &d.UpdatedAt, &revoked)
+		&lastSeen, &d.CreatedAt, &d.UpdatedAt, &revoked, &d.SyncNonce)
 	if err != nil {
 		return repo.Device{}, err
 	}
@@ -112,6 +112,20 @@ func (r deviceRepo) MarkSeen(ctx context.Context, id, agentVersion string, at ti
 		return mapError(errNoRow, "record device sync")
 	}
 	return nil
+}
+
+func (r deviceRepo) RequestSync(ctx context.Context, id, nonce string) (repo.Device, error) {
+	if nonce == "" {
+		return repo.Device{}, errors.New("request sync: a nonce is required")
+	}
+	d, err := scanDevice(r.q.QueryRow(ctx,
+		`update devices set sync_nonce = $2, updated_at = now()
+		  where id = $1 and status <> 'revoked'
+		  returning `+deviceColumns, id, nonce))
+	if err != nil {
+		return repo.Device{}, mapError(err, "request sync")
+	}
+	return d, nil
 }
 
 func (r deviceRepo) Revoke(ctx context.Context, id string) (repo.Device, error) {

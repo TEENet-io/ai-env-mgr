@@ -127,6 +127,11 @@ const (
 	credsMarkerFile    = "credentials.etag"
 	lastSyncMarkerFile = "last-sync"
 	updateMarkerFile   = "update-target" // the last self-update version attempted
+	// The ETags the last full sync saw, for ChangedSinceLastSync. Separate
+	// from policyMarkerFile, which moves only when a policy was applied.
+	policySeenMarkerFile  = "policy-seen.etag"
+	bindingSeenMarkerFile = "binding-seen.etag"
+	absentMarker          = "absent"
 	// codexRestartMarkerFile lives in codexrestart.go, beside what writes it.
 )
 
@@ -272,15 +277,44 @@ func (s *Syncer) DueForSync(interval time.Duration) bool {
 // object with no user is "not bound" too, but its targets still count: a
 // machine nobody is assigned to can still be told what to run.
 func (s *Syncer) loadBinding(machine string) (model.Binding, bool) {
-	data, _, err := s.Store.Get(ossclient.BindingKey(machine))
+	data, etag, err := s.Store.Get(ossclient.BindingKey(machine))
 	if err != nil {
+		if errors.Is(err, ossclient.ErrNotFound) {
+			s.writeMarker(bindingSeenMarkerFile, absentMarker)
+		}
 		return model.Binding{}, false
 	}
+	s.writeMarker(bindingSeenMarkerFile, etag)
 	var b model.Binding
 	if err := json.Unmarshal(data, &b); err != nil {
 		return model.Binding{}, false
 	}
 	return b, b.User != ""
+}
+
+// ChangedSinceLastSync reports whether the policy or this machine's binding
+// object has changed since the last full sync, and which. It costs two HEAD
+// requests, which is what lets the sync interval be long: the console's
+// changes -- a target, a binding, a revocation, a "sync now" -- reach the
+// machine on the next heartbeat instead of the next interval. A store that
+// cannot be reached answers "no": the scheduled sync is the fallback.
+func (s *Syncer) ChangedSinceLastSync() (bool, string) {
+	if etag, exists, err := s.Store.Head(ossclient.PolicyKey()); err == nil && exists {
+		if seen := s.readMarker(policySeenMarkerFile); seen != "" && seen != etag {
+			return true, "policy"
+		}
+	}
+	etag, exists, err := s.Store.Head(ossclient.BindingKey(s.Machine.Name()))
+	if err != nil {
+		return false, ""
+	}
+	if !exists {
+		etag = absentMarker
+	}
+	if seen := s.readMarker(bindingSeenMarkerFile); seen != "" && seen != etag {
+		return true, "binding"
+	}
+	return false, ""
 }
 
 // RunOnce performs one full cycle: apply the machine-wide block policy, work
@@ -318,6 +352,7 @@ func (s *Syncer) RunOnce() (model.Status, error) {
 		errs = append(errs, fmt.Sprintf("policy: %v", err))
 	} else {
 		policyETag = etag
+		s.writeMarker(policySeenMarkerFile, etag)
 		if err := json.Unmarshal(data, &pol); err != nil {
 			errs = append(errs, fmt.Sprintf("policy parse: %v", err))
 		} else {

@@ -148,6 +148,17 @@ func (s *Server) actionMachineRestartCodex(sess *session, r *http.Request) (stri
 	return fmt.Sprintf("已下发，Agent 下个同步周期执行（当前间隔 %d 分钟）", minutes), nil
 }
 
+func (s *Server) actionMachineSync(sess *session, r *http.Request) (string, error) {
+	machine := formValue(r, "machine")
+	if machine == "" {
+		return "", fmt.Errorf("a machine is required")
+	}
+	if err := sess.be.RequestSync(r.Context(), machine); err != nil {
+		return "", err
+	}
+	return "已请求；agent 1.2.16 起每分钟检查一次，一分钟内开始同步。更早的 agent 仍按同步间隔执行", nil
+}
+
 func (s *Server) actionMachineUnbind(sess *session, r *http.Request) error {
 	machine := formValue(r, "machine")
 	if machine == "" {
