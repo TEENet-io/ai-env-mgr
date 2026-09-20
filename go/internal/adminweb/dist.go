@@ -47,7 +47,10 @@ func fleetDistributions(machines []admincore.MachineState, now time.Time) []dist
 				if d.Rows[i].N != d.Rows[j].N {
 					return d.Rows[i].N > d.Rows[j].N
 				}
-				return model.CompareVersions(d.Rows[i].Label, d.Rows[j].Label) > 0
+				if c := model.CompareVersions(d.Rows[i].Label, d.Rows[j].Label); c != 0 {
+					return c > 0
+				}
+				return d.Rows[i].Label < d.Rows[j].Label
 			})
 		}
 		return d

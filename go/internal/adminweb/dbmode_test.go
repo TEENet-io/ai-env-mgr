@@ -224,8 +224,14 @@ func TestDatabaseModeSignInEnrolsThenOpensASession(t *testing.T) {
 // signedIn does the enrolment dance and returns a live session cookie.
 func signedIn(t *testing.T, s *Server) *http.Cookie {
 	t.Helper()
-	h := s.Handler()
 	username, password := knownAdmin(t, s)
+	return signInAs(t, s, username, password)
+}
+
+// signInAs enrols an authenticator for the account and signs in with it.
+func signInAs(t *testing.T, s *Server, username, password string) *http.Cookie {
+	t.Helper()
+	h := s.Handler()
 	rec := dbPost(t, h, "/login", url.Values{"username": {username}, "password": {password}})
 	enrol := cookieNamed(rec, enrolCookie)
 	if enrol == nil {

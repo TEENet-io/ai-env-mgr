@@ -28,6 +28,12 @@ func (s *Server) requireSession(next func(http.ResponseWriter, *http.Request, *s
 			http.Redirect(w, r, "/", http.StatusSeeOther)
 			return
 		}
+		// The database mode has roles; the legacy mode has one key for
+		// everybody and nothing to check.
+		if sess.admin != nil && !allowed(sess.admin.Role, r.Method, r.URL.Path) {
+			s.forbid(w, r, sess)
+			return
+		}
 		next(w, r, sess)
 	}
 }
