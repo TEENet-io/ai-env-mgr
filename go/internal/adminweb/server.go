@@ -200,6 +200,8 @@ func New(opts Options) (*Server, error) {
 		"money":    func(v float64) string { return strconv.FormatFloat(v, 'f', 2, 64) },
 		"list":     func(xs ...string) []string { return xs },
 		"astatus":  artifactSeverity,
+		"add":      func(a, b int) int { return a + b },
+		"sub":      func(a, b int) int { return a - b },
 		"alabel":   artifactLabel,
 		"has": func(list []string, v string) bool {
 			for _, x := range list {
@@ -377,6 +379,8 @@ func (s *Server) Handler() http.Handler {
 		mux.HandleFunc("/admins/enable", s.requirePost("/admins", s.actionAdminSetDisabled(false)))
 		mux.HandleFunc("/tasks", s.requireSession(s.handleTasks))
 		mux.HandleFunc("/tasks/reconcile", s.requirePostNotice("/tasks", s.actionReconcileNow))
+		mux.HandleFunc("/audit", s.requireSession(s.handleAudit))
+		mux.HandleFunc("/audit.csv", s.requireSession(s.handleAuditCSV))
 		mux.HandleFunc("/releases", s.requireSession(s.handleReleases))
 		mux.HandleFunc("/releases/register", s.requirePost("/releases", s.actionReleaseRegister))
 		mux.HandleFunc("/releases/scan", s.requirePostNotice("/releases", s.actionReleaseScanNow))

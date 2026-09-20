@@ -611,6 +611,13 @@ type AuditEvent struct {
 	RequestID  string
 }
 
+// AuditFilter narrows Search. Empty strings and zero times mean "any".
+type AuditFilter struct {
+	TargetType, TargetID, Action, ActorID string
+	From, To                              time.Time
+	Offset, Limit                         int
+}
+
 // Audit is the append-only history.
 //
 // There is no Update and no Delete, and the application database account does
@@ -625,6 +632,9 @@ type Audit interface {
 
 	ByTarget(ctx context.Context, targetType, targetID string, limit int) ([]AuditEvent, error)
 	Recent(ctx context.Context, limit int) ([]AuditEvent, error)
+	// Search lists events newest first that match the filter, and how many
+	// match in all, for paging.
+	Search(ctx context.Context, f AuditFilter) (events []AuditEvent, total int, err error)
 	ByID(ctx context.Context, eventID string) (AuditEvent, error)
 
 	// CountByRequestPrefix counts events whose request id starts with prefix.

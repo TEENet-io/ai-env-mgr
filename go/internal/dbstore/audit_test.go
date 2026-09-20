@@ -174,3 +174,41 @@ func TestAuditRollsBackWithTheChangeItDescribes(t *testing.T) {
 		t.Errorf("the rolled-back transaction left %d audit events behind", len(recent))
 	}
 }
+
+func TestAuditSearchFiltersAndPages(t *testing.T) {
+	s, ctx := newTestStore(t)
+	e := mustCreate(t, ctx, s, "work1")
+	base := time.Date(2026, 9, 1, 0, 0, 0, 0, time.UTC)
+	for i, ev := range []repo.AuditEvent{
+		{ActorType: repo.ActorAdmin, ActorID: "zhang", Action: "account.onboard", TargetType: "employee", TargetID: e.ID},
+		{ActorType: repo.ActorAdmin, ActorID: "zhang", Action: "account.quota", TargetType: "employee", TargetID: e.ID},
+		{ActorType: repo.ActorAdmin, ActorID: "li", Action: "account.quota", TargetType: "employee", TargetID: e.ID},
+		{ActorType: repo.ActorAdmin, ActorID: "li", Action: "machine.bind", TargetType: "device", TargetID: "d1"},
+		{ActorType: repo.ActorWorker, ActorID: "worker", Action: "gateway.provision", TargetType: "employee", TargetID: e.ID},
+	} {
+		ev.OccurredAt = base.Add(time.Duration(i) * time.Hour)
+		if _, err := s.Audit().Append(ctx, ev); err != nil {
+			t.Fatal(err)
+		}
+	}
+	got, total, err := s.Audit().Search(ctx, repo.AuditFilter{ActorID: "li"})
+	if err != nil || total != 2 || len(got) != 2 || got[0].Action != "machine.bind" {
+		t.Fatalf("by actor: total %d, %d rows (%+v), err %v", total, len(got), got, err)
+	}
+	got, total, _ = s.Audit().Search(ctx, repo.AuditFilter{Action: "account.quota", TargetType: "employee"})
+	if total != 2 || got[0].ActorID != "li" || got[1].ActorID != "zhang" {
+		t.Fatalf("by action, newest first: %+v", got)
+	}
+	got, total, _ = s.Audit().Search(ctx, repo.AuditFilter{From: base.Add(90 * time.Minute), To: base.Add(3 * time.Hour)})
+	if total != 1 || got[0].ActorID != "li" || got[0].Action != "account.quota" {
+		t.Fatalf("by time window [1.5h, 3h): total %d %+v", total, got)
+	}
+	page1, total, _ := s.Audit().Search(ctx, repo.AuditFilter{Limit: 2})
+	page3, total3, _ := s.Audit().Search(ctx, repo.AuditFilter{Limit: 2, Offset: 4})
+	if total != 5 || len(page1) != 2 || total3 != 5 || len(page3) != 1 {
+		t.Fatalf("paging: %d/%d, %d/%d", len(page1), total, len(page3), total3)
+	}
+	if _, total, _ := s.Audit().Search(ctx, repo.AuditFilter{Limit: 2, Offset: 40}); total != 5 {
+		t.Fatalf("past the end the total is still known: %d", total)
+	}
+}

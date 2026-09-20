@@ -1,0 +1,42 @@
+{{define "audit.html"}}{{template "head" "审计"}}
+<body>
+<div class="app">
+{{template "nav" .}}
+<main class="sheet">
+  <header class="pagehead"><h1>审计</h1><p>控制台里每一次改动：谁、何时、对谁、改了什么。只追加，不可改。</p></header>
+  {{template "notices" .}}
+  {{with .AuditPage}}
+  <form method="get" action="/audit" class="form filter">
+    <label>对象类型<select name="target_type"><option value="">全部</option>{{range $t := list "employee" "device" "rollout" "artifact" "policy" "admin"}}<option value="{{$t}}"{{if eq $t $.AuditPage.Filter.TargetType}} selected{{end}}>{{$t}}</option>{{end}}</select></label>
+    <label>对象 ID<input name="target" value="{{.Filter.TargetID}}" placeholder="员工/机器的 ID"></label>
+    <label>操作<select name="action"><option value="">全部</option>{{range .Actions}}<option value="{{.}}"{{if eq . $.AuditPage.Filter.Action}} selected{{end}}>{{.}}</option>{{end}}</select></label>
+    <label>管理员<input name="actor" value="{{.Filter.ActorID}}"></label>
+    <label>从<input name="from" type="date" value="{{.FromText}}"></label>
+    <label>到<input name="to" type="date" value="{{.ToText}}"></label>
+    <button type="submit">筛选</button>
+    <a class="button-link" href="/audit.csv{{if .Query}}?{{.Query}}{{end}}">导出 CSV</a>
+  </form>
+  <p class="dim">共 {{.Total}} 条{{if gt .Pages 1}} · 第 {{.Page}} / {{.Pages}} 页{{end}}</p>
+  <div class="panel scroll"><table>
+    <thead><tr><th>时间</th><th>操作者</th><th>操作</th><th>对象</th><th>变化</th><th>结果</th></tr></thead>
+    <tbody>{{range .Rows}}
+      <tr>
+        <td class="dim" title="{{.OccurredAt}}">{{.OccurredAt.Local.Format "01-02 15:04:05"}}</td>
+        <td>{{.ActorID}}<div class="rowsub">{{.ActorType}}</div></td>
+        <td class="mono">{{.Action}}</td>
+        <td class="id" title="{{.TargetType}} {{.TargetID}}">{{.Target}}<div class="rowsub">{{.TargetType}}</div></td>
+        <td class="remark">{{.Change}}</td>
+        <td>{{if eq .Result "ok"}}<span class="tag tag-ok">ok</span>{{else}}<span class="tag tag-bad">{{.Result}}</span>{{end}}<div class="rowsub mono">{{.RequestID}}</div></td>
+      </tr>{{else}}<tr><td colspan="6" class="empty">没有匹配的记录</td></tr>{{end}}
+    </tbody></table></div>
+  {{if gt .Pages 1}}
+  <p class="dim">
+    {{if gt .Page 1}}<a href="/audit?{{.Query}}{{if .Query}}&{{end}}page={{sub .Page 1}}">← 上一页</a>{{end}}
+    {{if lt .Page .Pages}}<a href="/audit?{{.Query}}{{if .Query}}&{{end}}page={{add .Page 1}}">下一页 →</a>{{end}}
+  </p>
+  {{end}}
+  {{end}}
+</main>
+</div>
+</body>
+</html>{{end}}

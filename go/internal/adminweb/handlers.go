@@ -95,6 +95,7 @@ type pageData struct {
 	Unregistered  []packageRow             // in the bucket, not yet in the library
 	GlobalTargets map[string]string        // product -> the fleet policy's version
 	Rollouts      []rolloutView
+	AuditPage     *auditPage
 	Rollout       *rolloutView
 	Artifact      *repo.Artifact         // the "new rollout" page's subject
 	Candidates    []deviceCandidate      // machines to choose from

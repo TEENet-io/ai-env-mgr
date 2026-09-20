@@ -115,6 +115,61 @@ func (r auditRepo) ByTarget(ctx context.Context, targetType, targetID string, li
 		  order by occurred_at desc limit $3`, targetType, targetID)
 }
 
+func (r auditRepo) Search(ctx context.Context, f repo.AuditFilter) ([]repo.AuditEvent, int, error) {
+	limit := f.Limit
+	if limit <= 0 {
+		limit = 100
+	}
+	var from, to *time.Time
+	if !f.From.IsZero() {
+		t := f.From.UTC()
+		from = &t
+	}
+	if !f.To.IsZero() {
+		t := f.To.UTC()
+		to = &t
+	}
+	const where = ` where ($1 = '' or target_type = $1)
+		    and ($2 = '' or target_id = $2)
+		    and ($3 = '' or action = $3)
+		    and ($4 = '' or actor_id = $4)
+		    and ($5::timestamptz is null or occurred_at >= $5)
+		    and ($6::timestamptz is null or occurred_at < $6)`
+	rows, err := r.q.Query(ctx,
+		`select `+auditColumns+`, count(*) over() from audit_events`+where+`
+		  order by occurred_at desc, event_id desc
+		  limit $7 offset $8`,
+		f.TargetType, f.TargetID, f.Action, f.ActorID, from, to, limit, f.Offset)
+	if err != nil {
+		return nil, 0, mapError(err, "search audit")
+	}
+	defer rows.Close()
+	out := []repo.AuditEvent{}
+	total := 0
+	for rows.Next() {
+		var ev repo.AuditEvent
+		var taskID *string
+		if err := rows.Scan(&ev.EventID, &ev.OccurredAt, &ev.ActorType, &ev.ActorID, &ev.Action,
+			&ev.TargetType, &ev.TargetID, &ev.Before, &ev.After, &ev.Detail,
+			&ev.Result, &taskID, &ev.RequestID, &total); err != nil {
+			return nil, 0, mapError(err, "search audit")
+		}
+		ev.TaskID = derefString(taskID)
+		out = append(out, ev)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, 0, mapError(err, "search audit")
+	}
+	if len(out) == 0 && f.Offset > 0 {
+		// Past the end: the count is still wanted for the page links.
+		if err := r.q.QueryRow(ctx, `select count(*) from audit_events`+where,
+			f.TargetType, f.TargetID, f.Action, f.ActorID, from, to).Scan(&total); err != nil {
+			return nil, 0, mapError(err, "count audit")
+		}
+	}
+	return out, total, nil
+}
+
 func (r auditRepo) Recent(ctx context.Context, limit int) ([]repo.AuditEvent, error) {
 	return r.query(ctx, "read recent audit events", limit,
 		`select `+auditColumns+` from audit_events order by occurred_at desc limit $1`)
