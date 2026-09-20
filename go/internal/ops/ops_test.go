@@ -4,9 +4,11 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"os"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/TEENet-io/ai-env-mgr/internal/dbstore"
 	"github.com/TEENet-io/ai-env-mgr/internal/repo"
@@ -700,5 +702,56 @@ func TestSyncNowRewritesTheBindingObject(t *testing.T) {
 	}
 	if _, err := svc.RequestSync(ctx, "NOPE", "zhang", "r3"); err == nil {
 		t.Fatal("an unknown machine is an error")
+	}
+}
+
+func TestOffboardingAgainRetriesARevocationThatFailed(t *testing.T) {
+	svc, store, ctx := newService(t)
+	employee, _ := svc.Onboard(ctx, OnboardSpec{WindowsUser: "work1", Quota: testQuota(), Actor: "zhang"})
+	if _, err := svc.Offboard(ctx, employee.ID, "zhang", "r1"); err != nil {
+		t.Fatal(err)
+	}
+	var revoke repo.Task
+	for _, task := range openTasks(t, ctx, store) {
+		if task.Kind == repo.TaskGatewayRevoke {
+			revoke = task
+		}
+	}
+	if revoke.ID == "" {
+		t.Fatal("no revoke task queued")
+	}
+	claimed, _ := store.Tasks().Claim(ctx, "w", []string{repo.TaskGatewayRevoke}, time.Minute)
+	store.Tasks().FailPermanently(ctx, claimed.ID, "w", "gateway_500", "boom", "")
+
+	// Offboarding again is the retry, and must put the revocation back.
+	if _, err := svc.Offboard(ctx, employee.ID, "zhang", "r2"); err != nil {
+		t.Fatalf("second offboard: %v", err)
+	}
+	got, _ := store.Tasks().ByID(ctx, revoke.ID)
+	if got.Status != repo.TaskPending {
+		t.Fatalf("revoke task after the retry = %s, want pending", got.Status)
+	}
+}
+
+func TestChangingModelsBackAndForthReachesTheGatewayEveryTime(t *testing.T) {
+	svc, store, ctx := newService(t)
+	employee, _ := svc.Onboard(ctx, OnboardSpec{WindowsUser: "work1", Quota: testQuota(), Models: []string{"a"}, Actor: "zhang"})
+	count := func() int {
+		n := 0
+		for _, task := range openTasks(t, ctx, store) {
+			if task.Kind == repo.TaskGatewayProvision && task.EmployeeID == employee.ID {
+				n++
+			}
+		}
+		return n
+	}
+	base := count()
+	for i, models := range [][]string{{"b"}, {"a"}, {"b"}} {
+		if err := svc.SetModels(ctx, employee.ID, models, "zhang", fmt.Sprintf("r%d", i)); err != nil {
+			t.Fatal(err)
+		}
+		if got := count(); got != base+i+1 {
+			t.Fatalf("after change %d: %d provisioning task(s), want %d", i+1, got, base+i+1)
+		}
 	}
 }

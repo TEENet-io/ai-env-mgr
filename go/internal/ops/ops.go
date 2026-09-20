@@ -23,7 +23,6 @@ import (
 	"errors"
 	"fmt"
 	"strconv"
-	"strings"
 	"time"
 
 	"github.com/TEENet-io/ai-env-mgr/internal/repo"
@@ -338,7 +337,9 @@ func (s *Service) SetModels(ctx context.Context, employeeID string, models []str
 		if err != nil {
 			return err
 		}
-		modelsMarker := "models:" + strconv.Itoa(len(after)) + ":" + strings.Join(after, ",")
+		// Keyed on when, not on what: a list changed A -> B -> A would find
+		// the finished task for A and never reach the gateway.
+		modelsMarker := "models:" + strconv.FormatInt(s.now().UnixNano(), 36)
 		if err := s.enqueueGatewayWork(ctx, tx, employee, repo.TaskGatewayProvision, modelsMarker); err != nil {
 			return err
 		}

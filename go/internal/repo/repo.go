@@ -527,6 +527,9 @@ type Tasks interface {
 	// Enqueue adds a task, or returns the one that is already there for this
 	// idempotency key. created says which happened, so a caller can tell a
 	// fresh request from a repeat without comparing timestamps.
+	// Enqueue adds a task, or returns the one already queued under the same
+	// idempotency key. A task that had failed for good is put back on the
+	// queue and reported as created: asking again is the retry.
 	Enqueue(ctx context.Context, t NewTask) (task Task, created bool, err error)
 
 	// Claim takes one runnable task and leases it. kinds narrows what this

@@ -389,3 +389,37 @@ func TestSupersedeStopsWorkThatNoLongerMakesSense(t *testing.T) {
 		t.Errorf("superseding a closed task: error = %v, want ErrNotFound", err)
 	}
 }
+
+func TestAskingAgainRevivesATaskThatFailedForGood(t *testing.T) {
+	s, ctx := newTestStore(t)
+	first, created, err := s.Tasks().Enqueue(ctx, repo.NewTask{Kind: "gateway_revoke", IdempotencyKey: "gateway_revoke:e:1"})
+	if err != nil || !created {
+		t.Fatalf("enqueue: %+v %v %v", first, created, err)
+	}
+	claimed, err := s.Tasks().Claim(ctx, "w1", nil, time.Minute)
+	if err != nil {
+		t.Fatalf("claim: %v", err)
+	}
+	if _, err := s.Tasks().FailPermanently(ctx, claimed.ID, "w1", "gateway_400", "no such key", ""); err != nil {
+		t.Fatalf("fail: %v", err)
+	}
+	if got, _ := s.Tasks().ByID(ctx, first.ID); got.Status != repo.TaskFailed {
+		t.Fatalf("status = %s, want failed", got.Status)
+	}
+	// The administrator presses the button again.
+	again, created, err := s.Tasks().Enqueue(ctx, repo.NewTask{Kind: "gateway_revoke", IdempotencyKey: "gateway_revoke:e:1"})
+	if err != nil || !created || again.ID != first.ID || again.Status != repo.TaskPending || again.LastError != "" {
+		t.Fatalf("re-enqueue after failure: %+v created=%v err=%v", again, created, err)
+	}
+	if _, err := s.Tasks().Claim(ctx, "w2", nil, time.Minute); err != nil {
+		t.Fatalf("the revived task must be claimable: %v", err)
+	}
+	// A task that succeeded is not run again.
+	done, _, _ := s.Tasks().Enqueue(ctx, repo.NewTask{Kind: "x", IdempotencyKey: "x:1"})
+	c, _ := s.Tasks().Claim(ctx, "w3", []string{"x"}, time.Minute)
+	s.Tasks().Succeed(ctx, c.ID, "w3", "")
+	same, created, _ := s.Tasks().Enqueue(ctx, repo.NewTask{Kind: "x", IdempotencyKey: "x:1"})
+	if created || same.ID != done.ID || same.Status != repo.TaskSucceeded {
+		t.Fatalf("a succeeded task must be returned as it is: %+v created=%v", same, created)
+	}
+}

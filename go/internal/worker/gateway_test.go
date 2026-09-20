@@ -211,7 +211,7 @@ func TestProvisioningIssuesOneTokenAndStoresItSealed(t *testing.T) {
 		t.Errorf("gateway user = %+v", spec)
 	}
 
-	alias := KeyAlias("work1", employee.AuthEpoch)
+	alias := KeyAlias("work1", employee.ID, employee.AuthEpoch)
 	if got := gateway.aliases(); len(got) != 1 || got[0] != alias {
 		t.Fatalf("gateway holds %v, want just %s", got, alias)
 	}
@@ -284,7 +284,7 @@ func TestReissuingReplacesTheTokenOnTheGateway(t *testing.T) {
 	store, service, gateway, _, w, ctx := provisioned(t)
 	employee := onboard(t, ctx, service, "work1")
 	drain(t, ctx, w)
-	firstAlias := KeyAlias("work1", employee.AuthEpoch)
+	firstAlias := KeyAlias("work1", employee.ID, employee.AuthEpoch)
 
 	reissued, err := service.Reissue(ctx, employee.ID, "zhang", "")
 	if err != nil {
@@ -295,7 +295,7 @@ func TestReissuingReplacesTheTokenOnTheGateway(t *testing.T) {
 	// The old key is gone from the gateway, not merely marked revoked here. A
 	// key the gateway still serves for a grant we consider revoked is a token
 	// nobody thinks exists.
-	secondAlias := KeyAlias("work1", reissued.AuthEpoch)
+	secondAlias := KeyAlias("work1", reissued.ID, reissued.AuthEpoch)
 	if got := gateway.aliases(); len(got) != 1 || got[0] != secondAlias {
 		t.Fatalf("gateway holds %v, want only %s", got, secondAlias)
 	}
@@ -418,7 +418,7 @@ func TestAnOrphanedKeyIsReplacedRatherThanAdopted(t *testing.T) {
 	store, service, gateway, _, w, ctx := provisioned(t)
 	employee := onboard(t, ctx, service, "work1")
 
-	alias := KeyAlias("work1", employee.AuthEpoch)
+	alias := KeyAlias("work1", employee.ID, employee.AuthEpoch)
 	if _, err := gateway.GenerateKey(ctx, alias, GatewayUserID("work1"), nil, nil); err != nil {
 		t.Fatalf("plant an orphaned key: %v", err)
 	}
@@ -454,7 +454,7 @@ func TestChangingModelsUpdatesTheExistingToken(t *testing.T) {
 	}
 	drain(t, ctx, w)
 
-	alias := KeyAlias("work1", employee.AuthEpoch)
+	alias := KeyAlias("work1", employee.ID, employee.AuthEpoch)
 	gateway.mu.Lock()
 	key := gateway.keys[alias]
 	gateway.mu.Unlock()
@@ -508,5 +508,56 @@ func TestDeletingAnAccountRemovesTheGatewayUserAndItsTokens(t *testing.T) {
 	// Running again finds nothing to do and is not an error.
 	if _, err := h.Run(ctx, task); err != nil {
 		t.Fatalf("second run: %v", err)
+	}
+}
+
+func TestProvisioningQueuesTheDeliveryItMadePossible(t *testing.T) {
+	store, ctx := newWorkerStore(t)
+	gw := newFakeGateway()
+	ring := testKeyring(t)
+	service := ops.New(store)
+	employee := onboard(t, ctx, service, "work1")
+	exportsFor := func() []repo.Task {
+		var out []repo.Task
+		open, _ := store.Tasks().ListOpen(ctx, 50)
+		for _, task := range open {
+			if task.Kind == repo.TaskOSSExport && task.EmployeeID == employee.ID {
+				out = append(out, task)
+			}
+		}
+		return out
+	}
+	// The export queued by onboarding ran first and found no token to
+	// deliver: it finished with nothing on the machine.
+	for range exportsFor() {
+		c, err := store.Tasks().Claim(ctx, "w", []string{repo.TaskOSSExport}, time.Minute)
+		if err != nil {
+			t.Fatal(err)
+		}
+		store.Tasks().Succeed(ctx, c.ID, "w", "")
+	}
+	if len(exportsFor()) != 0 {
+		t.Fatal("setup: exports still open")
+	}
+
+	provision, err := store.Tasks().Claim(ctx, "w", []string{repo.TaskGatewayProvision}, time.Minute)
+	if err != nil {
+		t.Fatalf("claim provision: %v", err)
+	}
+	h := GatewayProvision{Store: store, Gateway: gw, Keyring: ring}
+	if _, err := h.Run(ctx, provision); err != nil {
+		t.Fatalf("provision: %v", err)
+	}
+	exports := exportsFor()
+	if len(exports) != 1 || !strings.Contains(exports[0].IdempotencyKey, ":issued:") {
+		t.Fatalf("after provisioning there must be a fresh export for the employee, got %+v", exports)
+	}
+}
+
+func TestAReusedNameStartsItsAliasesAfresh(t *testing.T) {
+	a := KeyAlias("work1", "0e5b2f1c-aaaa-bbbb-cccc-000000000001", 1)
+	b := KeyAlias("work1", "9d4c7a20-aaaa-bbbb-cccc-000000000002", 1)
+	if a == b || !strings.HasPrefix(a, "emp-work1-0e5b2f1c-e1") {
+		t.Fatalf("aliases %q and %q", a, b)
 	}
 }

@@ -33,11 +33,17 @@ type Gateway interface {
 func GatewayUserID(windowsUser string) string { return "emp-" + strings.ToLower(windowsUser) }
 
 // KeyAlias is the gateway's name for one issued token. Unlike the user id it
-// does carry the epoch, so that a re-issue is a new alias rather than a
-// collision, and so that an alias on the gateway can be matched to the row
-// that created it.
-func KeyAlias(windowsUser string, epoch int) string {
-	return fmt.Sprintf("emp-%s-e%d", strings.ToLower(windowsUser), epoch)
+// carries the epoch, so that a re-issue is a new alias rather than a
+// collision, and a fragment of the employee's own id, so that a deleted
+// account's name reused by a new person starts its aliases afresh instead of
+// running into the old account's history. Aliases already issued keep their
+// old spelling; nothing looks one up by rebuilding it.
+func KeyAlias(windowsUser, employeeID string, epoch int) string {
+	id := strings.ReplaceAll(employeeID, "-", "")
+	if len(id) > 8 {
+		id = id[:8]
+	}
+	return fmt.Sprintf("emp-%s-%s-e%d", strings.ToLower(windowsUser), id, epoch)
 }
 
 // taskPayload is what ops writes into a task. It carries references only.
@@ -110,7 +116,7 @@ func (h GatewayProvision) Run(ctx context.Context, task repo.Task) (Result, erro
 		return Result{}, err
 	}
 
-	alias := KeyAlias(employee.WindowsUser, payload.Epoch)
+	alias := KeyAlias(employee.WindowsUser, employee.ID, payload.Epoch)
 	if done, err := h.alreadyIssued(ctx, employee, alias, models); err != nil || done {
 		return Result{Note: "already issued"}, err
 	}
@@ -182,6 +188,19 @@ func (h GatewayProvision) Run(ctx context.Context, task repo.Task) (Result, erro
 		return Result{}, Permanent(fmt.Errorf("the employee moved to a newer epoch while this ran"))
 	}
 	if err != nil {
+		return Result{}, err
+	}
+	// The export queued beside this task may already have run and found no
+	// token to deliver. Nothing else would bring it back, so queue it again
+	// now that there is one; the export converges, so one that has not run
+	// yet costs nothing extra.
+	if _, _, err := h.Store.Tasks().Enqueue(ctx, repo.NewTask{
+		Kind:           repo.TaskOSSExport,
+		IdempotencyKey: "oss_export:employee:" + employee.ID + ":issued:" + alias,
+		Payload:        task.Payload,
+		TargetEpoch:    &payload.Epoch,
+		EmployeeID:     employee.ID,
+	}); err != nil {
 		return Result{}, err
 	}
 	return Result{ExternalRef: alias}, nil

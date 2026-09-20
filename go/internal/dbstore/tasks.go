@@ -103,6 +103,22 @@ func (r taskRepo) Enqueue(ctx context.Context, n repo.NewTask) (repo.Task, bool,
 		return repo.Task{}, false, mapError(err, "enqueue task")
 	}
 
+	// The same request again after the earlier attempt failed for good is a
+	// retry, and "here is the task that already failed" would leave the
+	// administrator with a green page and a token still live. The failed
+	// row is put back on the queue; a succeeded one is returned as it is.
+	revived, err := scanTask(r.q.QueryRow(ctx,
+		`update tasks
+		    set status = 'pending', next_run_at = now(), finished_at = null,
+		        last_error = '', lease_owner = null, lease_until = null, updated_at = now()
+		  where idempotency_key = $1 and status = 'failed'
+		  returning `+taskColumns, n.IdempotencyKey))
+	if err == nil {
+		return revived, true, nil
+	}
+	if !errors.Is(err, pgx.ErrNoRows) {
+		return repo.Task{}, false, mapError(err, "revive task")
+	}
 	existing, err := scanTask(r.q.QueryRow(ctx,
 		`select `+taskColumns+` from tasks where idempotency_key = $1`, n.IdempotencyKey))
 	if err != nil {
