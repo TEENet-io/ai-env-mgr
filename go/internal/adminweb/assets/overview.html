@@ -100,7 +100,7 @@
     {{range .Machines}}
       {{$m := .}}
       <tr class="r-{{classify .}}">
-        <td class="id">{{.Machine}}</td>
+        <td class="id">{{if $.DB}}<a href="/machines/detail?machine={{.Machine}}">{{.Machine}}</a>{{else}}{{.Machine}}{{end}}</td>
         <td>{{if .Bound}}{{.Binding.User}}{{else}}<span class="muted">—</span>{{end}}</td>
         <td><span class="tag tag-{{classify .}}">{{state .}}</span></td>
         <td class="dim" title="{{.Status.LastSync}}">{{age .Status.LastSync}}</td>

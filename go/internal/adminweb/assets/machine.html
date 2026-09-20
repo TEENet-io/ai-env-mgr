@@ -1,0 +1,64 @@
+{{define "machine.html"}}{{template "head" "机器"}}
+<body>
+<div class="app">
+{{template "nav" .}}
+<main class="sheet">
+  {{with .MachinePage}}
+  <header class="pagehead"><h1><span class="mono">{{.Device.Hostname}}</span></h1>
+    <p><a href="/overview">← 总览</a> · agent {{if .Device.AgentVersion}}{{.Device.AgentVersion}}{{else}}—{{end}}
+      · {{if .LastSync}}最后上报 {{.LastSync.Local.Format "01-02 15:04"}} {{if .Online}}<span class="tag tag-ok">在线</span>{{else}}<span class="tag">离线</span>{{end}}{{else}}从未上报{{end}}
+      {{if .Device.RevokedAt}} · <span class="tag tag-bad">已忘记</span>{{end}}</p>
+  </header>
+  {{template "notices" $}}
+
+  {{with .Report}}
+  <h2>最近一次上报</h2>
+  <div class="panel scroll"><table class="kv"><tbody>
+    <tr><th>绑定员工</th><td>{{if .BoundUser}}{{.BoundUser}}{{if not .BoundUserExists}} <span class="tag tag-warn">机器上无此用户</span>{{end}}{{else}}<span class="dim">未绑定</span>{{end}}</td></tr>
+    <tr><th>Codex</th><td class="mono">{{if .CodexVersion}}{{.CodexVersion}}{{else}}—{{end}}{{if .CodexState}} <span class="tag tag-warn">{{.CodexState}}{{if .CodexDeferReason}} · {{.CodexDeferReason}}{{end}}</span>{{end}}</td></tr>
+    <tr><th>AppLocker</th><td>{{if .AppLockerMode}}{{.AppLockerMode}}{{else}}<span class="dim">未管理</span>{{end}}</td></tr>
+    <tr><th>凭据</th><td>{{if .CredsApplied}}已投递{{else}}<span class="dim">未投递</span>{{end}}</td></tr>
+    {{if .Errors}}<tr><th>错误</th><td class="remark">{{range .Errors}}{{.}}<br>{{end}}</td></tr>{{end}}
+    {{if .Warnings}}<tr><th>提示</th><td class="remark">{{range .Warnings}}{{.}}<br>{{end}}</td></tr>{{end}}
+  </tbody></table></div>
+  {{end}}
+
+  <h2>绑定历史</h2>
+  <div class="panel scroll"><table>
+    <thead><tr><th>员工</th><th>绑定</th><th>解绑</th><th>备注</th></tr></thead>
+    <tbody>{{range .Bindings}}
+      <tr>
+        <td class="id">{{.WindowsUser}}{{if .Deleted}} <span class="tag">账号已删除</span>{{end}}</td>
+        <td class="dim">{{.BoundAt.Local.Format "2006-01-02 15:04"}}{{if .BoundBy}} · {{.BoundBy}}{{end}}</td>
+        <td class="dim">{{if .UnboundAt}}{{.UnboundAt.Local.Format "2006-01-02 15:04"}}{{if .UnboundBy}} · {{.UnboundBy}}{{end}}{{else}}<span class="tag tag-ok">当前</span>{{end}}</td>
+        <td class="remark">{{.Note}}</td>
+      </tr>{{else}}<tr><td colspan="4" class="empty">从未绑定过员工</td></tr>{{end}}
+    </tbody></table></div>
+
+  <h2>发布目标</h2>
+  <div class="panel scroll"><table>
+    <thead><tr><th>产品</th><th>版本</th><th>代次</th><th>状态</th><th>详情</th><th>创建</th><th>结束</th><th></th></tr></thead>
+    <tbody>{{range .Targets}}
+      <tr>
+        <td>{{.Product}}</td><td class="mono">{{.Version}}</td><td class="num">{{.Generation}}</td>
+        <td>{{.Label}}</td><td class="remark">{{.Detail}}</td>
+        <td class="dim">{{.CreatedAt.Local.Format "01-02 15:04"}}</td>
+        <td class="dim">{{if .FinishedAt}}{{.FinishedAt.Local.Format "01-02 15:04"}}{{end}}</td>
+        <td><a href="/rollouts/detail?id={{.RolloutID}}">发布任务</a></td>
+      </tr>{{else}}<tr><td colspan="8" class="empty">没有针对这台机器的发布目标；它按全局策略更新</td></tr>{{end}}
+    </tbody></table></div>
+
+  <h2>操作记录</h2>
+  <div class="panel scroll"><table>
+    <thead><tr><th>时间</th><th>操作者</th><th>操作</th><th>变化</th></tr></thead>
+    <tbody>{{range .Events}}
+      <tr>
+        <td class="dim">{{.OccurredAt.Local.Format "01-02 15:04:05"}}</td>
+        <td>{{.ActorID}}</td><td class="mono">{{.Action}}</td><td class="remark">{{.Change}}</td>
+      </tr>{{else}}<tr><td colspan="4" class="empty">没有记录</td></tr>{{end}}
+    </tbody></table></div>
+  {{end}}
+</main>
+</div>
+</body>
+</html>{{end}}

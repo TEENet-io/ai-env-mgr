@@ -122,6 +122,7 @@ type Releases interface {
 	LastSucceededTarget(ctx context.Context, deviceID, product string) (Target, error)
 	TargetByID(ctx context.Context, id string) (Target, error)
 	TargetsByRollout(ctx context.Context, rolloutID string) ([]Target, error)
+	TargetsByDevice(ctx context.Context, deviceID string) ([]Target, error) // newest first
 	OpenTargets(ctx context.Context) ([]Target, error)
 	// FinishTarget moves a pending target to a terminal status. A target that
 	// is not pending is left alone and ErrConflict is returned: a late

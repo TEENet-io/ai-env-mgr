@@ -380,6 +380,7 @@ func (s *Server) Handler() http.Handler {
 		mux.HandleFunc("/tasks", s.requireSession(s.handleTasks))
 		mux.HandleFunc("/tasks/reconcile", s.requirePostNotice("/tasks", s.actionReconcileNow))
 		mux.HandleFunc("/audit", s.requireSession(s.handleAudit))
+		mux.HandleFunc("/machines/detail", s.requireSession(s.handleMachineDetail))
 		mux.HandleFunc("/audit.csv", s.requireSession(s.handleAuditCSV))
 		mux.HandleFunc("/releases", s.requireSession(s.handleReleases))
 		mux.HandleFunc("/releases/register", s.requirePost("/releases", s.actionReleaseRegister))

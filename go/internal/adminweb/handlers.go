@@ -96,6 +96,7 @@ type pageData struct {
 	GlobalTargets map[string]string        // product -> the fleet policy's version
 	Rollouts      []rolloutView
 	AuditPage     *auditPage
+	MachinePage   *machinePage
 	Rollout       *rolloutView
 	Artifact      *repo.Artifact         // the "new rollout" page's subject
 	Candidates    []deviceCandidate      // machines to choose from

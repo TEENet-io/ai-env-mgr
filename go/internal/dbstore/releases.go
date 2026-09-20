@@ -215,6 +215,23 @@ func (r releaseRepo) TargetsByRollout(ctx context.Context, rolloutID string) ([]
 	return r.listTargets(ctx, `rollout_id = $1`, rolloutID)
 }
 
+func (r releaseRepo) TargetsByDevice(ctx context.Context, deviceID string) ([]repo.Target, error) {
+	rows, err := r.q.Query(ctx, `select `+targetColumns+` from release_targets where device_id = $1 order by created_at desc`, deviceID)
+	if err != nil {
+		return nil, mapError(err, "list targets")
+	}
+	defer rows.Close()
+	out := []repo.Target{}
+	for rows.Next() {
+		t, err := scanTarget(rows)
+		if err != nil {
+			return nil, mapError(err, "list targets")
+		}
+		out = append(out, t)
+	}
+	return out, rows.Err()
+}
+
 func (r releaseRepo) OpenTargets(ctx context.Context) ([]repo.Target, error) {
 	return r.listTargets(ctx, `status = 'pending' and $1 = ''`, "")
 }
