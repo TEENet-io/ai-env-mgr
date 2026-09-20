@@ -41,6 +41,12 @@ type accountRow struct {
 	// anything here -- see admincore.AccountSpec.
 	CodexAccount string
 
+	// Version and QuotaVersion are what the detail page's forms carry back,
+	// so a save from a page rendered before somebody else's save is refused
+	// rather than silently overwriting it.
+	Version      int
+	QuotaVersion int
+
 	HasUser  bool // the gateway has an internal user for this person
 	HasToken bool // the gateway holds a token under this person's alias
 	Models   []string
@@ -537,7 +543,7 @@ func (s *Server) actionAccountQuota(sess *session, r *http.Request) error {
 	if err != nil {
 		return err
 	}
-	return sess.be.SetQuota(ctx, gw, user, quota)
+	return sess.be.SetQuota(ctx, gw, user, quota, formInt(r, "version"))
 }
 
 func (s *Server) actionAccountModels(sess *session, r *http.Request) error {
@@ -551,6 +557,13 @@ func (s *Server) actionAccountModels(sess *session, r *http.Request) error {
 		return fmt.Errorf("a Windows user name is required")
 	}
 	return sess.be.SetModels(ctx, gw, cfg, user, chosenModels(r))
+}
+
+// formInt reads a numeric field; absent or malformed is 0, which the backends
+// read as "no version was carried".
+func formInt(r *http.Request, name string) int {
+	n, _ := strconv.Atoi(strings.TrimSpace(formValue(r, name)))
+	return n
 }
 
 // chosenModels reads the model checklist. The "all" box wins over any ticks:
@@ -578,7 +591,7 @@ func (s *Server) actionAccountProfile(sess *session, r *http.Request) error {
 	}
 	return sess.be.UpdateProfile(ctx, gw, user,
 		formValue(r, "name"), formValue(r, "department"),
-		formValue(r, "codexAccount"))
+		formValue(r, "codexAccount"), formInt(r, "version"))
 }
 
 func (s *Server) actionAccountReissue(sess *session, r *http.Request) error {

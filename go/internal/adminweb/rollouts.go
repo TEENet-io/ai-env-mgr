@@ -81,14 +81,25 @@ type targetSummary struct{ Total, Pending, Succeeded, Failed, Excluded, Cancelle
 
 // Complete is the spec's condition: every machine succeeded, or was
 // explicitly excluded with a reason. Excluded is not success and is not
-// counted as it.
+// counted as it; a rollout whose targets were all taken over by a newer one
+// is not complete either, it is history.
 func (s targetSummary) Complete() bool {
-	return s.Total > 0 && s.Pending == 0 && s.Failed == 0 && s.Cancelled == 0
+	return s.Total > 0 && s.Pending == 0 && s.Failed == 0 && s.Cancelled == 0 && s.Superseded == 0
 }
 
+// summariseTargets counts one outcome per machine: its latest attempt in the
+// rollout. A machine that failed and then succeeded on a retry is one
+// success, not one failure and one success; the earlier rows stay in the
+// table as history.
 func summariseTargets(targets []repo.Target) targetSummary {
-	var s targetSummary
+	latest := map[string]repo.Target{}
 	for _, t := range targets {
+		if have, ok := latest[t.DeviceID]; !ok || t.Generation > have.Generation {
+			latest[t.DeviceID] = t
+		}
+	}
+	var s targetSummary
+	for _, t := range latest {
 		s.Total++
 		switch t.Status {
 		case repo.TargetPending:

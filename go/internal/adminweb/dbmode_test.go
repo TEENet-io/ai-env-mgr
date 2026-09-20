@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -463,5 +464,37 @@ func TestSyncNowButtonQueuesTheMachinesExport(t *testing.T) {
 	}
 	if !found {
 		t.Fatal("no binding export queued for the machine")
+	}
+}
+
+func TestAStalePageCannotOverwriteAnotherAdministratorsSave(t *testing.T) {
+	s, _ := newDatabaseServer(t)
+	h := s.Handler()
+	cookie := signedIn(t, s)
+	csrf := csrfFrom(t, s, cookie, "/users")
+	dbPost(t, h, "/users/onboard", url.Values{"csrf": {csrf}, "windowsUser": {"work4"}, "name": {"甲"},
+		"budget": {"20"}, "rpm": {"60"}, "tpm": {"100000"}, "parallel": {"4"}}, cookie)
+	e, _ := s.dbm.store.Employees().ByWindowsUser(t.Context(), "work4")
+	stale := e.Version
+
+	// Somebody else saves first.
+	rec := dbPost(t, h, "/users/profile", url.Values{"csrf": {csrf}, "windowsUser": {"work4"}, "name": {"乙"},
+		"department": {""}, "codexAccount": {""}, "version": {strconv.Itoa(stale)}}, cookie)
+	if strings.Contains(rec.Header().Get("Location"), "err=") {
+		t.Fatalf("the first save must go through: %s", rec.Header().Get("Location"))
+	}
+	// The page rendered before that save tries to save too.
+	rec = dbPost(t, h, "/users/profile", url.Values{"csrf": {csrf}, "windowsUser": {"work4"}, "name": {"丙"},
+		"department": {""}, "codexAccount": {""}, "version": {strconv.Itoa(stale)}}, cookie)
+	if !strings.Contains(rec.Header().Get("Location"), "err=") {
+		t.Fatal("a save from a stale page must be refused")
+	}
+	if got, _ := s.dbm.store.Employees().ByWindowsUser(t.Context(), "work4"); got.Name != "乙" {
+		t.Fatalf("name = %q, the stale save overwrote the other administrator's", got.Name)
+	}
+	// The detail page carries the current version, so its save works.
+	page := dbGet(t, h, "/users/detail?user=work4", cookie)
+	if !strings.Contains(page.Body.String(), `name="version" value="`) {
+		t.Fatal("the detail page must carry the row version")
 	}
 }

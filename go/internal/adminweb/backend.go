@@ -43,9 +43,11 @@ type backend interface {
 	// filter that shows them.
 	DeleteAccount(ctx context.Context, windowsUser string) error
 	DeletedAccounts(ctx context.Context) ([]accountRow, error)
-	SetQuota(ctx context.Context, gw *litellm.Client, windowsUser string, q litellm.Quota) error
+	// version is the row version the form was rendered from; 0 means the
+	// form carried none. The legacy backend has no versions and ignores it.
+	SetQuota(ctx context.Context, gw *litellm.Client, windowsUser string, q litellm.Quota, version int) error
 	SetModels(ctx context.Context, gw *litellm.Client, cfg admincore.GatewayConfig, windowsUser string, models []string) error
-	UpdateProfile(ctx context.Context, gw *litellm.Client, windowsUser, name, department, codexAccount string) error
+	UpdateProfile(ctx context.Context, gw *litellm.Client, windowsUser, name, department, codexAccount string, version int) error
 	Reissue(ctx context.Context, gw *litellm.Client, cfg admincore.GatewayConfig, windowsUser string) error
 
 	BindMachine(ctx context.Context, machine, windowsUser, note string) error
@@ -148,7 +150,7 @@ func (b legacyBackend) DeleteAccount(context.Context, string) error {
 
 func (b legacyBackend) DeletedAccounts(context.Context) ([]accountRow, error) { return nil, nil }
 
-func (b legacyBackend) SetQuota(ctx context.Context, gw *litellm.Client, windowsUser string, q litellm.Quota) error {
+func (b legacyBackend) SetQuota(ctx context.Context, gw *litellm.Client, windowsUser string, q litellm.Quota, _ int) error {
 	return b.mgr.SetQuota(ctx, gw, windowsUser, q)
 }
 
@@ -156,7 +158,7 @@ func (b legacyBackend) SetModels(ctx context.Context, gw *litellm.Client, cfg ad
 	return b.mgr.SetModels(ctx, gw, cfg, windowsUser, models)
 }
 
-func (b legacyBackend) UpdateProfile(ctx context.Context, gw *litellm.Client, windowsUser, name, department, codexAccount string) error {
+func (b legacyBackend) UpdateProfile(ctx context.Context, gw *litellm.Client, windowsUser, name, department, codexAccount string, _ int) error {
 	return b.mgr.UpdateProfile(ctx, gw, windowsUser, name, department, codexAccount)
 }
 

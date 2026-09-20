@@ -418,33 +418,34 @@ func TestTheBindingCarriesTheMachinesTargetsAndSurvivesUnbinding(t *testing.T) {
 		t.Fatal("no agent target was opened, so none may be written")
 	}
 
-	// Paused: the target is withheld, not cancelled. With nobody bound and
-	// nothing to say, the object goes; a bound machine would keep its
-	// binding minus the target.
+	// Paused: the machine is told "nothing" -- an explicit hold, not an
+	// absence that would let it fall back to the fleet target.
 	store.Releases().SetRolloutPaused(ctx, r.ID, true, "t")
-	if _, err := h.Run(ctx, repo.Task{Kind: repo.TaskOSSExport, Payload: mustJSON(t, map[string]any{"device_id": device.ID})}); err != nil {
-		t.Fatalf("export while paused: %v", err)
-	}
-	if data, ok := objects.get(ossclient.BindingKey("PC-7")); ok {
-		var paused model.Binding
-		json.Unmarshal(data, &paused)
-		if paused.CodexTarget != nil {
-			t.Fatalf("a paused rollout must not reach the machine: %+v", paused)
-		}
+	b = run()
+	if b.CodexTarget == nil || b.CodexTarget.Version != "" || b.CodexTarget.Generation != target.Generation {
+		t.Fatalf("a paused rollout must hold the machine, got %+v", b.CodexTarget)
 	}
 	if got, _ := store.Releases().TargetByID(ctx, target.ID); got.Status != repo.TargetPending {
 		t.Fatalf("pausing must not settle the target: %s", got.Status)
 	}
 	store.Releases().SetRolloutPaused(ctx, r.ID, false, "t")
-	if b = run(); b.CodexTarget == nil {
+	if b = run(); b.CodexTarget == nil || b.CodexTarget.Version != "0.42.0" {
 		t.Fatal("resuming must put the target back")
 	}
 
-	// Finished: nothing left to say, and with nobody bound the object goes.
+	// Finished: the machine stays pinned to what it took, so an older fleet
+	// target cannot pull it back down.
 	store.Releases().FinishTarget(ctx, target.ID, repo.TargetSucceeded, "", "0.42.0")
-	h.Run(ctx, repo.Task{Kind: repo.TaskOSSExport, Payload: mustJSON(t, map[string]any{"device_id": device.ID})})
-	if _, ok := objects.get(ossclient.BindingKey("PC-7")); ok {
-		t.Fatal("no user and no target: the binding object should be deleted")
+	if b = run(); b.CodexTarget == nil || b.CodexTarget.Version != "0.42.0" || b.CodexTarget.Generation != target.Generation {
+		t.Fatalf("after success the machine must stay on 0.42.0, got %+v", b.CodexTarget)
+	}
+	// Cancelled before it ran, with no success behind it: nothing to say.
+	other, _ := store.Devices().EnsureByHostname(ctx, "PC-9")
+	cancelled, _ := store.Releases().CreateTarget(ctx, other.ID, repo.ProductCodex, a.ID, r.ID)
+	store.Releases().FinishTarget(ctx, cancelled.ID, repo.TargetCancelled, "", "")
+	h.Run(ctx, repo.Task{Kind: repo.TaskOSSExport, Payload: mustJSON(t, map[string]any{"device_id": other.ID})})
+	if _, ok := objects.get(ossclient.BindingKey("PC-9")); ok {
+		t.Fatal("no user, no target ever taken: the binding object should be deleted")
 	}
 }
 

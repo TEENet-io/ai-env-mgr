@@ -228,31 +228,41 @@ func (h OSSExport) exportBinding(ctx context.Context, deviceID string) (Result, 
 	return Result{Note: note}, nil
 }
 
-// machineTargets reads the open targets of one machine into binding fields.
-// A paused rollout's target is withheld: the machine sees nothing to do,
-// and the target stays pending for when the rollout resumes.
+// machineTargets is what one machine should be running of each product, as
+// binding fields. Three answers per product, and only the first says nothing:
+//
+//   - no target ever: the field is absent and the fleet policy applies;
+//   - an open target in a paused rollout: a target with an empty version --
+//     "this machine: nothing" -- so that pausing holds the machine where it
+//     is instead of handing it back to the fleet target;
+//   - an open target, or none open but one that succeeded: that version, so
+//     that a machine the rollout updated stays updated when the rollout is
+//     over, rather than sliding back to an older fleet target.
 func (h OSSExport) machineTargets(ctx context.Context, deviceID string) (model.Binding, error) {
 	var out model.Binding
 	for _, product := range []string{repo.ProductAgent, repo.ProductCodex} {
 		target, err := h.Store.Releases().OpenTarget(ctx, deviceID, product)
 		if errors.Is(err, repo.ErrNotFound) {
-			continue
+			target, err = h.Store.Releases().LastSucceededTarget(ctx, deviceID, product)
+			if errors.Is(err, repo.ErrNotFound) {
+				continue
+			}
 		}
 		if err != nil {
 			return out, err
 		}
+		rt := &model.ReleaseTarget{Generation: target.Generation}
 		rollout, err := h.Store.Releases().RolloutByID(ctx, target.RolloutID)
 		if err != nil {
 			return out, err
 		}
-		if rollout.PausedAt != nil {
-			continue
+		if !(target.Status == repo.TargetPending && rollout.PausedAt != nil) {
+			artifact, err := h.Store.Releases().ArtifactByID(ctx, target.ArtifactID)
+			if err != nil {
+				return out, err
+			}
+			rt.Version, rt.SHA256, rt.Key = artifact.Version, artifact.SHA256, artifact.ObjectKey
 		}
-		artifact, err := h.Store.Releases().ArtifactByID(ctx, target.ArtifactID)
-		if err != nil {
-			return out, err
-		}
-		rt := &model.ReleaseTarget{Version: artifact.Version, SHA256: artifact.SHA256, Key: artifact.ObjectKey, Generation: target.Generation}
 		if product == repo.ProductAgent {
 			out.AgentTarget = rt
 		} else {
@@ -395,6 +405,12 @@ func (h OSSExport) refreshBindings(ctx context.Context, employee repo.Employee) 
 		return err
 	}
 	for _, binding := range bindings {
+		// The same lock a device export takes: two exports must not
+		// interleave on one binding object. Employee-then-device is the only
+		// order anything takes these in, so there is no cycle.
+		if err := h.Store.Lock(ctx, "oss_export:device:"+binding.DeviceID); err != nil {
+			return err
+		}
 		if _, err := h.exportBinding(ctx, binding.DeviceID); err != nil {
 			return err
 		}

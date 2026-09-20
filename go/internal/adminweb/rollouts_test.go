@@ -51,8 +51,9 @@ func TestTargetRowStateNamesEveryStageWithoutGuessing(t *testing.T) {
 
 func TestRolloutSummaryKeepsExcludedApartFromSuccess(t *testing.T) {
 	targets := []repo.Target{
-		{Status: repo.TargetSucceeded}, {Status: repo.TargetSucceeded},
-		{Status: repo.TargetExcluded}, {Status: repo.TargetFailed}, {Status: repo.TargetPending},
+		{DeviceID: "a", Generation: 1, Status: repo.TargetSucceeded}, {DeviceID: "b", Generation: 1, Status: repo.TargetSucceeded},
+		{DeviceID: "c", Generation: 1, Status: repo.TargetExcluded}, {DeviceID: "d", Generation: 1, Status: repo.TargetFailed},
+		{DeviceID: "e", Generation: 1, Status: repo.TargetPending},
 	}
 	sum := summariseTargets(targets)
 	if sum.Succeeded != 2 || sum.Excluded != 1 || sum.Failed != 1 || sum.Pending != 1 || sum.Total != 5 {
@@ -61,9 +62,28 @@ func TestRolloutSummaryKeepsExcludedApartFromSuccess(t *testing.T) {
 	if sum.Complete() {
 		t.Fatal("a rollout with a pending machine is not complete")
 	}
-	sum = summariseTargets([]repo.Target{{Status: repo.TargetSucceeded}, {Status: repo.TargetExcluded}})
+	sum = summariseTargets([]repo.Target{{DeviceID: "a", Generation: 1, Status: repo.TargetSucceeded}, {DeviceID: "c", Generation: 1, Status: repo.TargetExcluded}})
 	if !sum.Complete() {
 		t.Fatal("all machines succeeded or were explicitly excluded: complete")
+	}
+}
+
+func TestRolloutSummaryCountsEachMachinesLatestAttempt(t *testing.T) {
+	// d failed on generation 1 and succeeded on the retry: one success.
+	sum := summariseTargets([]repo.Target{
+		{DeviceID: "d", Generation: 1, Status: repo.TargetFailed},
+		{DeviceID: "d", Generation: 2, Status: repo.TargetSucceeded},
+	})
+	if sum.Total != 1 || sum.Succeeded != 1 || sum.Failed != 0 || !sum.Complete() {
+		t.Fatalf("retry summary = %+v", sum)
+	}
+	// Every target taken over by a newer rollout: history, not completion.
+	sum = summariseTargets([]repo.Target{
+		{DeviceID: "a", Generation: 1, Status: repo.TargetSuperseded},
+		{DeviceID: "b", Generation: 1, Status: repo.TargetSuperseded},
+	})
+	if sum.Complete() || sum.Superseded != 2 {
+		t.Fatalf("superseded summary = %+v", sum)
 	}
 }
 

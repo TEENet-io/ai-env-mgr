@@ -312,9 +312,10 @@ func (b dbBackend) AccountRow(ctx context.Context, windowsUser string, _ []litel
 func (b dbBackend) accountRow(ctx context.Context, e repo.Employee, gwUsers []litellm.User) (accountRow, error) {
 	row := accountRow{
 		WindowsUser: e.WindowsUser, Name: e.Name, Department: e.Department, Enabled: e.Active(),
-		OnRoster: true, CodexAccount: e.CodexAccount,
+		OnRoster: true, CodexAccount: e.CodexAccount, Version: e.Version,
 	}
 	if q, err := b.store.Quotas().Get(ctx, e.ID); err == nil {
+		row.QuotaVersion = q.Version
 		if gq, err := gatewayQuota(q); err == nil {
 			row.Quota = gq
 			row.Budget = gq.MonthlyBudgetUSD
@@ -432,16 +433,19 @@ func (b dbBackend) DeletedAccounts(ctx context.Context) ([]accountRow, error) {
 	return rows, nil
 }
 
-func (b dbBackend) SetQuota(ctx context.Context, _ *litellm.Client, windowsUser string, q litellm.Quota) error {
+func (b dbBackend) SetQuota(ctx context.Context, _ *litellm.Client, windowsUser string, q litellm.Quota, version int) error {
 	e, err := b.employee(ctx, windowsUser)
 	if err != nil {
 		return err
 	}
-	version := 0
-	if current, err := b.store.Quotas().Get(ctx, e.ID); err == nil {
-		version = current.Version
-	} else if !errors.Is(err, repo.ErrNotFound) {
-		return err
+	if version == 0 {
+		// A form that carried no version (the list page's quick actions)
+		// saves against whatever is current.
+		if current, err := b.store.Quotas().Get(ctx, e.ID); err == nil {
+			version = current.Version
+		} else if !errors.Is(err, repo.ErrNotFound) {
+			return err
+		}
 	}
 	return b.ops.SetQuota(ctx, e.ID, storedQuota(q), version, b.actor, b.requestID)
 }
@@ -454,12 +458,15 @@ func (b dbBackend) SetModels(ctx context.Context, _ *litellm.Client, _ admincore
 	return b.ops.SetModels(ctx, e.ID, models, b.actor, b.requestID)
 }
 
-func (b dbBackend) UpdateProfile(ctx context.Context, _ *litellm.Client, windowsUser, name, department, codexAccount string) error {
+func (b dbBackend) UpdateProfile(ctx context.Context, _ *litellm.Client, windowsUser, name, department, codexAccount string, version int) error {
 	e, err := b.employee(ctx, windowsUser)
 	if err != nil {
 		return err
 	}
-	return b.ops.UpdateProfile(ctx, e.ID, e.Version, repo.Profile{
+	if version == 0 {
+		version = e.Version
+	}
+	return b.ops.UpdateProfile(ctx, e.ID, version, repo.Profile{
 		Name: name, Department: department, CodexAccount: codexAccount,
 		ExternalID: e.ExternalID,
 	}, b.actor, b.requestID)
