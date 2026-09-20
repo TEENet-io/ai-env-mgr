@@ -90,22 +90,10 @@ type packageRow struct {
 
 // versionFromKey reads the version out of a version-library key, or "".
 func versionFromKey(product, key string) string {
-	switch product {
-	case repo.ProductCodex:
-		rest := strings.TrimPrefix(key, ossclient.CodexPrefix)
-		if !strings.HasPrefix(rest, "codex-setup-") || !strings.HasSuffix(rest, ".exe") {
-			return ""
-		}
-		return strings.TrimSuffix(strings.TrimPrefix(rest, "codex-setup-"), ".exe")
-	case repo.ProductAgent:
-		rest := strings.TrimPrefix(key, ossclient.AgentPrefix)
-		parts := strings.Split(rest, "/")
-		if len(parts) != 2 || parts[1] != "agent.exe" || parts[0] == "" {
-			return ""
-		}
-		return parts[0]
+	if product == repo.ProductCodex {
+		return ossclient.CodexVersionFromKey(key)
 	}
-	return ""
+	return ossclient.AgentVersionFromKey(key)
 }
 
 // unregisteredPackages lists what is in the bucket under the library's keys

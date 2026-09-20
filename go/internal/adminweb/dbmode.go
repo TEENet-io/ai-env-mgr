@@ -217,6 +217,9 @@ func (s *Server) buildWorker(st *dbState) *worker.Worker {
 		})
 	}
 	w.Register(worker.TaskStatusImport, worker.StatusImport{Store: st.store, Objects: st.objects})
+	if src, ok := st.objects.(worker.PackageSource); ok {
+		w.Register(worker.TaskReleaseScan, &worker.ReleaseScan{Store: st.store, Objects: src, Ops: st.ops})
+	}
 	audit := worker.AuditPublish{Store: st.store, Sink: s.events, Logstore: logstoreAudit}
 	if st.sls != nil {
 		audit.Archive = worker.SLSArchive{Client: st.sls}

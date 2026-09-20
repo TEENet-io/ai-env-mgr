@@ -17,8 +17,11 @@ import (
 const (
 	// TaskStatusImport copies machine reports in from OSS.
 	TaskStatusImport = "status_import"
+	// TaskReleaseScan registers packages CI put in the bucket.
+	TaskReleaseScan = "release_scan"
 
 	EveryStatusImport = time.Minute
+	EveryReleaseScan  = 5 * time.Minute
 	EveryAuditPublish = time.Minute
 	EveryReconcile    = time.Hour
 )
@@ -34,6 +37,7 @@ func Schedule(ctx context.Context, store repo.Store, onError func(error)) {
 			max   int
 		}{
 			{TaskStatusImport, EveryStatusImport, 2},
+			{TaskReleaseScan, EveryReleaseScan, 2},
 			{repo.TaskAuditPublish, EveryAuditPublish, 2},
 			{repo.TaskReconcile, EveryReconcile, 3},
 		} {

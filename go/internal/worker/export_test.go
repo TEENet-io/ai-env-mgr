@@ -25,6 +25,7 @@ type fakeObjects struct {
 	objects map[string][]byte
 	putErr  error
 	copies  []string
+	hashes  int
 }
 
 func (f *fakeObjects) Copy(src, dst string) error {

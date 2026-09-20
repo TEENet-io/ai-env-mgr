@@ -323,6 +323,26 @@ func (c *Client) PutProgress(key string, data []byte, onProgress func(done, tota
 	return nil
 }
 
+// AgentVersionFromKey reads the version out of an AgentVersionKey, or ""
+// for any other key under the prefix (the fixed agent.exe among them).
+func AgentVersionFromKey(key string) string {
+	rest := strings.TrimPrefix(key, AgentPrefix)
+	parts := strings.Split(rest, "/")
+	if len(parts) != 2 || parts[0] == "" || parts[1] != "agent.exe" {
+		return ""
+	}
+	return parts[0]
+}
+
+// CodexVersionFromKey reads the version out of a CodexInstallerKey, or "".
+func CodexVersionFromKey(key string) string {
+	rest := strings.TrimPrefix(key, CodexPrefix)
+	if !strings.HasPrefix(rest, "codex-setup-") || !strings.HasSuffix(rest, ".exe") {
+		return ""
+	}
+	return strings.TrimSuffix(strings.TrimPrefix(rest, "codex-setup-"), ".exe")
+}
+
 // Copy duplicates an object inside the bucket without the bytes passing
 // through this process. Used to point the fixed agent key at a versioned
 // artifact.
