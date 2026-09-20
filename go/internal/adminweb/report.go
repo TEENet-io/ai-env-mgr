@@ -70,8 +70,7 @@ func reportByVersion(targets []repo.Target, artifacts map[string]repo.Artifact) 
 			}
 		}
 		if len(durations) > 0 {
-			sort.Slice(durations, func(i, j int) bool { return durations[i] < durations[j] })
-			rep.MedianToSuccess, rep.HasMedian = durations[len(durations)/2], true
+			rep.MedianToSuccess, rep.HasMedian = median(durations), true
 		}
 		for note, n := range failures {
 			rep.TopFailures = append(rep.TopFailures, countRow{Label: note, N: n})
@@ -154,4 +153,17 @@ func humanDuration(d time.Duration) string {
 	default:
 		return itoa(int(d.Hours()/24)) + " 天"
 	}
+}
+
+// median is the middle duration, or the mean of the two middle ones when
+// there is no single middle: two machines at 10 and 30 minutes report 20,
+// not 30.
+func median(d []time.Duration) time.Duration {
+	sorted := append([]time.Duration(nil), d...)
+	sort.Slice(sorted, func(i, j int) bool { return sorted[i] < sorted[j] })
+	n := len(sorted)
+	if n%2 == 1 {
+		return sorted[n/2]
+	}
+	return (sorted[n/2-1] + sorted[n/2]) / 2
 }

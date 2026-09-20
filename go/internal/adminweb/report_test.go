@@ -33,11 +33,30 @@ func TestReportByVersionCountsMachinesAndTimesSuccess(t *testing.T) {
 	if r42.Succeeded != 2 || r42.Failed != 1 || r42.Pending != 1 {
 		t.Fatalf("0.42.0 counts: %+v", r42)
 	}
-	if !r42.HasMedian || r42.MedianToSuccess != 30*time.Minute {
-		t.Fatalf("median = %v (the middle of 10, 30)", r42.MedianToSuccess)
+	if !r42.HasMedian || r42.MedianToSuccess != 20*time.Minute {
+		t.Fatalf("median = %v (the middle of 10 and 30 is 20)", r42.MedianToSuccess)
 	}
 	if len(r42.TopFailures) != 1 || r42.TopFailures[0].N != 1 {
 		t.Fatalf("failures counted per machine, not per attempt: %+v", r42.TopFailures)
+	}
+}
+
+func TestMedianDurationTakesTheMiddleValue(t *testing.T) {
+	m := func(mins ...int) time.Duration {
+		var d []time.Duration
+		for _, x := range mins {
+			d = append(d, time.Duration(x)*time.Minute)
+		}
+		return median(d)
+	}
+	if got := m(30, 10, 20); got != 20*time.Minute {
+		t.Errorf("odd count: %v", got)
+	}
+	if got := m(40, 10, 30, 20); got != 25*time.Minute {
+		t.Errorf("even count averages the two middle values: %v", got)
+	}
+	if got := m(7); got != 7*time.Minute {
+		t.Errorf("single: %v", got)
 	}
 }
 

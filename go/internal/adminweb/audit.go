@@ -201,6 +201,15 @@ func (s *Server) handleAuditCSV(w http.ResponseWriter, r *http.Request, _ *sessi
 	if fromText != "" || toText != "" {
 		name += "-" + fromText + "-" + toText
 	}
+	// The first page is read before any header goes out, so a database that
+	// is not answering produces an error page rather than a 200 with an
+	// empty file that looks like "no events".
+	f.Limit, f.Offset = 1000, 0
+	events, _, err := s.dbm.store.Audit().Search(r.Context(), f)
+	if err != nil {
+		http.Error(w, "导出失败："+err.Error(), http.StatusInternalServerError)
+		return
+	}
 	w.Header().Set("Content-Type", "text/csv; charset=utf-8")
 	w.Header().Set("Content-Disposition", `attachment; filename="`+name+`.csv"`)
 	w.Write([]byte("\xEF\xBB\xBF"))
@@ -209,9 +218,17 @@ func (s *Server) handleAuditCSV(w http.ResponseWriter, r *http.Request, _ *sessi
 	employees, devices := s.names(r)
 	written := 0
 	for offset := 0; written < csvLimit; offset += 1000 {
-		f.Limit, f.Offset = 1000, offset
-		events, _, err := s.dbm.store.Audit().Search(r.Context(), f)
-		if err != nil || len(events) == 0 {
+		if offset > 0 {
+			f.Offset = offset
+			events, _, err = s.dbm.store.Audit().Search(r.Context(), f)
+			if err != nil {
+				// The status line is long gone; the file itself has to say
+				// it is not the whole story.
+				cw.Write([]string{"# 导出中断：" + err.Error() + "，以上不是完整结果"})
+				break
+			}
+		}
+		if len(events) == 0 {
 			break
 		}
 		for _, ev := range events {
@@ -221,9 +238,9 @@ func (s *Server) handleAuditCSV(w http.ResponseWriter, r *http.Request, _ *sessi
 			} else if n, ok := devices[ev.TargetID]; ok && ev.TargetType == "device" {
 				target = n
 			}
-			cw.Write([]string{ev.OccurredAt.Local().Format(time.RFC3339), ev.ActorType, ev.ActorID, ev.Action,
-				ev.TargetType, target, ev.Result, ev.RequestID, summariseChange(ev.Before, ev.After),
-				string(ev.Before), string(ev.After)})
+			cw.Write([]string{ev.OccurredAt.Local().Format(time.RFC3339), ev.ActorType, csvSafe(ev.ActorID), csvSafe(ev.Action),
+				ev.TargetType, csvSafe(target), csvSafe(ev.Result), csvSafe(ev.RequestID), csvSafe(summariseChange(ev.Before, ev.After)),
+				csvSafe(string(ev.Before)), csvSafe(string(ev.After))})
 			written++
 			if written >= csvLimit {
 				cw.Write([]string{"# truncated at " + strconv.Itoa(csvLimit) + " rows"})
@@ -235,4 +252,19 @@ func (s *Server) handleAuditCSV(w http.ResponseWriter, r *http.Request, _ *sessi
 		}
 	}
 	cw.Flush()
+}
+
+// csvSafe keeps a cell from being read as a formula. A spreadsheet treats a
+// cell starting with = + - @ (or a tab or return) as something to evaluate,
+// and a request id or a name is text an outsider may have chosen. The
+// leading apostrophe is the spreadsheet convention for "this is text".
+func csvSafe(cell string) string {
+	if cell == "" {
+		return cell
+	}
+	switch cell[0] {
+	case '=', '+', '-', '@', '\t', '\r':
+		return "'" + cell
+	}
+	return cell
 }
