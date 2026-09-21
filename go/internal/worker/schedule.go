@@ -21,10 +21,13 @@ const (
 	TaskReleaseScan = "release_scan"
 	// TaskUsageSnapshot copies the gateway's usage into usage_daily.
 	TaskUsageSnapshot = "usage_snapshot"
+	// TaskAlertEval runs the alert rules.
+	TaskAlertEval = "alert_eval"
 
 	EveryStatusImport  = time.Minute
 	EveryReleaseScan   = 24 * time.Hour
 	EveryUsageSnapshot = 24 * time.Hour
+	EveryAlertEval     = 10 * time.Minute
 	// The snapshot waits for the log service to finish indexing the day
 	// that just ended; half an hour is generous.
 	AfterUsageSnapshot = 30 * time.Minute
@@ -46,10 +49,16 @@ func Schedule(ctx context.Context, store repo.Store, onError func(error)) {
 			{TaskStatusImport, EveryStatusImport, 0, 2},
 			{TaskReleaseScan, EveryReleaseScan, 0, 2},
 			{TaskUsageSnapshot, EveryUsageSnapshot, AfterUsageSnapshot, 2},
+			{TaskAlertEval, EveryAlertEval, 0, 1},
 			{repo.TaskAuditPublish, EveryAuditPublish, 0, 2},
 			{repo.TaskReconcile, EveryReconcile, 0, 3},
 		} {
-			if err := enqueuePeriodicAfter(ctx, store, job.kind, now, job.every, job.after, job.max); err != nil && onError != nil {
+			if ctx.Err() != nil {
+				// Stopping is not an error, and an enqueue cut off by the
+				// stop is not one either.
+				return
+			}
+			if err := enqueuePeriodicAfter(ctx, store, job.kind, now, job.every, job.after, job.max); err != nil && onError != nil && ctx.Err() == nil {
 				onError(err)
 			}
 		}

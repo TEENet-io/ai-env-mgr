@@ -191,9 +191,19 @@ func (s *Server) buildWorker(st *dbState) *worker.Worker {
 				level = "error"
 			}
 			s.events.Ops(level, "worker_task", ev.Task.Kind+" "+ev.Outcome, fields)
+			if ev.Outcome == "failed" {
+				// The hook must not block the worker; a short, separate
+				// context keeps a slow database from doing so.
+				ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+				defer cancel()
+				if err := worker.OpenTaskFailedAlert(ctx, st.store, ev.Task, ev.Err); err != nil {
+					s.events.Ops("warn", "alert_open_failed", err.Error(), map[string]any{"task_id": ev.Task.ID})
+				}
+			}
 		},
 		SweepEvery: time.Minute,
 	})
+	var users worker.UserLister
 
 	var gw *litellm.Client
 	if s.opts.GatewayURL != "" && s.opts.GatewayAdminKey != "" {
@@ -209,14 +219,21 @@ func (s *Server) buildWorker(st *dbState) *worker.Worker {
 					"key_alias": grant.KeyAlias, "employee_id": grant.EmployeeID,
 					"desired": grant.Desired, "observed": observed,
 				})
+				ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+				defer cancel()
+				if err := worker.OpenDriftAlert(ctx, st.store, grant, observed); err != nil {
+					s.events.Ops("warn", "alert_open_failed", err.Error(), map[string]any{"key_alias": grant.KeyAlias})
+				}
 			},
 		})
+		users = gw
 		w.Register(repo.TaskOSSExport, worker.OSSExport{
 			Store: st.store, Objects: st.objects, Keyring: st.ring, Catalog: gw,
 			GatewayBaseURL: s.opts.GatewayURL,
 		})
 	}
 	w.Register(worker.TaskStatusImport, worker.StatusImport{Store: st.store, Objects: st.objects})
+	w.Register(worker.TaskAlertEval, worker.AlertEval{Store: st.store, Gateway: users})
 	if src, ok := st.objects.(worker.PackageSource); ok {
 		w.Register(worker.TaskReleaseScan, &worker.ReleaseScan{Store: st.store, Objects: src, Ops: st.ops})
 	}

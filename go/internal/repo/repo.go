@@ -60,6 +60,7 @@ type Store interface {
 	Reports() Reports
 	Releases() Releases
 	Usage() Usage
+	Alerts() Alerts
 
 	// InTx runs fn in a transaction, committing if it returns nil. The Store
 	// passed to fn is the transactional one: using the outer Store inside fn
