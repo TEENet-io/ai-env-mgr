@@ -59,6 +59,7 @@ type Store interface {
 	LegacyIDs() LegacyIDs
 	Reports() Reports
 	Releases() Releases
+	Usage() Usage
 
 	// InTx runs fn in a transaction, committing if it returns nil. The Store
 	// passed to fn is the transactional one: using the outer Store inside fn
@@ -978,4 +979,44 @@ type Reports interface {
 	// ordering, and a stale status overwriting a fresh one reads as a machine
 	// going dark. It reports whether anything was written.
 	Import(ctx context.Context, r DeviceReport) (bool, error)
+}
+
+// UsageRow is one day of one token's calls to one model group, as the
+// gateway logs recorded them. CostUSD is the numeric column as text, the
+// same way Quota carries money: nothing here does arithmetic in floats.
+type UsageRow struct {
+	Day              time.Time
+	EmployeeID       string // "" when the alias matched nobody
+	KeyAlias         string
+	ModelGroup       string
+	Calls, Failures  int
+	CostUSD          string
+	Unpriced         int
+	PromptTokens     int64
+	CompletionTokens int64
+}
+
+// UsageFilter bounds a usage query. From is included and To excluded, both
+// taken as dates. An empty EmployeeID means everybody.
+type UsageFilter struct {
+	From, To   time.Time
+	EmployeeID string
+}
+
+// Usage is the daily usage snapshot.
+type Usage interface {
+	// UpsertDay replaces one day's rows with these. Call it inside a
+	// transaction: the delete and the inserts are one change.
+	UpsertDay(ctx context.Context, day time.Time, rows []UsageRow) error
+	// ByEmployee sums the range per employee (unresolved aliases each count
+	// as their own line, EmployeeID empty). ModelGroup and Day are unset.
+	ByEmployee(ctx context.Context, f UsageFilter) ([]UsageRow, error)
+	// ByModel sums the range per model group, biggest cost first.
+	ByModel(ctx context.Context, f UsageFilter) ([]UsageRow, error)
+	// ByDay sums the range per day, oldest first.
+	ByDay(ctx context.Context, f UsageFilter) ([]UsageRow, error)
+	// Rows lists the raw rows in the range, oldest first, at most limit.
+	Rows(ctx context.Context, f UsageFilter, limit int) ([]UsageRow, error)
+	// Days returns the first and last day that have any rows, or ErrNotFound.
+	Days(ctx context.Context) (first, last time.Time, err error)
 }
