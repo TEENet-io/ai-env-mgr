@@ -123,7 +123,7 @@
           {{if .Status.CodexVersion}}{{.Status.CodexVersion}}{{else}}<span class="muted">—</span>{{end}}
           {{$note := codex . $target}}{{if $note}}<span class="tag tag-{{codexsev $note}}">{{$note}}</span>{{end}}
         </td>
-        <td>
+        <td class="actions">
           <a href="/log?machine={{.Machine}}">日志</a>
           {{if $.DB}}
           <form method="post" action="/machines/sync" class="inline">

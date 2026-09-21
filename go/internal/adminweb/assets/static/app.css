@@ -13,16 +13,17 @@
  */
 
 :root {
-  --ground: #e9edf1;
+  --ground: #f2f4f7;
   --panel: #ffffff;
-  --panel-sunk: #f4f6f9;
-  --ink: #0e1720;
-  --ink-soft: #56687a;
-  --ink-faint: #8698a9;
-  --rule: #d2dae2;
-  --rule-faint: rgba(14, 23, 32, 0.045);
-  --accent: #1544c4;
-  --accent-soft: rgba(21, 68, 196, 0.09);
+  --panel-sunk: #f6f8fa;
+  --ink: #131c26;
+  --ink-soft: #4f6172;
+  --ink-faint: #7f91a2;
+  --rule: #e1e6ec;
+  --rule-strong: #cbd3dc;
+  --accent: #2b52cf;
+  --accent-soft: rgba(43, 82, 207, 0.1);
+  --shadow: 0 1px 2px rgba(19, 28, 38, 0.05), 0 0 0 1px rgba(19, 28, 38, 0.02);
   /* Text on a filled accent or danger button. Dark mode lightens both fills,
    * so white text on them fails contrast -- it flips to the ground colour. */
   --on-fill: #ffffff;
@@ -41,14 +42,15 @@
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --ground: #0d1319;
-    --panel: #151d25;
-    --panel-sunk: #111820;
+    --ground: #0f1519;
+    --panel: #161e26;
+    --panel-sunk: #1b242d;
     --ink: #e6ecf2;
-    --ink-soft: #93a5b6;
-    --ink-faint: #6b7d8e;
-    --rule: #26313c;
-    --rule-faint: rgba(255, 255, 255, 0.035);
+    --ink-soft: #9cadbd;
+    --ink-faint: #6f8292;
+    --rule: #263039;
+    --rule-strong: #34414d;
+    --shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
     --accent: #7aa2ff;
     --accent-soft: rgba(122, 162, 255, 0.14);
     --on-fill: #0d1319;
@@ -69,11 +71,8 @@ body {
   margin: 0;
   color: var(--ink);
   font: 14px/1.55 var(--sans);
-  background-color: var(--ground);
-  /* Faint ruling, like the paper in a chart recorder. One texture, and only
-   * on the ground -- panels sit on top of it opaque. */
-  background-image: repeating-linear-gradient(
-    to bottom, var(--rule-faint) 0 1px, transparent 1px 6px);
+  background: var(--ground);
+  -webkit-font-smoothing: antialiased;
 }
 
 /* ---------- shell ---------- */
@@ -81,38 +80,55 @@ body {
 .app { display: flex; min-height: 100vh; align-items: stretch; }
 
 .rail {
-  flex: 0 0 208px;
+  flex: 0 0 220px;
   display: flex;
   flex-direction: column;
-  gap: 2px;
-  padding: 20px 12px;
+  gap: 1px;
+  padding: 22px 12px 18px;
   background: var(--panel);
   border-right: 1px solid var(--rule);
 }
 
+/* The wordmark: a small solid square in the accent, then the name. The one
+ * piece of identity on the page; everything else is content. */
 .rail .wordmark {
-  padding: 0 10px 18px;
-  font-size: 12px;
-  font-weight: 650;
-  color: var(--ink-faint);
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 0 10px 20px;
+  font-size: 14px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  color: var(--ink);
+}
+.rail .wordmark::before {
+  content: "";
+  width: 14px; height: 14px;
+  border-radius: 4px;
+  background: var(--accent);
+  box-shadow: inset 0 -5px 0 rgba(255, 255, 255, 0.35);
 }
 
 .rail a {
   display: flex;
-  align-items: baseline;
+  align-items: center;
   gap: 10px;
   padding: 7px 10px;
-  border-radius: 5px;
+  border-radius: 7px;
   color: var(--ink-soft);
+  font-size: 13.5px;
   text-decoration: none;
 }
 /* The number is how this menu is navigated in the terminal; it is the same
  * ordering, kept so the habit transfers. */
 .rail a .n {
-  font: 11px/1 var(--mono);
+  flex: 0 0 18px;
+  font: 500 11px/1 var(--mono);
   color: var(--ink-faint);
   font-variant-numeric: tabular-nums;
+  text-align: right;
 }
+.rail a .tag { margin-left: auto; padding: 1px 7px; }
 .rail a:hover { background: var(--panel-sunk); color: var(--ink); }
 .rail a.active { background: var(--accent-soft); color: var(--accent); font-weight: 600; }
 .rail a.active .n { color: var(--accent); }
@@ -121,46 +137,52 @@ body {
   margin-top: auto;
   padding: 14px 10px 0;
   border-top: 1px solid var(--rule);
-  font: 11px/1.6 var(--mono);
+  font: 12px/1.6 var(--mono);
   color: var(--ink-faint);
   word-break: break-all;
 }
+.rail .foot a { display: inline; padding: 0; font: inherit; color: var(--ink-soft); }
 .rail .foot form { margin: 6px 0 0; }
 
-.sheet { flex: 1 1 auto; min-width: 0; padding: 26px 30px 60px; }
-.sheet > * { max-width: 1080px; }
+.sheet { flex: 1 1 auto; min-width: 0; padding: 30px 36px 64px; }
+.sheet > * { max-width: 1100px; }
 
 /* ---------- page head ---------- */
 
-.pagehead { margin-bottom: 18px; }
+.pagehead { margin-bottom: 22px; }
 .pagehead h1 {
   margin: 0;
-  font-size: 21px;
-  font-weight: 650;
-  letter-spacing: -0.012em;
+  font-size: 24px;
+  font-weight: 700;
+  letter-spacing: -0.015em;
 }
-.pagehead p { margin: 5px 0 0; color: var(--ink-soft); }
+.pagehead h1 a { color: var(--ink-faint); text-decoration: none; font-weight: 500; }
+/* A hostname as the title stays a title: the monospace face at heading size,
+ * not at the size identifiers get inside a table. */
+.pagehead h1.mono, .pagehead h1 .mono { font: 700 22px/1.25 var(--mono); letter-spacing: 0; }
+.pagehead p { margin: 6px 0 0; color: var(--ink-soft); max-width: 72ch; }
 
-/* Section labels. No tracking or uppercase: those are Latin devices, and
+/* Section headings. No tracking or uppercase: those are Latin devices, and
  * letter-spacing on Chinese just prises the characters apart. The hierarchy
  * comes from size, weight and colour instead. */
 h2 {
-  margin: 28px 0 9px;
-  font-size: 12px;
+  margin: 32px 0 10px;
+  font-size: 15px;
   font-weight: 650;
-  color: var(--ink-faint);
+  color: var(--ink);
 }
+h2 .dim { font-weight: 500; color: var(--ink-faint); }
 
 /* ---------- fleet strip: the one thing this console is remembered by ------- */
 
 .fleet { margin-bottom: 20px; }
 .fleet .bar {
   display: flex;
-  height: 8px;
-  border-radius: 4px;
+  gap: 2px;
+  height: 10px;
+  border-radius: 5px;
   overflow: hidden;
-  background: var(--panel-sunk);
-  border: 1px solid var(--rule);
+  background: var(--rule);
 }
 .fleet .bar span { display: block; }
 .fleet .bar .s-ok { background: var(--ok); }
@@ -176,7 +198,7 @@ h2 {
   color: var(--ink-soft);
 }
 .fleet .legend b {
-  font: 600 15px/1 var(--mono);
+  font: 650 16px/1 var(--sans);
   font-variant-numeric: tabular-nums;
   margin-right: 5px;
   color: var(--ink);
@@ -198,34 +220,44 @@ h2 {
 .panel {
   background: var(--panel);
   border: 1px solid var(--rule);
-  border-radius: 8px;
+  border-radius: 10px;
+  box-shadow: var(--shadow);
   overflow: hidden;
 }
 .scroll { overflow-x: auto; }
 
 table { border-collapse: collapse; width: 100%; }
 th, td {
-  padding: 8px 14px;
+  padding: 10px 14px;
   text-align: left;
   border-bottom: 1px solid var(--rule);
   white-space: nowrap;
+  vertical-align: middle;
 }
 tbody tr:last-child td { border-bottom: 0; }
 thead th {
+  padding: 9px 14px;
   font-size: 12px;
   font-weight: 600;
-  color: var(--ink-faint);
+  color: var(--ink-soft);
   background: var(--panel-sunk);
+  border-bottom: 1px solid var(--rule-strong);
 }
 tbody tr:hover td { background: var(--panel-sunk); }
 
 /* Machine-generated values read as such. */
 td.id, td.num, .mono {
-  font: 13px/1.5 var(--mono);
+  font: 12.5px/1.5 var(--mono);
   font-variant-numeric: tabular-nums;
 }
 td.id { font-weight: 600; }
+td.id a { color: var(--ink); text-decoration: none; border-bottom: 1px solid var(--rule-strong); }
+td.id a:hover { color: var(--accent); border-bottom-color: var(--accent); }
 td.dim { color: var(--ink-faint); }
+/* A cell of prose (model lists, notes) wraps instead of pushing the table
+ * past the panel's edge. */
+td.wrap { white-space: normal; max-width: 420px; line-height: 1.5; }
+.nowrap { white-space: nowrap; }
 
 /* A line of explanation under a row's actions: what a request that has not
    taken effect yet is waiting for, and what came of the last one. Small and
@@ -237,6 +269,7 @@ td.dim { color: var(--ink-faint); }
   color: var(--ink-faint);
   white-space: normal;
 }
+.rowsub.nowrap { white-space: nowrap; }
 
 table.kv th {
   width: 190px;
@@ -262,27 +295,28 @@ tr.r-bad td:first-child { box-shadow: inset 3px 0 0 var(--bad); }
 
 .tag {
   display: inline-block;
-  padding: 2px 7px;
-  border-radius: 4px;
-  font: 600 11px/1.6 var(--sans);
-  letter-spacing: 0.02em;
+  padding: 2px 8px;
+  border-radius: 5px;
+  font: 600 11.5px/1.5 var(--sans);
+  vertical-align: 1px;
 }
 .tag-ok { background: var(--ok-bg); color: var(--ok); }
 .tag-warn { background: var(--warn-bg); color: var(--warn); }
 .tag-bad { background: var(--bad-bg); color: var(--bad); }
 
-.empty { padding: 22px 14px; color: var(--ink-faint); }
+.empty { padding: 26px 16px; color: var(--ink-faint); white-space: normal; }
 
 /* ---------- forms ---------- */
 
 .form {
   background: var(--panel);
   border: 1px solid var(--rule);
-  border-radius: 8px;
-  padding: 16px;
+  border-radius: 10px;
+  box-shadow: var(--shadow);
+  padding: 16px 18px 18px;
   display: flex;
   flex-wrap: wrap;
-  gap: 14px;
+  gap: 14px 16px;
   align-items: flex-end;
 }
 .form label {
@@ -291,20 +325,22 @@ tr.r-bad td:first-child { box-shadow: inset 3px 0 0 var(--bad); }
   min-width: 160px;
   font-size: 12px;
   font-weight: 600;
-  color: var(--ink-faint);
+  color: var(--ink-soft);
 }
 .form label.wide { flex-basis: 100%; }
 
 input, select, textarea {
   width: 100%;
-  margin-top: 5px;
+  margin-top: 6px;
   padding: 8px 10px;
-  border: 1px solid var(--rule);
-  border-radius: 5px;
-  background: var(--panel-sunk);
+  border: 1px solid var(--rule-strong);
+  border-radius: 6px;
+  background: var(--panel);
   color: var(--ink);
   font: 14px/1.4 var(--sans);
 }
+input::placeholder, textarea::placeholder { color: var(--ink-faint); }
+input:hover, select:hover, textarea:hover { border-color: var(--ink-faint); }
 input[name="machine"], input[name="version"], input[name="confirm"],
 input[name="url"], input[name="callback"], textarea { font-family: var(--mono); font-size: 13px; }
 textarea { resize: vertical; }
@@ -318,23 +354,29 @@ button:focus-visible, a:focus-visible {
 button {
   padding: 8px 15px;
   border: 1px solid transparent;
-  border-radius: 5px;
+  border-radius: 6px;
   background: var(--accent);
   color: var(--on-fill);
   font: 600 13px/1.4 var(--sans);
   cursor: pointer;
 }
 button:hover { filter: brightness(1.08); }
+/* A secondary action: quiet until pointed at. Used for the row actions in
+ * tables and the odd "do it now" beside a heading, so the page has one
+ * coloured button per form and the rest recede. */
 button.link {
-  padding: 0;
-  border: 0;
-  background: none;
-  color: var(--accent);
-  font-weight: 500;
-  text-decoration: underline;
-  text-underline-offset: 2px;
+  padding: 3px 9px;
+  border: 1px solid var(--rule-strong);
+  border-radius: 6px;
+  background: var(--panel);
+  color: var(--ink-soft);
+  font: 500 12.5px/1.4 var(--sans);
+  text-decoration: none;
 }
+button.link:hover { filter: none; color: var(--accent); border-color: var(--accent); background: var(--accent-soft); }
 button.danger { background: var(--bad); }
+button.link.danger, button.danger-link { background: var(--panel); color: var(--bad); }
+button.link.danger:hover, button.danger-link:hover { border-color: var(--bad); background: var(--bad-bg); }
 form.inline { display: inline; }
 /* A bare "clear the target" control needs its own line and some air, or it
  * reads as though it belongs to whatever panel it happens to sit under. */
@@ -345,7 +387,7 @@ form.aside { margin: 10px 0 4px; }
 .note {
   margin: 0 0 16px;
   padding: 10px 13px;
-  border-radius: 6px;
+  border-radius: 8px;
   border-left: 3px solid;
   font-size: 13px;
 }
@@ -355,8 +397,9 @@ form.aside { margin: 10px 0 4px; }
 /* Where an action reaches every machine, or cannot be undone. */
 .caution {
   margin: 0 0 14px;
-  padding: 13px 15px;
-  border: 1px solid var(--bad);
+  padding: 12px 15px;
+  border: 1px solid transparent;
+  border-left: 3px solid var(--bad);
   border-radius: 8px;
   background: var(--bad-bg);
   font-size: 13px;
@@ -373,13 +416,14 @@ body.gate {
   padding: 24px;
 }
 .gate .card {
-  width: min(370px, 100%);
-  padding: 30px;
+  width: min(380px, 100%);
+  padding: 32px;
   background: var(--panel);
   border: 1px solid var(--rule);
-  border-radius: 10px;
+  border-radius: 12px;
+  box-shadow: var(--shadow);
 }
-.gate h1 { margin: 0; font-size: 13px; font-weight: 650; color: var(--ink-faint); }
+.gate h1 { margin: 0; font-size: 16px; font-weight: 700; color: var(--ink); }
 .gate .lede { margin: 14px 0 20px; color: var(--ink-soft); font-size: 13px; }
 .gate label { display: block; margin-bottom: 13px; font-size: 12px; font-weight: 600;
   color: var(--ink-faint); }
@@ -393,7 +437,7 @@ pre.log {
   padding: 16px;
   background: var(--panel);
   border: 1px solid var(--rule);
-  border-radius: 8px;
+  border-radius: 10px;
   overflow-x: auto;
   max-height: 68vh;
   font: 12px/1.6 var(--mono);
@@ -405,7 +449,8 @@ code {
   border-radius: 4px;
   padding: 1px 5px;
 }
-a { color: var(--accent); }
+a { color: var(--accent); text-decoration: none; }
+a:hover { text-decoration: underline; text-underline-offset: 2px; }
 .muted { color: var(--ink-faint); }
 ol { margin: 10px 0; padding-left: 19px; }
 ol li { margin: 7px 0; }
@@ -415,13 +460,15 @@ ol li { margin: 7px 0; }
 .form.filter { padding: 12px 14px; gap: 10px; margin-bottom: 12px; }
 .form.filter label { flex: 1 1 120px; min-width: 110px; }
 .form.filter input, .form.filter select { padding: 6px 8px; font-size: 13px; }
-a.button-link { display: inline-block; padding: 8px 15px; border: 1px solid var(--rule); border-radius: 5px; font-size: 13px; text-decoration: none; }
+a.button-link { display: inline-block; padding: 8px 14px; border: 1px solid var(--rule-strong); border-radius: 6px; font-size: 13px; font-weight: 500; color: var(--ink-soft); background: var(--panel); text-decoration: none; }
+a.button-link:hover { color: var(--accent); border-color: var(--accent); background: var(--accent-soft); text-decoration: none; }
 
 /* Four small "how the fleet splits" panels under the fleet strip. */
 .dists { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin: -6px 0 22px; }
-.dist { padding: 10px 12px; }
-.dist-title { font-size: 12px; font-weight: 650; color: var(--ink-faint); margin-bottom: 6px; }
-.dist-row { display: grid; grid-template-columns: 1fr auto; gap: 2px 8px; align-items: center; font-size: 12px; padding: 3px 0; }
+.dist { padding: 12px 14px; }
+.dist-title { font-size: 12.5px; font-weight: 600; color: var(--ink-soft); margin-bottom: 8px; }
+.dist-row { display: grid; grid-template-columns: 1fr auto; gap: 3px 8px; align-items: center; font-size: 12.5px; padding: 3px 0; }
+.dist-n { font-weight: 600; color: var(--ink); }
 .dist-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .dist-n { font-variant-numeric: tabular-nums; color: var(--ink-soft); }
 .dist-bar { grid-column: 1 / -1; display: block; height: 4px; border-radius: 2px; background: var(--panel-sunk); overflow: hidden; }
@@ -435,7 +482,8 @@ a.button-link { display: inline-block; padding: 8px 15px; border: 1px solid var(
 .flow .step {
   background: var(--panel);
   border: 1px solid var(--rule);
-  border-radius: 8px;
+  border-radius: 10px;
+  box-shadow: var(--shadow);
   padding: 10px 12px 11px;
   font-size: 12px;
   line-height: 1.5;
@@ -448,16 +496,18 @@ a.button-link { display: inline-block; padding: 8px 15px; border: 1px solid var(
 @media (max-width: 600px) { .flow { grid-template-columns: 1fr; } }
 
 /* A section heading with something on its right: a button, the fleet target. */
-.sechead { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin: 26px 0 9px; }
+.sechead { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin: 32px 0 10px; }
 .sechead h2 { margin: 0; }
 .sechead .dim { font-size: 12.5px; }
+.sechead form.inline { display: inline-flex; align-items: center; gap: 10px; }
 
 /* Actions inside a table cell wrap instead of stretching the row across the
    screen; each form is its own line when the cell is narrow. */
 td.actions { white-space: normal; min-width: 260px; }
-td.actions form, td.actions > a { display: inline-block; margin: 2px 12px 2px 0; }
-td.actions input { width: auto; margin: 0 4px 0 0; padding: 4px 7px; font-size: 12px; }
-td.actions button.link { font-size: 12.5px; }
+td.actions form, td.actions > a { display: inline-block; margin: 2px 6px 2px 0; }
+td.actions > a { padding: 3px 9px; border: 1px solid var(--rule-strong); border-radius: 6px; font-size: 12.5px; font-weight: 500; color: var(--ink-soft); }
+td.actions > a:hover { color: var(--accent); border-color: var(--accent); background: var(--accent-soft); text-decoration: none; }
+td.actions input { width: auto; margin: 0 4px 0 0; padding: 4px 8px; font-size: 12px; }
 td.remark { white-space: normal; min-width: 130px; max-width: 260px; }
 .tag-muted { background: var(--panel-sunk); color: var(--ink-soft); }
 button.danger-link { color: var(--bad); }
@@ -483,7 +533,7 @@ button.danger-link { color: var(--bad); }
 }
 
 /* A publish in flight. It reports on itself; the page reloads while it runs. */
-.job { padding: 14px 16px; margin-bottom: 16px; }
+.job { padding: 14px 18px; margin-bottom: 16px; }
 .job h3 { margin: 0 0 4px; font-size: 14px; font-weight: 650; }
 .job h3.ok { color: var(--ok); }
 .job h3.bad { color: var(--bad); }
@@ -702,8 +752,8 @@ button.danger-link { color: var(--bad); }
 /* The policy and gateway panels are one dense line each: the whole point of
    the page is that a reader takes all of it in without scrolling, so these
    summarise rather than tabulate. */
-.summary-row { padding: 12px 16px; }
-.summary-row p { margin: 0; line-height: 1.9; }
+.summary-row { padding: 14px 18px; }
+.summary-row p { margin: 0; line-height: 2; }
 .summary-row p + p { margin-top: 6px; }
 
 /* The model list folds away behind <details>. It is reference material, not
