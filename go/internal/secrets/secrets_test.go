@@ -278,3 +278,26 @@ func TestNewFileKeyringRejectsBadFiles(t *testing.T) {
 		t.Error("a directory was accepted as a master key file")
 	}
 }
+
+func TestResealMovesAValueToTheCurrentKey(t *testing.T) {
+	ctx := context.Background()
+	k1 := randomKey(t)
+	oldRing, _ := NewFileKeyring(writeKeyFile(t, fmt.Sprintf(`{"current":"k1","keys":{"k1":%q}}`, k1), 0o600))
+	aad := AAD("credential_versions", "5f1c", "codex_gateway")
+	blob, version, _ := oldRing.Seal(ctx, []byte("token"), aad)
+	newRing, _ := NewFileKeyring(writeKeyFile(t, fmt.Sprintf(`{"current":"k2","keys":{"k1":%q,"k2":%q}}`, k1, randomKey(t)), 0o600))
+	moved, movedVersion, err := Reseal(ctx, newRing, blob, version, aad)
+	if err != nil || movedVersion != "k2" || string(moved) == string(blob) {
+		t.Fatalf("reseal: v=%s err=%v", movedVersion, err)
+	}
+	if got, err := newRing.Open(ctx, moved, movedVersion, aad); err != nil || string(got) != "token" {
+		t.Fatalf("the moved value does not open: %q %v", got, err)
+	}
+	same, sameVersion, err := Reseal(ctx, newRing, moved, movedVersion, aad)
+	if err != nil || sameVersion != "k2" || string(same) != string(moved) {
+		t.Fatal("a value already under the current key must come back unchanged")
+	}
+	if _, _, err := Reseal(ctx, newRing, blob, version, AAD("x", "y", "z")); err == nil {
+		t.Fatal("a wrong aad must not reseal")
+	}
+}

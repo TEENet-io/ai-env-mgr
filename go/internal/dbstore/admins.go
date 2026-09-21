@@ -337,3 +337,19 @@ func (r adminRepo) DeleteExpiredSessions(ctx context.Context) (int, error) {
 func normalizeUsername(name string) string {
 	return strings.ToLower(strings.TrimSpace(name))
 }
+
+func (r adminRepo) ResealTOTP(ctx context.Context, id string, sealed []byte, keyVersion string) error {
+	if len(sealed) == 0 || keyVersion == "" {
+		return errors.New("re-key second factor: the sealed seed and its key version are both required")
+	}
+	tag, err := r.q.Exec(ctx,
+		`update admin_principals set totp_secret = $2, totp_key_version = $3, updated_at = now()
+		  where id = $1 and totp_secret is not null`, id, sealed, keyVersion)
+	if err != nil {
+		return mapError(err, "re-key second factor")
+	}
+	if tag.RowsAffected() == 0 {
+		return mapError(errNoRow, "re-key second factor")
+	}
+	return nil
+}

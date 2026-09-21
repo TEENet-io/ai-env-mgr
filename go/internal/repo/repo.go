@@ -789,6 +789,16 @@ type Credentials interface {
 	// LiveOlderThan lists live credentials for a purpose created before the
 	// given time, oldest first, at most limit: the rotation's worklist.
 	LiveOlderThan(ctx context.Context, purpose string, before time.Time, limit int) ([]Credential, error)
+
+	// NotSealedWith lists live credentials wrapped by any master key but
+	// this one, at most limit: the re-keying's worklist. Retired rows are
+	// left as they are; the old key stays until nothing references it.
+	NotSealedWith(ctx context.Context, keyVersion string, limit int) ([]Credential, error)
+	// Reseal replaces the ciphertext and key version of one row.
+	Reseal(ctx context.Context, id string, ciphertext []byte, keyVersion string) error
+	// KeyVersions lists every master key version any row, live or retired,
+	// still refers to.
+	KeyVersions(ctx context.Context) ([]string, error)
 }
 
 // Admin roles, least to most. Phase 1 uses admin for everybody; the others
@@ -900,6 +910,8 @@ type Admins interface {
 	// ReplaceRecoveryHashes is used when a code is consumed. The whole list is
 	// written back, so a consumed code cannot be used twice.
 	ReplaceRecoveryHashes(ctx context.Context, id string, hashes []string) error
+	// ResealTOTP replaces the sealed seed and its key version, nothing else.
+	ResealTOTP(ctx context.Context, id string, sealedSecret []byte, keyVersion string) error
 
 	RecordLogin(ctx context.Context, id string, at time.Time) error
 	SetDisabled(ctx context.Context, id string, disabled bool) (Admin, error)

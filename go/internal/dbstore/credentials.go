@@ -124,3 +124,58 @@ func (r credentialRepo) LiveOlderThan(ctx context.Context, purpose string, befor
 	}
 	return out, rows.Err()
 }
+
+func (r credentialRepo) NotSealedWith(ctx context.Context, keyVersion string, limit int) ([]repo.Credential, error) {
+	if limit <= 0 {
+		limit = 100
+	}
+	rows, err := r.q.Query(ctx,
+		`select `+credentialColumns+` from credential_versions
+		  where retired_at is null and key_version <> $1
+		  order by created_at limit $2`, keyVersion, limit)
+	if err != nil {
+		return nil, mapError(err, "list credentials to re-key")
+	}
+	defer rows.Close()
+	out := []repo.Credential{}
+	for rows.Next() {
+		c, err := scanCredential(rows)
+		if err != nil {
+			return nil, mapError(err, "list credentials to re-key")
+		}
+		out = append(out, c)
+	}
+	return out, rows.Err()
+}
+
+func (r credentialRepo) Reseal(ctx context.Context, id string, ciphertext []byte, keyVersion string) error {
+	if len(ciphertext) == 0 || keyVersion == "" {
+		return errors.New("re-key credential: ciphertext and key version are required")
+	}
+	tag, err := r.q.Exec(ctx,
+		`update credential_versions set ciphertext = $2, key_version = $3 where id = $1`, id, ciphertext, keyVersion)
+	if err != nil {
+		return mapError(err, "re-key credential")
+	}
+	if tag.RowsAffected() == 0 {
+		return mapError(errNoRow, "re-key credential")
+	}
+	return nil
+}
+
+func (r credentialRepo) KeyVersions(ctx context.Context) ([]string, error) {
+	rows, err := r.q.Query(ctx, `select distinct key_version from credential_versions order by key_version`)
+	if err != nil {
+		return nil, mapError(err, "list key versions")
+	}
+	defer rows.Close()
+	out := []string{}
+	for rows.Next() {
+		var v string
+		if err := rows.Scan(&v); err != nil {
+			return nil, mapError(err, "list key versions")
+		}
+		out = append(out, v)
+	}
+	return out, rows.Err()
+}

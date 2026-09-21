@@ -117,9 +117,9 @@ func TestUsageRowsFromReadsTheAggregateColumns(t *testing.T) {
 	rows := usageRowsFrom([]slsclient.Log{
 		{"employee_id": "emp-a-e1", "model_group": "sonnet", "calls": "12", "failures": "1", "cost_usd": "0.123456", "unpriced": "0", "prompt_tokens": "1000", "completion_tokens": "200"},
 		{"employee_id": "emp-b-e1", "model_group": "", "calls": "1", "cost_usd": "null", "prompt_tokens": "null"},
-		{"employee_id": "", "calls": "5"},
+		{"employee_id": "null", "model_group": "null", "calls": "5"},
 	})
-	if len(rows) != 2 {
+	if len(rows) != 3 || rows[2].KeyAlias != "-" || rows[2].ModelGroup != "" || rows[2].Calls != 5 {
 		t.Fatalf("rows = %+v", rows)
 	}
 	if rows[0].Calls != 12 || rows[0].Failures != 1 || rows[0].CostUSD != "0.123456" || rows[0].PromptTokens != 1000 || rows[0].CompletionTokens != 200 {

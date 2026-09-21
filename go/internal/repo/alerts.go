@@ -221,3 +221,10 @@ func LoadRotationSettings(ctx context.Context, settings Settings) (RotationSetti
 	}
 	return s, setting.Version, nil
 }
+
+// ChannelSecretAAD binds a sealed channel secret to its field, so a blob
+// cannot be moved from one field to another. It is here rather than in the
+// console so the re-keying command uses the same string.
+func ChannelSecretAAD(field string) string {
+	return "settings:" + SettingAlertChannels + ":" + field
+}

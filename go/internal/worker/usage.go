@@ -193,17 +193,24 @@ func (s SLSUsage) DailyUsage(ctx context.Context, day time.Time) ([]repo.UsageRo
 func usageRowsFrom(logs []slsclient.Log) []repo.UsageRow {
 	rows := make([]repo.UsageRow, 0, len(logs))
 	for _, l := range logs {
+		// The service renders a missing column as the string "null". A call
+		// with no alias (a probe, the gateway's own default user) still
+		// happened; it is kept under a placeholder so the totals add up.
 		alias := strings.TrimSpace(l["employee_id"])
-		if alias == "" {
-			continue
+		if alias == "" || alias == "null" {
+			alias = "-"
 		}
 		cost := strings.TrimSpace(l["cost_usd"])
 		if cost == "" || cost == "null" {
 			cost = "0"
 		}
+		model := strings.TrimSpace(l["model_group"])
+		if model == "null" {
+			model = ""
+		}
 		rows = append(rows, repo.UsageRow{
 			KeyAlias:         alias,
-			ModelGroup:       strings.TrimSpace(l["model_group"]),
+			ModelGroup:       model,
 			Calls:            atoi(l["calls"]),
 			Failures:         atoi(l["failures"]),
 			CostUSD:          cost,

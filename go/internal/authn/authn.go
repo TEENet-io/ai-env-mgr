@@ -418,7 +418,11 @@ func hashToken(token string) []byte {
 
 // totpAAD binds a sealed seed to the row it belongs to, so a ciphertext copied
 // into another account's row will not open.
-func totpAAD(adminID string) string {
+func totpAAD(adminID string) string { return TOTPAAD(adminID) }
+
+// TOTPAAD is the associated data an administrator's sealed authenticator
+// seed is bound to; exported for the re-keying command.
+func TOTPAAD(adminID string) string {
 	return secrets.AAD("admin_principals", adminID, "totp_seed")
 }
 

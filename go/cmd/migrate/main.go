@@ -37,6 +37,7 @@ import (
 	"github.com/TEENet-io/ai-env-mgr/internal/litellm"
 	"github.com/TEENet-io/ai-env-mgr/internal/migrate"
 	"github.com/TEENet-io/ai-env-mgr/internal/ossclient"
+	"github.com/TEENet-io/ai-env-mgr/internal/secrets"
 )
 
 func main() {
@@ -52,8 +53,11 @@ func run() error {
 	timeout := flag.Duration("timeout", 2*time.Minute, "give up after this long")
 	bucket := flag.String("bucket", envOr("AIENVMGR_OSS_BUCKET", "ai-collect-sg"), "OSS bucket")
 	endpoint := flag.String("endpoint", envOr("AIENVMGR_OSS_ENDPOINT", "oss-ap-southeast-1.aliyuncs.com"), "OSS endpoint")
+	masterKey := flag.String("master-key", os.Getenv("AIENVMGR_MASTER_KEY_FILE"), "master key file, for rekey")
+	dryRun := flag.Bool("dry-run", false, "rekey: count what would move, change nothing")
+	pruneUnused := flag.Bool("prune-unused", false, "rekey: afterwards drop key versions nothing references from the key file")
 	flag.Usage = func() {
-		fmt.Fprintf(flag.CommandLine.Output(), "usage: migrate [flags] <status|up|down|grants|probe|import|compare>\n\n")
+		fmt.Fprintf(flag.CommandLine.Output(), "usage: migrate [flags] <status|up|down|grants|probe|import|compare|rekey>\n\n")
 		flag.PrintDefaults()
 	}
 	flag.Parse()
@@ -143,6 +147,37 @@ func run() error {
 		}
 		fmt.Printf("applied %d migration(s)\n", pending)
 		return status(ctx, database)
+	case "rekey":
+		if *masterKey == "" {
+			return errors.New("rekey needs the master key file: set AIENVMGR_MASTER_KEY_FILE or pass -master-key")
+		}
+		ring, err := secrets.NewFileKeyring(*masterKey)
+		if err != nil {
+			return err
+		}
+		rep, err := migrate.Rekey(ctx, dbstore.NewStore(database), ring, *dryRun)
+		verb := "moved"
+		if *dryRun {
+			verb = "would move"
+		}
+		fmt.Printf("current key %s: %s %d credential(s), %d administrator seed(s), %d channel secret(s)\n",
+			rep.Current, verb, rep.Credentials, rep.Admins, rep.Settings)
+		if err != nil {
+			return err
+		}
+		fmt.Printf("key versions still referenced: %v\n", rep.Referenced)
+		if *pruneUnused && !*dryRun {
+			dropped, err := migrate.PruneKeyFile(*masterKey, rep.Referenced)
+			if err != nil {
+				return err
+			}
+			if len(dropped) == 0 {
+				fmt.Println("nothing to prune: every key in the file is current or referenced")
+			} else {
+				fmt.Printf("dropped %v from %s (previous file kept as %s.bak)\n", dropped, *masterKey, *masterKey)
+			}
+		}
+		return nil
 	case "down":
 		applied, err := database.Applied(ctx)
 		if err != nil {

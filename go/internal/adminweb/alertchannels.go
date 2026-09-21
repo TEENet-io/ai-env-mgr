@@ -9,15 +9,12 @@ import (
 
 	"github.com/TEENet-io/ai-env-mgr/internal/notify"
 	"github.com/TEENet-io/ai-env-mgr/internal/repo"
-	"github.com/TEENet-io/ai-env-mgr/internal/secrets"
 )
 
 // The secrets inside the channel settings are sealed with the master key,
 // under an AAD that names the setting and the field, so a ciphertext cannot
 // be moved from one field to another.
-func channelAAD(field string) string {
-	return secrets.AAD("settings", repo.SettingAlertChannels, field)
-}
+func channelAAD(field string) string { return repo.ChannelSecretAAD(field) }
 
 func (s *Server) sealSecret(ctx context.Context, field, plaintext string) (repo.Sealed, error) {
 	if plaintext == "" {
