@@ -577,7 +577,8 @@ func (s *Server) handleLogs(w http.ResponseWriter, r *http.Request, sess *sessio
 		http.NotFound(w, r)
 		return
 	}
-	data := newPage(sess, r, "logs")
+	data := newPage(sess, r, "usage")
+	data.Tab = "logs"
 
 	f := parseLogFilter(r.URL.Query())
 	from, to := f.resolveWindow(time.Now())

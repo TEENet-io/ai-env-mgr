@@ -81,9 +81,12 @@ func TestAlertSettingsKeepThePasswordWhenLeftBlank(t *testing.T) {
 	ctx := t.Context()
 	csrf := csrfFrom(t, s, cookie, "/settings")
 
-	page := dbGet(t, h, "/settings", cookie).Body.String()
-	if !strings.Contains(page, "通知渠道") || !strings.Contains(page, `name="offline_hours"`) || !strings.Contains(page, "未设置") {
-		t.Fatal("the settings page lacks the alert sections")
+	page := dbGet(t, h, "/settings/channels", cookie).Body.String()
+	if !strings.Contains(page, "通知渠道") || !strings.Contains(page, "未设置") {
+		t.Fatal("the channels tab lacks its form")
+	}
+	if page := dbGet(t, h, "/settings/alerting", cookie).Body.String(); !strings.Contains(page, `name="offline_hours"`) {
+		t.Fatal("the alerting tab lacks the thresholds form")
 	}
 	form := url.Values{"csrf": {csrf}, "version": {"0"},
 		"webhook_enabled": {"1"}, "webhook_url": {"https://oapi.dingtalk.com/robot/send?access_token=x"}, "webhook_format": {"dingtalk"}, "webhook_secret": {"SEC123"},
@@ -109,7 +112,7 @@ func TestAlertSettingsKeepThePasswordWhenLeftBlank(t *testing.T) {
 	}
 
 	// Saving again with blank secret fields keeps them; the page says set.
-	page = dbGet(t, h, "/settings", cookie).Body.String()
+	page = dbGet(t, h, "/settings/channels", cookie).Body.String()
 	if !strings.Contains(page, "已设置，留空不改") || strings.Contains(page, "hunter2") {
 		t.Fatal("the page must say the password is set without showing it")
 	}
@@ -153,9 +156,9 @@ func TestRotationSettingsAndTheTokenColumn(t *testing.T) {
 	cookie := signedIn(t, s)
 	ctx := t.Context()
 	csrf := csrfFrom(t, s, cookie, "/settings")
-	page := dbGet(t, h, "/settings", cookie).Body.String()
+	page := dbGet(t, h, "/settings/alerting", cookie).Body.String()
 	if !strings.Contains(page, "令牌轮换") || !strings.Contains(page, `name="max_age_days"`) {
-		t.Fatal("the settings page lacks the rotation section")
+		t.Fatal("the alerting tab lacks the rotation section")
 	}
 	if rec := dbPost(t, h, "/settings/rotation", url.Values{"csrf": {csrf}, "version": {"0"}, "enabled": {"1"}, "max_age_days": {"30"}, "per_day": {"2"}, "active_within_hours": {"48"}}, cookie); strings.Contains(rec.Header().Get("Location"), "err=") {
 		t.Fatalf("save: %s", rec.Header().Get("Location"))

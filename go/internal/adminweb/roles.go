@@ -29,6 +29,7 @@ var minRole = map[string]string{
 	"GET /users/detail":             repo.RoleViewer,
 	"GET /sites":                    repo.RoleViewer,
 	"GET /settings":                 repo.RoleViewer,
+	"GET /settings/":                repo.RoleViewer,
 	"GET /log":                      repo.RoleViewer,
 	"GET /logs":                     repo.RoleViewer,
 	"GET /tasks":                    repo.RoleViewer,

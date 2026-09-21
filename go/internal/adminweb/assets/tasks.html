@@ -1,9 +1,10 @@
-{{define "tasks.html"}}{{template "head" "任务"}}
+{{define "tasks.html"}}{{template "head" "后台任务"}}
 <body>
 <div class="app">
 {{template "nav" .}}
 <main class="sheet">
-  <header class="pagehead"><h1>任务</h1></header>
+  <header class="pagehead"><h1>告警</h1></header>
+  {{template "tabs-alerts" .}}
   {{template "notices" .}}
   <p class="hint">后台的每次操作都会排一个或几个任务：调网关、写 OSS 对象、投递审计、对账。失败的任务会按退避重试；判定为永久失败的不再重试，需要人来看。</p>
   <form method="post" action="/tasks/reconcile" class="form">

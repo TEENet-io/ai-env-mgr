@@ -108,6 +108,9 @@ type pageData struct {
 	Channels      *channelView
 	Rotation      *rotationView
 	OpenAlerts    int // drawn in the nav on every page
+	// Tab is the entry inside the nav group this page is (see the tabs-*
+	// templates); empty for a group with no second level.
+	Tab           string
 	MachinePage   *machinePage
 	History       *employeeHistory // the detail page's history (database mode)
 	Report        []versionReport  // the rollouts page's report by version
@@ -395,7 +398,8 @@ func (s *Server) handleOverview(w http.ResponseWriter, r *http.Request, sess *se
 }
 
 func (s *Server) handleSites(w http.ResponseWriter, r *http.Request, sess *session) {
-	data := newPage(sess, r, "sites")
+	data := newPage(sess, r, "settings")
+	data.Tab = "sites"
 	p, err := sess.be.Policy(r.Context())
 	if err != nil {
 		data.Error = "could not read the policy"
@@ -407,7 +411,21 @@ func (s *Server) handleSites(w http.ResponseWriter, r *http.Request, sess *sessi
 }
 
 func (s *Server) handleSettings(w http.ResponseWriter, r *http.Request, sess *session) {
+	s.handleSettingsTab("general")(w, r, sess)
+}
+
+// handleSettingsTab renders one tab of the settings group. Every tab loads
+// the same data; the template shows the sections for the tab, so a stale
+// link to a section still lands on a page that has it.
+func (s *Server) handleSettingsTab(tab string) func(http.ResponseWriter, *http.Request, *session) {
+	return func(w http.ResponseWriter, r *http.Request, sess *session) {
+		s.renderSettings(w, r, sess, tab)
+	}
+}
+
+func (s *Server) renderSettings(w http.ResponseWriter, r *http.Request, sess *session, tab string) {
 	data := newPage(sess, r, "settings")
+	data.Tab = tab
 	p, err := sess.be.Policy(r.Context())
 	if err != nil {
 		data.Error = "could not read the policy"

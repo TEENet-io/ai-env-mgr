@@ -321,6 +321,8 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("/users/detail", s.requireSession(s.handleUserDetail))
 	mux.HandleFunc("/sites", s.requireSession(s.handleSites))
 	mux.HandleFunc("/settings", s.requireSession(s.handleSettings))
+	mux.HandleFunc("/settings/alerting", s.requireSession(s.handleSettingsTab("alerting")))
+	mux.HandleFunc("/settings/channels", s.requireSession(s.handleSettingsTab("channels")))
 	mux.HandleFunc("/log", s.requireSession(s.handleLog))
 	if s.dbm != nil {
 		// The fleet-wide publish page is replaced by the version library.
@@ -386,10 +388,10 @@ func (s *Server) Handler() http.Handler {
 		mux.HandleFunc("/alerts", s.requireSession(s.handleAlerts))
 		mux.HandleFunc("/alerts/ack", s.requirePost("/alerts", s.actionAlertAck))
 		mux.HandleFunc("/alerts/resolve", s.requirePost("/alerts", s.actionAlertResolve))
-		mux.HandleFunc("/alerts/test", s.requirePostNotice("/settings", s.actionAlertTest))
-		mux.HandleFunc("/settings/alerts", s.requirePost("/settings", s.actionAlertSettings))
-		mux.HandleFunc("/settings/alert-channels", s.requirePost("/settings", s.actionAlertChannels))
-		mux.HandleFunc("/settings/rotation", s.requirePost("/settings", s.actionRotationSettings))
+		mux.HandleFunc("/alerts/test", s.requirePostNotice("/settings/channels", s.actionAlertTest))
+		mux.HandleFunc("/settings/alerts", s.requirePost("/settings/alerting", s.actionAlertSettings))
+		mux.HandleFunc("/settings/alert-channels", s.requirePost("/settings/channels", s.actionAlertChannels))
+		mux.HandleFunc("/settings/rotation", s.requirePost("/settings/alerting", s.actionRotationSettings))
 		mux.HandleFunc("/usage", s.requireSession(s.handleUsage))
 		mux.HandleFunc("/usage.csv", s.requireSession(s.handleUsageCSV))
 		mux.HandleFunc("/usage/snapshot-now", s.requirePostNotice("/usage", s.actionUsageSnapshotNow))

@@ -200,6 +200,7 @@ func (s *Server) rolloutView(r *http.Request, rollout repo.Rollout, withTargets 
 
 func (s *Server) handleRollouts(w http.ResponseWriter, r *http.Request, sess *session) {
 	data := newPage(sess, r, "releases")
+	data.Tab = "rollouts"
 	rollouts, err := s.dbm.store.Releases().ListRollouts(r.Context(), 50)
 	if err != nil {
 		data.Error = "could not list rollouts"
@@ -256,6 +257,7 @@ func (s *Server) handleRolloutNew(w http.ResponseWriter, r *http.Request, sess *
 		return
 	}
 	data := newPage(sess, r, "releases")
+	data.Tab = "rollouts"
 	data.Artifact = &artifact
 	devices, err := s.dbm.store.Devices().List(ctx, repo.DeviceFilter{})
 	if err != nil {
@@ -304,6 +306,7 @@ func (s *Server) handleRolloutDetail(w http.ResponseWriter, r *http.Request, ses
 		return
 	}
 	data := newPage(sess, r, "releases")
+	data.Tab = "rollouts"
 	view, err := s.rolloutView(r, rollout, true)
 	if err != nil {
 		data.Error = "could not read the rollout: " + err.Error()

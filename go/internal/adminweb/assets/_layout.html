@@ -18,22 +18,20 @@ file stays out of it. */}}
 {{define "nav"}}
 <nav class="rail">
   <div class="wordmark">AI 环境管理</div>
-  {{/* The numbers used to match the terminal menu, which is gone. They are
-  just stable ordinals now: an operator learns "4 是会话采集" and keeps it. */}}
+  {{/* Seven groups. The numbers are stable ordinals an operator learns;
+  pages that used to be top-level entries (日志、任务、封禁策略、管理员) live
+  as tabs inside their group and keep their old addresses. */}}
   <a href="/overview"{{if eq .Nav "overview"}} class="active"{{end}}><span class="n">1</span>总览</a>
   <a href="/users"{{if eq .Nav "users"}} class="active"{{end}}><span class="n">2</span>员工账号</a>
-  <a href="/sites"{{if eq .Nav "sites"}} class="active"{{end}}><span class="n">3</span>封禁策略</a>
-  <a href="/settings"{{if eq .Nav "settings"}} class="active"{{end}}><span class="n">4</span>会话采集</a>
-  <a href="{{if .DB}}/releases{{else}}/rollout{{end}}"{{if or (eq .Nav "rollout") (eq .Nav "releases")}} class="active"{{end}}><span class="n">5</span>发布更新</a>
-  {{/* Only when a log project is configured: without one /logs is a 404, and
-  a nav entry that leads there is worse than no entry. */}}
-  {{if .SLS}}<a href="/logs"{{if eq .Nav "logs"}} class="active"{{end}}><span class="n">6</span>日志</a>{{end}}
+  <a href="{{if .DB}}/releases{{else}}/rollout{{end}}"{{if or (eq .Nav "rollout") (eq .Nav "releases")}} class="active"{{end}}><span class="n">3</span>发布</a>
   {{if .DB}}
-  <a href="/tasks"{{if eq .Nav "tasks"}} class="active"{{end}}><span class="n">7</span>任务</a>
-  <a href="/admins"{{if eq .Nav "admins"}} class="active"{{end}}><span class="n">8</span>管理员</a>
-  <a href="/audit"{{if eq .Nav "audit"}} class="active"{{end}}><span class="n">9</span>审计</a>
-  <a href="/usage"{{if eq .Nav "usage"}} class="active"{{end}}><span class="n">10</span>用量</a>
-  <a href="/alerts"{{if eq .Nav "alerts"}} class="active"{{end}}><span class="n">11</span>告警{{if .OpenAlerts}} <span class="tag tag-bad">{{.OpenAlerts}}</span>{{end}}</a>
+  <a href="/usage"{{if eq .Nav "usage"}} class="active"{{end}}><span class="n">4</span>用量</a>
+  <a href="/alerts"{{if eq .Nav "alerts"}} class="active"{{end}}><span class="n">5</span>告警{{if .OpenAlerts}} <span class="tag tag-bad">{{.OpenAlerts}}</span>{{end}}</a>
+  <a href="/audit"{{if eq .Nav "audit"}} class="active"{{end}}><span class="n">6</span>审计</a>
+  <a href="/settings"{{if eq .Nav "settings"}} class="active"{{end}}><span class="n">7</span>设置</a>
+  {{else}}
+  {{if .SLS}}<a href="/logs"{{if eq .Nav "usage"}} class="active"{{end}}><span class="n">4</span>日志</a>{{end}}
+  <a href="/settings"{{if eq .Nav "settings"}} class="active"{{end}}><span class="n">5</span>设置</a>
   {{end}}
   <div class="foot">
     {{if .DB}}<a href="/account"{{if eq .Nav "account"}} class="active"{{end}}>{{.Admin}}</a>{{else}}{{.Bucket}}{{end}}
@@ -41,6 +39,30 @@ file stays out of it. */}}
   </div>
 </nav>
 {{end}}
+
+{{/* Second-level navigation inside a group. One strip per group; the page
+sets .Tab to the entry it is. */}}
+{{define "tabs-releases"}}<nav class="tabs">
+  <a href="/releases"{{if eq .Tab "releases"}} class="active"{{end}}>版本库</a>
+  <a href="/rollouts"{{if eq .Tab "rollouts"}} class="active"{{end}}>发布任务</a>
+</nav>{{end}}
+{{define "tabs-usage"}}<nav class="tabs">
+  {{if .DB}}<a href="/usage"{{if eq .Tab "usage"}} class="active"{{end}}>按月汇总</a>{{end}}
+  {{if .SLS}}<a href="/logs"{{if eq .Tab "logs"}} class="active"{{end}}>调用明细</a>{{end}}
+</nav>{{end}}
+{{define "tabs-alerts"}}<nav class="tabs">
+  <a href="/alerts"{{if eq .Tab "alerts"}} class="active"{{end}}>告警</a>
+  <a href="/tasks"{{if eq .Tab "tasks"}} class="active"{{end}}>后台任务</a>
+</nav>{{end}}
+{{define "tabs-settings"}}<nav class="tabs">
+  <a href="/settings"{{if eq .Tab "general"}} class="active"{{end}}>常规</a>
+  <a href="/sites"{{if eq .Tab "sites"}} class="active"{{end}}>封禁策略</a>
+  {{if .DB}}
+  <a href="/settings/alerting"{{if eq .Tab "alerting"}} class="active"{{end}}>告警与轮换</a>
+  <a href="/settings/channels"{{if eq .Tab "channels"}} class="active"{{end}}>通知渠道</a>
+  {{if eq .Role "admin"}}<a href="/admins"{{if eq .Tab "admins"}} class="active"{{end}}>管理员</a>{{end}}
+  {{end}}
+</nav>{{end}}
 
 {{define "notices"}}
 {{if .Error}}<p class="note note-err">{{.Error}}</p>{{end}}

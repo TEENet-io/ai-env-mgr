@@ -1,12 +1,12 @@
-{{define "releases.html"}}{{template "head" "发布更新"}}
+{{define "releases.html"}}{{template "head" "版本库"}}
 {{template "refresh-while-running" .}}
 <body>
 <div class="app">
 {{template "nav" .}}
 <main class="sheet">
-  <header class="pagehead"><h1>发布更新</h1>
-    <p>CI 出的包自动进 OSS，在这里登记、验收、下发；进度在<a href="/rollouts">发布任务</a>页。没有一步会碰到员工的机器，直到你点「设为全局目标」或「创建发布」。</p>
-  </header>
+  <header class="pagehead"><h1>发布</h1></header>
+  {{template "tabs-releases" .}}
+  <p class="lede">CI 出的包自动进 OSS，在这里登记、验收、下发；进度在<a href="/rollouts">发布任务</a>页。没有一步会碰到员工的机器，直到你点「设为全局目标」或「创建发布」。</p>
   {{template "notices" .}}
 
   {{with .Job}}

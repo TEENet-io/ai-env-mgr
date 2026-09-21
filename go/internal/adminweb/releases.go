@@ -163,6 +163,7 @@ type artifactRow struct {
 
 func (s *Server) handleReleases(w http.ResponseWriter, r *http.Request, sess *session) {
 	data := newPage(sess, r, "releases")
+	data.Tab = "releases"
 	data.Job = s.jobs.snapshot()
 	pol, _, err := s.dbm.ops.CurrentPolicy(r.Context())
 	if err != nil {

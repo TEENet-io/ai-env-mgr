@@ -164,6 +164,30 @@ body {
 .pagehead h1.mono, .pagehead h1 .mono { font: 700 22px/1.25 var(--mono); letter-spacing: 0; }
 .pagehead p { margin: 6px 0 0; color: var(--ink-soft); max-width: 72ch; }
 
+/* Second-level navigation: a strip of tabs under the page title. The
+ * current one is inked and underlined in the accent; the rest are quiet. */
+.tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px;
+  margin: -6px 0 20px;
+  border-bottom: 1px solid var(--rule);
+}
+.tabs a {
+  padding: 8px 12px 9px;
+  margin-bottom: -1px;
+  border-bottom: 2px solid transparent;
+  color: var(--ink-soft);
+  font-size: 13.5px;
+  font-weight: 500;
+  text-decoration: none;
+}
+.tabs a:hover { color: var(--ink); text-decoration: none; }
+.tabs a.active { color: var(--accent); border-bottom-color: var(--accent); font-weight: 600; }
+/* The line of explanation under the tabs, where a page head's paragraph
+ * used to be. */
+p.lede { margin: 0 0 18px; color: var(--ink-soft); max-width: 78ch; }
+
 /* Section headings. No tracking or uppercase: those are Latin devices, and
  * letter-spacing on Chinese just prises the characters apart. The hierarchy
  * comes from size, weight and colour instead. */

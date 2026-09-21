@@ -3,13 +3,12 @@
 <div class="app">
 {{template "nav" .}}
 <main class="sheet">
-  <header class="pagehead">
-    <h1>封禁策略</h1>
-    {{with .Policy}}<p>
-      {{if .BlockEnabled}}<span class="tag tag-ok">拦截中</span>{{else}}<span class="tag tag-warn">已全局关闭</span>{{end}}
-      共 {{len .BlockedDomains}} 个域名，对机器上所有用户生效。
-    </p>{{end}}
-  </header>
+  <header class="pagehead"><h1>设置</h1></header>
+  {{template "tabs-settings" .}}
+  {{with .Policy}}<p class="lede">
+    {{if .BlockEnabled}}<span class="tag tag-ok">拦截中</span>{{else}}<span class="tag tag-warn">已全局关闭</span>{{end}}
+    共 {{len .BlockedDomains}} 个域名，对机器上所有用户生效。
+  </p>{{end}}
   {{template "notices" .}}
 
   {{with .Policy}}

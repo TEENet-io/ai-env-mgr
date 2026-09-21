@@ -3,7 +3,8 @@
 <div class="app">
 {{template "nav" .}}
 <main class="sheet">
-  <header class="pagehead"><h1>发布任务</h1></header>
+  <header class="pagehead"><h1>发布</h1></header>
+  {{template "tabs-releases" .}}
   {{template "notices" .}}
   <p class="dim"><a href="/releases">← 版本库</a>。要新建任务，在版本库里选一个版本点「创建发布」。</p>
 

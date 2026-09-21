@@ -3,7 +3,9 @@
 <div class="app">
 {{template "nav" .}}
 <main class="sheet">
-  <header class="pagehead"><h1>用量</h1><p>网关每天的调用与费用，按员工、模型、日期。数据每晚从日志服务汇总一次，日志过期后这里仍在。</p></header>
+  <header class="pagehead"><h1>用量</h1></header>
+  {{template "tabs-usage" .}}
+  <p class="lede">网关每天的调用与费用，按员工、模型、日期。数据每晚从日志服务汇总一次，日志过期后这里仍在。</p>
   {{template "notices" .}}
   {{with .UsagePage}}
   <form method="get" action="/usage" class="form filter">

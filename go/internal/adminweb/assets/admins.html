@@ -3,7 +3,8 @@
 <div class="app">
 {{template "nav" .}}
 <main class="sheet">
-  <header class="pagehead"><h1>管理员</h1></header>
+  <header class="pagehead"><h1>设置</h1></header>
+  {{template "tabs-settings" .}}
   {{template "notices" .}}
   {{if .NewPassword}}
   <p class="note note-ok">已创建 <b>{{.NewUsername}}</b>，初始密码：<code class="id">{{.NewPassword}}</code><br>

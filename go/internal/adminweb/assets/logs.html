@@ -1,12 +1,11 @@
-{{define "logs.html"}}{{template "head" "日志"}}
+{{define "logs.html"}}{{template "head" "调用明细"}}
 <body>
 <div class="app">
 {{template "nav" .}}
 <main class="sheet">
-  <header class="pagehead">
-    <h1>日志</h1>
-    <p>模型调用记录 · SLS <code>{{with .Logs}}{{.Project}}{{end}}/audit</code></p>
-  </header>
+  <header class="pagehead"><h1>{{if .DB}}用量{{else}}日志{{end}}</h1></header>
+  {{template "tabs-usage" .}}
+  <p class="lede">逐条的模型调用记录 · SLS <code>{{with .Logs}}{{.Project}}{{end}}/audit</code></p>
   {{template "notices" .}}
 
 {{with .Logs}}

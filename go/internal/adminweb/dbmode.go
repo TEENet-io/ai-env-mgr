@@ -533,7 +533,8 @@ func (s *Server) handleAdmins(w http.ResponseWriter, r *http.Request, sess *sess
 }
 
 func (s *Server) adminsPage(r *http.Request, sess *session) pageData {
-	data := newPage(sess, r, "admins")
+	data := newPage(sess, r, "settings")
+	data.Tab = "admins"
 	admins, err := s.dbm.store.Admins().List(r.Context())
 	if err != nil {
 		data.Error = "could not list administrators"
@@ -641,7 +642,8 @@ type taskRow struct {
 }
 
 func (s *Server) handleTasks(w http.ResponseWriter, r *http.Request, sess *session) {
-	data := newPage(sess, r, "tasks")
+	data := newPage(sess, r, "alerts")
+	data.Tab = "tasks"
 	tasks, err := s.dbm.store.Tasks().ListRecent(r.Context(), 200)
 	if err != nil {
 		data.Error = "could not list tasks"

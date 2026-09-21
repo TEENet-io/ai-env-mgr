@@ -3,7 +3,9 @@
 <div class="app">
 {{template "nav" .}}
 <main class="sheet">
-  <header class="pagehead"><h1>告警</h1><p>规则每 10 分钟跑一次：机器离线、发布失败、网关令牌不符、预算告急、任务放弃。条件消失自动关闭；阈值与通知渠道在<a href="/settings">设置</a>页。</p></header>
+  <header class="pagehead"><h1>告警</h1></header>
+  {{template "tabs-alerts" .}}
+  <p class="lede">规则每 10 分钟跑一次：机器离线、发布失败、网关令牌不符、预算告急、任务放弃。条件消失自动关闭；阈值在<a href="/settings/alerting">设置 › 告警与轮换</a>，渠道在<a href="/settings/channels">设置 › 通知渠道</a>。</p>
   {{template "notices" .}}
   {{with .AlertsPage}}
   <div class="sechead">

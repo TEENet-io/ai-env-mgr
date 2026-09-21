@@ -128,6 +128,7 @@ func (s *Server) usageFilter(r *http.Request) (repo.UsageFilter, string, string,
 
 func (s *Server) handleUsage(w http.ResponseWriter, r *http.Request, sess *session) {
 	data := newPage(sess, r, "usage")
+	data.Tab = "usage"
 	f, month, employee, err := s.usageFilter(r)
 	if err != nil {
 		data.Error = "没有这个员工：" + employee

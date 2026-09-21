@@ -113,6 +113,7 @@ func (s *Server) alertRows(r *http.Request, alerts []repo.Alert, now time.Time) 
 
 func (s *Server) handleAlerts(w http.ResponseWriter, r *http.Request, sess *session) {
 	data := newPage(sess, r, "alerts")
+	data.Tab = "alerts"
 	now := time.Now()
 	page := &alertsPage{LastEval: s.lastRunOf(r, worker.TaskAlertEval), LastNotify: s.lastRunOf(r, worker.TaskAlertNotify)}
 	open, err := s.dbm.store.Alerts().ListOpen(r.Context())

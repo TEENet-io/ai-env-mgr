@@ -1,11 +1,13 @@
-{{define "settings.html"}}{{template "head" "会话采集"}}
+{{define "settings.html"}}{{template "head" "设置"}}
 <body>
 <div class="app">
 {{template "nav" .}}
 <main class="sheet">
-  <header class="pagehead"><h1>会话采集</h1></header>
+  <header class="pagehead"><h1>设置</h1></header>
+  {{template "tabs-settings" .}}
   {{template "notices" .}}
 
+  {{if eq .Tab "general"}}
   {{with .Policy}}
   <h2>同步间隔</h2>
   <form method="post" action="/settings/interval" class="form">
@@ -39,7 +41,9 @@
     <button type="submit">保存</button>
   </form>
   <p class="hint">只影响之后新开的账号；已开账号在各自详情页调整。</p>
+  {{end}}
 
+  {{if eq .Tab "alerting"}}
   {{with .AlertSettings}}
   <h2>告警</h2>
   <form method="post" action="/settings/alerts" class="form">
@@ -66,7 +70,9 @@
   </form>
   <p class="hint">到期的令牌每天 UTC 1:00 自动重发一次，和详情页的"重发"一样：旧令牌吊销、新令牌下发到机器，员工无感。机器最近没同步的跳过，等它回来再说；员工列表的"令牌"列标出待轮换的人。</p>
   {{end}}
+  {{end}}
 
+  {{if eq .Tab "channels"}}
   {{with .Channels}}
   <h2>通知渠道</h2>
   <form method="post" action="/settings/alert-channels" class="form">
@@ -93,8 +99,9 @@
     · <form method="post" action="/alerts/test" class="inline"><input type="hidden" name="csrf" value="{{$.CSRF}}"><input type="hidden" name="channel" value="smtp"><button class="link">发送邮件测试</button></form>
   </p>
   {{end}}
+  {{end}}
 
-  {{if .Stats}}
+  {{if and (eq .Tab "general") .Stats}}
   <h2>已采集</h2>
   <div class="panel scroll">
   <table>
