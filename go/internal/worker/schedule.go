@@ -23,11 +23,14 @@ const (
 	TaskUsageSnapshot = "usage_snapshot"
 	// TaskAlertEval runs the alert rules.
 	TaskAlertEval = "alert_eval"
+	// TaskAlertNotify delivers open alerts.
+	TaskAlertNotify = "alert_notify"
 
 	EveryStatusImport  = time.Minute
 	EveryReleaseScan   = 24 * time.Hour
 	EveryUsageSnapshot = 24 * time.Hour
 	EveryAlertEval     = 10 * time.Minute
+	EveryAlertNotify   = time.Minute
 	// The snapshot waits for the log service to finish indexing the day
 	// that just ended; half an hour is generous.
 	AfterUsageSnapshot = 30 * time.Minute
@@ -50,6 +53,7 @@ func Schedule(ctx context.Context, store repo.Store, onError func(error)) {
 			{TaskReleaseScan, EveryReleaseScan, 0, 2},
 			{TaskUsageSnapshot, EveryUsageSnapshot, AfterUsageSnapshot, 2},
 			{TaskAlertEval, EveryAlertEval, 0, 1},
+			{TaskAlertNotify, EveryAlertNotify, 0, 1},
 			{repo.TaskAuditPublish, EveryAuditPublish, 0, 2},
 			{repo.TaskReconcile, EveryReconcile, 0, 3},
 		} {

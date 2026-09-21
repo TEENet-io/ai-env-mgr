@@ -234,6 +234,7 @@ func (s *Server) buildWorker(st *dbState) *worker.Worker {
 	}
 	w.Register(worker.TaskStatusImport, worker.StatusImport{Store: st.store, Objects: st.objects})
 	w.Register(worker.TaskAlertEval, worker.AlertEval{Store: st.store, Gateway: users})
+	w.Register(worker.TaskAlertNotify, worker.AlertNotify{Store: st.store, Channels: s.alertChannels, BaseURL: s.consoleURL()})
 	if src, ok := st.objects.(worker.PackageSource); ok {
 		w.Register(worker.TaskReleaseScan, &worker.ReleaseScan{Store: st.store, Objects: src, Ops: st.ops})
 	}

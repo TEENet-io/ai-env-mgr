@@ -115,3 +115,58 @@ func LoadAlertSettings(ctx context.Context, settings Settings) (AlertSettings, i
 	}
 	return s, setting.Version, nil
 }
+
+// SettingAlertChannels holds ChannelSettings as JSON.
+const SettingAlertChannels = "alert_channels"
+
+// Sealed is a secret at rest: envelope-encrypted with the master key, with
+// the key version that wrapped it. An empty Ciphertext means nothing is set.
+type Sealed struct {
+	Ciphertext []byte `json:"ciphertext,omitempty"`
+	KeyVersion string `json:"key_version,omitempty"`
+}
+
+// IsSet reports whether a secret has been stored.
+func (s Sealed) IsSet() bool { return len(s.Ciphertext) > 0 }
+
+// WebhookSetting is one HTTP endpoint that gets a JSON body per alert.
+type WebhookSetting struct {
+	Enabled bool   `json:"enabled"`
+	URL     string `json:"url"`
+	Format  string `json:"format"` // generic | dingtalk | feishu
+	Secret  Sealed `json:"secret"` // signing secret, where the format has one
+}
+
+// SMTPSetting is one mail relay and its recipients.
+type SMTPSetting struct {
+	Enabled  bool     `json:"enabled"`
+	Host     string   `json:"host"`
+	Port     int      `json:"port"`
+	Username string   `json:"username"`
+	Password Sealed   `json:"password"`
+	From     string   `json:"from"`
+	To       []string `json:"to"`
+}
+
+// ChannelSettings is where alerts go.
+type ChannelSettings struct {
+	Webhook WebhookSetting `json:"webhook"`
+	SMTP    SMTPSetting    `json:"smtp"`
+}
+
+// LoadChannelSettings reads the stored channels, or empty ones with version
+// 0 when nothing is stored yet.
+func LoadChannelSettings(ctx context.Context, settings Settings) (ChannelSettings, int, error) {
+	setting, err := settings.Get(ctx, SettingAlertChannels)
+	if errors.Is(err, ErrNotFound) {
+		return ChannelSettings{}, 0, nil
+	}
+	if err != nil {
+		return ChannelSettings{}, 0, err
+	}
+	var s ChannelSettings
+	if err := json.Unmarshal(setting.Value, &s); err != nil {
+		return ChannelSettings{}, 0, fmt.Errorf("the stored alert channels are not readable: %w", err)
+	}
+	return s, setting.Version, nil
+}
