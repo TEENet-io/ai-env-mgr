@@ -38,6 +38,12 @@ type alertSettingsView struct {
 	Version int
 }
 
+// rotationView is the token rotation form.
+type rotationView struct {
+	repo.RotationSettings
+	Version int
+}
+
 // channelView is the channels form: everything but the secrets, which are
 // only ever "set" or "not set".
 type channelView struct {
@@ -284,6 +290,11 @@ func (s *Server) settingsExtras(r *http.Request, data *pageData) {
 	} else {
 		data.Error = "读取告警设置失败：" + err.Error()
 	}
+	if rs, version, err := repo.LoadRotationSettings(ctx, s.dbm.store.Settings()); err == nil {
+		data.Rotation = &rotationView{RotationSettings: rs, Version: version}
+	} else {
+		data.Error = "读取轮换设置失败：" + err.Error()
+	}
 	if c, version, err := repo.LoadChannelSettings(ctx, s.dbm.store.Settings()); err == nil {
 		if c.Webhook.Format == "" {
 			c.Webhook.Format = notify.FormatGeneric
@@ -296,4 +307,25 @@ func (s *Server) settingsExtras(r *http.Request, data *pageData) {
 	} else {
 		data.Error = "读取告警渠道失败：" + err.Error()
 	}
+}
+
+func (s *Server) actionRotationSettings(sess *session, r *http.Request) error {
+	before, version, err := repo.LoadRotationSettings(r.Context(), s.dbm.store.Settings())
+	if err != nil {
+		return err
+	}
+	after := repo.RotationSettings{
+		Enabled:           formValue(r, "enabled") == "1",
+		MaxAgeDays:        formInt(r, "max_age_days"),
+		PerDay:            formInt(r, "per_day"),
+		ActiveWithinHours: formInt(r, "active_within_hours"),
+	}
+	if err := after.Validate(); err != nil {
+		return err
+	}
+	if v := formInt(r, "version"); v != version {
+		return errors.New("这页的设置在你打开后已被别人改过，请刷新后重试")
+	}
+	value, _ := json.Marshal(after)
+	return s.dbm.ops.SaveSetting(r.Context(), repo.SettingRotation, value, version, ops.ActionRotationSettings, before, after, sess.actor, s.clientKey(r))
 }

@@ -26,7 +26,7 @@
           {{if .Deleted}}<span class="tag">已删除 {{.DeletedAt}}</span>{{else if .Enabled}}<span class="tag tag-ok">在职</span>{{else}}<span class="tag tag-bad">已离职</span>{{end}}
           {{range .Flags}}<span class="tag tag-{{.Severity}}">{{.Label}}</span>{{end}}
         </td>
-        <td>{{if .HasToken}}<span class="tag tag-ok">已发放</span>{{else}}<span class="dim">—</span>{{end}}</td>
+        <td>{{if .HasToken}}<span class="tag tag-ok">已发放</span>{{if .TokenIssued}}<div class="rowsub">{{.TokenIssued}} · {{.TokenAgeDays}} 天{{if .TokenDue}} <span class="tag tag-warn">待轮换</span>{{end}}</div>{{end}}{{else}}<span class="dim">—</span>{{end}}</td>
         <td class="dim">{{if .Models}}{{range $i, $m := .Models}}{{if $i}}, {{end}}{{$m}}{{end}}{{else}}—{{end}}</td>
         <td>
           {{if .HasUser}}

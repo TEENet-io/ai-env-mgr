@@ -25,12 +25,18 @@ const (
 	TaskAlertEval = "alert_eval"
 	// TaskAlertNotify delivers open alerts.
 	TaskAlertNotify = "alert_notify"
+	// TaskCredentialRotation replaces tokens past their maximum age.
+	TaskCredentialRotation = "credential_rotation"
 
 	EveryStatusImport  = time.Minute
 	EveryReleaseScan   = 24 * time.Hour
 	EveryUsageSnapshot = 24 * time.Hour
 	EveryAlertEval     = 10 * time.Minute
 	EveryAlertNotify   = time.Minute
+	EveryRotation      = 24 * time.Hour
+	// Rotation runs an hour into the day, after the usage snapshot and
+	// before anybody is at their desk in Asia.
+	AfterRotation = time.Hour
 	// The snapshot waits for the log service to finish indexing the day
 	// that just ended; half an hour is generous.
 	AfterUsageSnapshot = 30 * time.Minute
@@ -54,6 +60,7 @@ func Schedule(ctx context.Context, store repo.Store, onError func(error)) {
 			{TaskUsageSnapshot, EveryUsageSnapshot, AfterUsageSnapshot, 2},
 			{TaskAlertEval, EveryAlertEval, 0, 1},
 			{TaskAlertNotify, EveryAlertNotify, 0, 1},
+			{TaskCredentialRotation, EveryRotation, AfterRotation, 2},
 			{repo.TaskAuditPublish, EveryAuditPublish, 0, 2},
 			{repo.TaskReconcile, EveryReconcile, 0, 3},
 		} {

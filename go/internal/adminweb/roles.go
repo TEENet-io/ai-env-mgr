@@ -42,6 +42,7 @@ var minRole = map[string]string{
 	"POST /alerts/test":             repo.RoleAdmin,
 	"POST /settings/alerts":         repo.RoleAdmin,
 	"POST /settings/alert-channels": repo.RoleAdmin,
+	"POST /settings/rotation":       repo.RoleAdmin,
 	"GET /releases":                 repo.RoleViewer,
 	"GET /rollouts":                 repo.RoleViewer,
 	"GET /rollouts/":                repo.RoleViewer,

@@ -49,7 +49,12 @@ type accountRow struct {
 
 	HasUser  bool // the gateway has an internal user for this person
 	HasToken bool // the gateway holds a token under this person's alias
-	Models   []string
+	// TokenIssued and TokenAgeDays describe the live credential; TokenDue
+	// marks one past the rotation age (database mode only).
+	TokenIssued  string
+	TokenAgeDays int
+	TokenDue     bool
+	Models       []string
 
 	Spend         float64
 	Budget        float64

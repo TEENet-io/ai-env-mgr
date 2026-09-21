@@ -101,3 +101,26 @@ func (r credentialRepo) Retire(ctx context.Context, employeeID, purpose string) 
 	}
 	return int(tag.RowsAffected()), nil
 }
+
+func (r credentialRepo) LiveOlderThan(ctx context.Context, purpose string, before time.Time, limit int) ([]repo.Credential, error) {
+	if limit <= 0 {
+		limit = 100
+	}
+	rows, err := r.q.Query(ctx,
+		`select `+credentialColumns+` from credential_versions
+		  where purpose = $1 and retired_at is null and created_at < $2
+		  order by created_at limit $3`, purpose, before.UTC(), limit)
+	if err != nil {
+		return nil, mapError(err, "list credentials due")
+	}
+	defer rows.Close()
+	out := []repo.Credential{}
+	for rows.Next() {
+		c, err := scanCredential(rows)
+		if err != nil {
+			return nil, mapError(err, "list credentials due")
+		}
+		out = append(out, c)
+	}
+	return out, rows.Err()
+}

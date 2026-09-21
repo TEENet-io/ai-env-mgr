@@ -132,7 +132,8 @@ func TestUsageRowsFromReadsTheAggregateColumns(t *testing.T) {
 
 func TestSnapshotIsHeldUntilTheDayHasSettled(t *testing.T) {
 	store, ctx := newWorkerStore(t)
-	now := time.Date(2026, 9, 21, 0, 5, 0, 0, time.UTC)
+	// Tomorrow's bucket, so the hold is in the future whatever the clock.
+	now := time.Now().UTC().Truncate(24 * time.Hour).Add(24*time.Hour + 5*time.Minute)
 	if err := enqueuePeriodicAfter(ctx, store, TaskUsageSnapshot, now, EveryUsageSnapshot, AfterUsageSnapshot, 2); err != nil {
 		t.Fatal(err)
 	}

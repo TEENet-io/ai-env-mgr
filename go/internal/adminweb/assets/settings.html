@@ -53,6 +53,20 @@
   <p class="hint">另外三条规则不需要阈值：发布目标失败、网关令牌与控制台记录不符、任务重试用尽。看<a href="/alerts">告警</a>页。</p>
   {{end}}
 
+  {{with .Rotation}}
+  <h2>令牌轮换</h2>
+  <form method="post" action="/settings/rotation" class="form">
+    <input type="hidden" name="csrf" value="{{$.CSRF}}">
+    <input type="hidden" name="version" value="{{.Version}}">
+    <label>开关<select name="enabled"><option value="1"{{if .Enabled}} selected{{end}}>开启</option><option value="0"{{if not .Enabled}} selected{{end}}>关闭</option></select></label>
+    <label>令牌最长使用天数<input name="max_age_days" type="number" min="7" max="730" value="{{.MaxAgeDays}}" required></label>
+    <label>每天最多轮换人数<input name="per_day" type="number" min="1" max="100" value="{{.PerDay}}" required></label>
+    <label>机器多少小时内同步过才轮换<input name="active_within_hours" type="number" min="1" max="336" value="{{.ActiveWithinHours}}" required></label>
+    <button type="submit">保存</button>
+  </form>
+  <p class="hint">到期的令牌每天 UTC 1:00 自动重发一次，和详情页的"重发"一样：旧令牌吊销、新令牌下发到机器，员工无感。机器最近没同步的跳过，等它回来再说；员工列表的"令牌"列标出待轮换的人。</p>
+  {{end}}
+
   {{with .Channels}}
   <h2>通知渠道</h2>
   <form method="post" action="/settings/alert-channels" class="form">

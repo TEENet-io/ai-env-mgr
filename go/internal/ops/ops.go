@@ -46,6 +46,7 @@ const (
 	ActionReopen        = "account.reopen"
 	ActionOffboard      = "account.offboard"
 	ActionReissue       = "account.reissue"
+	ActionRotate        = "account.rotate"
 	ActionDelete        = "account.delete"
 	ActionSetQuota      = "account.quota"
 	ActionSetModels     = "account.models"
@@ -257,6 +258,16 @@ func (s *Service) Delete(ctx context.Context, employeeID, actor, requestID strin
 // Reissue replaces an employee's token without changing anything else: a
 // suspected leak, or a machine that was handed to somebody else.
 func (s *Service) Reissue(ctx context.Context, employeeID, actor, requestID string) (repo.Employee, error) {
+	return s.reissue(ctx, employeeID, ActionReissue, actor, requestID)
+}
+
+// Rotate is Reissue on a schedule: the same replacement, recorded under its
+// own action so the audit trail tells a leak from routine.
+func (s *Service) Rotate(ctx context.Context, employeeID, actor, requestID string) (repo.Employee, error) {
+	return s.reissue(ctx, employeeID, ActionRotate, actor, requestID)
+}
+
+func (s *Service) reissue(ctx context.Context, employeeID, action, actor, requestID string) (repo.Employee, error) {
 	var result repo.Employee
 	err := s.store.InTx(ctx, func(tx repo.Store) error {
 		employee, err := tx.Employees().ByID(ctx, employeeID)
@@ -275,7 +286,7 @@ func (s *Service) Reissue(ctx context.Context, employeeID, actor, requestID stri
 		if err := s.replaceOutstandingWork(ctx, tx, employee); err != nil {
 			return err
 		}
-		if err := s.audit(ctx, tx, actor, requestID, ActionReissue, employee, before, employee); err != nil {
+		if err := s.audit(ctx, tx, actor, requestID, action, employee, before, employee); err != nil {
 			return err
 		}
 		result = employee

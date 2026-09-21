@@ -333,6 +333,13 @@ func (b dbBackend) accountRow(ctx context.Context, e repo.Employee, gwUsers []li
 	switch {
 	case err == nil:
 		row.HasToken = grant.Actual == repo.ActualActive || grant.Actual == repo.ActualUnknown
+		if c, err := b.store.Credentials().Live(ctx, e.ID, repo.PurposeCodexGateway); err == nil {
+			row.TokenIssued = c.CreatedAt.Local().Format("2006-01-02")
+			row.TokenAgeDays = int(time.Since(c.CreatedAt).Hours() / 24)
+			if rs, _, err := repo.LoadRotationSettings(ctx, b.store.Settings()); err == nil && row.TokenAgeDays >= rs.MaxAgeDays {
+				row.TokenDue = true
+			}
+		}
 	case !errors.Is(err, repo.ErrNotFound):
 		return accountRow{}, err
 	}

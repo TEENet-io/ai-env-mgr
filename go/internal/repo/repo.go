@@ -785,6 +785,10 @@ type Credentials interface {
 	// Retire ends the live credential without issuing a replacement, which is
 	// what offboarding does. It is not an error if there is none.
 	Retire(ctx context.Context, employeeID, purpose string) (int, error)
+
+	// LiveOlderThan lists live credentials for a purpose created before the
+	// given time, oldest first, at most limit: the rotation's worklist.
+	LiveOlderThan(ctx context.Context, purpose string, before time.Time, limit int) ([]Credential, error)
 }
 
 // Admin roles, least to most. Phase 1 uses admin for everybody; the others

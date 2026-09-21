@@ -146,3 +146,43 @@ func TestAlertSettingsKeepThePasswordWhenLeftBlank(t *testing.T) {
 		t.Fatal("testing an unknown channel must be an error")
 	}
 }
+
+func TestRotationSettingsAndTheTokenColumn(t *testing.T) {
+	s, _ := newDatabaseServer(t)
+	h := s.Handler()
+	cookie := signedIn(t, s)
+	ctx := t.Context()
+	csrf := csrfFrom(t, s, cookie, "/settings")
+	page := dbGet(t, h, "/settings", cookie).Body.String()
+	if !strings.Contains(page, "令牌轮换") || !strings.Contains(page, `name="max_age_days"`) {
+		t.Fatal("the settings page lacks the rotation section")
+	}
+	if rec := dbPost(t, h, "/settings/rotation", url.Values{"csrf": {csrf}, "version": {"0"}, "enabled": {"1"}, "max_age_days": {"30"}, "per_day": {"2"}, "active_within_hours": {"48"}}, cookie); strings.Contains(rec.Header().Get("Location"), "err=") {
+		t.Fatalf("save: %s", rec.Header().Get("Location"))
+	}
+	got, version, _ := repo.LoadRotationSettings(ctx, s.dbm.store.Settings())
+	if version != 1 || !got.Enabled || got.MaxAgeDays != 30 || got.PerDay != 2 || got.ActiveWithinHours != 48 {
+		t.Fatalf("stored = %+v", got)
+	}
+	if rec := dbPost(t, h, "/settings/rotation", url.Values{"csrf": {csrf}, "version": {"1"}, "enabled": {"1"}, "max_age_days": {"3"}, "per_day": {"2"}, "active_within_hours": {"48"}}, cookie); !strings.Contains(rec.Header().Get("Location"), "err=") {
+		t.Fatal("an age under a week must be refused")
+	}
+
+	// An account with a live token shows its age, and past the limit, a tag.
+	dbPost(t, h, "/users/onboard", url.Values{"csrf": {csrf}, "windowsUser": {"work1"}, "budget": {"20"}, "rpm": {"60"}, "tpm": {"100000"}, "parallel": {"4"}}, cookie)
+	e, _ := s.dbm.store.Employees().ByWindowsUser(ctx, "work1")
+	cred, _ := s.dbm.store.Credentials().Store(ctx, repo.NewCredential{EmployeeID: e.ID, Epoch: e.AuthEpoch, Purpose: repo.PurposeCodexGateway, Ciphertext: []byte("x"), KeyVersion: "k1"})
+	grant, _ := s.dbm.store.Grants().Create(ctx, repo.NewGrant{EmployeeID: e.ID, Epoch: e.AuthEpoch, ExternalUser: "emp-work1", KeyAlias: "emp-work1-e1", CredentialID: cred.ID})
+	s.dbm.store.Grants().RecordActual(ctx, grant.ID, repo.ActualActive, "")
+	list := dbGet(t, h, "/users", cookie).Body.String()
+	if !strings.Contains(list, "已发放") || !strings.Contains(list, " · 0 天") || strings.Contains(list, "待轮换") {
+		t.Fatalf("a fresh token: %s", firstLine(list, "已发放"))
+	}
+	if _, err := s.dbm.db.Pool().Exec(ctx, `update credential_versions set created_at = now() - interval '45 days'`); err != nil {
+		t.Fatal(err)
+	}
+	list = dbGet(t, h, "/users", cookie).Body.String()
+	if !strings.Contains(list, " · 45 天") || !strings.Contains(list, "待轮换") {
+		t.Fatalf("an old token: %s", firstLine(list, "已发放"))
+	}
+}

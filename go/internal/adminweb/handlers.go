@@ -106,6 +106,7 @@ type pageData struct {
 	AlertsPage    *alertsPage
 	AlertSettings *alertSettingsView
 	Channels      *channelView
+	Rotation      *rotationView
 	OpenAlerts    int // drawn in the nav on every page
 	MachinePage   *machinePage
 	History       *employeeHistory // the detail page's history (database mode)

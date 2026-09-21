@@ -14,6 +14,14 @@ import (
 
 func newWorkerStore(t *testing.T) (*dbstore.Store, context.Context) {
 	t.Helper()
+	store, _, ctx := newWorkerDB(t)
+	return store, ctx
+}
+
+// newWorkerDB is newWorkerStore with the connection too, for a test that
+// has to backdate a row the repositories rightly offer no way to backdate.
+func newWorkerDB(t *testing.T) (*dbstore.Store, *dbstore.DB, context.Context) {
+	t.Helper()
 	dsn := os.Getenv("TEST_PG_DSN")
 	if dsn == "" {
 		t.Skip("TEST_PG_DSN is not set; skipping the PostgreSQL integration tests")
@@ -39,7 +47,7 @@ func newWorkerStore(t *testing.T) (*dbstore.Store, context.Context) {
 	if err := database.Migrate(ctx); err != nil {
 		t.Fatalf("migrate: %v", err)
 	}
-	return dbstore.NewStore(database), ctx
+	return dbstore.NewStore(database), database, ctx
 }
 
 func queue(t *testing.T, ctx context.Context, store *dbstore.Store, kind, key string) repo.Task {

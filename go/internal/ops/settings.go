@@ -91,10 +91,11 @@ func nonEmpty(b []byte) []byte {
 
 // Audit actions for the alert settings.
 const (
-	ActionAlertSettings = "settings.alerts"
-	ActionAlertChannels = "settings.alert_channels"
-	ActionAlertAck      = "alert.ack"
-	ActionAlertResolve  = "alert.resolve"
+	ActionAlertSettings    = "settings.alerts"
+	ActionAlertChannels    = "settings.alert_channels"
+	ActionRotationSettings = "settings.rotation"
+	ActionAlertAck         = "alert.ack"
+	ActionAlertResolve     = "alert.resolve"
 )
 
 // SaveSetting stores one JSON setting with the audit line beside it. The

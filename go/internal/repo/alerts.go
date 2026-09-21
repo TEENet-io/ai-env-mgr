@@ -170,3 +170,54 @@ func LoadChannelSettings(ctx context.Context, settings Settings) (ChannelSetting
 	}
 	return s, setting.Version, nil
 }
+
+// SettingRotation holds RotationSettings as JSON.
+const SettingRotation = "rotation"
+
+// RotationSettings says when an employee's gateway token is replaced on its
+// own. Off until an administrator turns it on: a fleet that has never seen
+// a re-issue should see the first one on purpose.
+type RotationSettings struct {
+	Enabled bool `json:"enabled"`
+	// MaxAgeDays is how old a live token may get before it is replaced.
+	MaxAgeDays int `json:"max_age_days"`
+	// PerDay bounds one night's re-issues, so a fleet whose tokens were all
+	// minted the same week does not all change on the same night.
+	PerDay int `json:"per_day"`
+	// ActiveWithinHours: only an employee whose machine reported this
+	// recently is rotated. The old token is revoked as soon as the new one
+	// is minted, and a machine that is not syncing would never receive it.
+	ActiveWithinHours int `json:"active_within_hours"`
+}
+
+func DefaultRotationSettings() RotationSettings {
+	return RotationSettings{Enabled: false, MaxAgeDays: 90, PerDay: 5, ActiveWithinHours: 24}
+}
+
+func (s RotationSettings) Validate() error {
+	if s.MaxAgeDays < 7 || s.MaxAgeDays > 730 {
+		return errors.New("token age must be between 7 and 730 days")
+	}
+	if s.PerDay < 1 || s.PerDay > 100 {
+		return errors.New("per-day limit must be between 1 and 100")
+	}
+	if s.ActiveWithinHours < 1 || s.ActiveWithinHours > 24*14 {
+		return errors.New("the activity window must be between 1 hour and 14 days")
+	}
+	return nil
+}
+
+func LoadRotationSettings(ctx context.Context, settings Settings) (RotationSettings, int, error) {
+	setting, err := settings.Get(ctx, SettingRotation)
+	if errors.Is(err, ErrNotFound) {
+		return DefaultRotationSettings(), 0, nil
+	}
+	if err != nil {
+		return RotationSettings{}, 0, err
+	}
+	var s RotationSettings
+	if err := json.Unmarshal(setting.Value, &s); err != nil {
+		return RotationSettings{}, 0, fmt.Errorf("the stored rotation settings are not readable: %w", err)
+	}
+	return s, setting.Version, nil
+}

@@ -389,6 +389,7 @@ func (s *Server) Handler() http.Handler {
 		mux.HandleFunc("/alerts/test", s.requirePostNotice("/settings", s.actionAlertTest))
 		mux.HandleFunc("/settings/alerts", s.requirePost("/settings", s.actionAlertSettings))
 		mux.HandleFunc("/settings/alert-channels", s.requirePost("/settings", s.actionAlertChannels))
+		mux.HandleFunc("/settings/rotation", s.requirePost("/settings", s.actionRotationSettings))
 		mux.HandleFunc("/usage", s.requireSession(s.handleUsage))
 		mux.HandleFunc("/usage.csv", s.requireSession(s.handleUsageCSV))
 		mux.HandleFunc("/usage/snapshot-now", s.requirePostNotice("/usage", s.actionUsageSnapshotNow))
