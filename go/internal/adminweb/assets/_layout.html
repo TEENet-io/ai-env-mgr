@@ -32,6 +32,7 @@ file stays out of it. */}}
   <a href="/tasks"{{if eq .Nav "tasks"}} class="active"{{end}}><span class="n">7</span>任务</a>
   <a href="/admins"{{if eq .Nav "admins"}} class="active"{{end}}><span class="n">8</span>管理员</a>
   <a href="/audit"{{if eq .Nav "audit"}} class="active"{{end}}><span class="n">9</span>审计</a>
+  <a href="/usage"{{if eq .Nav "usage"}} class="active"{{end}}><span class="n">10</span>用量</a>
   {{end}}
   <div class="foot">
     {{if .DB}}<a href="/account"{{if eq .Nav "account"}} class="active"{{end}}>{{.Admin}}</a>{{else}}{{.Bucket}}{{end}}

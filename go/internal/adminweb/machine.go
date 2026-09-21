@@ -97,6 +97,8 @@ type employeeHistory struct {
 	EmployeeID string
 	Machines   []employeeMachineRow
 	Events     []auditRow
+	Usage      []usageLine // the last 30 days, oldest first
+	UsageTotal usageLine
 }
 
 type employeeMachineRow struct {
@@ -123,5 +125,6 @@ func (s *Server) employeeHistory(r *http.Request, windowsUser string) *employeeH
 	if events, _, err := s.dbm.store.Audit().Search(ctx, repo.AuditFilter{TargetType: "employee", TargetID: e.ID, Limit: 200}); err == nil {
 		h.Events = s.auditRows(r, events)
 	}
+	h.Usage, h.UsageTotal = s.employeeUsage(r, e.ID)
 	return h
 }

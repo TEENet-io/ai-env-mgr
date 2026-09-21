@@ -102,6 +102,7 @@ type pageData struct {
 	GlobalTargets map[string]string        // product -> the fleet policy's version
 	Rollouts      []rolloutView
 	AuditPage     *auditPage
+	UsagePage     *usagePage
 	MachinePage   *machinePage
 	History       *employeeHistory // the detail page's history (database mode)
 	Report        []versionReport  // the rollouts page's report by version

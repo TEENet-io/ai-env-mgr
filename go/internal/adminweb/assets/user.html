@@ -127,6 +127,16 @@
       </tr>{{else}}<tr><td colspan="5" class="empty">还没有记录</td></tr>{{end}}
     </tbody></table></div>
   <p class="hint"><a href="/audit?target_type=employee&target={{.EmployeeID}}">在审计页里筛选这个人 →</a></p>
+
+  <h2>最近 30 天用量</h2>
+  <div class="panel scroll"><table>
+    <thead><tr><th>日期</th><th>调用</th><th>失败</th><th>费用 (USD)</th><th>token</th></tr></thead>
+    <tbody>{{range .Usage}}
+      <tr><td class="mono">{{.Label}}</td><td class="num">{{.Calls}}</td><td class="num">{{.Failures}}</td><td class="num">{{.Cost}}</td><td class="num dim">{{.Tokens}}</td></tr>
+    {{else}}<tr><td colspan="5" class="empty">这 30 天没有用量记录</td></tr>{{end}}
+    {{if .Usage}}<tr><td><b>合计</b></td><td class="num"><b>{{.UsageTotal.Calls}}</b></td><td class="num">{{.UsageTotal.Failures}}</td><td class="num"><b>{{.UsageTotal.Cost}}</b></td><td class="num dim">{{.UsageTotal.Tokens}}</td></tr>{{end}}
+    </tbody></table></div>
+  <p class="hint"><a href="/usage?employee={{with $.Account}}{{.WindowsUser}}{{end}}">按月查看 →</a></p>
   {{else}}
   <h2>操作记录</h2>
   <div class="panel scroll">

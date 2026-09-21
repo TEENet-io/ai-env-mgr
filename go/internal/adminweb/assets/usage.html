@@ -1,0 +1,66 @@
+{{define "usage.html"}}{{template "head" "用量"}}
+<body>
+<div class="app">
+{{template "nav" .}}
+<main class="sheet">
+  <header class="pagehead"><h1>用量</h1><p>网关每天的调用与费用，按员工、模型、日期。数据每晚从日志服务汇总一次，日志过期后这里仍在。</p></header>
+  {{template "notices" .}}
+  {{with .UsagePage}}
+  <form method="get" action="/usage" class="form filter">
+    <label>月份<select name="month">{{range .Months}}<option value="{{.}}"{{if eq . $.UsagePage.Month}} selected{{end}}>{{.}}</option>{{end}}</select></label>
+    <label>员工<input name="employee" value="{{.Employee}}" placeholder="Windows 用户名，空为全部"></label>
+    <button type="submit">查看</button>
+    <a class="button-link" href="/usage.csv?{{.Query}}">导出 CSV</a>
+  </form>
+  <div class="sechead">
+    <p class="dim">{{.Month}}{{if .Employee}} · {{.Employee}}{{end}} · 调用 <b class="mono">{{.Total.Calls}}</b> · 失败 <b class="mono">{{.Total.Failures}}</b> · 费用 <b class="mono">${{.Total.Cost}}</b>{{if .Total.Unpriced}} · 未计价 <b class="mono">{{.Total.Unpriced}}</b>{{end}}</p>
+    <form method="post" action="/usage/snapshot-now" class="inline">
+      <input type="hidden" name="csrf" value="{{$.CSRF}}">
+      <button class="link">立即重算最近三天</button>
+      {{if .LastRun}}<span class="dim">上次 {{.LastRun}}</span>{{end}}
+    </form>
+  </div>
+
+  {{if not .Employee}}
+  <h2>按员工</h2>
+  <div class="panel scroll"><table>
+    <thead><tr><th>员工</th><th>调用</th><th>失败</th><th>费用 (USD)</th><th>token</th><th>占比</th></tr></thead>
+    <tbody>{{range .ByEmployee}}
+      <tr>
+        <td class="id">{{if .Link}}<a href="{{.Link}}">{{.Label}}</a>{{else}}{{.Label}}{{end}}{{if .Sub}}<div class="rowsub">{{.Sub}}</div>{{end}}</td>
+        <td class="num">{{.Calls}}</td><td class="num">{{.Failures}}</td>
+        <td class="num">{{.Cost}}{{if .Unpriced}}<div class="rowsub">{{.Unpriced}} 次未计价</div>{{end}}</td>
+        <td class="num dim">{{.Tokens}}</td>
+        <td><span class="dist-bar"><span class="w{{.Pct}}"></span></span></td>
+      </tr>{{else}}<tr><td colspan="6" class="empty">这个月还没有用量数据。快照每晚 UTC 0:30 运行；也可以点上面的按钮立即重算。</td></tr>{{end}}
+    </tbody></table></div>
+  {{end}}
+
+  <h2>按模型</h2>
+  <div class="panel scroll"><table>
+    <thead><tr><th>模型</th><th>调用</th><th>失败</th><th>费用 (USD)</th><th>token</th><th>占比</th></tr></thead>
+    <tbody>{{range .ByModel}}
+      <tr>
+        <td class="mono">{{.Label}}</td>
+        <td class="num">{{.Calls}}</td><td class="num">{{.Failures}}</td>
+        <td class="num">{{.Cost}}</td><td class="num dim">{{.Tokens}}</td>
+        <td><span class="dist-bar"><span class="w{{.Pct}}"></span></span></td>
+      </tr>{{else}}<tr><td colspan="6" class="empty">没有数据</td></tr>{{end}}
+    </tbody></table></div>
+
+  <h2>按天</h2>
+  <div class="panel scroll"><table>
+    <thead><tr><th>日期</th><th>调用</th><th>失败</th><th>费用 (USD)</th><th>token</th><th>占比</th></tr></thead>
+    <tbody>{{range .ByDay}}
+      <tr>
+        <td class="mono">{{.Label}}</td>
+        <td class="num">{{.Calls}}</td><td class="num">{{.Failures}}</td>
+        <td class="num">{{.Cost}}</td><td class="num dim">{{.Tokens}}</td>
+        <td><span class="dist-bar"><span class="w{{.Pct}}"></span></span></td>
+      </tr>{{else}}<tr><td colspan="6" class="empty">没有数据</td></tr>{{end}}
+    </tbody></table></div>
+  {{end}}
+</main>
+</div>
+</body>
+</html>{{end}}
