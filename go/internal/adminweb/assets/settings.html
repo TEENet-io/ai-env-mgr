@@ -40,6 +40,46 @@
   </form>
   <p class="hint">只影响之后新开的账号；已开账号在各自详情页调整。</p>
 
+  {{with .AlertSettings}}
+  <h2>告警</h2>
+  <form method="post" action="/settings/alerts" class="form">
+    <input type="hidden" name="csrf" value="{{$.CSRF}}">
+    <input type="hidden" name="version" value="{{.Version}}">
+    <label>开关<select name="enabled"><option value="1"{{if .Enabled}} selected{{end}}>开启</option><option value="0"{{if not .Enabled}} selected{{end}}>关闭</option></select></label>
+    <label>机器多少小时未上报算离线<input name="offline_hours" type="number" min="1" max="720" value="{{.OfflineAfterHours}}" required></label>
+    <label>预算用到百分之几提醒<input name="budget_warn" type="number" min="1" max="99" value="{{.BudgetWarnPercent}}" required></label>
+    <button type="submit">保存</button>
+  </form>
+  <p class="hint">另外三条规则不需要阈值：发布目标失败、网关令牌与控制台记录不符、任务重试用尽。看<a href="/alerts">告警</a>页。</p>
+  {{end}}
+
+  {{with .Channels}}
+  <h2>通知渠道</h2>
+  <form method="post" action="/settings/alert-channels" class="form">
+    <input type="hidden" name="csrf" value="{{$.CSRF}}">
+    <input type="hidden" name="version" value="{{.Version}}">
+    <label>Webhook<select name="webhook_enabled"><option value="1"{{if .Webhook.Enabled}} selected{{end}}>启用</option><option value="0"{{if not .Webhook.Enabled}} selected{{end}}>停用</option></select></label>
+    <label>地址<input name="webhook_url" value="{{.Webhook.URL}}" placeholder="https://oapi.dingtalk.com/robot/send?access_token=…"></label>
+    <label>格式<select name="webhook_format"><option value="generic"{{if eq .Webhook.Format "generic"}} selected{{end}}>通用 JSON</option><option value="dingtalk"{{if eq .Webhook.Format "dingtalk"}} selected{{end}}>钉钉机器人</option><option value="feishu"{{if eq .Webhook.Format "feishu"}} selected{{end}}>飞书机器人</option></select></label>
+    <label>签名密钥<input name="webhook_secret" type="password" autocomplete="new-password" placeholder="{{if .SecretSet}}已设置，留空不改{{else}}未设置{{end}}"></label>
+    {{if .SecretSet}}<label>清除签名密钥<select name="webhook_secret_clear"><option value="0">否</option><option value="1">是</option></select></label>{{end}}
+    <label>邮件<select name="smtp_enabled"><option value="1"{{if .SMTP.Enabled}} selected{{end}}>启用</option><option value="0"{{if not .SMTP.Enabled}} selected{{end}}>停用</option></select></label>
+    <label>SMTP 服务器<input name="smtp_host" value="{{.SMTP.Host}}" placeholder="smtp.example.com"></label>
+    <label>端口<input name="smtp_port" type="number" min="1" max="65535" value="{{.SMTP.Port}}"></label>
+    <label>用户名<input name="smtp_username" value="{{.SMTP.Username}}"></label>
+    <label>密码<input name="smtp_password" type="password" autocomplete="new-password" placeholder="{{if .PasswordSet}}已设置，留空不改{{else}}未设置{{end}}"></label>
+    {{if .PasswordSet}}<label>清除密码<select name="smtp_password_clear"><option value="0">否</option><option value="1">是</option></select></label>{{end}}
+    <label>发件人<input name="smtp_from" value="{{.SMTP.From}}" placeholder="console@example.com"></label>
+    <label>收件人<input name="smtp_to" value="{{.ToText}}" placeholder="逗号分隔"></label>
+    <button type="submit">保存</button>
+  </form>
+  <p class="hint">
+    密钥和密码用主密钥加密后入库，页面不回显。465 端口按 TLS 直连，其他端口用 STARTTLS；没有 TLS 的服务器不发密码。
+    <form method="post" action="/alerts/test" class="inline"><input type="hidden" name="csrf" value="{{$.CSRF}}"><input type="hidden" name="channel" value="webhook"><button class="link">发送 webhook 测试</button></form>
+    · <form method="post" action="/alerts/test" class="inline"><input type="hidden" name="csrf" value="{{$.CSRF}}"><input type="hidden" name="channel" value="smtp"><button class="link">发送邮件测试</button></form>
+  </p>
+  {{end}}
+
   {{if .Stats}}
   <h2>已采集</h2>
   <div class="panel scroll">

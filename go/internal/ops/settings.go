@@ -88,3 +88,55 @@ func nonEmpty(b []byte) []byte {
 	}
 	return b
 }
+
+// Audit actions for the alert settings.
+const (
+	ActionAlertSettings = "settings.alerts"
+	ActionAlertChannels = "settings.alert_channels"
+	ActionAlertAck      = "alert.ack"
+	ActionAlertResolve  = "alert.resolve"
+)
+
+// SaveSetting stores one JSON setting with the audit line beside it. The
+// before/after in the audit are what the caller passes, so a setting that
+// carries sealed secrets can be recorded without them.
+func (s *Service) SaveSetting(ctx context.Context, key string, value []byte, expectVersion int, action string, before, after any, actor, requestID string) error {
+	err := s.store.InTx(ctx, func(tx repo.Store) error {
+		if _, err := tx.Settings().Set(ctx, key, value, expectVersion, actor); err != nil {
+			return err
+		}
+		return s.auditTarget(ctx, tx, actor, requestID, action, "settings", key, before, after)
+	})
+	if err != nil {
+		return fmt.Errorf("save setting %s: %w", key, err)
+	}
+	return nil
+}
+
+// AckAlert and ResolveAlert are the two things a person does to an alert;
+// both leave an audit line naming who.
+func (s *Service) AckAlert(ctx context.Context, id, actor, requestID string) (repo.Alert, error) {
+	var out repo.Alert
+	err := s.store.InTx(ctx, func(tx repo.Store) error {
+		a, err := tx.Alerts().Ack(ctx, id, actor)
+		if err != nil {
+			return err
+		}
+		out = a
+		return s.auditTarget(ctx, tx, actor, requestID, ActionAlertAck, "alert", id, nil, map[string]string{"title": a.Title})
+	})
+	return out, err
+}
+
+func (s *Service) ResolveAlert(ctx context.Context, id, actor, requestID string) (repo.Alert, error) {
+	var out repo.Alert
+	err := s.store.InTx(ctx, func(tx repo.Store) error {
+		a, err := tx.Alerts().ResolveByID(ctx, id, actor)
+		if err != nil {
+			return err
+		}
+		out = a
+		return s.auditTarget(ctx, tx, actor, requestID, ActionAlertResolve, "alert", id, nil, map[string]string{"title": a.Title})
+	})
+	return out, err
+}

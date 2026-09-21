@@ -1,0 +1,148 @@
+package adminweb
+
+import (
+	"net/http"
+	"net/url"
+	"strings"
+	"testing"
+
+	"github.com/TEENet-io/ai-env-mgr/internal/repo"
+)
+
+func TestAlertsPageListsAcksAndResolves(t *testing.T) {
+	s, _ := newDatabaseServer(t)
+	h := s.Handler()
+	cookie := signedIn(t, s)
+	ctx := t.Context()
+	device, _ := s.dbm.store.Devices().EnsureByHostname(ctx, "PC-1")
+	a1, _, _ := s.dbm.store.Alerts().Open(ctx, repo.NewAlert{Kind: repo.AlertMachineOffline, Fingerprint: "m:1", Severity: "warn",
+		SubjectType: "device", SubjectID: device.ID, Title: "机器 PC-1 已 30 小时未上报"})
+	a2, _, _ := s.dbm.store.Alerts().Open(ctx, repo.NewAlert{Kind: repo.AlertTaskFailed, Fingerprint: "t:1", Severity: "crit",
+		SubjectType: "task", SubjectID: "t1", Title: "任务 gateway_provision 已放弃（3 次尝试）"})
+	old, _, _ := s.dbm.store.Alerts().Open(ctx, repo.NewAlert{Kind: repo.AlertBudget, Fingerprint: "b:1", Severity: "warn",
+		SubjectType: "employee", SubjectID: "nobody", Title: "旧告警"})
+	s.dbm.store.Alerts().Resolve(ctx, "b:1", "rule")
+	_ = old
+
+	page := dbGet(t, h, "/alerts", cookie)
+	body := page.Body.String()
+	if page.Code != 200 {
+		t.Fatalf("alerts: %d", page.Code)
+	}
+	open := body[strings.Index(body, "未关闭"):strings.Index(body, "最近关闭")]
+	if !strings.Contains(open, "PC-1 已 30 小时未上报") || !strings.Contains(open, "machine=PC-1") || !strings.Contains(open, "已放弃") || strings.Contains(open, "旧告警") {
+		t.Fatalf("open section wrong:\n%s", open)
+	}
+	if history := body[strings.Index(body, "最近关闭"):]; !strings.Contains(history, "旧告警") || !strings.Contains(history, "自动") {
+		t.Fatal("the resolved alert is not in the history")
+	}
+	// Every page's nav carries the open count.
+	if !strings.Contains(body, `告警 <span class="tag tag-bad">2</span>`) {
+		t.Fatalf("nav badge missing: %s", firstLine(body, "告警"))
+	}
+
+	csrf := csrfFrom(t, s, cookie, "/alerts")
+	if rec := dbPost(t, h, "/alerts/ack", url.Values{"csrf": {csrf}, "id": {a1.ID}}, cookie); rec.Code != http.StatusSeeOther || strings.Contains(rec.Header().Get("Location"), "err=") {
+		t.Fatalf("ack: %d %s", rec.Code, rec.Header().Get("Location"))
+	}
+	body = dbGet(t, h, "/alerts", cookie).Body.String()
+	admins, _ := s.dbm.store.Admins().List(ctx)
+	if !strings.Contains(body, admins[0].Username+" 已确认") {
+		t.Fatal("the acknowledgement is not shown")
+	}
+	if rec := dbPost(t, h, "/alerts/resolve", url.Values{"csrf": {csrf}, "id": {a2.ID}}, cookie); rec.Code != http.StatusSeeOther {
+		t.Fatalf("resolve: %d", rec.Code)
+	}
+	body = dbGet(t, h, "/alerts", cookie).Body.String()
+	if !strings.Contains(body, `告警 <span class="tag tag-bad">1</span>`) || !strings.Contains(body[strings.Index(body, "最近关闭"):], "已放弃") {
+		t.Fatal("the resolved alert did not move to the history")
+	}
+	events, _, _ := s.dbm.store.Audit().Search(ctx, repo.AuditFilter{TargetType: "alert", Limit: 10})
+	if len(events) != 2 {
+		t.Fatalf("audit lines for ack and resolve: %d", len(events))
+	}
+
+	// A viewer reads and cannot act.
+	_, viewerPassword, _ := s.dbm.auth.CreateAccount(ctx, "eve", "", "viewer")
+	viewer := signInAs(t, s, "eve", viewerPassword)
+	if rec := dbGet(t, h, "/alerts", viewer); rec.Code != 200 {
+		t.Fatalf("viewer alerts: %d", rec.Code)
+	}
+	vcsrf := csrfFrom(t, s, viewer, "/alerts")
+	if rec := dbPost(t, h, "/alerts/ack", url.Values{"csrf": {vcsrf}, "id": {a1.ID}}, viewer); rec.Code != http.StatusForbidden {
+		t.Fatalf("viewer ack: %d", rec.Code)
+	}
+}
+
+func TestAlertSettingsKeepThePasswordWhenLeftBlank(t *testing.T) {
+	s, _ := newDatabaseServer(t)
+	h := s.Handler()
+	cookie := signedIn(t, s)
+	ctx := t.Context()
+	csrf := csrfFrom(t, s, cookie, "/settings")
+
+	page := dbGet(t, h, "/settings", cookie).Body.String()
+	if !strings.Contains(page, "通知渠道") || !strings.Contains(page, `name="offline_hours"`) || !strings.Contains(page, "未设置") {
+		t.Fatal("the settings page lacks the alert sections")
+	}
+	form := url.Values{"csrf": {csrf}, "version": {"0"},
+		"webhook_enabled": {"1"}, "webhook_url": {"https://oapi.dingtalk.com/robot/send?access_token=x"}, "webhook_format": {"dingtalk"}, "webhook_secret": {"SEC123"},
+		"smtp_enabled": {"1"}, "smtp_host": {"smtp.example.com"}, "smtp_port": {"587"}, "smtp_username": {"console"}, "smtp_password": {"hunter2"},
+		"smtp_from": {"console@example.com"}, "smtp_to": {"ops@example.com, boss@example.com"}}
+	if rec := dbPost(t, h, "/settings/alert-channels", form, cookie); rec.Code != http.StatusSeeOther || strings.Contains(rec.Header().Get("Location"), "err=") {
+		t.Fatalf("save channels: %d %s", rec.Code, rec.Header().Get("Location"))
+	}
+	cfg, version, err := repo.LoadChannelSettings(ctx, s.dbm.store.Settings())
+	if err != nil || version != 1 || !cfg.Webhook.Secret.IsSet() || !cfg.SMTP.Password.IsSet() || len(cfg.SMTP.To) != 2 {
+		t.Fatalf("stored: %+v v%d %v", cfg, version, err)
+	}
+	if string(cfg.SMTP.Password.Ciphertext) == "hunter2" || strings.Contains(string(cfg.SMTP.Password.Ciphertext), "hunter") {
+		t.Fatal("the password is stored in the clear")
+	}
+	if got, _ := s.openSecret(ctx, "smtp_password", cfg.SMTP.Password); got != "hunter2" {
+		t.Fatalf("the sealed password opens to %q", got)
+	}
+	// The audit line never carries the secrets.
+	events, _, _ := s.dbm.store.Audit().Search(ctx, repo.AuditFilter{TargetType: "settings", Limit: 10})
+	if len(events) != 1 || strings.Contains(string(events[0].After), "hunter2") || strings.Contains(string(events[0].After), "SEC123") || !strings.Contains(strings.ReplaceAll(string(events[0].After), " ", ""), `"password_set":true`) {
+		t.Fatalf("audit = %+v", events)
+	}
+
+	// Saving again with blank secret fields keeps them; the page says set.
+	page = dbGet(t, h, "/settings", cookie).Body.String()
+	if !strings.Contains(page, "已设置，留空不改") || strings.Contains(page, "hunter2") {
+		t.Fatal("the page must say the password is set without showing it")
+	}
+	form.Set("version", "1")
+	form.Set("webhook_secret", "")
+	form.Set("smtp_password", "")
+	form.Set("smtp_to", "ops@example.com")
+	if rec := dbPost(t, h, "/settings/alert-channels", form, cookie); strings.Contains(rec.Header().Get("Location"), "err=") {
+		t.Fatalf("second save: %s", rec.Header().Get("Location"))
+	}
+	again, version, _ := repo.LoadChannelSettings(ctx, s.dbm.store.Settings())
+	if version != 2 || string(again.SMTP.Password.Ciphertext) != string(cfg.SMTP.Password.Ciphertext) || !again.Webhook.Secret.IsSet() || len(again.SMTP.To) != 1 {
+		t.Fatalf("blank secrets must keep the stored ones: %+v", again)
+	}
+	// A stale form is refused.
+	form.Set("version", "1")
+	if rec := dbPost(t, h, "/settings/alert-channels", form, cookie); !strings.Contains(rec.Header().Get("Location"), "err=") {
+		t.Fatal("a stale version must be refused")
+	}
+	// Thresholds.
+	if rec := dbPost(t, h, "/settings/alerts", url.Values{"csrf": {csrf}, "version": {"0"}, "enabled": {"1"}, "offline_hours": {"48"}, "budget_warn": {"90"}}, cookie); strings.Contains(rec.Header().Get("Location"), "err=") {
+		t.Fatalf("save thresholds: %s", rec.Header().Get("Location"))
+	}
+	got, _, _ := repo.LoadAlertSettings(ctx, s.dbm.store.Settings())
+	if got.OfflineAfterHours != 48 || got.BudgetWarnPercent != 90 {
+		t.Fatalf("thresholds = %+v", got)
+	}
+	if rec := dbPost(t, h, "/settings/alerts", url.Values{"csrf": {csrf}, "version": {"1"}, "enabled": {"1"}, "offline_hours": {"0"}, "budget_warn": {"90"}}, cookie); !strings.Contains(rec.Header().Get("Location"), "err=") {
+		t.Fatal("an impossible threshold must be refused")
+	}
+	// The test button reports a refusal from the endpoint rather than
+	// pretending; here the DingTalk host is not reachable from the test.
+	if rec := dbPost(t, h, "/alerts/test", url.Values{"csrf": {csrf}, "channel": {"nothing"}}, cookie); !strings.Contains(rec.Header().Get("Location"), "err=") {
+		t.Fatal("testing an unknown channel must be an error")
+	}
+}

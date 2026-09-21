@@ -103,6 +103,10 @@ type pageData struct {
 	Rollouts      []rolloutView
 	AuditPage     *auditPage
 	UsagePage     *usagePage
+	AlertsPage    *alertsPage
+	AlertSettings *alertSettingsView
+	Channels      *channelView
+	OpenAlerts    int // drawn in the nav on every page
 	MachinePage   *machinePage
 	History       *employeeHistory // the detail page's history (database mode)
 	Report        []versionReport  // the rollouts page's report by version
@@ -161,6 +165,9 @@ func (s *Server) render(w http.ResponseWriter, name string, code int, data pageD
 	// flag that decides one of its entries should not be something a new
 	// handler can forget.
 	data.SLS = s.opts.SLSProject != ""
+	if data.DB {
+		data.OpenAlerts = s.openAlertCount()
+	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.WriteHeader(code)
 	if err := s.tpl.ExecuteTemplate(w, name, data); err != nil {
@@ -421,6 +428,7 @@ func (s *Server) handleSettings(w http.ResponseWriter, r *http.Request, sess *se
 		data.Error = "读取开户默认额度失败，下面显示的是内置默认值：" + err.Error()
 		log.Printf("adminweb: LoadQuotaDefaults: %v", err)
 	}
+	s.settingsExtras(r, &data)
 	s.render(w, "settings.html", http.StatusOK, data)
 }
 
