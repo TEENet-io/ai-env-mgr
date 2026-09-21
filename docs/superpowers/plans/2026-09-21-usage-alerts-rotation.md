@@ -92,9 +92,9 @@ type Usage interface {
 }
 ```
 
-- [ ] 测试 `TestUsageUpsertReplacesTheDayAndSums`(dbstore):写 9/1 三行、9/2 两行;`UpsertDay(9/1, 新两行)` 后 9/1 只剩两行;`ByEmployee` 跨模型求和、`ByModel` 跨员工求和、`ByDay` 按天排序;`Rows` 上限生效。
-- [ ] 迁移 + `grants.sql` + `dbstore/usage.go`;`make check`。
-- [ ] 提交:`dbstore: usage_daily table and aggregate queries`
+- [x] 测试 `TestUsageUpsertReplacesTheDayAndSums`(dbstore):写 9/1 三行、9/2 两行;`UpsertDay(9/1, 新两行)` 后 9/1 只剩两行;`ByEmployee` 跨模型求和、`ByModel` 跨员工求和、`ByDay` 按天排序;`Rows` 上限生效。
+- [x] 迁移 + `grants.sql` + `dbstore/usage.go`;`make check`。
+- [x] 提交:`dbstore: usage_daily table and aggregate queries`
 
 ### Task B1b: 用量快照任务
 
@@ -134,10 +134,10 @@ func EnqueueUsageSnapshot(ctx context.Context, store repo.Store, at time.Time) e
   时间窗 = `day 00:00 UTC` 到 `day+1 00:00 UTC`,按 `occurred_at` 优先、`__time__` 兜底(与 `logs.go` 的 `displayTime` 同一取舍;第一版直接用 `__time__`,注释写明误差)。
 - 别名解析:先 `Grants().ByKeyAlias`(命中就得员工);没命中且形如 `emp-<user>` 则 `Employees().ByWindowsUser`(兼容旧别名与在册的旧账号);都没有则 `employee_id = null`。
 - Run:对 `today-1 … today-Backfill` 每一天各查一次并 `UpsertDay`;任一天 SLS 出错则记 note 并继续下一天;全部失败才返回错误(触发重试)。
-- [ ] 测试 `TestUsageSnapshotFillsThreeDaysAndResolvesAliases`(worker,DB):假 `UsageSource` 给三天数据(含一个新别名、一个旧别名、一个未知别名);跑一次,`usage_daily` 三天都有,员工 id 解析正确,未知别名 `employee_id` 为 null;第二天再跑,昨天的数覆盖不叠加。
-- [ ] 测试 `TestUsageSnapshotSkipsADayTheLogServiceCannotAnswer`:一天出错,其余两天照写,任务成功且 note 含 "1 day skipped"。
-- [ ] 实现 + 调度 + 注册;`make check`。
-- [ ] 提交:`worker: nightly usage snapshot from the gateway logs`
+- [x] 测试 `TestUsageSnapshotFillsThreeDaysAndResolvesAliases`(worker,DB):假 `UsageSource` 给三天数据(含一个新别名、一个旧别名、一个未知别名);跑一次,`usage_daily` 三天都有,员工 id 解析正确,未知别名 `employee_id` 为 null;第二天再跑,昨天的数覆盖不叠加。
+- [x] 测试 `TestUsageSnapshotSkipsADayTheLogServiceCannotAnswer`:一天出错,其余两天照写,任务成功且 note 含 "1 day skipped"。
+- [x] 实现 + 调度 + 注册;`make check`。
+- [x] 提交:`worker: nightly usage snapshot from the gateway logs`
 
 ### Task B1c: 用量页与员工用量
 
@@ -170,9 +170,9 @@ type usageLine struct {
 - `/usage.csv?month=` 导出明细行(日、员工、模型、调用、失败、费用、未计价、token),`csvSafe`。
 - "立即快照"按钮:`EnqueueUsageSnapshot`(和"立即扫描 OSS"同一模式)。
 - 员工详情页:最近 30 天按天一表 + 合计,链接到 `/usage?employee=`。
-- [ ] 测试 `TestUsagePageSumsAndExports`(adminweb,DB):预先写三天两员工两模型的行;`/usage?month=` 员工表两行、模型表两行、合计对得上;`/usage?employee=work1` 只见一人;CSV 行数正确、有 BOM;`viewer` 看得到页,点不了"立即快照"(403)。
-- [ ] 实现;`make check`。
-- [ ] 提交:`adminweb: monthly usage page with CSV and per-employee history`
+- [x] 测试 `TestUsagePageSumsAndExports`(adminweb,DB):预先写三天两员工两模型的行;`/usage?month=` 员工表两行、模型表两行、合计对得上;`/usage?employee=work1` 只见一人;CSV 行数正确、有 BOM;`viewer` 看得到页,点不了"立即快照"(403)。
+- [x] 实现;`make check`。
+- [x] 提交:`adminweb: monthly usage page with CSV and per-employee history`
 
 ### Task B2a: alerts 表、规则与求值任务
 
@@ -239,10 +239,10 @@ type AlertEval struct {
   - `budget`:网关 `ListUsers` 的 `spend/max_budget`,≥ warn% 开 warn,≥ 100% 开 crit;fingerprint `budget:<employee_id>:warn|crit`;月初 spend 归零后关闭。
   - `gateway_drift`:不由求值产生,由 `Reconcile.OnDrift` 直接 `Open`,fingerprint `gateway_drift:<key_alias>`;下一次 Reconcile 观测一致时关闭(求值任务查 `Grants().NeedsReconcile` 之外的"最近一致"即可:简单做法是求值时遍历开着的 drift 告警,对应 grant `Actual == Desired` 就关)。
   - `task_failed`:Worker 在任务用尽重试时(`worker.go` 里已有最终失败分支)`Open`,fingerprint `task_failed:<task_id>`;任务被 `Enqueue` 复活(状态回 pending)时关闭(在 `Enqueue` 的 revive 分支之后由 ops 关,或求值时查任务状态)。
-- [ ] 测试 `TestAlertsOpenOncePerFingerprintAndResolve`(dbstore)。
-- [ ] 测试 `TestAlertEvalOpensAndClosesByRule`(worker,DB):一台绑定机器 30 小时没上报 → 开;上报后再跑 → 关;一个失败目标 → 开,重试后 → 关;假网关用户 spend 85/100 → warn,105 → crit 且 warn 关闭;设置 `enabled=false` → 什么都不开。
-- [ ] 实现 + 调度 + `OnDrift`/最终失败钩子;`make check`。
-- [ ] 提交:`worker: alert rules with open/resolve state`
+- [x] 测试 `TestAlertsOpenOncePerFingerprintAndResolve`(dbstore)。
+- [x] 测试 `TestAlertEvalOpensAndClosesByRule`(worker,DB):一台绑定机器 30 小时没上报 → 开;上报后再跑 → 关;一个失败目标 → 开,重试后 → 关;假网关用户 spend 85/100 → warn,105 → crit 且 warn 关闭;设置 `enabled=false` → 什么都不开。
+- [x] 实现 + 调度 + `OnDrift`/最终失败钩子;`make check`。
+- [x] 提交:`worker: alert rules with open/resolve state`
 
 ### Task B2b: 渠道设置与投递
 
@@ -279,10 +279,10 @@ type Channel interface{ Send(ctx context.Context, m Message) error }
 - 投递:每条告警对所有启用的渠道各发一次;全部成功才 `MarkNotified(at, "")`,否则记最后错误并下一分钟再试,最多重试 10 次(告警行上 `notify_error` 可见)。
 - 钉钉签名:`timestamp\nsecret` 的 HMAC-SHA256 → base64 → URL 参数(官方算法);飞书:`{"msg_type":"text","content":{"text":...}}`。
 - SMTP:`net/smtp` + STARTTLS,主题 `[windows-control] <severity> <title>`,正文纯文本含链接。
-- [ ] 测试 `TestWebhookFormats`(三种格式的请求体与签名)、`TestSMTPSendsOneMailPerAlert`(本地假 SMTP)。
-- [ ] 测试 `TestAlertNotifyDeliversOnceAndRecordsFailures`(worker,DB)。
-- [ ] 实现;`make check`。
-- [ ] 提交:`notify: webhook and SMTP channels; worker delivers open alerts once`
+- [x] 测试 `TestWebhookFormats`(三种格式的请求体与签名)、`TestSMTPSendsOneMailPerAlert`(本地假 SMTP)。
+- [x] 测试 `TestAlertNotifyDeliversOnceAndRecordsFailures`(worker,DB)。
+- [x] 实现;`make check`。
+- [x] 提交:`notify: webhook and SMTP channels; worker delivers open alerts once`
 
 ### Task B2c: 告警页与设置
 
@@ -292,10 +292,10 @@ type Channel interface{ Send(ctx context.Context, m Message) error }
 
 - 页面:上半"未关闭"(严重度、标题、对象链接到机器/员工/发布页、开启时长、通知状态、确认/关闭按钮),下半"最近 200 条历史"。
 - "发送测试"按钮各渠道一个:直接调 `Channel.Send` 一条固定消息,结果作 notice 显示,不入库。
-- [ ] 测试 `TestAlertsPageListsAcksAndResolves`(adminweb,DB):预置两条开着的、一条关闭的;页面分区正确;`ack` 后显示确认人;`resolve` 后进历史;导航数字从 2 变 1;`viewer` 点确认得 403。
-- [ ] 测试 `TestAlertSettingsKeepThePasswordWhenLeftBlank`:保存渠道时密码框留空,原密文保持不变;填了才重新密封。
-- [ ] 实现;`make check`。
-- [ ] 提交:`adminweb: alerts page, thresholds and channel settings`
+- [x] 测试 `TestAlertsPageListsAcksAndResolves`(adminweb,DB):预置两条开着的、一条关闭的;页面分区正确;`ack` 后显示确认人;`resolve` 后进历史;导航数字从 2 变 1;`viewer` 点确认得 403。
+- [x] 测试 `TestAlertSettingsKeepThePasswordWhenLeftBlank`:保存渠道时密码框留空,原密文保持不变;填了才重新密封。
+- [x] 实现;`make check`。
+- [x] 提交:`adminweb: alerts page, thresholds and channel settings`
 
 ### Task B3a: 令牌轮换任务与列表提示
 
@@ -320,9 +320,9 @@ type CredentialRotation struct {
 }
 ```
 - Run:读设置;`LiveOlderThan(codex_gateway, now − MaxAge, PerDay*3)`;对每个员工:必须 active、有绑定机器且该机器 `LastSeenAt` 在 ActiveWithinH 内,否则记"skipped: <原因>";满足则 `ops.Rotate(employeeID, "rotation", requestID)`,计数到 PerDay 为止;note 形如 `rotated 3, skipped 2 (machine silent), 4 more due`。
-- [ ] 测试 `TestRotationReissuesOldTokensOnActiveMachinesOnly`(worker,DB):三个员工凭据都 100 天前(直接改 `issued_at`),一个机器活跃、一个机器 3 天没上报、一个没绑机器;跑一次:只有第一个 epoch +1 且有 provision 任务、审计 `account.rotate`;`PerDay=1` 时第二个活跃员工留到明天;`enabled=false` 什么都不做。
-- [ ] 实现;`make check`。
-- [ ] 提交:`worker: rotate employee tokens past their maximum age`
+- [x] 测试 `TestRotationReissuesOldTokensOnActiveMachinesOnly`(worker,DB):三个员工凭据都 100 天前(直接改 `issued_at`),一个机器活跃、一个机器 3 天没上报、一个没绑机器;跑一次:只有第一个 epoch +1 且有 provision 任务、审计 `account.rotate`;`PerDay=1` 时第二个活跃员工留到明天;`enabled=false` 什么都不做。
+- [x] 实现;`make check`。
+- [x] 提交:`worker: rotate employee tokens past their maximum age`
 
 ### Task B3b: 主密钥换钥命令
 
@@ -340,9 +340,9 @@ ai-env-migrate rekey --prune-unused   # 库里没有任何行引用的旧钥从 
 ```
 - 只处理活跃行(`credential_versions.retired_at is null`、未禁用管理员);退役行留旧钥版本不动,旧钥在 prune 前都在,所以还能打开。
 - 每 100 行一个事务;中断可重跑(幂等:已是 current 的跳过)。
-- [ ] 测试 `TestRekeyResealsEverythingLiveAndLeavesRetiredRows`(dbstore + secrets):两把钥,k1 密封三条(一活跃凭据、一退役凭据、一管理员 TOTP);切 current=k2 跑 rekey:活跃凭据与 TOTP 变 k2 且能用 k2 打开,退役行仍 k1;`--prune-unused` 因退役行引用 k1 而拒绝删 k1(打印原因)。
-- [ ] 实现;`make check`。
-- [ ] 提交:`migrate: rekey command reseals live secrets under the current master key`
+- [x] 测试 `TestRekeyResealsEverythingLiveAndLeavesRetiredRows`(dbstore + secrets):两把钥,k1 密封三条(一活跃凭据、一退役凭据、一管理员 TOTP);切 current=k2 跑 rekey:活跃凭据与 TOTP 变 k2 且能用 k2 打开,退役行仍 k1;`--prune-unused` 因退役行引用 k1 而拒绝删 k1(打印原因)。
+- [x] 实现;`make check`。
+- [x] 提交:`migrate: rekey command reseals live secrets under the current master key`
 
 ## 验收
 
@@ -354,3 +354,14 @@ ai-env-migrate rekey --prune-unused   # 库里没有任何行引用的旧钥从 
 ## 实施顺序
 
 B1a → B1b → B1c → B2a → B2b → B2c → B3a → B3b。B1 与 B2 相互独立,可并行;B3a 依赖 B2 不多,只共用 settings 页面。
+
+## 实施记录(2026-09-21)
+
+全部八个任务当天完成并上线(提交 d17b319 … e31961e,`main` 与 `rds-phase0`)。与计划的差异:
+
+- 用量来源的日志库是 `audit`(网关的 `llm_call` 事件和日志页读的是同一个库),不是计划里写的 `ops`;日志里没有别名的调用保留在占位别名 `-` 下,不丢。
+- 用量快照、轮换分别在桶时间后 30 分钟、1 小时才跑,`Schedule` 为此加了 `enqueuePeriodicAfter`;调度器停止时不再把被打断的入队当错误上报。
+- 告警的"任务放弃"由 Worker 的 `OnEvent`(outcome=failed)开告警,"网关漂移"由 `Reconcile.OnDrift` 开;求值任务只负责关闭这两类。
+- 轮换跳过"新令牌尚未完成开通"的人(凭据 epoch 落后于员工 epoch),避免一晚上连转两次;超出每日上限的只数"本来可以转的"。
+- `rekey` 除凭据和管理员种子外,也重新密封告警渠道里的密码与签名密钥;`-prune-unused` 在退役凭据仍引用旧钥时保留旧钥并说明。
+- 生产验证:首个快照 2026-09-21 00:30 UTC 跑通(9/18 六行、9/19 一行);告警规则首轮开出一条真实的"机器 70 小时未上报";`rekey -dry-run` 在生产库上报告 0 行待移(当前只有 k1)。
