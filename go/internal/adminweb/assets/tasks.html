@@ -23,7 +23,7 @@
         <td>{{if eq .Status "succeeded"}}<span class="tag tag-ok">{{.Status}}</span>{{else if eq .Status "failed"}}<span class="tag tag-bad">{{.Status}}</span>{{else if .Open}}<span class="tag tag-warn">{{.Status}}</span>{{else}}<span class="dim">{{.Status}}</span>{{end}}</td>
         <td class="num">{{.Attempts}}</td>
         <td class="dim">{{.NextRun}}</td>
-        <td class="dim">{{.LastError}}</td>
+        <td class="dim wrap">{{.LastError}}</td>
       </tr>
     {{else}}
       <tr><td colspan="7" class="empty">还没有任务。</td></tr>

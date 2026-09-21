@@ -27,14 +27,14 @@
           {{range .Flags}}<span class="tag tag-{{.Severity}}">{{.Label}}</span>{{end}}
         </td>
         <td>{{if .HasToken}}<span class="tag tag-ok">已发放</span>{{if .TokenIssued}}<div class="rowsub nowrap">{{.TokenIssued}} · {{.TokenAgeDays}} 天{{if .TokenDue}} <span class="tag tag-warn">待轮换</span>{{end}}</div>{{end}}{{else}}<span class="dim">—</span>{{end}}</td>
-        <td class="dim" title="{{range $i, $m := .Models}}{{if $i}}, {{end}}{{$m}}{{end}}">{{if .Models}}{{range $i, $m := .Models}}{{if lt $i 3}}{{if $i}}, {{end}}{{$m}}{{end}}{{end}}{{if gt (len .Models) 3}} <span class="tag tag-muted">+{{sub (len .Models) 3}}</span>{{end}}{{else}}—{{end}}</td>
+        <td class="dim wrap" title="{{range $i, $m := .Models}}{{if $i}}, {{end}}{{$m}}{{end}}">{{if .Models}}{{range $i, $m := .Models}}{{if lt $i 3}}{{if $i}}, {{end}}{{$m}}{{end}}{{end}}{{if gt (len .Models) 3}} <span class="tag tag-muted">+{{sub (len .Models) 3}}</span>{{end}}{{else}}—{{end}}</td>
         <td>
           {{if .HasUser}}
           <div class="usage"><div class="bar"><span class="{{usagesev .Spend .Budget}} w{{usagepct .Spend .Budget}}"></span></div>
-            <span class="dim">${{money .Spend}} / ${{money .Budget}}{{if ge (len .BudgetResetAt) 10}} · {{slice .BudgetResetAt 0 10}} 重置{{end}}</span></div>
+            <span class="dim"><span class="nowrap">${{money .Spend}} / ${{money .Budget}}</span>{{if ge (len .BudgetResetAt) 10}} · <span class="nowrap">{{slice .BudgetResetAt 0 10}} 重置</span>{{end}}</span></div>
           {{else}}<span class="dim">—</span>{{end}}
         </td>
-        <td class="dim">{{if .HasUser}}{{.Quota.RPM}} rpm · {{.Quota.TPM}} tpm · {{.Quota.Parallel}} 并发{{else}}—{{end}}</td>
+        <td class="dim wrap">{{if .HasUser}}<span class="nowrap">{{.Quota.RPM}} rpm</span> · <span class="nowrap">{{.Quota.TPM}} tpm</span> · <span class="nowrap">{{.Quota.Parallel}} 并发</span>{{else}}—{{end}}</td>
         <td class="actions">{{if not .Deleted}}
           {{if .Enabled}}
           <form method="post" action="/users/offboard" class="inline">

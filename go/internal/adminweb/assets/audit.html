@@ -24,9 +24,9 @@
         <td class="dim" title="{{.OccurredAt}}">{{.OccurredAt.Local.Format "01-02 15:04:05"}}</td>
         <td>{{.ActorID}}<div class="rowsub">{{.ActorType}}</div></td>
         <td class="mono">{{.Action}}</td>
-        <td class="id" title="{{.TargetType}} {{.TargetID}}">{{.Target}}<div class="rowsub">{{.TargetType}}</div></td>
+        <td class="id wrap" title="{{.TargetType}} {{.TargetID}}">{{.Target}}<div class="rowsub">{{.TargetType}}</div></td>
         <td class="remark">{{.Change}}</td>
-        <td>{{if eq .Result "ok"}}<span class="tag tag-ok">ok</span>{{else}}<span class="tag tag-bad">{{.Result}}</span>{{end}}<div class="rowsub mono">{{.RequestID}}</div></td>
+        <td class="wrap">{{if eq .Result "ok"}}<span class="tag tag-ok">ok</span>{{else}}<span class="tag tag-bad">{{.Result}}</span>{{end}}<div class="rowsub mono">{{.RequestID}}</div></td>
       </tr>{{else}}<tr><td colspan="6" class="empty">没有匹配的记录</td></tr>{{end}}
     </tbody></table></div>
   {{if gt .Pages 1}}

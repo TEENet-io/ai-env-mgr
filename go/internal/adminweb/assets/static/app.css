@@ -145,7 +145,9 @@ body {
 .rail .foot form { margin: 6px 0 0; }
 
 .sheet { flex: 1 1 auto; min-width: 0; padding: 30px 36px 64px; }
-.sheet > * { max-width: 1100px; }
+/* Wide enough that the fuller tables fit on a desktop monitor without a
+ * scrollbar; capped so a line of prose stays readable on a very wide one. */
+.sheet > * { max-width: 1440px; }
 
 /* ---------- page head ---------- */
 
@@ -256,7 +258,8 @@ td.id a:hover { color: var(--accent); border-bottom-color: var(--accent); }
 td.dim { color: var(--ink-faint); }
 /* A cell of prose (model lists, notes) wraps instead of pushing the table
  * past the panel's edge. */
-td.wrap { white-space: normal; max-width: 420px; line-height: 1.5; }
+td.wrap { white-space: normal; min-width: 140px; max-width: 460px; line-height: 1.5; overflow-wrap: anywhere; }
+td.id.wrap { min-width: 120px; }
 .nowrap { white-space: nowrap; }
 
 /* A line of explanation under a row's actions: what a request that has not
@@ -503,12 +506,12 @@ a.button-link:hover { color: var(--accent); border-color: var(--accent); backgro
 
 /* Actions inside a table cell wrap instead of stretching the row across the
    screen; each form is its own line when the cell is narrow. */
-td.actions { white-space: normal; min-width: 260px; }
+td.actions { white-space: normal; min-width: 150px; }
 td.actions form, td.actions > a { display: inline-block; margin: 2px 6px 2px 0; }
 td.actions > a { padding: 3px 9px; border: 1px solid var(--rule-strong); border-radius: 6px; font-size: 12.5px; font-weight: 500; color: var(--ink-soft); }
 td.actions > a:hover { color: var(--accent); border-color: var(--accent); background: var(--accent-soft); text-decoration: none; }
 td.actions input { width: auto; margin: 0 4px 0 0; padding: 4px 8px; font-size: 12px; }
-td.remark { white-space: normal; min-width: 130px; max-width: 260px; }
+td.remark { white-space: normal; min-width: 130px; max-width: 320px; overflow-wrap: anywhere; }
 .tag-muted { background: var(--panel-sunk); color: var(--ink-soft); }
 button.danger-link { color: var(--bad); }
 
@@ -714,7 +717,7 @@ button.danger-link { color: var(--bad); }
 }
 
 /* ---------- account usage bars: share .fleet's width classes ---------- */
-.usage { display: flex; flex-direction: column; gap: 4px; min-width: 160px; }
+.usage { display: flex; flex-direction: column; gap: 4px; min-width: 140px; white-space: normal; }
 .usage.wide { max-width: 480px; margin-bottom: 16px; }
 .usage .bar {
   display: flex; height: 8px; border-radius: 4px; overflow: hidden;
