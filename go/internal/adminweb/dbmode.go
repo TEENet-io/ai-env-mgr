@@ -223,6 +223,11 @@ func (s *Server) buildWorker(st *dbState) *worker.Worker {
 	audit := worker.AuditPublish{Store: st.store, Sink: s.events, Logstore: logstoreAudit}
 	if st.sls != nil {
 		audit.Archive = worker.SLSArchive{Client: st.sls}
+		// The gateway's llm_call events live in the same logstore the log
+		// page reads them from.
+		w.Register(worker.TaskUsageSnapshot, worker.UsageSnapshot{
+			Store: st.store, Source: worker.SLSUsage{Client: st.sls, Logstore: logstoreAudit},
+		})
 	}
 	w.Register(repo.TaskAuditPublish, audit)
 	return w
