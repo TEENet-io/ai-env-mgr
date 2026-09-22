@@ -62,7 +62,7 @@ func (h StatusImport) Run(ctx context.Context, _ repo.Task) (Result, error) {
 		if err != nil {
 			return Result{}, err
 		}
-		report := reportFromStatus(device.ID, status, data, etag)
+		report := ReportFromStatus(device.ID, status, data, etag)
 		written, err := h.Store.Reports().Import(ctx, report)
 		if err != nil {
 			return Result{}, err
@@ -74,7 +74,7 @@ func (h StatusImport) Run(ctx context.Context, _ repo.Task) (Result, error) {
 		imported++
 		// What the machine says about its release targets is the only
 		// evidence they are ever settled on.
-		if err := settleTargets(ctx, h.Store, device.ID, status); err != nil {
+		if err := SettleTargets(ctx, h.Store, device.ID, status); err != nil {
 			return Result{}, err
 		}
 		lastSeen := time.Now().UTC()
@@ -88,9 +88,9 @@ func (h StatusImport) Run(ctx context.Context, _ repo.Task) (Result, error) {
 	return Result{Note: fmt.Sprintf("imported %d report(s), %d unchanged or unreadable", imported, skipped)}, nil
 }
 
-// reportFromStatus maps the agent's object onto the columns the console
+// ReportFromStatus maps the agent's object onto the columns the console
 // filters on. The whole object rides along as well.
-func reportFromStatus(deviceID string, s model.Status, raw []byte, etag string) repo.DeviceReport {
+func ReportFromStatus(deviceID string, s model.Status, raw []byte, etag string) repo.DeviceReport {
 	r := repo.DeviceReport{
 		DeviceID:          deviceID,
 		AgentVersion:      s.AgentVersion,

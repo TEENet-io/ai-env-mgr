@@ -31,7 +31,7 @@ func TestAMatchingFreshReportSucceedsTheTarget(t *testing.T) {
 	device, target := openCodexTarget(t, store, "PC-1", "0.42.0")
 	later := time.Now().Add(time.Minute).UTC().Format(time.RFC3339)
 
-	if err := settleTargets(ctx, store, device.ID, model.Status{LastSync: later, CodexVersion: "0.42.0", CodexTarget: "0.42.0", CodexTargetGeneration: target.Generation}); err != nil {
+	if err := SettleTargets(ctx, store, device.ID, model.Status{LastSync: later, CodexVersion: "0.42.0", CodexTarget: "0.42.0", CodexTargetGeneration: target.Generation}); err != nil {
 		t.Fatalf("settle: %v", err)
 	}
 	got, _ := store.Releases().TargetByID(ctx, target.ID)
@@ -46,7 +46,7 @@ func TestAStaleReportSettlesNothing(t *testing.T) {
 	earlier := time.Now().Add(-time.Hour).UTC().Format(time.RFC3339)
 	// The machine already had 0.42.0 before the target existed (say, a
 	// rollback to what it has). Old evidence is not evidence of this target.
-	settleTargets(ctx, store, device.ID, model.Status{LastSync: earlier, CodexVersion: "0.42.0"})
+	SettleTargets(ctx, store, device.ID, model.Status{LastSync: earlier, CodexVersion: "0.42.0"})
 	got, _ := store.Releases().TargetByID(ctx, target.ID)
 	if got.Status != repo.TargetPending {
 		t.Fatalf("a report older than the target settled it: %+v", got)
@@ -60,14 +60,14 @@ func TestAFailureForThisGenerationFailsTheTarget(t *testing.T) {
 
 	// A failure reported for an older generation is about a target that no
 	// longer exists.
-	settleTargets(ctx, store, device.ID, model.Status{LastSync: later, CodexVersion: "0.41.0",
+	SettleTargets(ctx, store, device.ID, model.Status{LastSync: later, CodexVersion: "0.41.0",
 		CodexTarget: "0.42.0", CodexTargetGeneration: target.Generation - 1, CodexState: "failed",
 		Errors: []string{"codex: install: exit status 2"}})
 	if got, _ := store.Releases().TargetByID(ctx, target.ID); got.Status != repo.TargetPending {
 		t.Fatalf("an older generation's failure settled it: %+v", got)
 	}
 
-	settleTargets(ctx, store, device.ID, model.Status{LastSync: later, CodexVersion: "0.41.0",
+	SettleTargets(ctx, store, device.ID, model.Status{LastSync: later, CodexVersion: "0.41.0",
 		CodexTarget: "0.42.0", CodexTargetGeneration: target.Generation, CodexState: "failed",
 		Errors: []string{"policy: x", "codex: install: exit status 2"}})
 	got, _ := store.Releases().TargetByID(ctx, target.ID)
@@ -80,7 +80,7 @@ func TestDeferredAndOfflineStayPending(t *testing.T) {
 	store, ctx := newWorkerStore(t)
 	device, target := openCodexTarget(t, store, "PC-4", "0.42.0")
 	later := time.Now().Add(time.Minute).UTC().Format(time.RFC3339)
-	settleTargets(ctx, store, device.ID, model.Status{LastSync: later, CodexVersion: "0.41.0",
+	SettleTargets(ctx, store, device.ID, model.Status{LastSync: later, CodexVersion: "0.41.0",
 		CodexTarget: "0.42.0", CodexTargetGeneration: target.Generation, CodexState: "deferred", CodexDeferReason: "in_use"})
 	if got, _ := store.Releases().TargetByID(ctx, target.ID); got.Status != repo.TargetPending {
 		t.Fatalf("deferred is not a result: %+v", got)

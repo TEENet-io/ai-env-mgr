@@ -309,6 +309,9 @@ type Devices interface {
 	// on record is kept: an empty report should not erase a known version.
 	MarkSeen(ctx context.Context, id, agentVersion string, at time.Time) error
 
+	// Reactivate brings a forgotten machine back: it enrolled again, so
+	// somebody switched it on. The row keeps its history.
+	Reactivate(ctx context.Context, id string) (Device, error)
 	// SetEnrolled records that the machine now talks to the console
 	// directly, and where the enrolment came from.
 	SetEnrolled(ctx context.Context, id, from string, at time.Time) error

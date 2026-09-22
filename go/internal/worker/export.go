@@ -2,6 +2,8 @@ package worker
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -288,7 +290,7 @@ func (h OSSExport) exportEmployee(ctx context.Context, employeeID string) (Resul
 // entries an earlier console published are the exception, dropped on the way
 // through so that an archive stops carrying a login for a tool that is no
 // longer managed.
-func (h OSSExport) publish(_ context.Context, employee repo.Employee, set model.CredentialSet) error {
+func (h OSSExport) publish(ctx context.Context, employee repo.Employee, set model.CredentialSet) error {
 	key := ossclient.UserKey(employee.WindowsUser, "credentials.zip")
 	existing := model.CredentialSet{}
 	data, _, err := h.Objects.Get(key)
@@ -314,6 +316,12 @@ func (h OSSExport) publish(_ context.Context, employee repo.Employee, set model.
 	if err != nil {
 		return Permanent(fmt.Errorf("pack credentials for %s: %w", employee.WindowsUser, err))
 	}
+	// The same bytes go to the bucket for agents that read objects and to
+	// the table for agents that ask the console.
+	sum := sha256.Sum256(blob)
+	if err := h.Store.CredentialBundles().Put(ctx, employee.ID, employee.AuthEpoch, blob, hex.EncodeToString(sum[:16])); err != nil {
+		return err
+	}
 	if err := h.Objects.Put(key, blob); err != nil {
 		return ClassError("oss_write", err)
 	}
@@ -321,7 +329,10 @@ func (h OSSExport) publish(_ context.Context, employee repo.Employee, set model.
 }
 
 // withdraw removes the delivered credentials.
-func (h OSSExport) withdraw(_ context.Context, employee repo.Employee) error {
+func (h OSSExport) withdraw(ctx context.Context, employee repo.Employee) error {
+	if err := h.Store.CredentialBundles().Purge(ctx, employee.ID); err != nil {
+		return err
+	}
 	if err := h.Objects.Delete(ossclient.UserKey(employee.WindowsUser, "credentials.zip")); err != nil {
 		return ClassError("oss_delete", err)
 	}

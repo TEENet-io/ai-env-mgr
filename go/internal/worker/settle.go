@@ -11,12 +11,12 @@ import (
 	"github.com/TEENet-io/ai-env-mgr/internal/repo"
 )
 
-// settleTargets turns a machine's report into a result for its open
+// SettleTargets turns a machine's report into a result for its open
 // targets. Success is the machine running the version, reported after the
 // target was made; failure is the machine saying it tried this generation
 // and could not. Anything else -- deferred, downloading, an older report --
 // leaves the target pending. Nothing here guesses.
-func settleTargets(ctx context.Context, store repo.Store, deviceID string, s model.Status) error {
+func SettleTargets(ctx context.Context, store repo.Store, deviceID string, s model.Status) error {
 	reportedAt, err := time.Parse(time.RFC3339, s.LastSync)
 	if err != nil {
 		return nil // a report with no usable time cannot settle anything

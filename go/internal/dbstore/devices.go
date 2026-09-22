@@ -149,9 +149,9 @@ func (r deviceRepo) Revoke(ctx context.Context, id string) (repo.Device, error) 
 func (r deviceRepo) SetEnrolled(ctx context.Context, id, from string, at time.Time) error {
 	tag, err := r.q.Exec(ctx,
 		`update devices
-		    set channel = 'api', enrolled_at = $2, enrolled_from = $3,
+		    set channel = 'api', status = 'api_v1', enrolled_at = $2, enrolled_from = $3,
 		        reenrol_allowed_until = null, updated_at = now()
-		  where id = $1`, id, at.UTC(), from)
+		  where id = $1 and status <> 'revoked'`, id, at.UTC(), from)
 	if err != nil {
 		return mapError(err, "record enrolment")
 	}
@@ -183,4 +183,16 @@ func (r deviceRepo) SetLogTail(ctx context.Context, id, tail string, at time.Tim
 		return mapError(errNoRow, "store log tail")
 	}
 	return nil
+}
+
+func (r deviceRepo) Reactivate(ctx context.Context, id string) (repo.Device, error) {
+	d, err := scanDevice(r.q.QueryRow(ctx,
+		`update devices
+		    set status = 'api_v1', revoked_at = null, updated_at = now()
+		  where id = $1
+		  returning `+deviceColumns, id))
+	if err != nil {
+		return repo.Device{}, mapError(err, "reactivate device")
+	}
+	return d, nil
 }
