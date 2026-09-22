@@ -4,7 +4,7 @@
 
 **Goal:** agent 不再把 OSS 当命令通道。策略、绑定、发布目标、凭据、状态上报、日志上传全部走控制台的设备 API,控制台改了什么,机器几秒内知道;OSS 只保留两类用途——安装包(CI 传、机器下载)和会话采集归档(机器上传)——并且机器上不再持有共享的 OSS AK,下载和上传都用控制台临时签发的预签名 URL。
 
-**Architecture:** 控制台在现有进程里加一组 `/agent/v1/*` 接口,以设备令牌鉴权(库里只存哈希);"有变化"的判断由一个内存 hub 完成——所有会改到某台机器配置的操作在事务提交后唤醒该机器的长轮询,并有 15 秒一次的兜底重查。agent 侧把"从哪里取配置、往哪里报状态"抽成一个 `Source` 接口,现有的 OSS 实现原样保留为一种 Source(兼容与回退),新增 API Source;主循环用长轮询替代"整点拉取 + HEAD 比对"。存量机器零接触迁移:控制台把一次性注册码写进它现有的 OSS 绑定对象,1.3.0 agent 读到就换设备令牌,然后这条通道就废了。
+**Architecture:** 控制台在现有进程里加一组 `/agent/v1/*` 接口,以设备令牌鉴权(库里只存哈希);"有变化"的判断由一个内存 hub 完成——所有会改到某台机器配置的操作在事务提交后唤醒该机器的长轮询,并有 15 秒一次的兜底重查。agent 侧把"从哪里取配置、往哪里报状态"抽成一个 `Source` 接口,现有的 OSS 实现原样保留为一种 Source(兼容与回退),新增 API Source;主循环用长轮询替代"整点拉取 + HEAD 比对"。注册不需要人工:agent 二进制里编一把机队注册密钥(和今天编 OSS AK 一样),第一次启动拿主机名换一个专属设备令牌,之后只用设备令牌;存量机器升到 1.3.0 后同样自己注册。
 
 **Tech Stack:** Go 1.26、PostgreSQL 15、pgx v5、`net/http`(长轮询,无第三方依赖)、Windows DPAPI(设备令牌落盘)、OSS 预签名 URL(V1 签名,已有 `SignedURL`)。
 
@@ -18,7 +18,7 @@
 
 ## Global Constraints
 
-- 设备令牌、注册码、预签名 URL 不进日志、不进审计 before/after、不进任务备注;库里只存 SHA-256。
+- 设备令牌、机队注册密钥、预签名 URL 不进日志、不进审计 before/after、不进任务备注;库里只存 SHA-256。
 - 每个接口都有超时和大小上限:请求体 ≤ 1 MB(状态、日志尾),长轮询最多挂 25 秒(Cloudflare 上限 100 秒),每台机器同时最多一个长轮询(第二个到来时前一个立即返回 204)。
 - 鉴权失败一律 401 且不区分"没有这台机器"和"令牌不对";同一 IP 连续失败按现有登录限速的口径限速。
 - 1.3.0 agent 必须能在**没有**控制台的环境里照常工作(OSS 回退模式),否则 API 一挂全机队失联;API 模式下控制台不可达时按退避重试(5 秒起、翻倍、最长 5 分钟),期间沿用本地缓存的配置。
@@ -33,7 +33,7 @@
 
 | 方法 路径 | 鉴权 | 作用 |
 |---|---|---|
-| `POST /agent/v1/enrol` | 注册码 | `{enrol_token, hostname, agent_version}` → `{device_id, device_token}`;注册码一次性,过期 24 小时;成功后该设备 `channel=api` |
+| `POST /agent/v1/enrol` | 机队注册密钥 | `{fleet_key, hostname, agent_version}` → `{device_id, device_token}`;主机名不存在则新建设备(未绑定,和今天首次上报一样);已有有效令牌则 409,除非管理员在机器页点过"允许重新注册";成功后 `channel=api` |
 | `GET /agent/v1/config` | 设备令牌 | 本机完整配置:`{etag, policy, binding, credentials_etag, agent_target, codex_target, sync_nonce, restart_codex}`;带 `If-None-Match` 相同则 304 |
 | `GET /agent/v1/wait?etag=` | 设备令牌 | 长轮询:配置变了立刻返回 200 + 新配置;25 秒没变返回 204;每次请求都刷新 `last_seen_at`(它就是心跳) |
 | `GET /agent/v1/credentials` | 设备令牌 | 绑定员工的 `credentials.zip` 字节;`ETag` 头;未绑定 404 |
@@ -61,12 +61,14 @@
 
 新包 `internal/deviceconfig`:`Build(ctx, store, deviceID) (Config, etag, error)`。它就是今天 `worker/export.go` 里 `exportBinding` + `machineTargets` 的组合再加上策略,抽出来后 `OSSExport` 和 `deviceapi` 都调它。凭据仍由 `exportEmployee` 生成 zip,但 zip 同时存一份到库(`credential_bundles(employee_id, epoch, zip bytea, etag, created_at)`),API 直接从库返回,不再依赖 OSS 上的 `users/<user>/credentials.zip`。
 
-### 迁移
+### 注册与迁移
 
-- 设置页新增"设备通道"一节(admin):`控制台 API 地址`(默认 `https://<PublicHost>`)、`自动注册存量机器`(开关)、`继续写 OSS 命令对象`(开关,默认开)。
-- 自动注册开着时,`OSSExport.exportBinding` 给 `channel='oss'` 的机器在绑定对象里多写一个字段 `enrol: {console_url, token}`(注册码每台一个,写入时生成、24 小时过期、用过即废,重新导出会换新的)。1.3.0 agent 在 OSS 模式下读到 `enrol` 就去注册;注册成功后不再读 OSS 命令对象。
-- 新装机器:`agent.exe setup --console https://… --enrol <码>`;注册码在控制台"绑定机器"时生成并显示一次(也可在机器页"重新注册"再生成)。
-- 全机队 `channel=api` 后:关"继续写 OSS 命令对象" → Worker 不再导出 `_policy/_bindings/`,`StatusImport` 停;清空旧对象;1.3.1 起 agent 构建不再注入 OSS AK。
+- **机队注册密钥**:32 字节随机值,控制台侧存在环境文件 `AIENVMGR_FLEET_KEYS`(逗号分隔,可同时认两把,用于换钥过渡),agent 侧构建时 `-ldflags -X main.fleetKey=…` 注入(CI Secret `AGENT_FLEET_KEY`,与今天注入 OSS AK 同一处)。它只能换设备令牌,换不到任何配置或凭据。
+- **注册**:agent 启动时没有设备令牌就去 `enrol`;控制台按主机名找设备,没有就新建(未绑定),有且没有有效令牌就发新令牌;有有效令牌 → 409,agent 记录错误、每小时重试,机器页显示"注册被拒:已有令牌",管理员点"允许重新注册"(把现有令牌作废)即可。这就是防冒名的全部机制。
+- **存量机器**:三台 1.2.14 用"设为全局目标"升到 1.3.0,启动即自注册,无需人工;过渡期控制台照旧写 OSS 命令对象,直到机器页"通道"列全部是 API。
+- **新装机器**:`agent.exe setup` 不加参数,和今天一样;控制台地址编在二进制里(`-X main.consoleURL=https://windows-control.teenet.app`),也可由 `agent.config.json` 覆盖。
+- 设置页"设备通道"只留两个开关:`继续写 OSS 命令对象`(默认开)、`接受 OSS 模式的状态上报`(默认开);全机队 API 后都关掉 → Worker 不再导出 `_policy/_bindings/`、`StatusImport` 停;清空旧对象;1.3.1 起 agent 构建不再注入 OSS AK。
+- **换注册密钥**:控制台 `AIENVMGR_FLEET_KEYS=新,旧` → 发含新钥的 agent 版本 → 全机队升级后去掉旧钥。已注册的机器不受影响(它们用的是设备令牌)。
 
 ### agent(1.3.0)
 
@@ -75,7 +77,7 @@
 - `apiSource`:`internal/agentapi.Client`(设备令牌、基地址、`http.Client` 30 秒超时,`wait` 单独 35 秒)。
 - 令牌落盘:`%ProgramData%\ai-env-mgr\device.token`,Windows 用 DPAPI(LocalSystem 作用域)加密,非 Windows 明文 0600(只有测试)。
 - 主循环:API 模式下 `Wait` 循环替代分钟 ticker;返回"变了"→ `RunOnce`;`RunOnce` 之后照常按策略间隔做全量兜底(默认可放到 60 分钟);状态每次 `RunOnce` 后 POST,长轮询请求本身刷新在线时间,所以不再单独心跳。
-- 启动顺序:有 device.token → API 模式;没有但有 `--enrol` 记录 → 注册;都没有 → OSS 模式,并在每次读到绑定对象时检查 `enrol` 字段。API 连续失败超过 30 分钟且没有本地缓存配置 → 回退 OSS 模式一轮(仅当二进制里还有 AK)。
+- 启动顺序:有 device.token → API 模式;没有 → 用机队注册密钥注册,成功即 API 模式;注册失败(网络、409、控制台没配地址)→ OSS 模式跑这一轮,下轮再试注册。API 连续失败超过 30 分钟 → 回退 OSS 模式一轮(仅当二进制里还有 AK)。
 
 ### 备份
 
@@ -112,7 +114,7 @@ func Build(ctx context.Context, store repo.Store, deviceID string) (Config, erro
 
 **Files:**
 - Create: `go/db/migrations/0011_device_channel.up.sql` / `.down.sql`
-- Modify: `go/internal/repo/repo.go`(`Devices` 加字段与方法;新接口 `DeviceTokens`、`EnrolTokens`、`CredentialBundles`)、`go/internal/dbstore/store.go`
+- Modify: `go/internal/repo/repo.go`(`Devices` 加字段与方法;新接口 `DeviceTokens`、`CredentialBundles`)、`go/internal/dbstore/store.go`
 - Create: `go/internal/dbstore/devicetokens.go`、`devicetokens_test.go`、`bundles.go`
 
 **Interfaces:**
@@ -121,6 +123,7 @@ alter table devices add column channel text not null default 'oss' check (channe
 alter table devices add column enrolled_at timestamptz;
 alter table devices add column log_tail text not null default '';
 alter table devices add column log_tail_at timestamptz;
+alter table devices add column reenrol_allowed_until timestamptz;   -- 管理员"允许重新注册"的时限(1 小时)
 create table device_tokens (
   id uuid primary key default gen_random_uuid(),
   device_id uuid not null references devices(id),
@@ -129,15 +132,6 @@ create table device_tokens (
   last_used_at timestamptz,
   revoked_at timestamptz,
   grace_until timestamptz            -- 轮换后旧令牌还能用到何时
-);
-create table enrol_tokens (
-  id uuid primary key default gen_random_uuid(),
-  device_id uuid not null references devices(id),
-  token_hash bytea not null unique,
-  created_by text not null default '',
-  created_at timestamptz not null default now(),
-  expires_at timestamptz not null,
-  used_at timestamptz
 );
 create table credential_bundles (
   employee_id uuid not null references employees(id),
@@ -155,20 +149,18 @@ type DeviceTokens interface {
 	Revoke(ctx, deviceID string) (int, error)                           // 全部作废
 	Rotate(ctx, deviceID string, grace time.Duration) (plaintext string, err error)
 }
-type EnrolTokens interface {
-	Issue(ctx, deviceID, by string, ttl time.Duration) (plaintext string, err error)   // 同设备旧码作废
-	Redeem(ctx, plaintext string) (Device, error)                                      // 一次性,过期 → ErrNotFound
-	OpenFor(ctx, deviceID string) (exists bool, err error)                             // 导出器判断要不要再发
-}
+// Devices 加:
+//   HasActiveToken(ctx, deviceID) (bool, error)
+//   AllowReenrol(ctx, deviceID string, until time.Time) error      // 机器页按钮;同时 Revoke 现有令牌
 type CredentialBundles interface {
 	Put(ctx, employeeID string, epoch int, zip []byte, etag string) error
 	Live(ctx, employeeID string) (zip []byte, etag string, err error)   // 员工当前 epoch 的
 	Purge(ctx, employeeID string) error
 }
 ```
-- [ ] 测试 `TestDeviceTokensAuthenticateRotateRevoke`、`TestEnrolTokensAreOneShotAndExpire`、`TestCredentialBundlesFollowTheEpoch`。
+- [ ] 测试 `TestDeviceTokensAuthenticateRotateRevoke`、`TestReenrolIsAllowedOnceForAnHour`、`TestCredentialBundlesFollowTheEpoch`。
 - [ ] 迁移 + 实现 + `grants.sql`(`device_tokens`、`enrol_tokens` 不给 `aienv_ro` select);`make check`。
-- [ ] 提交:`dbstore: device tokens, enrolment codes, credential bundles`
+- [ ] 提交:`dbstore: device tokens and credential bundles`
 
 ### Task 3: 设备 API
 
@@ -180,6 +172,7 @@ type CredentialBundles interface {
 **Interfaces:**
 ```go
 type Server struct {
+	FleetKeys []string             // 来自 AIENVMGR_FLEET_KEYS
 	Store    repo.Store
 	Objects  Presigner            // SignedURL / SignedPutURL
 	Hub      *Hub
@@ -190,13 +183,13 @@ type Server struct {
 }
 func (s *Server) Handler() http.Handler
 ```
-- 鉴权:`Authorization: Bearer <token>` → `DeviceTokens().Authenticate`;失败 401;成功把 `repo.Device` 放进 context。每个请求 `MarkSeen(device, agentVersion 来自 User-Agent "ai-env-agent/1.3.0")`。
-- `enrol`:限速(同 IP 每分钟 10 次);`EnrolTokens().Redeem` → `DeviceTokens().Issue` → `devices.channel='api', enrolled_at=now()` → 审计 `device.enrol`(actor `device:<hostname>`)。
+- 鉴权:`Authorization: Bearer <token>` → `DeviceTokens().Authenticate`;失败 401;成功把 `repo.Device` 放进 context。每个请求 `MarkSeen(device, agentVersion 来自 User-Agent "ai-env-agent/1.3.0")`。`enrol` 是唯一不用设备令牌的接口。
+- `enrol`:限速(同 IP 每分钟 10 次);`fleet_key` 与 `AIENVMGR_FLEET_KEYS` 里任一把常量时间比较,不符 401;`Devices().EnsureByHostname` → 若 `HasActiveToken` 且未在 `reenrol_allowed_until` 内 → 409;否则 `DeviceTokens().Issue`,`channel='api', enrolled_at=now()`,审计 `device.enrol`(actor `device:<hostname>`,是否新建、是否重注册)。
 - `config`/`wait`:`deviceconfig.Build`;`wait` 里 `select { hub.Wait(device) | ticker(Recheck) | ctx.Done | time.After(WaitMax) }`。
 - `status`:解码 `model.Status`,`Machine` 必须等于设备主机名(不区分大小写),否则 400;`Reports().Import`;`settleTargets`(现有函数,从 StatusImport 抽成可共用)。
 - `artifact`:版本必须是本机 `binding.AgentTarget/CodexTarget` 或策略全局目标之一,否则 403;302 到 `SignedURL(artifact.ObjectKey, 15m)`。
 - `collect/upload-url`:`user` 必须等于本机绑定员工;`rel` 不得含 `..`、不得以 `/` 开头;返回 `SignedPutURL(ossclient.DataCollectKey(user, rel), 10m, "application/octet-stream")`。
-- [ ] 测试 `TestEnrolThenConfigThenStatus`(端到端:注册码换令牌 → config 200 → 同 etag 304 → 状态 POST 入库并 MarkSeen)。
+- [ ] 测试 `TestEnrolThenConfigThenStatus`(端到端:机队密钥换令牌 → config 200 → 同 etag 304 → 状态 POST 入库并 MarkSeen)、`TestASecondEnrolIsRefusedUntilAllowed`(同主机名再注册 409;`AllowReenrol` 后 200 且旧令牌失效;错的机队密钥 401)。
 - [ ] 测试 `TestWaitReturnsWhenWoken`(goroutine 挂 wait,`hub.Wake` 后 200 且 etag 变;不唤醒 25 秒 204 — 用 `WaitMax=200ms` 跑)。
 - [ ] 测试 `TestArtifactOnlyForTargetedVersions`、`TestCollectURLOnlyForTheBoundUser`、`TestTokensNeverAppearInLogs`(events 假接收器里 grep 令牌明文)。
 - [ ] 实现;`make check`。
@@ -220,14 +213,14 @@ type Notifier interface { Wake(deviceIDs ...string); WakeAll() }
 
 **Files:**
 - Create: `go/db/migrations/…`(不需要;设置走 `settings`:`SettingDeviceChannel = "device_channel"`)
-- Modify: `go/internal/repo/alerts.go`(→ 移到新文件 `settings_types.go`:`DeviceChannelSettings{ConsoleURL string; AutoEnrol bool; WriteOSSObjects bool}`,默认 `{PublicHost, false, true}`)
-- Modify: `go/internal/worker/export.go`(`WriteOSSObjects=false` 时 `exportPolicy/exportBinding` 直接返回 note "oss channel off";`AutoEnrol` 且设备 `channel='oss'` 且无未用注册码 → 发一个并写进对象的 `enrol` 字段)、`status.go`(`WriteOSSObjects=false` 时 StatusImport 跳过)
-- Modify: `go/internal/adminweb/`:`overview.html`(机器表加"通道"列:API/OSS 标签、令牌年龄)、`machine.html`(按钮:生成注册码(显示一次)、吊销令牌、轮换令牌)、`settings.html` 新页签"设备通道"(三个设置)、`handlers.go`/`actions.go`/`roles.go`(admin)、`/log` 页优先读 `devices.log_tail`
+- Modify: `go/internal/repo/alerts.go`(→ 移到新文件 `settings_types.go`:`DeviceChannelSettings{WriteOSSObjects, ImportOSSStatus bool}`,默认都 true)
+- Modify: `go/internal/worker/export.go`(`WriteOSSObjects=false` 时 `exportPolicy/exportBinding` 直接返回 note "oss channel off")、`status.go`(`ImportOSSStatus=false` 时 StatusImport 跳过)
+- Modify: `go/internal/adminweb/`:`overview.html`(机器表加"通道"列:API/OSS 标签、令牌年龄;注册被拒的机器标"待允许重注册")、`machine.html`(按钮:允许重新注册、吊销令牌、轮换令牌)、`settings.html` 新页签"设备通道"(两个开关)、`handlers.go`/`actions.go`/`roles.go`(admin)、`/log` 页优先读 `devices.log_tail`
 - Modify: `docs/操作手册.md`(§4.10 设备注册与迁移)
 
-- [ ] 测试 `TestBindShowsAnEnrolCodeOnce`、`TestAutoEnrolWritesACodeIntoTheBindingObject`(假对象存储里读回 `enrol.token`,且库里对应哈希存在)、`TestOSSChannelOffStopsExports`、`TestLogPagePrefersTheDatabaseTail`。
+- [ ] 测试 `TestAllowReenrolRevokesAndOpensAWindow`、`TestOSSChannelOffStopsExports`、`TestLogPagePrefersTheDatabaseTail`。
 - [ ] 实现;`make check`。
-- [ ] 提交:`adminweb: device channel settings, enrolment codes, token controls`
+- [ ] 提交:`adminweb: device channel settings and token controls`
 
 ### Task 6: agent `Source` 抽象与 OSS 实现
 
@@ -252,7 +245,7 @@ type Source interface {
 }
 ```
 - `ossSource.Config` = 读 `_policy/policy.json` + `_bindings/<机器>` 拼成 `DeviceConfig`(etag 取两者 ETag 拼接);`Wait` = 1.2.16 的 HEAD 比对,睡 1 分钟。
-- [ ] 测试:现有 `sync_test.go` 全部通过 `ossSource` 跑通(这是"行为不变"的证明);新增 `TestOSSSourceConfigCarriesEnrol`。
+- [ ] 测试:现有 `sync_test.go` 全部通过 `ossSource` 跑通(这是"行为不变"的证明)。
 - [ ] 提交:`agentcore: a Source abstraction, with OSS as the first implementation`
 
 ### Task 7: agent API 客户端、令牌落盘、注册
@@ -260,12 +253,13 @@ type Source interface {
 **Files:**
 - Create: `go/internal/agentapi/client.go`、`client_test.go`(httptest 服务端)、`go/internal/agentapi/tokenstore_windows.go`(DPAPI:`golang.org/x/sys/windows` 的 `CryptProtectData`)、`tokenstore_other.go`、`tokenstore_test.go`
 - Create: `go/internal/agentcore/source_api.go`、`source_api_test.go`
-- Modify: `go/cmd/agent/main.go`(启动选路:令牌 → API;`--enrol`/OSS `enrol` 字段 → 注册;否则 OSS)、`setup.go`(`--console`、`--enrol` 参数,写 `%ProgramData%\ai-env-mgr\enrol.json` 供服务首次启动使用,用完删)、`credentials.go`(`consoleURL` ldflags 变量,默认空)
+- Modify: `go/cmd/agent/main.go`(启动选路:令牌 → API;否则用机队密钥注册;失败则 OSS 模式这一轮)、`credentials.go`(`consoleURL`、`fleetKey` 两个 ldflags 变量,默认空;空则永远 OSS 模式)、`internal/config`(`agent.config.json` 可覆盖 `consoleUrl`)
+- Modify: `.github/workflows/release.yml`(注入 `AGENT_FLEET_KEY`、`AGENT_CONSOLE_URL` 两个 Secret/变量,与 OSS AK 同一处)
 
 **Interfaces:**
 ```go
 type Client struct{ BaseURL string; Token string; HTTP *http.Client; UserAgent string }
-func Enrol(ctx, baseURL, enrolToken, hostname, version string) (deviceID, deviceToken string, err error)
+func Enrol(ctx, baseURL, fleetKey, hostname, version string) (deviceID, deviceToken string, err error)   // 409 → ErrAlreadyEnrolled
 func (c *Client) Config(ctx) (deviceconfig.Config, error)          // If-None-Match 由 apiSource 管
 func (c *Client) Wait(ctx, etag string) (cfg *deviceconfig.Config, changed bool, err error)
 func (c *Client) Credentials(ctx) ([]byte, string, error)
@@ -276,8 +270,8 @@ func (c *Client) CollectUploadURL(ctx, user, rel string) (string, error)
 func (c *Client) Rotate(ctx) (newToken string, err error)
 ```
 - `apiSource.Wait` 出错时按退避(5s→…→5m)睡再返回 `changed=false`;连续失败 30 分钟且 `ossFallback != nil` → 主循环切 OSS 模式一轮后再试 API。
-- [ ] 测试 `TestEnrolStoresTheTokenAndSwitchesToAPI`(假服务端;令牌文件权限 0600;明文不在日志)、`TestAPISourceUsesIfNoneMatch`、`TestWaitBacksOffWhenTheConsoleIsDown`、`TestArtifactFollowsThePresignedRedirectAndVerifiesSHA`。
-- [ ] 提交:`agent: talk to the console directly, enrol with a one-time code`
+- [ ] 测试 `TestEnrolStoresTheTokenAndSwitchesToAPI`(假服务端;令牌文件权限 0600;机队密钥与令牌明文都不在日志)、`TestEnrolRefusedFallsBackToOSSAndRetriesHourly`、`TestAPISourceUsesIfNoneMatch`、`TestWaitBacksOffWhenTheConsoleIsDown`、`TestArtifactFollowsThePresignedRedirectAndVerifiesSHA`。
+- [ ] 提交:`agent: talk to the console directly, enrolling with the fleet key`
 
 ### Task 8: agent 主循环改为长轮询
 
@@ -292,7 +286,7 @@ func (c *Client) Rotate(ctx) (newToken string, err error)
 ### Task 9: 发布与迁移执行(运维步骤,不是代码)
 
 - [ ] 打 `v1.3.0`,CI 传 OSS,版本库登记、测试机验收(§4.7 表 + 本计划"验收")。
-- [ ] 设置页"设备通道":填 API 地址、开"自动注册存量机器"。用"设为全局目标"把三台机器升到 1.3.0(它们是 1.2.14,只认全局目标);观察机器页"通道"列逐台变 API。
+- [ ] 控制台环境文件加 `AIENVMGR_FLEET_KEYS`(与 CI Secret `AGENT_FLEET_KEY` 同值),重启控制台。用"设为全局目标"把三台机器升到 1.3.0(它们是 1.2.14,只认全局目标);观察机器页"通道"列逐台变 API。
 - [ ] 全部 API 后:关"继续写 OSS 命令对象";确认 `_status/` 不再更新、告警无新离线;一周后清空 `_policy/`、`_bindings/`、`_status/`、`_logs/`、`users/*/credentials.zip`。
 - [ ] `docs/操作手册.md`、`docs/OSS布局.md` 更新:OSS 只剩 `_agent/`、`_codex/`、`data_collect/`、`_backup/`。
 
@@ -315,7 +309,7 @@ func (c *Client) Rotate(ctx) (newToken string, err error)
 
 - 控制台改策略、绑定、发目标、重发凭据、"立即同步"、"关闭 Codex",测试机 3 秒内开始处理(日志 `console changed`),状态页 5 秒内更新。
 - 拔掉控制台(停服务)10 分钟:机器日志显示退避重试,本地策略照常生效,凭据不丢;恢复后 1 分钟内重新连上,不重复同步。
-- 令牌吊销后机器所有请求 401,机器页显示"未注册";重新生成注册码、手工 `agent.exe setup --enrol` 后恢复。
+- 令牌吊销后机器所有请求 401,机器页显示"未注册";agent 一小时内自行重注册被 409 拒绝,管理员点"允许重新注册"后下一次重试成功;拿错的机队密钥去注册得 401。
 - 机器上 `strings agent.exe | grep -i LTAI` 在 1.3.1 后为空(1.3.0 仍含 AK,用于回退)。
 - 会话采集在 API 模式下照常上传到 `data_collect/`,OSS 侧只见预签名 PUT;下载安装包只见预签名 GET。
 - 备份:`_backup/` 每天一个文件,30 天滚动。
