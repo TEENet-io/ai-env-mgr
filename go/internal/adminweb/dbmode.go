@@ -140,6 +140,11 @@ func (s *Server) openDatabaseMode(ctx context.Context, opts DatabaseOptions) err
 	if signer, ok := objects.(deviceapi.Presigner); ok {
 		st.devices.Objects = signer
 	}
+	if dc, _, err := repo.LoadDeviceChannelSettings(context.Background(), store.Settings()); err == nil {
+		if nets, err := dc.ParsedCIDRs(); err == nil {
+			st.devices.SetEnrolCIDRs(nets)
+		}
+	}
 	if s.opts.SLSProject != "" {
 		st.sls = slsclient.New(s.opts.SLSEndpoint, s.opts.SLSProject, opts.OSSAccessKeyID, opts.OSSAccessKeySecret)
 	}
@@ -251,6 +256,7 @@ func (s *Server) buildWorker(st *dbState) *worker.Worker {
 	w.Register(worker.TaskAlertEval, worker.AlertEval{Store: st.store, Gateway: users})
 	w.Register(worker.TaskAlertNotify, worker.AlertNotify{Store: st.store, Channels: s.alertChannels, BaseURL: s.consoleURL()})
 	w.Register(worker.TaskCredentialRotation, worker.CredentialRotation{Store: st.store, Ops: st.ops})
+	w.Register(worker.TaskDevicePrune, worker.DevicePrune{Store: st.store})
 	if src, ok := st.objects.(worker.PackageSource); ok {
 		w.Register(worker.TaskReleaseScan, &worker.ReleaseScan{Store: st.store, Objects: src, Ops: st.ops})
 	}

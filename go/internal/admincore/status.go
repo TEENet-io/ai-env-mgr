@@ -22,6 +22,9 @@ type MachineState struct {
 	Status  model.Status
 	Binding model.Binding
 	Bound   bool
+	// Channel is how the agent talks to the console: "api" or "oss" (empty
+	// outside the database mode).
+	Channel string
 
 	Stale       bool     // hasn't reported within the requested threshold
 	Missing     bool     // bound, but has never reported at all

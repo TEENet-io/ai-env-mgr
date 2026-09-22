@@ -79,6 +79,8 @@ const (
 	ActionUnbind        = "machine.unbind"
 	ActionRestartCodex  = "machine.codex_restart"
 	ActionRequestSync   = "machine.sync"
+	ActionAllowReenrol  = "machine.allow_reenrol"
+	ActionRevokeToken   = "machine.revoke_token"
 	ActionPublishPolicy = "policy.publish"
 
 	ActionArtifactRegister = "release.artifact_register"
@@ -807,4 +809,52 @@ func mustJSON(v any) []byte {
 		return []byte(`{}`)
 	}
 	return b
+}
+
+// AllowReenrol opens a one-hour window in which the machine may enrol again
+// even though its token is still live: a reinstalled disk, a lost token
+// file. The old token keeps working until the new enrolment replaces it.
+func (s *Service) AllowReenrol(ctx context.Context, hostname, actor, requestID string) (time.Time, error) {
+	until := s.now().Add(time.Hour)
+	err := s.store.InTx(ctx, func(tx repo.Store) error {
+		device, err := tx.Devices().ByHostname(ctx, hostname)
+		if err != nil {
+			return err
+		}
+		if err := tx.Devices().AllowReenrol(ctx, device.ID, until); err != nil {
+			return err
+		}
+		return s.auditTarget(ctx, tx, actor, requestID, ActionAllowReenrol, "device", device.ID,
+			nil, map[string]any{"hostname": device.Hostname, "until": until.UTC().Format(time.RFC3339)})
+	})
+	if err != nil {
+		return time.Time{}, fmt.Errorf("allow %s to enrol again: %w", hostname, err)
+	}
+	return until, nil
+}
+
+// RevokeDeviceToken ends the machine's token at once. Its next request is
+// refused and its agent enrols again, which succeeds because nothing is
+// live any more -- so this is "make the machine start over", not "lock it
+// out"; forgetting the machine is what locks it out.
+func (s *Service) RevokeDeviceToken(ctx context.Context, hostname, actor, requestID string) error {
+	var deviceID string
+	err := s.store.InTx(ctx, func(tx repo.Store) error {
+		device, err := tx.Devices().ByHostname(ctx, hostname)
+		if err != nil {
+			return err
+		}
+		deviceID = device.ID
+		n, err := tx.DeviceTokens().Revoke(ctx, device.ID)
+		if err != nil {
+			return err
+		}
+		return s.auditTarget(ctx, tx, actor, requestID, ActionRevokeToken, "device", device.ID,
+			nil, map[string]any{"hostname": device.Hostname, "revoked": n})
+	})
+	if err != nil {
+		return fmt.Errorf("revoke the token of %s: %w", hostname, err)
+	}
+	s.wake(deviceID)
+	return nil
 }

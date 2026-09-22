@@ -112,8 +112,10 @@ func (b dbBackend) Machines(ctx context.Context) ([]admincore.MachineState, erro
 				binding = bindingFrom(bd, e)
 			}
 		}
-		states = append(states, admincore.AssembleMachineState(
-			d.Hostname, st, hasStatus, binding, bound, disabled, freshAfter))
+		state := admincore.AssembleMachineState(
+			d.Hostname, st, hasStatus, binding, bound, disabled, freshAfter)
+		state.Channel = d.Channel
+		states = append(states, state)
 	}
 	sort.Slice(states, func(i, j int) bool {
 		return strings.ToLower(states[i].Machine) < strings.ToLower(states[j].Machine)
@@ -266,7 +268,12 @@ func mergeJSON(into map[string]any, prefix string, raw []byte) {
 	}
 }
 
-func (b dbBackend) FetchLog(_ context.Context, machine string) ([]byte, error) {
+// FetchLog prefers what the agent sent to the console; a machine still on
+// the bucket channel has its log in the bucket.
+func (b dbBackend) FetchLog(ctx context.Context, machine string) ([]byte, error) {
+	if d, err := b.store.Devices().ByHostname(ctx, machine); err == nil && d.LogTail != "" {
+		return []byte(d.LogTail), nil
+	}
 	data, _, err := b.objects.Get(ossclient.LogKey(machine))
 	return data, err
 }

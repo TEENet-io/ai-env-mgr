@@ -30,7 +30,7 @@ func (s *Server) handleEnrol(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "too many enrolments from this address; wait a minute", http.StatusTooManyRequests)
 		return
 	}
-	if len(s.EnrolCIDRs) > 0 && !inAny(ip, s.EnrolCIDRs) {
+	if nets := s.enrolCIDRs(); len(nets) > 0 && !inAny(ip, nets) {
 		http.Error(w, "enrolment is not accepted from this address", http.StatusForbidden)
 		return
 	}

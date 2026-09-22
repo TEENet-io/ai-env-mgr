@@ -41,7 +41,9 @@ type Server struct {
 	// the console applies to sign-in.
 	BehindProxy bool
 	// EnrolCIDRs, when set, is the only place enrolments may come from.
+	// Read through enrolCIDRs; the settings page replaces it at runtime.
 	EnrolCIDRs []net.IPNet
+	cidrMu     sync.RWMutex
 
 	// WaitMax bounds a long poll; Recheck is how often it re-reads the
 	// configuration without being woken.
@@ -196,6 +198,20 @@ func readJSON(w http.ResponseWriter, r *http.Request, v any) bool {
 		return false
 	}
 	return true
+}
+
+// SetEnrolCIDRs replaces the enrolment allow-list; nil or empty means any
+// address.
+func (s *Server) SetEnrolCIDRs(nets []net.IPNet) {
+	s.cidrMu.Lock()
+	defer s.cidrMu.Unlock()
+	s.EnrolCIDRs = nets
+}
+
+func (s *Server) enrolCIDRs() []net.IPNet {
+	s.cidrMu.RLock()
+	defer s.cidrMu.RUnlock()
+	return s.EnrolCIDRs
 }
 
 // clientIP is who is calling, by the same rule the console's sign-in uses.

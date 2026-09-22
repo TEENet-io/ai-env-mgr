@@ -101,6 +101,21 @@
   {{end}}
   {{end}}
 
+  {{if eq .Tab "devices"}}
+  {{with .DeviceChannel}}
+  <h2>设备通道</h2>
+  <form method="post" action="/settings/device-channel" class="form">
+    <input type="hidden" name="csrf" value="{{$.CSRF}}">
+    <input type="hidden" name="version" value="{{.Version}}">
+    <label>继续写 OSS 命令对象<select name="write_oss"><option value="1"{{if .WriteOSSObjects}} selected{{end}}>是</option><option value="0"{{if not .WriteOSSObjects}} selected{{end}}>否</option></select></label>
+    <label>继续从 OSS 导入状态<select name="import_status"><option value="1"{{if .ImportOSSStatus}} selected{{end}}>是</option><option value="0"{{if not .ImportOSSStatus}} selected{{end}}>否</option></select></label>
+    <label class="wide">允许注册的 IP 段（每行一个，空为不限）<textarea name="enrol_cidrs" rows="3" placeholder="47.84.0.0/16">{{.CIDRsText}}</textarea></label>
+    <button type="submit">保存</button>
+  </form>
+  <p class="hint">机器上的 agent 从 1.3.0 起直连控制台：启动时用主机名换一个设备令牌，之后策略、绑定、凭据都从这里拿，状态也报到这里。总览的"通道"列显示每台机器走的是哪条路。所有机器都变成 API 之后，把上面两个开关关掉，OSS 就只剩安装包、采集归档和备份。</p>
+  {{end}}
+  {{end}}
+
   {{if and (eq .Tab "general") .Stats}}
   <h2>已采集</h2>
   <div class="panel scroll">

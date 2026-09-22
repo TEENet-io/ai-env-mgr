@@ -116,6 +116,18 @@ func (h OSSExport) Run(ctx context.Context, task repo.Task) (Result, error) {
 	return result, err
 }
 
+// ossChannelOff reports whether the bucket has stopped being a channel: the
+// administrator switched the objects off once every machine talks to the
+// console directly. The exports still run, because they store the
+// credential bundles the device API serves and wake the machines.
+func (h OSSExport) ossChannelOff(ctx context.Context) (bool, error) {
+	settings, _, err := repo.LoadDeviceChannelSettings(ctx, h.Store.Settings())
+	if err != nil {
+		return false, err
+	}
+	return !settings.WriteOSSObjects, nil
+}
+
 // Notifier wakes agents waiting on the console for their configuration.
 type Notifier interface {
 	Wake(deviceIDs ...string)
@@ -152,6 +164,9 @@ func (h OSSExport) notify(ctx context.Context, payload exportPayload) {
 // publishes in quick succession queue two exports, and the older one must not
 // be able to put the earlier policy back after the newer one landed.
 func (h OSSExport) exportPolicy(ctx context.Context, requested int64) (Result, error) {
+	if off, err := h.ossChannelOff(ctx); err != nil || off {
+		return Result{Note: "oss channel off; nothing written"}, err
+	}
 	current, err := h.Store.Policies().Current(ctx)
 	if errors.Is(err, repo.ErrNotFound) {
 		return Result{}, Permanent(errors.New("no policy has been published"))
@@ -192,6 +207,9 @@ func (h OSSExport) exportPolicy(ctx context.Context, requested int64) (Result, e
 // exportBinding writes, or removes, one machine's binding object. What
 // goes in it is deviceconfig's answer, the same one the device API gives.
 func (h OSSExport) exportBinding(ctx context.Context, deviceID string) (Result, error) {
+	if off, err := h.ossChannelOff(ctx); err != nil || off {
+		return Result{Note: "oss channel off; nothing written"}, err
+	}
 	cfg, err := deviceconfig.Build(ctx, h.Store, deviceID)
 	if errors.Is(err, repo.ErrNotFound) {
 		return Result{}, Permanent(fmt.Errorf("machine %s no longer exists", deviceID))
@@ -330,7 +348,13 @@ func (h OSSExport) exportEmployee(ctx context.Context, employeeID string) (Resul
 func (h OSSExport) publish(ctx context.Context, employee repo.Employee, set model.CredentialSet) error {
 	key := ossclient.UserKey(employee.WindowsUser, "credentials.zip")
 	existing := model.CredentialSet{}
-	data, _, err := h.Objects.Get(key)
+	var data []byte
+	err := ossclient.ErrNotFound
+	if off, offErr := h.ossChannelOff(ctx); offErr != nil {
+		return offErr
+	} else if !off {
+		data, _, err = h.Objects.Get(key)
+	}
 	switch {
 	case err == nil:
 		existing, err = creds.Unpack(data)
@@ -359,6 +383,9 @@ func (h OSSExport) publish(ctx context.Context, employee repo.Employee, set mode
 	if err := h.Store.CredentialBundles().Put(ctx, employee.ID, employee.AuthEpoch, blob, hex.EncodeToString(sum[:16])); err != nil {
 		return err
 	}
+	if off, err := h.ossChannelOff(ctx); err != nil || off {
+		return err
+	}
 	if err := h.Objects.Put(key, blob); err != nil {
 		return ClassError("oss_write", err)
 	}
@@ -368,6 +395,9 @@ func (h OSSExport) publish(ctx context.Context, employee repo.Employee, set mode
 // withdraw removes the delivered credentials.
 func (h OSSExport) withdraw(ctx context.Context, employee repo.Employee) error {
 	if err := h.Store.CredentialBundles().Purge(ctx, employee.ID); err != nil {
+		return err
+	}
+	if off, err := h.ossChannelOff(ctx); err != nil || off {
 		return err
 	}
 	if err := h.Objects.Delete(ossclient.UserKey(employee.WindowsUser, "credentials.zip")); err != nil {

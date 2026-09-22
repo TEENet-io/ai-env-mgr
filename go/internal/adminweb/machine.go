@@ -18,9 +18,12 @@ type machinePage struct {
 	Report   *model.Status
 	LastSync *time.Time
 	Online   bool
-	Bindings []bindingRow
-	Targets  []machineTargetRow
-	Events   []auditRow
+	// TokenIssuedAt is when the machine's live device token was minted;
+	// nil when it holds none (bucket channel, or revoked).
+	TokenIssuedAt *time.Time
+	Bindings      []bindingRow
+	Targets       []machineTargetRow
+	Events        []auditRow
 }
 
 type bindingRow struct {
@@ -45,6 +48,9 @@ func (s *Server) handleMachineDetail(w http.ResponseWriter, r *http.Request, ses
 	}
 	data := newPage(sess, r, "overview")
 	page := &machinePage{Device: device}
+	if at, err := s.dbm.store.DeviceTokens().IssuedAt(ctx, device.ID); err == nil {
+		page.TokenIssuedAt = &at
+	}
 
 	if report, err := s.dbm.store.Reports().Get(ctx, device.ID); err == nil {
 		var status model.Status

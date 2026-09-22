@@ -38,6 +38,13 @@ type alertSettingsView struct {
 	Version int
 }
 
+// channelSettingsView is the device channel tab.
+type channelSettingsView struct {
+	repo.DeviceChannelSettings
+	Version   int
+	CIDRsText string
+}
+
 // rotationView is the token rotation form.
 type rotationView struct {
 	repo.RotationSettings
@@ -296,6 +303,11 @@ func (s *Server) settingsExtras(r *http.Request, data *pageData) {
 	} else {
 		data.Error = "读取轮换设置失败：" + err.Error()
 	}
+	if dc, version, err := repo.LoadDeviceChannelSettings(ctx, s.dbm.store.Settings()); err == nil {
+		data.DeviceChannel = &channelSettingsView{DeviceChannelSettings: dc, Version: version, CIDRsText: strings.Join(dc.EnrolCIDRs, "\n")}
+	} else {
+		data.Error = "读取设备通道设置失败：" + err.Error()
+	}
 	if c, version, err := repo.LoadChannelSettings(ctx, s.dbm.store.Settings()); err == nil {
 		if c.Webhook.Format == "" {
 			c.Webhook.Format = notify.FormatGeneric
@@ -329,4 +341,44 @@ func (s *Server) actionRotationSettings(sess *session, r *http.Request) error {
 	}
 	value, _ := json.Marshal(after)
 	return s.dbm.ops.SaveSetting(r.Context(), repo.SettingRotation, value, version, ops.ActionRotationSettings, before, after, sess.actor, s.clientKey(r))
+}
+
+func (s *Server) actionDeviceChannel(sess *session, r *http.Request) error {
+	before, version, err := repo.LoadDeviceChannelSettings(r.Context(), s.dbm.store.Settings())
+	if err != nil {
+		return err
+	}
+	if v := formInt(r, "version"); v != version {
+		return errors.New("这页的设置在你打开后已被别人改过，请刷新后重试")
+	}
+	after := repo.DeviceChannelSettings{
+		WriteOSSObjects: formValue(r, "write_oss") == "1",
+		ImportOSSStatus: formValue(r, "import_status") == "1",
+		EnrolCIDRs:      splitRecipients(formValue(r, "enrol_cidrs")),
+	}
+	nets, err := after.ParsedCIDRs()
+	if err != nil {
+		return err
+	}
+	value, _ := json.Marshal(after)
+	if err := s.dbm.ops.SaveSetting(r.Context(), repo.SettingDeviceChannel, value, version, ops.ActionDeviceChannel, before, after, sess.actor, s.clientKey(r)); err != nil {
+		return err
+	}
+	s.dbm.devices.SetEnrolCIDRs(nets)
+	return nil
+}
+
+func (s *Server) actionAllowReenrol(sess *session, r *http.Request) (string, error) {
+	until, err := s.dbm.ops.AllowReenrol(r.Context(), formValue(r, "machine"), sess.actor, s.clientKey(r))
+	if err != nil {
+		return "", err
+	}
+	return "这台机器在 " + until.Local().Format("15:04") + " 前可以重新注册", nil
+}
+
+func (s *Server) actionRevokeToken(sess *session, r *http.Request) (string, error) {
+	if err := s.dbm.ops.RevokeDeviceToken(r.Context(), formValue(r, "machine"), sess.actor, s.clientKey(r)); err != nil {
+		return "", err
+	}
+	return "令牌已吊销；机器下一次请求会被拒，随后自己重新注册", nil
 }

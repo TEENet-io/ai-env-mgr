@@ -392,6 +392,10 @@ func (s *Server) Handler() http.Handler {
 		mux.HandleFunc("/settings/alerts", s.requirePost("/settings/alerting", s.actionAlertSettings))
 		mux.HandleFunc("/settings/alert-channels", s.requirePost("/settings/channels", s.actionAlertChannels))
 		mux.HandleFunc("/settings/rotation", s.requirePost("/settings/alerting", s.actionRotationSettings))
+		mux.HandleFunc("/settings/devices", s.requireSession(s.handleSettingsTab("devices")))
+		mux.HandleFunc("/settings/device-channel", s.requirePost("/settings/devices", s.actionDeviceChannel))
+		mux.HandleFunc("/machines/allow-reenrol", s.requirePostNotice("/overview", s.actionAllowReenrol))
+		mux.HandleFunc("/machines/revoke-token", s.requirePostNotice("/overview", s.actionRevokeToken))
 		// The agents' own API: device tokens, not administrator sessions.
 		mux.Handle("/agent/v1/", s.dbm.devices.Handler())
 		mux.HandleFunc("/usage", s.requireSession(s.handleUsage))

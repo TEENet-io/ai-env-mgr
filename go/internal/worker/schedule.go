@@ -27,6 +27,8 @@ const (
 	TaskAlertNotify = "alert_notify"
 	// TaskCredentialRotation replaces tokens past their maximum age.
 	TaskCredentialRotation = "credential_rotation"
+	// TaskDevicePrune forgets self-enrolled machines nobody assigned.
+	TaskDevicePrune = "device_prune"
 
 	EveryStatusImport  = time.Minute
 	EveryReleaseScan   = 24 * time.Hour
@@ -34,6 +36,7 @@ const (
 	EveryAlertEval     = 10 * time.Minute
 	EveryAlertNotify   = time.Minute
 	EveryRotation      = 24 * time.Hour
+	EveryDevicePrune   = 24 * time.Hour
 	// Rotation runs an hour into the day, after the usage snapshot and
 	// before anybody is at their desk in Asia.
 	AfterRotation = time.Hour
@@ -61,6 +64,7 @@ func Schedule(ctx context.Context, store repo.Store, onError func(error)) {
 			{TaskAlertEval, EveryAlertEval, 0, 1},
 			{TaskAlertNotify, EveryAlertNotify, 0, 1},
 			{TaskCredentialRotation, EveryRotation, AfterRotation, 2},
+			{TaskDevicePrune, EveryDevicePrune, 2 * time.Hour, 2},
 			{repo.TaskAuditPublish, EveryAuditPublish, 0, 2},
 			{repo.TaskReconcile, EveryReconcile, 0, 3},
 		} {

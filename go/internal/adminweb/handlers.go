@@ -107,6 +107,7 @@ type pageData struct {
 	AlertSettings *alertSettingsView
 	Channels      *channelView
 	Rotation      *rotationView
+	DeviceChannel *channelSettingsView
 	OpenAlerts    int // drawn in the nav on every page
 	// Tab is the entry inside the nav group this page is (see the tabs-*
 	// templates); empty for a group with no second level.

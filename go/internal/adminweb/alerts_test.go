@@ -1,7 +1,9 @@
 package adminweb
 
 import (
+	"encoding/json"
 	"net/http"
+	"net/http/httptest"
 	"net/url"
 	"strings"
 	"testing"
@@ -187,5 +189,95 @@ func TestRotationSettingsAndTheTokenColumn(t *testing.T) {
 	list = dbGet(t, h, "/users", cookie).Body.String()
 	if !strings.Contains(list, " · 45 天") || !strings.Contains(list, "待轮换") {
 		t.Fatalf("an old token: %s", firstLine(list, "已发放"))
+	}
+}
+
+func TestDeviceChannelPageAndMachineControls(t *testing.T) {
+	s, _ := newDatabaseServer(t)
+	h := s.Handler()
+	cookie := signedIn(t, s)
+	ctx := t.Context()
+	csrf := csrfFrom(t, s, cookie, "/settings")
+
+	page := dbGet(t, h, "/settings/devices", cookie).Body.String()
+	if !strings.Contains(page, "设备通道") || !strings.Contains(page, `name="write_oss"`) {
+		t.Fatal("the devices tab lacks its form")
+	}
+	if rec := dbPost(t, h, "/settings/device-channel", url.Values{"csrf": {csrf}, "version": {"0"}, "write_oss": {"1"}, "import_status": {"1"}, "enrol_cidrs": {"198.51.100.0/24\n203.0.113.9"}}, cookie); strings.Contains(rec.Header().Get("Location"), "err=") {
+		t.Fatalf("save: %s", rec.Header().Get("Location"))
+	}
+	got, _, _ := repo.LoadDeviceChannelSettings(ctx, s.dbm.store.Settings())
+	if len(got.EnrolCIDRs) != 2 || !got.WriteOSSObjects {
+		t.Fatalf("stored = %+v", got)
+	}
+	if rec := dbPost(t, h, "/settings/device-channel", url.Values{"csrf": {csrf}, "version": {"1"}, "write_oss": {"1"}, "import_status": {"1"}, "enrol_cidrs": {"not-a-network"}}, cookie); !strings.Contains(rec.Header().Get("Location"), "err=") {
+		t.Fatal("a bad network must be refused")
+	}
+	// The API now refuses enrolment from outside the list.
+	req := httptest.NewRequest(http.MethodPost, "/agent/v1/enrol", strings.NewReader(`{"hostname":"PC-1"}`))
+	req.RemoteAddr = "192.0.2.1:1"
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+	if rec.Code != http.StatusForbidden {
+		t.Fatalf("enrol from outside the list: %d", rec.Code)
+	}
+	req = httptest.NewRequest(http.MethodPost, "/agent/v1/enrol", strings.NewReader(`{"hostname":"PC-1","agentVersion":"1.3.0"}`))
+	req.RemoteAddr = "203.0.113.9:1"
+	rec = httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+	if rec.Code != 200 {
+		t.Fatalf("enrol from inside the list: %d %s", rec.Code, rec.Body.String())
+	}
+	var enrolled struct {
+		Token string `json:"deviceToken"`
+	}
+	json.Unmarshal(rec.Body.Bytes(), &enrolled)
+
+	// The overview shows the channel; the machine page shows the token and
+	// offers the two controls.
+	if body := dbGet(t, h, "/overview", cookie).Body.String(); !strings.Contains(body, ">API<") {
+		t.Fatal("the overview lacks the channel column")
+	}
+	machine := dbGet(t, h, "/machines/detail?machine=PC-1", cookie).Body.String()
+	if !strings.Contains(machine, "直连控制台") || !strings.Contains(machine, "签发于") || !strings.Contains(machine, "203.0.113.9") || !strings.Contains(machine, "允许重新注册") {
+		t.Fatal("the machine page lacks the channel section")
+	}
+	// The log tail the agent sent is what the log page shows.
+	req = httptest.NewRequest(http.MethodPost, "/agent/v1/log", strings.NewReader("agent log line\n"))
+	req.Header.Set("Authorization", "Bearer "+enrolled.Token)
+	rec = httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+	if rec.Code != 204 {
+		t.Fatalf("log: %d", rec.Code)
+	}
+	if body := dbGet(t, h, "/log?machine=PC-1", cookie).Body.String(); !strings.Contains(body, "agent log line") {
+		t.Fatal("the log page must show the tail the agent sent")
+	}
+
+	// Allow re-enrolment, then revoke: both audited, both change the API's answer.
+	if rec := dbPost(t, h, "/machines/allow-reenrol", url.Values{"csrf": {csrf}, "machine": {"PC-1"}}, cookie); strings.Contains(rec.Header().Get("Location"), "err=") {
+		t.Fatalf("allow: %s", rec.Header().Get("Location"))
+	}
+	d, _ := s.dbm.store.Devices().ByHostname(ctx, "PC-1")
+	if d.ReenrolAllowedUntil == nil {
+		t.Fatal("the window did not open")
+	}
+	if rec := dbPost(t, h, "/machines/revoke-token", url.Values{"csrf": {csrf}, "machine": {"PC-1"}}, cookie); strings.Contains(rec.Header().Get("Location"), "err=") {
+		t.Fatalf("revoke: %s", rec.Header().Get("Location"))
+	}
+	req = httptest.NewRequest(http.MethodGet, "/agent/v1/config", nil)
+	req.Header.Set("Authorization", "Bearer "+enrolled.Token)
+	rec = httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("after revocation: %d", rec.Code)
+	}
+	events, _, _ := s.dbm.store.Audit().Search(ctx, repo.AuditFilter{TargetType: "device", Limit: 10})
+	actions := ""
+	for _, e := range events {
+		actions += e.Action + " "
+	}
+	if !strings.Contains(actions, "machine.allow_reenrol") || !strings.Contains(actions, "machine.revoke_token") || !strings.Contains(actions, "device.enrol") {
+		t.Fatalf("audit actions = %s", actions)
 	}
 }

@@ -94,6 +94,7 @@ const (
 	ActionAlertSettings    = "settings.alerts"
 	ActionAlertChannels    = "settings.alert_channels"
 	ActionRotationSettings = "settings.rotation"
+	ActionDeviceChannel    = "settings.device_channel"
 	ActionAlertAck         = "alert.ack"
 	ActionAlertResolve     = "alert.resolve"
 )

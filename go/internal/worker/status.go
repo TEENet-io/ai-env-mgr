@@ -31,6 +31,11 @@ type StatusImport struct {
 
 // Run imports every status object that has changed since the last pass.
 func (h StatusImport) Run(ctx context.Context, _ repo.Task) (Result, error) {
+	if settings, _, err := repo.LoadDeviceChannelSettings(ctx, h.Store.Settings()); err != nil {
+		return Result{}, err
+	} else if !settings.ImportOSSStatus {
+		return Result{Note: "oss status import off"}, nil
+	}
 	keys, err := h.Objects.List(ossclient.StatusPrefix)
 	if err != nil {
 		return Result{}, ClassError("oss_list", err)

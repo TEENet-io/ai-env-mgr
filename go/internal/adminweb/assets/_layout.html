@@ -60,6 +60,7 @@ sets .Tab to the entry it is. */}}
   {{if .DB}}
   <a href="/settings/alerting"{{if eq .Tab "alerting"}} class="active"{{end}}>告警与轮换</a>
   <a href="/settings/channels"{{if eq .Tab "channels"}} class="active"{{end}}>通知渠道</a>
+  <a href="/settings/devices"{{if eq .Tab "devices"}} class="active"{{end}}>设备通道</a>
   {{if eq .Role "admin"}}<a href="/admins"{{if eq .Tab "admins"}} class="active"{{end}}>管理员</a>{{end}}
   {{end}}
 </nav>{{end}}
