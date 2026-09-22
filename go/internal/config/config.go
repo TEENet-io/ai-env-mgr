@@ -22,6 +22,9 @@ type Config struct {
 	AccessKeyID     string `json:"accessKeyId"`
 	AccessKeySecret string `json:"accessKeySecret"`
 	IntervalMinutes int    `json:"intervalMinutes"`
+	// ConsoleURL is the console the agent talks to directly; empty means
+	// bucket only. Optional, and a file setting overrides nothing built in.
+	ConsoleURL string `json:"consoleUrl,omitempty"`
 }
 
 // Load reads and parses the config file at path, validating that all

@@ -32,6 +32,10 @@ var (
 	ossEndpoint        = "oss-cn-hangzhou-internal.aliyuncs.com"
 	ossAccessKeyID     = ""
 	ossAccessKeySecret = ""
+	// consoleURL is the console the agent enrols with and talks to directly.
+	// Not a secret: it is the public address. Empty means the bucket is the
+	// only channel, as before 1.3.0.
+	consoleURL = ""
 )
 
 // defaultSyncMinutes is how often the agent syncs when the policy in OSS does
@@ -50,5 +54,6 @@ func builtIn() config.Config {
 		AccessKeyID:     ossAccessKeyID,
 		AccessKeySecret: ossAccessKeySecret,
 		IntervalMinutes: defaultSyncMinutes,
+		ConsoleURL:      consoleURL,
 	}
 }

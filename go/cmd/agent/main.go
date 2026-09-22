@@ -174,7 +174,7 @@ func newSyncer() (*agentcore.Syncer, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &agentcore.Syncer{
+	s := &agentcore.Syncer{
 		Store:            store,
 		Applier:          localApplier{},
 		Machine:          machine,
@@ -189,7 +189,14 @@ func newSyncer() (*agentcore.Syncer, error) {
 		},
 		Updater: localUpdater{},
 		Codex:   newCodexInstaller(),
-	}, nil
+	}
+	// The console, when this build knows one: instructions and reports go
+	// there, and session files are uploaded through links it signs.
+	if api := connectConsole(cfg.ConsoleURL, machine.Name(), stateDir()); api != nil {
+		s.Source = api
+		s.Collector.(*agentcore.Collector).Store = api
+	}
+	return s, nil
 }
 
 // readLocalState answers `agent.exe status` from the machine itself. It
@@ -208,6 +215,11 @@ func readLocalState() (localReport, error) {
 // synced -- is deliberately absent rather than shown as empty.
 func printLocalState(r localReport) {
 	fmt.Printf("config=%s\n", config.Source(builtIn()))
+	if consoleURL != "" {
+		fmt.Printf("console=%s\n", consoleURL)
+	} else {
+		fmt.Println("console=none (bucket only)")
+	}
 	fmt.Printf("machine=%s\n", r.Machine)
 	fmt.Printf("local users: %s\n", strings.Join(r.LocalUsers, ", "))
 
@@ -336,6 +348,17 @@ func loop(s *agentcore.Syncer, stop <-chan struct{}, wake <-chan struct{}) {
 	// Trigger 1: the service just started, so do not wait out a whole interval.
 	sync("startup")
 
+	// Trigger 4, in the console mode: the console says something changed.
+	// One long poll after another, a nudge here when one returns "changed";
+	// the ticker below is then only the wall-clock fallback.
+	notify := make(chan struct{}, 1)
+	if api, ok := s.Source.(*agentcore.APISource); ok {
+		hostname := s.Machine.Name()
+		go consoleWaiter(api, stop, notify, func() (string, error) {
+			return enrolConsole(api.Client.BaseURL, hostname, stateDir())
+		}, defaultWaiterOptions())
+	}
+
 	// A short tick keeps the wall-clock check responsive without syncing often.
 	const checkEvery = time.Minute
 	ticker := time.NewTicker(checkEvery)
@@ -346,6 +369,9 @@ func loop(s *agentcore.Syncer, stop <-chan struct{}, wake <-chan struct{}) {
 		case <-stop:
 			log.Printf("stopping")
 			return
+
+		case <-notify:
+			sync("console changed")
 
 		case <-wake:
 			// Trigger 2: the machine resumed from sleep.
