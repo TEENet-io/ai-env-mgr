@@ -308,10 +308,29 @@ func loop(s *agentcore.Syncer, stop <-chan struct{}, wake <-chan struct{}) {
 		interval = time.Duration(model.DefaultSyncInterval) * time.Minute
 	}
 
+	// Trigger 4, in the console mode: the console says something changed.
+	// One long poll after another, a nudge here when one returns "changed";
+	// the ticker below is then only the wall-clock fallback.
+	notify := make(chan struct{}, 1)
+	nudge := func() {
+		select {
+		case notify <- struct{}{}:
+		default: // one is already pending
+		}
+	}
+
 	var lastRun time.Time
 	sync := func(reason string) {
 		if !lastRun.IsZero() && time.Since(lastRun) < minSyncGap {
-			log.Printf("skipping %s sync: another one ran %v ago", reason, time.Since(lastRun).Round(time.Second))
+			since := time.Since(lastRun).Round(time.Second)
+			if reason == "console changed" {
+				// The console's change must not be lost to the debounce:
+				// come back when the gap has passed.
+				log.Printf("deferring %s sync: another one ran %v ago", reason, since)
+				time.AfterFunc(minSyncGap-time.Since(lastRun), nudge)
+				return
+			}
+			log.Printf("skipping %s sync: another one ran %v ago", reason, since)
 			return
 		}
 		lastRun = time.Now()
@@ -348,10 +367,6 @@ func loop(s *agentcore.Syncer, stop <-chan struct{}, wake <-chan struct{}) {
 	// Trigger 1: the service just started, so do not wait out a whole interval.
 	sync("startup")
 
-	// Trigger 4, in the console mode: the console says something changed.
-	// One long poll after another, a nudge here when one returns "changed";
-	// the ticker below is then only the wall-clock fallback.
-	notify := make(chan struct{}, 1)
 	if api, ok := s.Source.(*agentcore.APISource); ok {
 		hostname := s.Machine.Name()
 		go consoleWaiter(api, stop, notify, func() (string, error) {

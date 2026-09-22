@@ -97,6 +97,11 @@ func Resolve(builtIn Config, path string) (*Config, string, error) {
 	if err != nil {
 		return nil, "", err
 	}
+	// The console address is built in separately from the bucket
+	// credentials: a file that says nothing about it keeps the built-in one.
+	if cfg.ConsoleURL == "" {
+		cfg.ConsoleURL = builtIn.ConsoleURL
+	}
 	return cfg, SourceFile, nil
 }
 
