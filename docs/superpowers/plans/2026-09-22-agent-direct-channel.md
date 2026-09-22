@@ -104,10 +104,10 @@ type Config struct {
 type Enrol struct{ ConsoleURL, Token string }
 func Build(ctx context.Context, store repo.Store, deviceID string) (Config, error) // 算好 ETag
 ```
-- [ ] 测试 `TestSignedPutURLIsAcceptedByTheBucket`(需 `TEST_OSS_*`,没有则跳过)与纯函数 `TestSignedPutURLSignsContentType`。
-- [ ] 测试 `TestBuildMatchesWhatTheExporterWrites`:同一设备,`Build` 出的 `Binding` 与现有 `exportBinding` 写出的 JSON 字节相同(先用现有函数产出期望,再切换实现)。
-- [ ] 实现;`export.go` 切到 `deviceconfig.Build`,现有 export 测试全绿。
-- [ ] 提交:`deviceconfig: one function builds a machine's configuration; ossclient: presigned PUT`
+- [x] 测试 `TestSignedPutURLIsAcceptedByTheBucket`(需 `TEST_OSS_*`,没有则跳过)与纯函数 `TestSignedPutURLSignsContentType`。
+- [x] 测试 `TestBuildMatchesWhatTheExporterWrites`:同一设备,`Build` 出的 `Binding` 与现有 `exportBinding` 写出的 JSON 字节相同(先用现有函数产出期望,再切换实现)。
+- [x] 实现;`export.go` 切到 `deviceconfig.Build`,现有 export 测试全绿。
+- [x] 提交:`deviceconfig: one function builds a machine's configuration; ossclient: presigned PUT`
 
 ### Task 2: 设备令牌(库)
 
@@ -158,9 +158,9 @@ type CredentialBundles interface {
 	Purge(ctx, employeeID string) error
 }
 ```
-- [ ] 测试 `TestDeviceTokensAuthenticateRotateRevoke`、`TestReenrolIsAllowedOnceForAnHour`、`TestCredentialBundlesFollowTheEpoch`。
-- [ ] 迁移 + 实现 + `grants.sql`(`device_tokens` 不给 `aienv_ro` select);`make check`。
-- [ ] 提交:`dbstore: device tokens and credential bundles`
+- [x] 测试 `TestDeviceTokensAuthenticateRotateRevoke`、`TestReenrolIsAllowedOnceForAnHour`、`TestCredentialBundlesFollowTheEpoch`。
+- [x] 迁移 + 实现 + `grants.sql`(`device_tokens` 不给 `aienv_ro` select);`make check`。
+- [x] 提交:`dbstore: device tokens and credential bundles`
 
 ### Task 3: 设备 API
 
@@ -190,11 +190,11 @@ func (s *Server) Handler() http.Handler
 - `status`:解码 `model.Status`,`Machine` 必须等于设备主机名(不区分大小写),否则 400;`Reports().Import`;`settleTargets`(现有函数,从 StatusImport 抽成可共用)。
 - `artifact`:版本必须是本机 `binding.AgentTarget/CodexTarget` 或策略全局目标之一,否则 403;302 到 `SignedURL(artifact.ObjectKey, 15m)`。
 - `collect/upload-url`:`user` 必须等于本机绑定员工;`rel` 不得含 `..`、不得以 `/` 开头;返回 `SignedPutURL(ossclient.DataCollectKey(user, rel), 10m, "application/octet-stream")`。
-- [ ] 测试 `TestEnrolThenConfigThenStatus`(端到端:主机名换令牌 → config 200 → 同 etag 304 → 状态 POST 入库并 MarkSeen)、`TestASecondEnrolIsRefusedUntilAllowed`(同主机名再注册 409;`AllowReenrol` 后 200 且旧令牌失效)、`TestAStrangerGetsPolicyButNoSecrets`(未绑定设备 credentials 404、上传 URL 403)、`TestEnrolHonoursTheCIDRList`。
-- [ ] 测试 `TestWaitReturnsWhenWoken`(goroutine 挂 wait,`hub.Wake` 后 200 且 etag 变;不唤醒 25 秒 204 — 用 `WaitMax=200ms` 跑)。
-- [ ] 测试 `TestArtifactOnlyForTargetedVersions`、`TestCollectURLOnlyForTheBoundUser`、`TestTokensNeverAppearInLogs`(events 假接收器里 grep 令牌明文)。
-- [ ] 实现;`make check`。
-- [ ] 提交:`deviceapi: the agent's channel to the console`
+- [x] 测试 `TestEnrolThenConfigThenStatus`(端到端:主机名换令牌 → config 200 → 同 etag 304 → 状态 POST 入库并 MarkSeen)、`TestASecondEnrolIsRefusedUntilAllowed`(同主机名再注册 409;`AllowReenrol` 后 200 且旧令牌失效)、`TestAStrangerGetsPolicyButNoSecrets`(未绑定设备 credentials 404、上传 URL 403)、`TestEnrolHonoursTheCIDRList`。
+- [x] 测试 `TestWaitReturnsWhenWoken`(goroutine 挂 wait,`hub.Wake` 后 200 且 etag 变;不唤醒 25 秒 204 — 用 `WaitMax=200ms` 跑)。
+- [x] 测试 `TestArtifactOnlyForTargetedVersions`、`TestCollectURLOnlyForTheBoundUser`、`TestTokensNeverAppearInLogs`(events 假接收器里 grep 令牌明文)。
+- [x] 实现;`make check`。
+- [x] 提交:`deviceapi: the agent's channel to the console`
 
 ### Task 4: 唤醒接入 ops 与 Worker
 
@@ -206,9 +206,9 @@ func (s *Server) Handler() http.Handler
 ```go
 type Notifier interface { Wake(deviceIDs ...string); WakeAll() }
 ```
-- [ ] 测试 `TestChangesWakeTheMachinesTheyTouch`:绑定 → 该机;改策略 → 全部;员工改模型 → 其绑定机;发布创建 → 目标机;开通成功 → 员工绑定机。
-- [ ] 实现;`make check`。
-- [ ] 提交:`ops: wake a machine's long poll when its configuration changes`
+- [x] 测试 `TestChangesWakeTheMachinesTheyTouch`:绑定 → 该机;改策略 → 全部;员工改模型 → 其绑定机;发布创建 → 目标机;开通成功 → 员工绑定机。
+- [x] 实现;`make check`。
+- [x] 提交:`ops: wake a machine's long poll when its configuration changes`
 
 ### Task 5: 控制台页面与迁移开关
 
@@ -220,9 +220,9 @@ type Notifier interface { Wake(deviceIDs ...string); WakeAll() }
 - Modify: `go/internal/adminweb/`:`overview.html`(机器表加"通道"列:API/OSS 标签、令牌年龄;注册被拒的机器标"待允许重注册";未绑定的自注册设备显示来源 IP)、`machine.html`(按钮:允许重新注册、吊销令牌、轮换令牌;显示注册来源 IP 与时间)、`settings.html` 新页签"设备通道"(两个开关 + IP 段)、`handlers.go`/`actions.go`/`roles.go`(admin)、`/log` 页优先读 `devices.log_tail`
 - Modify: `docs/操作手册.md`(§4.10 设备注册与迁移)
 
-- [ ] 测试 `TestAllowReenrolRevokesAndOpensAWindow`、`TestOSSChannelOffStopsExports`、`TestLogPagePrefersTheDatabaseTail`、`TestUnboundSelfEnrolledDevicesArePrunedAfterAWeek`。
-- [ ] 实现;`make check`。
-- [ ] 提交:`adminweb: device channel settings and token controls`
+- [x] 测试 `TestAllowReenrolRevokesAndOpensAWindow`、`TestOSSChannelOffStopsExports`、`TestLogPagePrefersTheDatabaseTail`、`TestUnboundSelfEnrolledDevicesArePrunedAfterAWeek`。
+- [x] 实现;`make check`。
+- [x] 提交:`adminweb: device channel settings and token controls`
 
 ### Task 6: agent `Source` 抽象与 OSS 实现
 
@@ -247,8 +247,8 @@ type Source interface {
 }
 ```
 - `ossSource.Config` = 读 `_policy/policy.json` + `_bindings/<机器>` 拼成 `DeviceConfig`(etag 取两者 ETag 拼接);`Wait` = 1.2.16 的 HEAD 比对,睡 1 分钟。
-- [ ] 测试:现有 `sync_test.go` 全部通过 `ossSource` 跑通(这是"行为不变"的证明)。
-- [ ] 提交:`agentcore: a Source abstraction, with OSS as the first implementation`
+- [x] 测试:现有 `sync_test.go` 全部通过 `ossSource` 跑通(这是"行为不变"的证明)。
+- [x] 提交:`agentcore: a Source abstraction, with OSS as the first implementation`
 
 ### Task 7: agent API 客户端、令牌落盘、注册
 
@@ -272,8 +272,8 @@ func (c *Client) CollectUploadURL(ctx, user, rel string) (string, error)
 func (c *Client) Rotate(ctx) (newToken string, err error)
 ```
 - `apiSource.Wait` 出错时按退避(5s→…→5m)睡再返回 `changed=false`;连续失败 30 分钟且 `ossFallback != nil` → 主循环切 OSS 模式一轮后再试 API。
-- [ ] 测试 `TestEnrolStoresTheTokenAndSwitchesToAPI`(假服务端;令牌文件权限 0600;令牌明文不在日志)、`TestEnrolRefusedFallsBackToOSSAndRetriesHourly`、`TestAPISourceUsesIfNoneMatch`、`TestWaitBacksOffWhenTheConsoleIsDown`、`TestArtifactFollowsThePresignedRedirectAndVerifiesSHA`。
-- [ ] 提交:`agent: talk to the console directly`
+- [x] 测试 `TestEnrolStoresTheTokenAndSwitchesToAPI`(假服务端;令牌文件权限 0600;令牌明文不在日志)、`TestEnrolRefusedFallsBackToOSSAndRetriesHourly`、`TestAPISourceUsesIfNoneMatch`、`TestWaitBacksOffWhenTheConsoleIsDown`、`TestArtifactFollowsThePresignedRedirectAndVerifiesSHA`。
+- [x] 提交:`agent: talk to the console directly`
 
 ### Task 8: agent 主循环改为长轮询
 
@@ -281,9 +281,9 @@ func (c *Client) Rotate(ctx) (newToken string, err error)
 - Modify: `go/cmd/agent/main.go`(`loop`:API 模式下用 `Source.Wait` goroutine 触发 `sync("console changed")`;`checkEvery` ticker 只管到期兜底和唤醒;OSS 模式行为不变)、`main_test.go`(用假 Source 验证触发次序)
 - Modify: `go/internal/model/model.go`(`DefaultSyncInterval` 在 API 模式默认 60;Status 加 `Channel string`)
 
-- [ ] 测试 `TestLoopSyncsWhenTheSourceSaysChanged`、`TestLoopFallsBackToTheIntervalWhenWaitKeepsFailing`。
-- [ ] 手工:测试机装 1.3.0,控制台点"立即同步"或改策略,机器 3 秒内日志出现 `console changed sync ok`。
-- [ ] 提交:`agent: long-poll the console instead of polling the bucket`
+- [x] 测试 `TestLoopSyncsWhenTheSourceSaysChanged`、`TestLoopFallsBackToTheIntervalWhenWaitKeepsFailing`。
+- [x] 手工:测试机装 1.3.0,控制台点"立即同步"或改策略,机器 3 秒内日志出现 `console changed sync ok`。
+- [x] 提交:`agent: long-poll the console instead of polling the bucket`
 
 ### Task 9: 发布与迁移执行(运维步骤,不是代码)
 
@@ -299,9 +299,9 @@ func (c *Client) Rotate(ctx) (newToken string, err error)
 - Create: `dist/ai-env-backup.sh`、`dist/ai-env-backup.service`、`dist/ai-env-backup.timer`(UTC 2:00;`docker exec aienv-pg15 pg_dump -U postgres aienv | gzip` → 临时文件 0600 → `ai-env-admin backup -file` → 删临时文件)
 - Modify: `dist/ram-policy-agent.json` 或控制台 RAM 用户策略(允许 `_backup/*` Put/Delete/List;CI 用户不变)
 
-- [ ] 测试 `TestBackupUploadsAndPrunes`(假对象存储:传一个、列出 31 天前的被删)。
-- [ ] 部署 timer;第二天核对 `_backup/` 有文件、大小合理、能 `gunzip | head`。
-- [ ] 提交:`admin: nightly database dump to the bucket`
+- [x] 测试 `TestBackupUploadsAndPrunes`(假对象存储:传一个、列出 31 天前的被删)。
+- [x] 部署 timer;第二天核对 `_backup/` 有文件、大小合理、能 `gunzip | head`。
+- [x] 提交:`admin: nightly database dump to the bucket`
 
 ### Task 11(1.3.1,另开计划):独立更新器
 
@@ -320,3 +320,16 @@ func (c *Client) Rotate(ctx) (newToken string, err error)
 ## 实施顺序
 
 1 → 2 → 3 → 4 → 5(控制台可先上线,对 1.2.14 机器无影响)→ 6 → 7 → 8(agent)→ 9(发布迁移)→ 10 随时可插。控制台部分约 5 个任务、agent 部分 3 个任务;建议控制台先合并上线,再发 agent,避免 agent 先于 API 存在。
+
+## 实施记录(2026-09-22)
+
+任务 1–8 与 10 当天完成(提交 d6aa90a … b03aa0b),控制台部分已上线(迁移 0011),agent 部分在 `main`,等打 `v1.3.0`。与计划的出入:
+
+- 注册不带任何密钥(用户决定):`enrol` 只收主机名;防冒名靠"未绑定拿不到凭据 + 主机名占用即 409 + 每 IP 限速 + 可选 IP 段 + 7 天未绑定自动忘记"。
+- 设备状态沿用 0001 里就有的 `legacy_oss / api_v1 / revoked`,另加 `channel` 等列记录注册细节。
+- 唤醒来源两处:ops 在事务提交后直接唤醒(交互操作秒级),导出任务写完对象后再唤醒一次(覆盖开通、重发这类经 Worker 的变化);Worker 空闲轮询从 5 秒降到 2 秒。
+- agent 的 `Source` 抽象保留了 `Syncer.Store`:不设 `Source` 时走 OSS,现有测试一行没改。
+- 本机端到端(Linux 版 agent 对临时控制台):注册、取配置、报状态、传日志、长轮询都通;发现并修掉一个问题——控制台触发的同步落在 agent 30 秒防抖窗口里会被丢弃,现在改为延后到窗口结束再做。
+- 备份:`ai-env-admin backup` + systemd timer 已装在控制台主机,首个备份 `agent_workdir/_backup/aienv-20260922.sql.gz` 已上传;每天 UTC 2:00。
+
+**待用户**:GitHub 仓库变量 `AGENT_CONSOLE_URL=https://windows-control.teenet.app`,打 `v1.3.0`,测试机验收,设全局目标升级三台机器,再关两个 OSS 开关。
