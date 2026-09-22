@@ -182,7 +182,11 @@ type Updater interface {
 
 // Syncer runs one sync cycle.
 type Syncer struct {
+	// Store is the bucket, used when Source is nil. Source, when set, is
+	// where instructions come from and reports go -- the console's device
+	// API in an enrolled agent.
 	Store   Store
+	Source  Source
 	Applier Applier
 	Machine Machine
 
@@ -277,11 +281,12 @@ func (s *Syncer) DueForSync(interval time.Duration) bool {
 // object with no user is "not bound" too, but its targets still count: a
 // machine nobody is assigned to can still be told what to run.
 func (s *Syncer) loadBinding(machine string) (model.Binding, bool) {
-	data, etag, err := s.Store.Get(ossclient.BindingKey(machine))
+	data, etag, exists, err := s.source().Binding(machine)
 	if err != nil {
-		if errors.Is(err, ossclient.ErrNotFound) {
-			s.writeMarker(bindingSeenMarkerFile, absentMarker)
-		}
+		return model.Binding{}, false
+	}
+	if !exists {
+		s.writeMarker(bindingSeenMarkerFile, absentMarker)
 		return model.Binding{}, false
 	}
 	s.writeMarker(bindingSeenMarkerFile, etag)
@@ -299,22 +304,7 @@ func (s *Syncer) loadBinding(machine string) (model.Binding, bool) {
 // machine on the next heartbeat instead of the next interval. A store that
 // cannot be reached answers "no": the scheduled sync is the fallback.
 func (s *Syncer) ChangedSinceLastSync() (bool, string) {
-	if etag, exists, err := s.Store.Head(ossclient.PolicyKey()); err == nil && exists {
-		if seen := s.readMarker(policySeenMarkerFile); seen != "" && seen != etag {
-			return true, "policy"
-		}
-	}
-	etag, exists, err := s.Store.Head(ossclient.BindingKey(s.Machine.Name()))
-	if err != nil {
-		return false, ""
-	}
-	if !exists {
-		etag = absentMarker
-	}
-	if seen := s.readMarker(bindingSeenMarkerFile); seen != "" && seen != etag {
-		return true, "binding"
-	}
-	return false, ""
+	return s.source().Changed(s.Machine.Name(), s.readMarker(policySeenMarkerFile), s.readMarker(bindingSeenMarkerFile))
 }
 
 // RunOnce performs one full cycle: apply the machine-wide block policy, work
@@ -348,7 +338,8 @@ func (s *Syncer) RunOnce() (model.Status, error) {
 	// on knowing which employee this machine serves: a box that has just been
 	// created from the image, or whose employee has no profile yet, is exactly
 	// the one that must not be left open.
-	if data, etag, err := s.Store.Get(ossclient.PolicyKey()); err != nil {
+	src := s.source()
+	if data, etag, err := src.Policy(); err != nil {
 		errs = append(errs, fmt.Sprintf("policy: %v", err))
 	} else {
 		policyETag = etag
@@ -389,10 +380,26 @@ func (s *Syncer) RunOnce() (model.Status, error) {
 
 		// ---- credentials ----
 		// Skipped when the profile is absent: there is nowhere to put them.
-		credsKey := ossclient.UserKey(binding.User, "credentials.zip")
+		mark, marked := s.readCredsMark()
+		ifNoneMatch := ""
+		if marked {
+			ifNoneMatch = mark.ETag
+		}
+		var data []byte
+		var etag string
+		var exists, unchanged bool
+		var err error
+		if boundUserExists {
+			data, etag, exists, unchanged, err = src.Credentials(binding.User, ifNoneMatch)
+			if err == nil && exists && unchanged && !s.credsIntact(mark) {
+				// The bundle is the one we delivered, but a file it placed
+				// is gone or altered: fetch it again and put it back.
+				data, etag, exists, unchanged, err = src.Credentials(binding.User, "")
+			}
+		}
 		if !boundUserExists {
 			warns = append(warns, "credentials skipped: no profile to deliver them to")
-		} else if etag, exists, err := s.Store.Head(credsKey); err != nil {
+		} else if err != nil {
 			errs = append(errs, fmt.Sprintf("credentials: %v", err))
 		} else if !exists {
 			// Offboarding reaches the machine through the object going away.
@@ -415,9 +422,9 @@ func (s *Syncer) RunOnce() (model.Status, error) {
 				warns = append(warns, fmt.Sprintf("no credentials published for %q yet", binding.User))
 			}
 			credsETag = ""
-		} else if mark, ok := s.readCredsMark(); ok && etag != "" && etag == mark.ETag && s.credsIntact(mark) {
+		} else if unchanged {
 			// Already delivered in an earlier cycle AND every file it placed
-			// is still on disk unchanged. Do not download it: there is
+			// is still on disk unchanged. It was not downloaded: there is
 			// nothing to learn and it is the machine's most sensitive object.
 			//
 			// The verification is what makes the ETag safe to trust. On its
@@ -427,8 +434,6 @@ func (s *Syncer) RunOnce() (model.Status, error) {
 			// file forever with the marker still claiming success.
 			credsETag = etag
 			credsApplied = true
-		} else if data, _, err := s.Store.Get(credsKey); err != nil {
-			errs = append(errs, fmt.Sprintf("credentials: %v", err))
 		} else {
 			credsETag = etag
 			if set, err := creds.Unpack(data); err != nil {
@@ -535,7 +540,7 @@ func (s *Syncer) RunOnce() (model.Status, error) {
 
 	if out, err := status.Marshal(st); err != nil {
 		st.Errors = append(st.Errors, fmt.Sprintf("status encode: %v", err))
-	} else if err := s.Store.Put(ossclient.StatusKey(machine), out); err != nil {
+	} else if err := src.ReportStatus(machine, out); err != nil {
 		st.Errors = append(st.Errors, fmt.Sprintf("status upload: %v", err))
 	}
 
@@ -581,7 +586,7 @@ func (s *Syncer) prepareUpdate(target model.ReleaseTarget, errs *[]string) ([]by
 		// take. Say so every cycle until the console moves the generation.
 		return nil, AgentUpdateFailed
 	}
-	data, _, err := s.Store.Get(target.Key)
+	data, err := s.source().ArtifactBytes(ProductAgent, target)
 	if err != nil {
 		*errs = append(*errs, fmt.Sprintf("update: fetch binary: %v", err))
 		return nil, AgentUpdateFailed
@@ -599,7 +604,7 @@ func (s *Syncer) prepareUpdate(target model.ReleaseTarget, errs *[]string) ([]by
 // it remotely (see `admin log <machine>`). Best effort: the caller logs and
 // ignores failures rather than failing the sync over a log upload.
 func (s *Syncer) UploadLog(tail []byte) error {
-	return s.Store.Put(ossclient.LogKey(s.Machine.Name()), tail)
+	return s.source().UploadLog(s.Machine.Name(), tail)
 }
 
 // Heartbeat re-uploads the machine's last status with a fresh timestamp, so
@@ -629,7 +634,7 @@ func (s *Syncer) Heartbeat() error {
 	if err != nil {
 		return fmt.Errorf("heartbeat encode: %w", err)
 	}
-	if err := s.Store.Put(ossclient.StatusKey(st.Machine), out); err != nil {
+	if err := s.source().ReportStatus(st.Machine, out); err != nil {
 		return fmt.Errorf("heartbeat upload: %w", err)
 	}
 	s.mu.Lock()
@@ -675,7 +680,7 @@ func (s *Syncer) ReportEvent(event string) {
 	// the sleep and is uploaded on the next sync after waking, which is when
 	// somebody is asking the question.
 	done := make(chan error, 1)
-	go func() { done <- s.Store.Put(ossclient.StatusKey(st.Machine), out) }()
+	go func() { done <- s.source().ReportStatus(st.Machine, out) }()
 	select {
 	case err := <-done:
 		if err != nil {

@@ -127,7 +127,7 @@ func (s *Syncer) updateCodex(target model.ReleaseTarget, errs *[]string) codexOu
 
 	dest := filepath.Join(s.StateDir, "codex-setup.exe")
 	log.Printf("codex: downloading %s", target.Version)
-	sum, err := s.Store.GetToFile(target.Key, dest)
+	sum, err := s.source().ArtifactToFile(ProductCodex, target, dest)
 	if err != nil {
 		*errs = append(*errs, fmt.Sprintf("codex: download: %v", err))
 		return codexOutcome{Version: installed, State: CodexFailed}
