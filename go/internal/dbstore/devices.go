@@ -12,14 +12,16 @@ import (
 type deviceRepo struct{ q querier }
 
 const deviceColumns = `id, hostname, status, agent_version, note,
-	last_seen_at, created_at, updated_at, revoked_at, sync_nonce`
+	last_seen_at, created_at, updated_at, revoked_at, sync_nonce,
+	channel, enrolled_at, enrolled_from, reenrol_allowed_until, log_tail, log_tail_at`
 
 func scanDevice(row scanner) (repo.Device, error) {
 	var d repo.Device
 	var status string
 	var lastSeen, revoked *time.Time
 	err := row.Scan(&d.ID, &d.Hostname, &status, &d.AgentVersion, &d.Note,
-		&lastSeen, &d.CreatedAt, &d.UpdatedAt, &revoked, &d.SyncNonce)
+		&lastSeen, &d.CreatedAt, &d.UpdatedAt, &revoked, &d.SyncNonce,
+		&d.Channel, &d.EnrolledAt, &d.EnrolledFrom, &d.ReenrolAllowedUntil, &d.LogTail, &d.LogTailAt)
 	if err != nil {
 		return repo.Device{}, err
 	}
@@ -142,4 +144,43 @@ func (r deviceRepo) Revoke(ctx context.Context, id string) (repo.Device, error) 
 		return repo.Device{}, mapError(err, "revoke device")
 	}
 	return d, nil
+}
+
+func (r deviceRepo) SetEnrolled(ctx context.Context, id, from string, at time.Time) error {
+	tag, err := r.q.Exec(ctx,
+		`update devices
+		    set channel = 'api', enrolled_at = $2, enrolled_from = $3,
+		        reenrol_allowed_until = null, updated_at = now()
+		  where id = $1`, id, at.UTC(), from)
+	if err != nil {
+		return mapError(err, "record enrolment")
+	}
+	if tag.RowsAffected() == 0 {
+		return mapError(errNoRow, "record enrolment")
+	}
+	return nil
+}
+
+func (r deviceRepo) AllowReenrol(ctx context.Context, id string, until time.Time) error {
+	tag, err := r.q.Exec(ctx,
+		`update devices set reenrol_allowed_until = $2, updated_at = now() where id = $1`, id, until.UTC())
+	if err != nil {
+		return mapError(err, "allow re-enrolment")
+	}
+	if tag.RowsAffected() == 0 {
+		return mapError(errNoRow, "allow re-enrolment")
+	}
+	return nil
+}
+
+func (r deviceRepo) SetLogTail(ctx context.Context, id, tail string, at time.Time) error {
+	tag, err := r.q.Exec(ctx,
+		`update devices set log_tail = $2, log_tail_at = $3 where id = $1`, id, tail, at.UTC())
+	if err != nil {
+		return mapError(err, "store log tail")
+	}
+	if tag.RowsAffected() == 0 {
+		return mapError(errNoRow, "store log tail")
+	}
+	return nil
 }

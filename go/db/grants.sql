@@ -44,6 +44,8 @@ revoke delete, truncate on task_attempts from aienv_app;
 revoke insert, update, delete, truncate on schema_migrations from aienv_app;
 
 grant select on all tables in schema public to aienv_ro;
+-- Token hashes and credential bundles are not for the read-only account.
+revoke select on device_tokens, credential_bundles from aienv_ro;
 
 -- Whatever the migrating account creates from now on inherits the grid.
 alter default privileges in schema public grant select, insert, update, delete on tables to aienv_app;

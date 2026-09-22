@@ -61,6 +61,8 @@ type Store interface {
 	Releases() Releases
 	Usage() Usage
 	Alerts() Alerts
+	DeviceTokens() DeviceTokens
+	CredentialBundles() CredentialBundles
 
 	// InTx runs fn in a transaction, committing if it returns nil. The Store
 	// passed to fn is the transactional one: using the outer Store inside fn
@@ -271,7 +273,23 @@ type Device struct {
 	// SyncNonce is the last "sync now" request; it rides in the binding
 	// object so that the object changes and the agent notices.
 	SyncNonce string
+
+	// Channel is how the agent talks to us: "oss" reads objects from the
+	// bucket, "api" holds a device token and asks the console.
+	Channel             string
+	EnrolledAt          *time.Time
+	EnrolledFrom        string // the address the enrolment came from
+	ReenrolAllowedUntil *time.Time
+	// LogTail is the last log excerpt the agent sent, replacing the bucket's
+	// _logs/ object for machines on the api channel.
+	LogTail   string
+	LogTailAt *time.Time
 }
+
+const (
+	ChannelOSS = "oss"
+	ChannelAPI = "api"
+)
 
 // DeviceFilter narrows List.
 type DeviceFilter struct{ IncludeRevoked bool }
@@ -290,6 +308,15 @@ type Devices interface {
 	// MarkSeen records a sync. agentVersion may be empty, and then whatever is
 	// on record is kept: an empty report should not erase a known version.
 	MarkSeen(ctx context.Context, id, agentVersion string, at time.Time) error
+
+	// SetEnrolled records that the machine now talks to the console
+	// directly, and where the enrolment came from.
+	SetEnrolled(ctx context.Context, id, from string, at time.Time) error
+	// AllowReenrol opens a window in which a machine whose token is still
+	// live may enrol again -- a reinstalled machine, a lost token.
+	AllowReenrol(ctx context.Context, id string, until time.Time) error
+	// SetLogTail stores the agent's latest log excerpt.
+	SetLogTail(ctx context.Context, id, tail string, at time.Time) error
 
 	// Revoke stops a machine being served. It does not delete it: the
 	// bindings and the audit trail are the record of what it had.
@@ -1036,4 +1063,38 @@ type Usage interface {
 	Rows(ctx context.Context, f UsageFilter, limit int) ([]UsageRow, error)
 	// Days returns the first and last day that have any rows, or ErrNotFound.
 	Days(ctx context.Context) (first, last time.Time, err error)
+}
+
+// DeviceTokens are what an agent on the api channel authenticates with.
+// The plaintext is returned once, at issue, and never stored.
+type DeviceTokens interface {
+	// Issue mints a token for the device and revokes its earlier ones at
+	// once (no grace): a fresh enrolment supersedes whatever was there.
+	Issue(ctx context.Context, deviceID string) (plaintext string, err error)
+	// Rotate mints a token and lets the earlier live ones work until grace
+	// has passed, so an agent that lost the reply is not locked out.
+	Rotate(ctx context.Context, deviceID string, grace time.Duration) (plaintext string, err error)
+	// Authenticate finds the live token this plaintext names and returns
+	// its device, recording the use. ErrNotFound for anything else --
+	// unknown, revoked, or past its grace.
+	Authenticate(ctx context.Context, plaintext string, now time.Time) (Device, error)
+	// Revoke ends every token of the device. It reports how many it ended.
+	Revoke(ctx context.Context, deviceID string) (int, error)
+	// HasLive reports whether the device holds a usable token.
+	HasLive(ctx context.Context, deviceID string, now time.Time) (bool, error)
+	// IssuedAt is when the device's newest live token was minted, for the
+	// machine page; ErrNotFound when it has none.
+	IssuedAt(ctx context.Context, deviceID string) (time.Time, error)
+}
+
+// CredentialBundles hold the credentials.zip delivered to machines, by
+// employee and epoch, so the device API serves it from here rather than
+// from the bucket.
+type CredentialBundles interface {
+	Put(ctx context.Context, employeeID string, epoch int, zip []byte, etag string) error
+	// Live returns the bundle for the employee's current epoch, or
+	// ErrNotFound when none has been built for it.
+	Live(ctx context.Context, employeeID string) (zip []byte, etag string, err error)
+	// Purge removes every bundle of the employee: offboarded or deleted.
+	Purge(ctx context.Context, employeeID string) error
 }
