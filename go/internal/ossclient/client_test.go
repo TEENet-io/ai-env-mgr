@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/aliyun/aliyun-oss-go-sdk/oss"
 )
@@ -323,5 +324,29 @@ func TestAgentVersionKeyIsUnderTheAgentPrefix(t *testing.T) {
 	}
 	if AgentVersionKey("../x") == "agent_workdir/_agent/../x/agent.exe" {
 		t.Fatal("a version must be sanitised like every other key segment")
+	}
+}
+
+func TestSignedPutURLBindsTheKeyAndMethod(t *testing.T) {
+	c, err := New("oss-cn-hangzhou.aliyuncs.com", "bucket", "ak", "sk")
+	if err != nil {
+		t.Fatal(err)
+	}
+	u, err := c.SignedPutURL("agent_workdir/data_collect/work1/2026/09/a.jsonl", 10*time.Minute, "application/octet-stream")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(u, "/agent_workdir%2Fdata_collect%2Fwork1%2F2026%2F09%2Fa.jsonl?") || !strings.Contains(u, "Signature=") || !strings.Contains(u, "Expires=") {
+		t.Fatalf("url = %s", u)
+	}
+	get, _ := c.SignedURL("agent_workdir/data_collect/work1/2026/09/a.jsonl", 10*time.Minute)
+	if get == u {
+		t.Fatal("a PUT link must not be the same signature as a GET link for the key")
+	}
+	if _, err := c.SignedPutURL("k", 10*time.Minute, ""); err == nil {
+		t.Fatal("a missing content type must be refused")
+	}
+	if _, err := c.SignedPutURL("k", 0, "text/plain"); err == nil {
+		t.Fatal("a zero ttl must be refused")
 	}
 }

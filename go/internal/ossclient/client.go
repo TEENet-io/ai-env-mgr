@@ -546,6 +546,26 @@ func (c *Client) SignedURL(key string, ttl time.Duration) (string, error) {
 	return url, nil
 }
 
+// SignedPutURL returns a URL that lets its holder write one object, once,
+// for ttl, with exactly the given Content-Type. It is how a machine uploads
+// a session archive without holding any bucket credentials: the console
+// signs a link for one key and the agent PUTs to it. The key is fixed by
+// the signature; the holder cannot write anywhere else.
+func (c *Client) SignedPutURL(key string, ttl time.Duration, contentType string) (string, error) {
+	secs := int64(ttl / time.Second)
+	if secs <= 0 {
+		return "", fmt.Errorf("expiry must be positive, got %s", ttl)
+	}
+	if contentType == "" {
+		return "", errors.New("a content type is required: it is part of what the signature binds")
+	}
+	url, err := c.signBucket.SignURL(key, oss.HTTPPut, secs, oss.ContentType(contentType))
+	if err != nil {
+		return "", fmt.Errorf("sign put url for %q: %w", key, err)
+	}
+	return url, nil
+}
+
 // GetToFile streams an object to disk, returning its SHA-256.
 //
 // Get reads the whole object into memory, which is fine for a policy file or

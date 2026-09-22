@@ -5,10 +5,10 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"time"
 
 	"github.com/TEENet-io/ai-env-mgr/internal/catalog"
 	"github.com/TEENet-io/ai-env-mgr/internal/creds"
+	"github.com/TEENet-io/ai-env-mgr/internal/deviceconfig"
 	"github.com/TEENet-io/ai-env-mgr/internal/litellm"
 	"github.com/TEENet-io/ai-env-mgr/internal/model"
 	"github.com/TEENet-io/ai-env-mgr/internal/ossclient"
@@ -150,126 +150,57 @@ func (h OSSExport) exportPolicy(ctx context.Context, requested int64) (Result, e
 	return Result{Note: note}, nil
 }
 
-// exportBinding writes, or removes, one machine's binding object.
+// exportBinding writes, or removes, one machine's binding object. What
+// goes in it is deviceconfig's answer, the same one the device API gives.
 func (h OSSExport) exportBinding(ctx context.Context, deviceID string) (Result, error) {
-	device, err := h.Store.Devices().ByID(ctx, deviceID)
+	cfg, err := deviceconfig.Build(ctx, h.Store, deviceID)
 	if errors.Is(err, repo.ErrNotFound) {
 		return Result{}, Permanent(fmt.Errorf("machine %s no longer exists", deviceID))
 	}
 	if err != nil {
 		return Result{}, err
 	}
-	if device.Status == repo.DeviceRevoked {
+	if cfg.Forgotten {
 		// Forgotten: both its binding and its status report go, so it
 		// disappears from the console. A machine that is still switched on
 		// will write a new status on its next sync, which is the cue that the
 		// wrong one was forgotten.
-		for _, key := range []string{ossclient.BindingKey(device.Hostname), ossclient.StatusKey(device.Hostname)} {
+		for _, key := range []string{ossclient.BindingKey(cfg.Hostname), ossclient.StatusKey(cfg.Hostname)} {
 			if err := h.Objects.Delete(key); err != nil {
 				return Result{}, ClassError("oss_delete", err)
 			}
 		}
 		return Result{Note: "forgotten"}, nil
 	}
-
-	object, err := h.machineTargets(ctx, device.ID)
-	if err != nil {
-		return Result{}, err
-	}
-	binding, err := h.Store.Bindings().Open(ctx, device.ID)
-	unbound := errors.Is(err, repo.ErrNotFound)
-	if err != nil && !unbound {
-		return Result{}, err
-	}
-	object.SyncRequested = device.SyncNonce
-	if unbound && object.AgentTarget == nil && object.CodexTarget == nil && device.SyncNonce == "" {
+	if !cfg.HasBinding {
 		// Nobody is assigned to it and nothing is aimed at it. The agent
 		// reads the absence as "not assigned yet" and keeps applying the
 		// machine-wide policy, which is exactly right for a machine that has
 		// just been taken back.
-		if err := h.Objects.Delete(ossclient.BindingKey(device.Hostname)); err != nil {
+		if err := h.Objects.Delete(ossclient.BindingKey(cfg.Hostname)); err != nil {
 			return Result{}, ClassError("oss_delete", err)
 		}
 		return Result{Note: "unbound"}, nil
 	}
 
-	note := device.Hostname + " -> nobody"
-	if !unbound {
-		employee, err := h.Store.Employees().ByID(ctx, binding.EmployeeID)
-		if err != nil {
-			return Result{}, err
-		}
-		object.User = employee.WindowsUser
-		object.BoundAt = binding.BoundAt.UTC().Format(time.RFC3339)
-		object.Note = binding.Note
-		note = device.Hostname + " -> " + employee.WindowsUser
-		// The one-shot Codex restart rides on the binding because it is the
-		// one object every agent already reads every cycle.
-		if binding.RestartNonce != "" {
-			object.RestartCodex = binding.RestartNonce
-			if binding.RestartAt != nil {
-				object.RestartCodexAt = binding.RestartAt.UTC().Format(time.RFC3339)
-			}
-		}
+	note := cfg.Hostname + " -> nobody"
+	if cfg.Bound {
+		note = cfg.Hostname + " -> " + cfg.Binding.User
 	}
-	if object.AgentTarget != nil {
-		note += fmt.Sprintf(", agent %s gen %d", object.AgentTarget.Version, object.AgentTarget.Generation)
+	if cfg.Binding.AgentTarget != nil {
+		note += fmt.Sprintf(", agent %s gen %d", cfg.Binding.AgentTarget.Version, cfg.Binding.AgentTarget.Generation)
 	}
-	if object.CodexTarget != nil {
-		note += fmt.Sprintf(", codex %s gen %d", object.CodexTarget.Version, object.CodexTarget.Generation)
+	if cfg.Binding.CodexTarget != nil {
+		note += fmt.Sprintf(", codex %s gen %d", cfg.Binding.CodexTarget.Version, cfg.Binding.CodexTarget.Generation)
 	}
-	data, err := json.MarshalIndent(object, "", "  ")
+	data, err := cfg.BindingObject()
 	if err != nil {
 		return Result{}, Permanent(fmt.Errorf("encode binding: %w", err))
 	}
-	if err := h.Objects.Put(ossclient.BindingKey(device.Hostname), data); err != nil {
+	if err := h.Objects.Put(ossclient.BindingKey(cfg.Hostname), data); err != nil {
 		return Result{}, ClassError("oss_write", err)
 	}
 	return Result{Note: note}, nil
-}
-
-// machineTargets is what one machine should be running of each product, as
-// binding fields. Three answers per product, and only the first says nothing:
-//
-//   - no target ever: the field is absent and the fleet policy applies;
-//   - an open target in a paused rollout: a target with an empty version --
-//     "this machine: nothing" -- so that pausing holds the machine where it
-//     is instead of handing it back to the fleet target;
-//   - an open target, or none open but one that succeeded: that version, so
-//     that a machine the rollout updated stays updated when the rollout is
-//     over, rather than sliding back to an older fleet target.
-func (h OSSExport) machineTargets(ctx context.Context, deviceID string) (model.Binding, error) {
-	var out model.Binding
-	for _, product := range []string{repo.ProductAgent, repo.ProductCodex} {
-		target, err := h.Store.Releases().OpenTarget(ctx, deviceID, product)
-		if errors.Is(err, repo.ErrNotFound) {
-			target, err = h.Store.Releases().LastSucceededTarget(ctx, deviceID, product)
-			if errors.Is(err, repo.ErrNotFound) {
-				continue
-			}
-		}
-		if err != nil {
-			return out, err
-		}
-		rt := &model.ReleaseTarget{Generation: target.Generation}
-		rollout, err := h.Store.Releases().RolloutByID(ctx, target.RolloutID)
-		if err != nil {
-			return out, err
-		}
-		if !(target.Status == repo.TargetPending && rollout.PausedAt != nil) {
-			artifact, err := h.Store.Releases().ArtifactByID(ctx, target.ArtifactID)
-			if err != nil {
-				return out, err
-			}
-			rt.Version, rt.SHA256, rt.Key = artifact.Version, artifact.SHA256, artifact.ObjectKey
-		}
-		if product == repo.ProductAgent {
-			out.AgentTarget = rt
-		} else {
-			out.CodexTarget = rt
-		}
-	}
-	return out, nil
 }
 
 // exportEmployee writes, or removes, one employee's credentials, and refreshes
