@@ -1,0 +1,11 @@
+[Unit]
+Description=ai-env-mgr nightly database backup
+
+[Timer]
+# 02:00 UTC: after the usage snapshot (00:30) and the rotation (01:00).
+OnCalendar=*-*-* 02:00:00 UTC
+Persistent=true
+RandomizedDelaySec=300
+
+[Install]
+WantedBy=timers.target

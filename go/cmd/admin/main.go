@@ -31,6 +31,8 @@ func main() {
 	switch args[0] {
 	case "web":
 		err = cmdWeb(args[1:])
+	case "backup":
+		err = cmdBackup(args[1:])
 	case "version":
 		fmt.Println(version)
 	case "help", "-h", "--help":
@@ -52,6 +54,11 @@ func usage() {
 Run with no arguments to open the console on this machine:
 
   admin                       serve on 127.0.0.1:8080, then open it in a browser
+
+  backup -file <dump.sql.gz> [-keep-days 30]
+                              upload a database dump to the bucket's _backup/
+                              and remove dumps older than -keep-days. Needs
+                              the console's environment (the OSS AccessKey).
 
   web [--listen <host:port>] [--cert <file> --key <file>] [--behind-proxy]
       [--log-dir <dir>] [--sls-project <name>] [--sls-endpoint <host>]
