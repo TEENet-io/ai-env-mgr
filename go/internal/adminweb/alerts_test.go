@@ -239,7 +239,7 @@ func TestDeviceChannelPageAndMachineControls(t *testing.T) {
 		t.Fatal("the overview lacks the channel column")
 	}
 	machine := dbGet(t, h, "/machines/detail?machine=PC-1", cookie).Body.String()
-	if !strings.Contains(machine, "直连控制台") || !strings.Contains(machine, "签发于") || !strings.Contains(machine, "203.0.113.9") || !strings.Contains(machine, "允许重新注册") {
+	if !strings.Contains(machine, "直连控制台") || !strings.Contains(machine, "签发于") || !strings.Contains(machine, "203.0.113.9") || !strings.Contains(machine, "允许注册") {
 		t.Fatal("the machine page lacks the channel section")
 	}
 	// The log tail the agent sent is what the log page shows.

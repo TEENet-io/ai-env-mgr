@@ -20,17 +20,28 @@ type enrolResponse struct {
 	DeviceToken string `json:"deviceToken"`
 }
 
-// handleEnrol gives a machine its token. There is no shared secret: a
-// hostname the console has not seen becomes a new, unassigned machine,
-// exactly as a first status report used to; one it has seen gets a token
-// only if it holds none, or an administrator has opened the door for it.
+// handleEnrol gives a machine its token. There is no shared secret, so the
+// rule is about what a token would give access to:
+//
+//   - a hostname the console has never seen becomes a new, unassigned
+//     machine, exactly as a first status report used to. Unassigned, it
+//     gets policy and nothing secret;
+//   - a machine the console knows but that was never assigned to anybody
+//     and holds no token may enrol too: there is still nothing to take;
+//   - anything else -- a machine somebody was ever assigned to, one that
+//     already holds a token, one an administrator forgot -- is refused
+//     until an administrator opens the window for it. Its name is what a
+//     stranger would need to claim to reach its assignee's credentials,
+//     and the migration of a fleet that has never enrolled is exactly
+//     when every one of its machines is in this state.
 func (s *Server) handleEnrol(w http.ResponseWriter, r *http.Request) {
 	ip := s.clientIP(r)
-	if !s.limiter.allow(ip) {
-		http.Error(w, "too many enrolments from this address; wait a minute", http.StatusTooManyRequests)
+	origin := s.originIP(r)
+	if !s.limiter.allow(ip) || !s.limiter.allow(globalLimitKey) {
+		http.Error(w, "too many enrolments; wait a minute", http.StatusTooManyRequests)
 		return
 	}
-	if nets := s.enrolCIDRs(); len(nets) > 0 && !inAny(ip, nets) {
+	if nets := s.enrolCIDRs(); len(nets) > 0 && !inAny(s.originIP(r), nets) {
 		http.Error(w, "enrolment is not accepted from this address", http.StatusForbidden)
 		return
 	}
@@ -54,34 +65,38 @@ func (s *Server) handleEnrol(w http.ResponseWriter, r *http.Request) {
 			created = true
 		case err != nil:
 			return err
-		case before.Status == repo.DeviceRevoked:
-			// Forgotten by an administrator: it comes back as a new machine.
-			created = true
 		}
 		device, err := tx.Devices().EnsureByHostname(ctx, req.Hostname)
 		if err != nil {
 			return err
 		}
-		if device.Status == repo.DeviceRevoked {
-			if device, err = tx.Devices().Reactivate(ctx, device.ID); err != nil {
-				return err
-			}
-		}
 		if !created {
-			live, err := tx.DeviceTokens().HasLive(ctx, device.ID, now)
-			if err != nil {
-				return err
+			windowOpen := before.ReenrolAllowedUntil != nil && before.ReenrolAllowedUntil.After(now)
+			if !windowOpen {
+				live, err := tx.DeviceTokens().HasLive(ctx, device.ID, now)
+				if err != nil {
+					return err
+				}
+				history, err := tx.Bindings().History(ctx, device.ID)
+				if err != nil {
+					return err
+				}
+				if live || len(history) > 0 || before.Status == repo.DeviceRevoked || before.Channel == repo.ChannelAPI {
+					return errAlreadyEnrolled
+				}
 			}
-			if live && (device.ReenrolAllowedUntil == nil || device.ReenrolAllowedUntil.Before(now)) {
-				return errAlreadyEnrolled
+			reenrolled = true
+			if device.Status == repo.DeviceRevoked {
+				if device, err = tx.Devices().Reactivate(ctx, device.ID); err != nil {
+					return err
+				}
 			}
-			reenrolled = live
 		}
 		token, err := tx.DeviceTokens().Issue(ctx, device.ID)
 		if err != nil {
 			return err
 		}
-		if err := tx.Devices().SetEnrolled(ctx, device.ID, ip, now); err != nil {
+		if err := tx.Devices().SetEnrolled(ctx, device.ID, origin, now); err != nil {
 			return err
 		}
 		if req.AgentVersion != "" {
@@ -89,7 +104,7 @@ func (s *Server) handleEnrol(w http.ResponseWriter, r *http.Request) {
 				return err
 			}
 		}
-		detail, _ := json.Marshal(map[string]any{"from": ip, "created": created, "reenrolled": reenrolled, "agentVersion": req.AgentVersion})
+		detail, _ := json.Marshal(map[string]any{"from": origin, "created": created, "reenrolled": reenrolled, "agentVersion": req.AgentVersion})
 		if _, err := tx.Audit().Append(ctx, repo.AuditEvent{
 			ActorType: "device", ActorID: "device:" + device.Hostname, Action: "device.enrol",
 			TargetType: "device", TargetID: device.ID, After: detail, Result: "ok",
@@ -101,9 +116,9 @@ func (s *Server) handleEnrol(w http.ResponseWriter, r *http.Request) {
 	})
 	if errors.Is(err, errAlreadyEnrolled) {
 		if s.Events != nil {
-			s.Events.Ops("warn", "device_api", "enrolment refused: "+req.Hostname+" already holds a token", map[string]any{"hostname": req.Hostname, "from": ip})
+			s.Events.Ops("warn", "device_api", "enrolment refused: "+req.Hostname+" is known and not open for enrolment", map[string]any{"hostname": req.Hostname, "from": origin})
 		}
-		http.Error(w, "this machine already holds a token; an administrator must allow re-enrolment", http.StatusConflict)
+		http.Error(w, "this machine is known to the console; an administrator must allow it to enrol", http.StatusConflict)
 		return
 	}
 	if err != nil {
@@ -111,7 +126,7 @@ func (s *Server) handleEnrol(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if s.Events != nil {
-		s.Events.Ops("info", "device_api", "enrolled "+req.Hostname, map[string]any{"hostname": req.Hostname, "from": ip, "created": created, "reenrolled": reenrolled})
+		s.Events.Ops("info", "device_api", "enrolled "+req.Hostname, map[string]any{"hostname": req.Hostname, "from": origin, "created": created, "reenrolled": reenrolled})
 	}
 	writeJSON(w, http.StatusOK, out)
 }

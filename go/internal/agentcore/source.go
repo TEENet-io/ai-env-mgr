@@ -122,8 +122,18 @@ func (o ossSource) Changed(machine, policySeen, bindingSeen string) (bool, strin
 // source is what the cycle talks to: the Source if one was wired, else the
 // bucket through Store.
 func (s *Syncer) source() Source {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	if s.Source != nil {
 		return s.Source
 	}
 	return ossSource{Store: s.Store}
+}
+
+// SetSource switches where instructions come from: the service loop calls
+// it once a late enrolment succeeds. The next cycle uses it.
+func (s *Syncer) SetSource(src Source) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.Source = src
 }

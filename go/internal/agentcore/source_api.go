@@ -32,7 +32,8 @@ type APISource struct {
 	Download *http.Client
 
 	mu           sync.Mutex
-	cfg          *deviceconfig.Config
+	cfg          *deviceconfig.Config // the latest seen (Wait replaces it)
+	cycle        *deviceconfig.Config // the one this cycle's Policy() returned
 	unauthorized bool
 }
 
@@ -73,7 +74,7 @@ func (a *APISource) Reset(token string) {
 	defer a.mu.Unlock()
 	a.Client.Token = token
 	a.unauthorized = false
-	a.cfg = nil
+	a.cfg, a.cycle = nil, nil
 }
 
 // ETag is the etag of the configuration last seen, "" before the first.
@@ -122,6 +123,9 @@ func (a *APISource) Policy() ([]byte, string, error) {
 	if err != nil {
 		return nil, "", err
 	}
+	a.mu.Lock()
+	a.cycle = cfg
+	a.mu.Unlock()
 	if cfg.Forgotten {
 		return nil, "", errors.New("the console has forgotten this machine")
 	}
@@ -135,11 +139,12 @@ func (a *APISource) Policy() ([]byte, string, error) {
 	return data, etagOf(data), nil
 }
 
-// Binding serves the binding from the configuration Policy fetched. It is
-// asked right after Policy in every cycle, so this is the same document.
+// Binding serves the binding from the same document Policy returned this
+// cycle, even if a wait has since brought a newer one: one cycle, one
+// configuration.
 func (a *APISource) Binding(_ string) ([]byte, string, bool, error) {
 	a.mu.Lock()
-	cfg := a.cfg
+	cfg := a.cycle
 	a.mu.Unlock()
 	if cfg == nil {
 		var err error

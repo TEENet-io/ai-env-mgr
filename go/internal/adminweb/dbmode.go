@@ -136,7 +136,7 @@ func (s *Server) openDatabaseMode(ctx context.Context, opts DatabaseOptions) err
 		hub:     deviceapi.NewHub(),
 	}
 	st.ops.Notifier = st.hub
-	st.devices = &deviceapi.Server{Store: store, Hub: st.hub, Events: s.events, BehindProxy: s.opts.BehindProxy}
+	st.devices = &deviceapi.Server{Store: store, Hub: st.hub, Events: s.events, BehindProxy: s.opts.BehindProxy, Bucket: objects}
 	if signer, ok := objects.(deviceapi.Presigner); ok {
 		st.devices.Objects = signer
 	}

@@ -811,11 +811,12 @@ func mustJSON(v any) []byte {
 	return b
 }
 
-// AllowReenrol opens a one-hour window in which the machine may enrol again
-// even though its token is still live: a reinstalled disk, a lost token
-// file. The old token keeps working until the new enrolment replaces it.
+// AllowReenrol opens a window (a day) in which a machine the console knows
+// may enrol: a machine moving from the bucket to the console, a
+// reinstalled disk, a lost token file. Any token it holds keeps working
+// until the new enrolment replaces it.
 func (s *Service) AllowReenrol(ctx context.Context, hostname, actor, requestID string) (time.Time, error) {
-	until := s.now().Add(time.Hour)
+	until := s.now().Add(24 * time.Hour)
 	err := s.store.InTx(ctx, func(tx repo.Store) error {
 		device, err := tx.Devices().ByHostname(ctx, hostname)
 		if err != nil {

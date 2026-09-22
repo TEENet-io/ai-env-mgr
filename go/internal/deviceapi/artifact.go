@@ -45,21 +45,34 @@ func (s *Server) handleArtifact(w http.ResponseWriter, r *http.Request, device r
 		http.Error(w, "this machine is not aimed at that version", http.StatusForbidden)
 		return
 	}
+	key, sha := "", ""
 	artifact, err := s.Store.Releases().ArtifactByVersion(r.Context(), product, version)
-	if errors.Is(err, repo.ErrNotFound) {
-		http.Error(w, "no such version", http.StatusNotFound)
-		return
-	}
-	if err != nil {
+	switch {
+	case err == nil:
+		key, sha = artifact.ObjectKey, artifact.SHA256
+	case errors.Is(err, repo.ErrNotFound):
+		// A version set before the version library existed lives at the
+		// fixed key the fleet policy names, as it always did for agents
+		// reading the bucket.
+		switch {
+		case product == repo.ProductAgent && version == cfg.Policy.AgentUpdateVersion:
+			key, sha = ossclient.AgentBinaryKey(), cfg.Policy.AgentUpdateSHA256
+		case product == repo.ProductCodex && version == cfg.Policy.CodexVersion && cfg.Policy.CodexKey != "":
+			key, sha = cfg.Policy.CodexKey, cfg.Policy.CodexSHA256
+		default:
+			http.Error(w, "no such version", http.StatusNotFound)
+			return
+		}
+	default:
 		s.fail(w, r, "read artifact", err)
 		return
 	}
-	link, err := s.Objects.SignedURL(artifact.ObjectKey, artifactTTL)
+	link, err := s.Objects.SignedURL(key, artifactTTL)
 	if err != nil {
 		s.fail(w, r, "sign download", err)
 		return
 	}
-	w.Header().Set("X-Artifact-SHA256", artifact.SHA256)
+	w.Header().Set("X-Artifact-SHA256", sha)
 	w.Header().Set("Cache-Control", "no-store")
 	http.Redirect(w, r, link, http.StatusFound)
 }

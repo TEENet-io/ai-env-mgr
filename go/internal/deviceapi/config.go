@@ -38,8 +38,15 @@ func (s *Server) handleWait(w http.ResponseWriter, r *http.Request, device repo.
 	ticker := time.NewTicker(s.Recheck)
 	defer ticker.Stop()
 	for {
-		cfg, err := deviceconfig.Build(r.Context(), s.Store, device.ID)
+		// Register for the wake before reading, so a change that lands
+		// between the two is not missed until the recheck.
+		mine, all := s.Hub.Wait(device.ID)
+		cfg, err := deviceconfig.Build(ctx, s.Store, device.ID)
 		if err != nil {
+			if ctx.Err() != nil {
+				w.WriteHeader(http.StatusNoContent)
+				return
+			}
 			s.fail(w, r, "build config", err)
 			return
 		}
@@ -48,7 +55,6 @@ func (s *Server) handleWait(w http.ResponseWriter, r *http.Request, device repo.
 			writeJSON(w, http.StatusOK, cfg)
 			return
 		}
-		mine, all := s.Hub.Wait(device.ID)
 		select {
 		case <-mine:
 		case <-all:

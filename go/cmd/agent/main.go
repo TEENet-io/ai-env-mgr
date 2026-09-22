@@ -192,11 +192,25 @@ func newSyncer() (*agentcore.Syncer, error) {
 	}
 	// The console, when this build knows one: instructions and reports go
 	// there, and session files are uploaded through links it signs.
+	consoleTarget = cfg.ConsoleURL
 	if api := connectConsole(cfg.ConsoleURL, machine.Name(), stateDir()); api != nil {
-		s.Source = api
-		s.Collector.(*agentcore.Collector).Store = api
+		adoptConsole(s, api)
 	}
 	return s, nil
+}
+
+// consoleTarget is the console this build talks to, "" for bucket only.
+// The service loop uses it to keep enrolling when the start-up attempt
+// did not get a token.
+var consoleTarget string
+
+// adoptConsole points the syncer at the console for instructions, reports
+// and session uploads.
+func adoptConsole(s *agentcore.Syncer, api *agentcore.APISource) {
+	s.SetSource(api)
+	if c, ok := s.Collector.(*agentcore.Collector); ok {
+		c.Store = api
+	}
 }
 
 // readLocalState answers `agent.exe status` from the machine itself. It
@@ -367,11 +381,18 @@ func loop(s *agentcore.Syncer, stop <-chan struct{}, wake <-chan struct{}) {
 	// Trigger 1: the service just started, so do not wait out a whole interval.
 	sync("startup")
 
-	if api, ok := s.Source.(*agentcore.APISource); ok {
-		hostname := s.Machine.Name()
+	hostname := s.Machine.Name()
+	startWaiter := func(api *agentcore.APISource) {
 		go consoleWaiter(api, stop, notify, func() (string, error) {
 			return enrolConsole(api.Client.BaseURL, hostname, stateDir())
 		}, defaultWaiterOptions())
+	}
+	adopted := make(chan *agentcore.APISource, 1)
+	if api, ok := s.Source.(*agentcore.APISource); ok {
+		startWaiter(api)
+	} else if consoleTarget != "" {
+		// No token yet: keep asking, and switch over when one arrives.
+		go enrolUntilDone(consoleTarget, hostname, stateDir(), stop, adopted, defaultWaiterOptions())
 	}
 
 	// A short tick keeps the wall-clock check responsive without syncing often.
@@ -387,6 +408,12 @@ func loop(s *agentcore.Syncer, stop <-chan struct{}, wake <-chan struct{}) {
 
 		case <-notify:
 			sync("console changed")
+
+		case api := <-adopted:
+			// Enrolled after start-up: from here on the console is the source.
+			adoptConsole(s, api)
+			startWaiter(api)
+			sync("console enrolled")
 
 		case <-wake:
 			// Trigger 2: the machine resumed from sleep.

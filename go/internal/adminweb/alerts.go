@@ -373,7 +373,7 @@ func (s *Server) actionAllowReenrol(sess *session, r *http.Request) (string, err
 	if err != nil {
 		return "", err
 	}
-	return "这台机器在 " + until.Local().Format("15:04") + " 前可以重新注册", nil
+	return "这台机器在 " + until.Local().Format("01-02 15:04") + " 前可以注册", nil
 }
 
 func (s *Server) actionRevokeToken(sess *session, r *http.Request) (string, error) {

@@ -11,6 +11,10 @@ import (
 	"github.com/TEENet-io/ai-env-mgr/internal/ossclient"
 )
 
+// minDumpBytes is smaller than any real dump of this schema and larger
+// than the empty archive a failed pg_dump leaves behind.
+const minDumpBytes = 4 << 10
+
 // cmdBackup uploads a database dump made by the host's timer and prunes
 // the old ones. The bucket credentials come from the same environment the
 // console runs with; nothing is passed on the command line.
@@ -26,8 +30,9 @@ func cmdBackup(args []string) error {
 	}
 	if info, err := os.Stat(*file); err != nil {
 		return err
-	} else if info.Size() == 0 {
-		return errors.New("backup: the dump is empty; refusing to upload it")
+	} else if info.Size() < minDumpBytes {
+		// A dump that failed upstream of gzip is a valid, tiny archive.
+		return fmt.Errorf("backup: the dump is only %d bytes; refusing to upload it", info.Size())
 	}
 	built := builtIn()
 	keyID, secret := os.Getenv("AIENVMGR_OSS_ACCESS_KEY_ID"), os.Getenv("AIENVMGR_OSS_ACCESS_KEY_SECRET")

@@ -349,10 +349,19 @@ func (h OSSExport) publish(ctx context.Context, employee repo.Employee, set mode
 	key := ossclient.UserKey(employee.WindowsUser, "credentials.zip")
 	existing := model.CredentialSet{}
 	var data []byte
-	err := ossclient.ErrNotFound
-	if off, offErr := h.ossChannelOff(ctx); offErr != nil {
-		return offErr
-	} else if !off {
+	var err error
+	off, err := h.ossChannelOff(ctx)
+	if err != nil {
+		return err
+	}
+	if off {
+		// The bucket is no longer read: the previous bundle in the table is
+		// the merge base, so an entry this export does not produce survives.
+		data, _, err = h.Store.CredentialBundles().Live(ctx, employee.ID)
+		if errors.Is(err, repo.ErrNotFound) {
+			err = ossclient.ErrNotFound
+		}
+	} else {
 		data, _, err = h.Objects.Get(key)
 	}
 	switch {

@@ -14,8 +14,8 @@ import (
 // connectConsole builds the console-backed Source when this build knows a
 // console and the machine holds, or can get, a device token. Nil means
 // "read the bucket this cycle": no console configured, or the console
-// could not be reached and there is no token yet. Enrolment is retried by
-// the waiter once the service loop is running.
+// could not be reached and there is no token yet. The service loop keeps
+// trying to enrol in that case (see enrolUntilDone).
 func connectConsole(consoleURL, hostname, stateDir string) *agentcore.APISource {
 	if consoleURL == "" {
 		return nil
@@ -28,8 +28,43 @@ func connectConsole(consoleURL, hostname, stateDir string) *agentcore.APISource 
 		log.Printf("console: %v; reading the bucket for now", err)
 		return nil
 	}
+	return newAPISource(consoleURL, token)
+}
+
+func newAPISource(consoleURL, token string) *agentcore.APISource {
 	return agentcore.NewAPISource(&agentapi.Client{BaseURL: consoleURL, Token: token, Version: version,
 		HTTP: &http.Client{Timeout: 30 * time.Second}})
+}
+
+// enrolUntilDone keeps asking the console for a token until it gets one
+// or the service stops, then hands the source over. A console that refuses
+// (it knows this name and nobody opened the door) is asked hourly; any
+// other failure backs off from five seconds to five minutes.
+func enrolUntilDone(consoleURL, hostname, stateDir string, stop <-chan struct{}, adopted chan<- *agentcore.APISource, opts waiterOptions) {
+	backoff := opts.minBackoff
+	for {
+		select {
+		case <-stop:
+			return
+		default:
+		}
+		token, err := enrolConsole(consoleURL, hostname, stateDir)
+		if err == nil {
+			adopted <- newAPISource(consoleURL, token)
+			return
+		}
+		wait := backoff
+		if errors.Is(err, agentapi.ErrAlreadyEnrolled) {
+			wait = opts.enrolRetry
+			log.Printf("console: enrolment refused, the console knows this machine and nobody has allowed it to enrol; trying again in %s", wait)
+		} else {
+			log.Printf("console: enrolment failed: %v; trying again in %s", err, wait)
+			backoff = min(backoff*2, opts.maxBackoff)
+		}
+		if !opts.sleep(wait, stop) {
+			return
+		}
+	}
 }
 
 // enrolConsole asks the console for a token and keeps it.

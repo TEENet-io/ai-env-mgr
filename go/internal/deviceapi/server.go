@@ -24,6 +24,12 @@ type Presigner interface {
 	SignedPutURL(key string, ttl time.Duration, contentType string) (string, error)
 }
 
+// BucketReader reads one object: the fallback for a credentials bundle that
+// predates the bundle table, while the bucket is still written.
+type BucketReader interface {
+	Get(key string) ([]byte, string, error)
+}
+
 // Events is where the API notes what happened. It is never handed a token.
 type Events interface {
 	Ops(level, eventType, msg string, fields map[string]any)
@@ -32,7 +38,8 @@ type Events interface {
 // Server serves /agent/v1/.
 type Server struct {
 	Store   repo.Store
-	Objects Presigner // nil: artifact and upload links answer 503
+	Objects Presigner    // nil: artifact and upload links answer 503
+	Bucket  BucketReader // nil: no fallback for bundles the table lacks
 	Hub     *Hub
 	Events  Events
 	Now     func() time.Time
@@ -85,6 +92,12 @@ func (s *Server) release(deviceID string, p *poll) {
 }
 
 const (
+	// globalLimitKey caps enrolments across all addresses: behind the edge
+	// the per-address key is coarse, and a spray from many addresses must
+	// not turn into a spray of tokens.
+	globalLimitKey = "*"
+	globalPerMin   = 60
+
 	maxBody      = 1 << 20
 	maxLogTail   = 64 << 10
 	artifactTTL  = 15 * time.Minute
@@ -108,6 +121,10 @@ func (s *Server) now() time.Time {
 func (s *Server) Handler() http.Handler {
 	if s.limiter == nil {
 		s.limiter = newLimiter(time.Minute, enrolPerMin)
+		s.limiter.maxFor = map[string]int{globalLimitKey: globalPerMin}
+	}
+	if s.Hub == nil {
+		s.Hub = NewHub()
 	}
 	if s.WaitMax <= 0 {
 		s.WaitMax = 25 * time.Second
@@ -228,6 +245,20 @@ func (s *Server) clientIP(r *http.Request) string {
 	return host
 }
 
+// originIP is the address the enrolment allow-list is checked against.
+// Behind the edge, X-Real-IP is the edge's own address; the client's is
+// what the edge says in CF-Connecting-IP, which only the edge can set on
+// a request that reaches the origin through it. It is used for the
+// allow-list and recorded, never for rate limiting.
+func (s *Server) originIP(r *http.Request) string {
+	if s.BehindProxy {
+		if cf := strings.TrimSpace(r.Header.Get("CF-Connecting-IP")); cf != "" && net.ParseIP(cf) != nil {
+			return cf
+		}
+	}
+	return s.clientIP(r)
+}
+
 // deviceFrom is for handlers written as plain http.HandlerFunc.
 func deviceFrom(ctx context.Context) (repo.Device, bool) {
 	d, ok := ctx.Value(deviceKey).(repo.Device)
@@ -240,6 +271,7 @@ type limiter struct {
 	hits   map[string][]time.Time
 	window time.Duration
 	max    int
+	maxFor map[string]int // keys with their own ceiling
 	now    func() time.Time
 }
 
@@ -258,7 +290,11 @@ func (l *limiter) allow(key string) bool {
 			kept = append(kept, t)
 		}
 	}
-	if len(kept) >= l.max {
+	limit := l.max
+	if m, ok := l.maxFor[key]; ok {
+		limit = m
+	}
+	if len(kept) >= limit {
 		l.hits[key] = kept
 		return false
 	}

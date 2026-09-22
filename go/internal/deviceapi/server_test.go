@@ -225,15 +225,19 @@ func TestASecondEnrolIsRefusedUntilAllowed(t *testing.T) {
 	if rec := do(h, "GET", "/agent/v1/config", rotated["deviceToken"], nil); rec.Code != 200 {
 		t.Fatal("the rotated-in token works")
 	}
-	// A forgotten machine that enrols again comes back, with a new token
-	// and no 409: forgetting it was the administrator's say-so.
+	// A forgotten machine is locked out: its token stops working and it
+	// cannot enrol again until an administrator lets it.
 	store.Devices().Revoke(ctx, deviceID)
 	if rec := do(h, "GET", "/agent/v1/config", rotated["deviceToken"], nil); rec.Code != 401 {
 		t.Fatal("a forgotten machine's token must stop working")
 	}
+	if rec := do(h, "POST", "/agent/v1/enrol", "", enrolRequest{Hostname: "PC-1"}); rec.Code != 409 {
+		t.Fatalf("a forgotten machine enrolling: %d", rec.Code)
+	}
+	store.Devices().AllowReenrol(ctx, deviceID, s.now().Add(time.Hour))
 	back, again := enrol(t, h, "PC-1")
 	if d, _ := store.Devices().ByID(ctx, back); back != deviceID || d.Status == repo.DeviceRevoked {
-		t.Fatalf("a forgotten machine comes back as itself: %+v", d)
+		t.Fatalf("let back in, it comes back as itself: %+v", d)
 	}
 	if rec := do(h, "GET", "/agent/v1/config", again, nil); rec.Code != 200 {
 		t.Fatal("the returned machine's token works")
@@ -401,5 +405,98 @@ func TestTokensNeverAppearInLogs(t *testing.T) {
 	}
 	if len(events.lines) < 2 {
 		t.Fatalf("expected enrolment and refusal to be logged: %v", events.lines)
+	}
+}
+
+// The fleet that has never enrolled is the case that matters: every one of
+// its machines is known, assigned, and holds no token. A stranger naming
+// one must not get its assignee's credentials.
+func TestAKnownMachineIsNotHandedToWhoeverNamesIt(t *testing.T) {
+	s, store, ctx, h, _, _ := newServer(t)
+	publishPolicy(t, ctx, store, model.Policy{BlockEnabled: true})
+	e, _ := store.Employees().Create(ctx, repo.NewEmployee{WindowsUser: "work1"})
+	bound, _ := store.Devices().EnsureByHostname(ctx, "PC-BOUND")
+	store.Bindings().Bind(ctx, bound.ID, e.ID, "", "admin")
+	store.CredentialBundles().Put(ctx, e.ID, e.AuthEpoch, []byte("PK-secret"), "c1")
+	wasBound, _ := store.Devices().EnsureByHostname(ctx, "PC-WAS-BOUND")
+	store.Bindings().Bind(ctx, wasBound.ID, e.ID, "", "admin")
+	store.Bindings().Unbind(ctx, wasBound.ID, "admin")
+	spare, _ := store.Devices().EnsureByHostname(ctx, "PC-SPARE") // seen, never assigned
+
+	for _, name := range []string{"PC-BOUND", "pc-bound", "PC-WAS-BOUND"} {
+		if rec := do(h, "POST", "/agent/v1/enrol", "", enrolRequest{Hostname: name}); rec.Code != 409 {
+			t.Fatalf("%s: %d, want 409", name, rec.Code)
+		}
+	}
+	if _, token := enrol(t, h, "PC-SPARE"); token == "" {
+		t.Fatal("a machine nobody was ever assigned to may enrol on its own")
+	}
+	if d, _ := store.Devices().ByID(ctx, spare.ID); d.Channel != repo.ChannelAPI {
+		t.Fatal("the spare is on the api channel now")
+	}
+	// The administrator opens the door for the bound one; its assignee's
+	// bundle is then served to the machine that walked through it.
+	store.Devices().AllowReenrol(ctx, bound.ID, s.now().Add(time.Hour))
+	_, token := enrol(t, h, "PC-BOUND")
+	if rec := do(h, "GET", "/agent/v1/credentials", token, nil); rec.Code != 200 || rec.Body.String() != "PK-secret" {
+		t.Fatalf("credentials after the door was opened: %d", rec.Code)
+	}
+	// Once through, the door is shut again.
+	if rec := do(h, "POST", "/agent/v1/enrol", "", enrolRequest{Hostname: "PC-BOUND"}); rec.Code != 409 {
+		t.Fatalf("second walk-through: %d", rec.Code)
+	}
+}
+
+type fakeBucket struct{ objects map[string][]byte }
+
+func (f fakeBucket) Get(key string) ([]byte, string, error) {
+	data, ok := f.objects[key]
+	if !ok {
+		return nil, "", ossclient.ErrNotFound
+	}
+	return data, "oss-etag", nil
+}
+
+func TestCredentialsFallBackToTheBucketUntilABundleExists(t *testing.T) {
+	s, store, ctx, h, _, _ := newServer(t)
+	publishPolicy(t, ctx, store, model.Policy{})
+	e, _ := store.Employees().Create(ctx, repo.NewEmployee{WindowsUser: "work1"})
+	deviceID, token := enrol(t, h, "PC-1")
+	store.Bindings().Bind(ctx, deviceID, e.ID, "", "admin")
+	bucket := fakeBucket{objects: map[string][]byte{ossclient.UserKey("work1", "credentials.zip"): []byte("PK-from-bucket")}}
+	s.Bucket = bucket
+
+	rec := do(h, "GET", "/agent/v1/credentials", token, nil)
+	if rec.Code != 200 || rec.Body.String() != "PK-from-bucket" || rec.Header().Get("ETag") != "oss-etag" {
+		t.Fatalf("bucket fallback: %d %q", rec.Code, rec.Body.String())
+	}
+	// A bundle in the table wins once it exists.
+	store.CredentialBundles().Put(ctx, e.ID, e.AuthEpoch, []byte("PK-from-table"), "t1")
+	if rec := do(h, "GET", "/agent/v1/credentials", token, nil); rec.Body.String() != "PK-from-table" {
+		t.Fatalf("table bundle: %q", rec.Body.String())
+	}
+	// With the bucket switched off there is no fallback: 404, as documented.
+	store.CredentialBundles().Purge(ctx, e.ID)
+	store.Settings().Set(ctx, repo.SettingDeviceChannel, []byte(`{"write_oss_objects":false,"import_oss_status":false}`), 0, "admin")
+	if rec := do(h, "GET", "/agent/v1/credentials", token, nil); rec.Code != 404 {
+		t.Fatalf("bucket off: %d", rec.Code)
+	}
+}
+
+func TestArtifactFallsBackToThePolicyKeyForOldVersions(t *testing.T) {
+	_, store, ctx, h, signer, _ := newServer(t)
+	publishPolicy(t, ctx, store, model.Policy{AgentUpdateVersion: "1.2.14", AgentUpdateSHA256: strings.Repeat("b", 64),
+		CodexVersion: "26.901", CodexKey: "agent_workdir/_codex/codex-setup-26.901.exe", CodexSHA256: strings.Repeat("c", 64)})
+	_, token := enrol(t, h, "PC-1")
+	rec := do(h, "GET", "/agent/v1/artifact/agent/1.2.14", token, nil)
+	if rec.Code != 302 || !strings.Contains(rec.Header().Get("Location"), ossclient.AgentBinaryKey()) || rec.Header().Get("X-Artifact-SHA256") != strings.Repeat("b", 64) {
+		t.Fatalf("agent fallback: %d %s", rec.Code, rec.Header().Get("Location"))
+	}
+	rec = do(h, "GET", "/agent/v1/artifact/codex/26.901", token, nil)
+	if rec.Code != 302 || !strings.Contains(rec.Header().Get("Location"), "codex-setup-26.901.exe") {
+		t.Fatalf("codex fallback: %d %s", rec.Code, rec.Header().Get("Location"))
+	}
+	if len(signer.signed) != 2 {
+		t.Fatalf("signed %v", signer.signed)
 	}
 }
