@@ -481,3 +481,44 @@ func TestSyncNowReachesAnUnboundMachineToo(t *testing.T) {
 		t.Fatalf("binding = %+v", b)
 	}
 }
+
+type recordingNotifier struct {
+	woken []string
+	all   int
+}
+
+func (f *recordingNotifier) Wake(ids ...string) { f.woken = append(f.woken, ids...) }
+func (f *recordingNotifier) WakeAll()           { f.all++ }
+
+func TestExportsWakeTheMachinesTheyTouch(t *testing.T) {
+	store, service, objects, w, ctx := exporting(t)
+	hub := &recordingNotifier{}
+	w.Register(repo.TaskOSSExport, OSSExport{
+		Store: store, Objects: objects, Keyring: testKeyring(t),
+		Catalog:        fakeCatalog{names: []string{"claude-4.5-sonnet"}},
+		GatewayBaseURL: "https://litellm.teenet.app", Notifier: hub,
+	})
+	if _, err := service.PublishPolicy(ctx, []byte(`{"blockEnabled":true,"syncIntervalMinutes":30}`), "t", "zhang", ""); err != nil {
+		t.Fatal(err)
+	}
+	employee := onboard(t, ctx, service, "work1")
+	pc1, _ := store.Devices().EnsureByHostname(ctx, "PC-1")
+	if _, err := service.BindMachine(ctx, "PC-1", employee.ID, "", "zhang", ""); err != nil {
+		t.Fatal(err)
+	}
+	drain(t, ctx, w)
+	// The policy export wakes everybody once; the bind's binding export and
+	// the assignee's credentials export each wake PC-1.
+	if hub.all < 1 {
+		t.Fatalf("a policy export wakes everybody: %d", hub.all)
+	}
+	n := 0
+	for _, id := range hub.woken {
+		if id == pc1.ID {
+			n++
+		}
+	}
+	if n < 2 {
+		t.Fatalf("PC-1 woken %d time(s) by %v", n, hub.woken)
+	}
+}

@@ -49,8 +49,12 @@ type ModelCatalog interface {
 type OSSExport struct {
 	Store   repo.Store
 	Objects ObjectStore
-	Keyring secrets.Keyring
-	Catalog ModelCatalog
+	// Notifier, when set, is woken after the objects are written: this is
+	// the authoritative wake, the one that follows every change, because
+	// every change queues an export.
+	Notifier Notifier
+	Keyring  secrets.Keyring
+	Catalog  ModelCatalog
 	// GatewayBaseURL is what goes into every employee's config.toml. It is the
 	// public gateway address: this string is what Codex on a desktop will
 	// connect to, so a loopback address here silently breaks every machine.
@@ -106,7 +110,40 @@ func (h OSSExport) Run(ctx context.Context, task repo.Task) (Result, error) {
 		}
 		return err
 	})
+	if err == nil {
+		h.notify(ctx, payload)
+	}
 	return result, err
+}
+
+// Notifier wakes agents waiting on the console for their configuration.
+type Notifier interface {
+	Wake(deviceIDs ...string)
+	WakeAll()
+}
+
+// notify wakes whoever the export touched: everybody for the policy, one
+// machine for a binding, an employee's machines for their credentials.
+func (h OSSExport) notify(ctx context.Context, payload exportPayload) {
+	if h.Notifier == nil {
+		return
+	}
+	switch {
+	case payload.PolicyVersion > 0:
+		h.Notifier.WakeAll()
+	case payload.DeviceID != "":
+		h.Notifier.Wake(payload.DeviceID)
+	case payload.EmployeeID != "":
+		bindings, err := h.Store.Bindings().OpenByEmployee(ctx, payload.EmployeeID)
+		if err != nil {
+			return
+		}
+		ids := make([]string, 0, len(bindings))
+		for _, b := range bindings {
+			ids = append(ids, b.DeviceID)
+		}
+		h.Notifier.Wake(ids...)
+	}
 }
 
 // exportPolicy writes the fleet policy.

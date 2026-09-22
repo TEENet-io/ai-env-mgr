@@ -504,3 +504,18 @@ func TestAStalePageCannotOverwriteAnotherAdministratorsSave(t *testing.T) {
 		t.Fatal("the detail page must carry the row version")
 	}
 }
+
+func TestTheDeviceAPIIsMountedWithoutASession(t *testing.T) {
+	s, _ := newDatabaseServer(t)
+	h := s.Handler()
+	req := httptest.NewRequest(http.MethodPost, "/agent/v1/enrol", strings.NewReader(`{"hostname":"PC-9","agentVersion":"1.3.0"}`))
+	req.RemoteAddr = "203.0.113.5:1"
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+	if rec.Code != 200 || !strings.Contains(rec.Body.String(), "deviceToken") {
+		t.Fatalf("enrol through the console: %d %s", rec.Code, rec.Body.String())
+	}
+	if rec := dbGet(t, h, "/agent/v1/config"); rec.Code != http.StatusUnauthorized {
+		t.Fatalf("config without a device token: %d", rec.Code)
+	}
+}

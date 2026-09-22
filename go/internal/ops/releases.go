@@ -198,6 +198,7 @@ func (s *Service) CreateRollout(ctx context.Context, spec RolloutSpec) (repo.Rol
 	if err != nil {
 		return repo.Rollout{}, fmt.Errorf("create rollout: %w", err)
 	}
+	s.wake(spec.DeviceIDs...)
 	return result, nil
 }
 
@@ -221,7 +222,24 @@ func (s *Service) SetRolloutPaused(ctx context.Context, rolloutID string, paused
 	if err != nil {
 		return fmt.Errorf("pause rollout: %w", err)
 	}
+	s.wakeRollout(ctx, rolloutID)
 	return nil
+}
+
+// wakeRollout wakes every machine a rollout names.
+func (s *Service) wakeRollout(ctx context.Context, rolloutID string) {
+	if s.Notifier == nil {
+		return
+	}
+	targets, err := s.store.Releases().TargetsByRollout(ctx, rolloutID)
+	if err != nil {
+		return
+	}
+	ids := make([]string, 0, len(targets))
+	for _, t := range targets {
+		ids = append(ids, t.DeviceID)
+	}
+	s.wake(ids...)
 }
 
 // CancelRollout closes every pending target. Finished ones keep their result.
@@ -254,6 +272,7 @@ func (s *Service) CancelRollout(ctx context.Context, rolloutID, actor, requestID
 	if err != nil {
 		return 0, fmt.Errorf("cancel rollout: %w", err)
 	}
+	s.wakeRollout(ctx, rolloutID)
 	return n, nil
 }
 
@@ -264,11 +283,13 @@ func (s *Service) ExcludeTarget(ctx context.Context, targetID, reason, actor, re
 	if reason == "" {
 		return errors.New("exclude machine: a reason is required")
 	}
+	var deviceID string
 	err := s.store.InTx(ctx, func(tx repo.Store) error {
 		target, err := tx.Releases().FinishTarget(ctx, targetID, repo.TargetExcluded, reason, "")
 		if err != nil {
 			return err
 		}
+		deviceID = target.DeviceID
 		device, err := tx.Devices().ByID(ctx, target.DeviceID)
 		if err != nil {
 			return err
@@ -282,6 +303,7 @@ func (s *Service) ExcludeTarget(ctx context.Context, targetID, reason, actor, re
 	if err != nil {
 		return fmt.Errorf("exclude machine: %w", err)
 	}
+	s.wake(deviceID)
 	return nil
 }
 
@@ -317,6 +339,7 @@ func (s *Service) RetryTarget(ctx context.Context, targetID, actor, requestID st
 	if err != nil {
 		return repo.Target{}, fmt.Errorf("retry target: %w", err)
 	}
+	s.wake(result.DeviceID)
 	return result, nil
 }
 

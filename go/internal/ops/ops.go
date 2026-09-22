@@ -32,11 +32,35 @@ import (
 type Service struct {
 	store repo.Store
 	now   func() time.Time
+
+	// Notifier, when set, is told after a commit which machines the change
+	// touched, so an agent waiting on the console hears at once. It is a
+	// hint: the export task wakes the same machines again once the objects
+	// are written, and the agent re-reads on a timer regardless.
+	Notifier Notifier
+}
+
+// Notifier wakes agents waiting for their configuration to change.
+type Notifier interface {
+	Wake(deviceIDs ...string)
+	WakeAll()
 }
 
 // New builds a Service over a store.
 func New(store repo.Store) *Service {
 	return &Service{store: store, now: func() time.Time { return time.Now().UTC() }}
+}
+
+func (s *Service) wake(deviceIDs ...string) {
+	if s.Notifier != nil && len(deviceIDs) > 0 {
+		s.Notifier.Wake(deviceIDs...)
+	}
+}
+
+func (s *Service) wakeAll() {
+	if s.Notifier != nil {
+		s.Notifier.WakeAll()
+	}
 }
 
 // Audit actions. They are constants because they are searched for: an incident
@@ -398,11 +422,13 @@ func (s *Service) UpdateProfile(ctx context.Context, employeeID string, version 
 // how one employee's credentials reach another.
 func (s *Service) BindMachine(ctx context.Context, hostname, employeeID, note, actor, requestID string) (repo.Binding, error) {
 	var result repo.Binding
+	var deviceID string
 	err := s.store.InTx(ctx, func(tx repo.Store) error {
 		device, err := tx.Devices().EnsureByHostname(ctx, hostname)
 		if err != nil {
 			return err
 		}
+		deviceID = device.ID
 		employee, err := tx.Employees().ByID(ctx, employeeID)
 		if err != nil {
 			return err
@@ -454,16 +480,19 @@ func (s *Service) BindMachine(ctx context.Context, hostname, employeeID, note, a
 	if err != nil {
 		return repo.Binding{}, fmt.Errorf("bind machine %s: %w", hostname, err)
 	}
+	s.wake(deviceID)
 	return result, nil
 }
 
 // UnbindMachine takes a machine away from whoever has it.
 func (s *Service) UnbindMachine(ctx context.Context, hostname, actor, requestID string) error {
+	var deviceID string
 	err := s.store.InTx(ctx, func(tx repo.Store) error {
 		device, err := tx.Devices().ByHostname(ctx, hostname)
 		if err != nil {
 			return err
 		}
+		deviceID = device.ID
 		binding, err := tx.Bindings().Unbind(ctx, device.ID, actor)
 		if err != nil {
 			return err
@@ -479,6 +508,7 @@ func (s *Service) UnbindMachine(ctx context.Context, hostname, actor, requestID 
 	if err != nil {
 		return fmt.Errorf("unbind machine %s: %w", hostname, err)
 	}
+	s.wake(deviceID)
 	return nil
 }
 
@@ -486,11 +516,13 @@ func (s *Service) UnbindMachine(ctx context.Context, hostname, actor, requestID 
 // Codex once, and returns the nonce the agent will echo back when it has.
 func (s *Service) RequestCodexRestart(ctx context.Context, hostname, actor, requestID string) (string, error) {
 	nonce := strconv.FormatInt(s.now().UnixNano(), 36)
+	var deviceID string
 	err := s.store.InTx(ctx, func(tx repo.Store) error {
 		device, err := tx.Devices().ByHostname(ctx, hostname)
 		if err != nil {
 			return err
 		}
+		deviceID = device.ID
 		if _, err := tx.Bindings().RequestCodexRestart(ctx, device.ID, nonce); err != nil {
 			return err
 		}
@@ -505,6 +537,7 @@ func (s *Service) RequestCodexRestart(ctx context.Context, hostname, actor, requ
 	if err != nil {
 		return "", fmt.Errorf("ask %s to restart Codex: %w", hostname, err)
 	}
+	s.wake(deviceID)
 	return nonce, nil
 }
 
@@ -514,11 +547,13 @@ func (s *Service) RequestCodexRestart(ctx context.Context, hostname, actor, requ
 // sync on their interval as before.
 func (s *Service) RequestSync(ctx context.Context, hostname, actor, requestID string) (string, error) {
 	nonce := strconv.FormatInt(s.now().UnixNano(), 36)
+	var deviceID string
 	err := s.store.InTx(ctx, func(tx repo.Store) error {
 		device, err := tx.Devices().ByHostname(ctx, hostname)
 		if err != nil {
 			return err
 		}
+		deviceID = device.ID
 		if _, err := tx.Devices().RequestSync(ctx, device.ID, nonce); err != nil {
 			return err
 		}
@@ -531,6 +566,7 @@ func (s *Service) RequestSync(ctx context.Context, hostname, actor, requestID st
 	if err != nil {
 		return "", fmt.Errorf("ask %s to sync: %w", hostname, err)
 	}
+	s.wake(deviceID)
 	return nonce, nil
 }
 
@@ -556,6 +592,7 @@ func (s *Service) PublishPolicy(ctx context.Context, content []byte, note, actor
 	if err != nil {
 		return repo.PolicyVersion{}, fmt.Errorf("publish policy: %w", err)
 	}
+	s.wakeAll()
 	return result, nil
 }
 

@@ -755,3 +755,57 @@ func TestChangingModelsBackAndForthReachesTheGatewayEveryTime(t *testing.T) {
 		}
 	}
 }
+
+// fakeNotifier records who was woken.
+type fakeNotifier struct {
+	woken []string
+	all   int
+}
+
+func (f *fakeNotifier) Wake(ids ...string) { f.woken = append(f.woken, ids...) }
+func (f *fakeNotifier) WakeAll()           { f.all++ }
+
+func TestChangesWakeTheMachinesTheyTouch(t *testing.T) {
+	service, store, ctx := newService(t)
+	hub := &fakeNotifier{}
+	service.Notifier = hub
+	employee, err := service.Onboard(ctx, OnboardSpec{WindowsUser: "work1", Quota: testQuota(), Actor: "zhang"})
+	if err != nil {
+		t.Fatalf("onboard: %v", err)
+	}
+	pc1, _ := store.Devices().EnsureByHostname(ctx, "PC-1")
+
+	if _, err := service.BindMachine(ctx, "PC-1", employee.ID, "", "zhang", ""); err != nil {
+		t.Fatal(err)
+	}
+	if len(hub.woken) != 1 || hub.woken[0] != pc1.ID {
+		t.Fatalf("bind woke %v", hub.woken)
+	}
+	hub.woken = nil
+	if _, err := service.RequestSync(ctx, "PC-1", "zhang", ""); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := service.RequestCodexRestart(ctx, "PC-1", "zhang", ""); err != nil {
+		t.Fatal(err)
+	}
+	if err := service.UnbindMachine(ctx, "PC-1", "zhang", ""); err != nil {
+		t.Fatal(err)
+	}
+	if len(hub.woken) != 3 {
+		t.Fatalf("sync, restart and unbind each wake the machine: %v", hub.woken)
+	}
+	if _, err := service.PublishPolicy(ctx, []byte(`{"blockEnabled":false,"syncIntervalMinutes":5}`), "t", "zhang", ""); err != nil {
+		t.Fatal(err)
+	}
+	if hub.all != 1 {
+		t.Fatalf("a policy change wakes everybody: %d", hub.all)
+	}
+	// A failed change wakes nobody.
+	hub.woken = nil
+	if _, err := service.BindMachine(ctx, "PC-1", "no-such-employee", "", "zhang", ""); err == nil {
+		t.Fatal("expected an error")
+	}
+	if len(hub.woken) != 0 {
+		t.Fatalf("a failed bind must not wake: %v", hub.woken)
+	}
+}

@@ -21,6 +21,7 @@ import (
 	"github.com/TEENet-io/ai-env-mgr/internal/authn"
 	"github.com/TEENet-io/ai-env-mgr/internal/config"
 	"github.com/TEENet-io/ai-env-mgr/internal/dbstore"
+	"github.com/TEENet-io/ai-env-mgr/internal/deviceapi"
 	"github.com/TEENet-io/ai-env-mgr/internal/ecdclient"
 	"github.com/TEENet-io/ai-env-mgr/internal/litellm"
 	"github.com/TEENet-io/ai-env-mgr/internal/ops"
@@ -70,6 +71,10 @@ type dbState struct {
 	// else.
 	csrfKey []byte
 	worker  *worker.Worker
+	// hub wakes agents long-polling the device API when their configuration
+	// changes; devices is that API.
+	hub     *deviceapi.Hub
+	devices *deviceapi.Server
 }
 
 // enrolCookie carries a pending authenticator enrolment between the sign-in
@@ -128,6 +133,12 @@ func (s *Server) openDatabaseMode(ctx context.Context, opts DatabaseOptions) err
 		ops:     ops.New(store),
 		auth:    authn.New(store.Admins(), ring, s.issuer()),
 		csrfKey: csrfKey,
+		hub:     deviceapi.NewHub(),
+	}
+	st.ops.Notifier = st.hub
+	st.devices = &deviceapi.Server{Store: store, Hub: st.hub, Events: s.events, BehindProxy: s.opts.BehindProxy}
+	if signer, ok := objects.(deviceapi.Presigner); ok {
+		st.devices.Objects = signer
 	}
 	if s.opts.SLSProject != "" {
 		st.sls = slsclient.New(s.opts.SLSEndpoint, s.opts.SLSProject, opts.OSSAccessKeyID, opts.OSSAccessKeySecret)
@@ -202,6 +213,10 @@ func (s *Server) buildWorker(st *dbState) *worker.Worker {
 			}
 		},
 		SweepEvery: time.Minute,
+		// Two seconds between looks at an empty queue: a change an
+		// administrator just made reaches the export, and through it the
+		// waiting agents, that much sooner. The idle cost is one cheap query.
+		Poll: 2 * time.Second,
 	})
 	var users worker.UserLister
 
@@ -229,7 +244,7 @@ func (s *Server) buildWorker(st *dbState) *worker.Worker {
 		users = gw
 		w.Register(repo.TaskOSSExport, worker.OSSExport{
 			Store: st.store, Objects: st.objects, Keyring: st.ring, Catalog: gw,
-			GatewayBaseURL: s.opts.GatewayURL,
+			GatewayBaseURL: s.opts.GatewayURL, Notifier: st.hub,
 		})
 	}
 	w.Register(worker.TaskStatusImport, worker.StatusImport{Store: st.store, Objects: st.objects})
