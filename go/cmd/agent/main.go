@@ -193,7 +193,15 @@ func newSyncer() (*agentcore.Syncer, error) {
 	// The console, when this build knows one: instructions and reports go
 	// there, and session files are uploaded through links it signs.
 	consoleTarget = cfg.ConsoleURL
-	if api := connectConsole(cfg.ConsoleURL, machine.Name(), stateDir()); api != nil {
+	if consoleTarget != "" {
+		if err := config.CheckConsoleURL(consoleTarget); err != nil {
+			// Staying on the bucket keeps the machine managed; the console
+			// sees it never move off the OSS channel.
+			log.Printf("console: %v; ignoring it and reading the bucket", err)
+			consoleTarget = ""
+		}
+	}
+	if api := connectConsole(consoleTarget, machine.Name(), stateDir()); api != nil {
 		adoptConsole(s, api)
 	}
 	return s, nil

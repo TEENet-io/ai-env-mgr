@@ -256,7 +256,7 @@ type Source interface {
 - Create: `go/internal/agentapi/client.go`、`client_test.go`(httptest 服务端)、`go/internal/agentapi/tokenstore_windows.go`(DPAPI:`golang.org/x/sys/windows` 的 `CryptProtectData`)、`tokenstore_other.go`、`tokenstore_test.go`
 - Create: `go/internal/agentcore/source_api.go`、`source_api_test.go`
 - Modify: `go/cmd/agent/main.go`(启动选路:令牌 → API;否则注册;失败则 OSS 模式这一轮)、`credentials.go`(`consoleURL` 一个 ldflags 变量,默认空;空则永远 OSS 模式)、`internal/config`(`agent.config.json` 可覆盖 `consoleUrl`)
-- Modify: `.github/workflows/release.yml`(注入 `AGENT_CONSOLE_URL` 变量;不是秘密)
+- Modify: `.github/workflows/release.yml`(注入 `AGENT_CONSOLE_URL`;不是秘密。后改为写死在 workflow 里并校验,见文末)
 
 **Interfaces:**
 ```go
@@ -332,10 +332,17 @@ func (c *Client) Rotate(ctx) (newToken string, err error)
 - 本机端到端(Linux 版 agent 对临时控制台):注册、取配置、报状态、传日志、长轮询都通;发现并修掉一个问题——控制台触发的同步落在 agent 30 秒防抖窗口里会被丢弃,现在改为延后到窗口结束再做。
 - 备份:`ai-env-admin backup` + systemd timer 已装在控制台主机,首个备份 `agent_workdir/_backup/aienv-20260922.sql.gz` 已上传;每天 UTC 2:00。
 
-**待用户**:GitHub 仓库变量 `AGENT_CONSOLE_URL=https://windows-control.teenet.app`,打 `v1.3.0`,测试机验收,设全局目标升级三台机器,再关两个 OSS 开关。
+**待用户**:打 `v1.3.0`,测试机验收,设全局目标升级三台机器,再关两个 OSS 开关。
 
 ### 复查后的修正(2026-09-22 晚,提交 b27e52f)
 
 子代理复查发现 11 项,已修 10 项:注册规则改为"控制台认识的机器(绑定过、有令牌、被注销过)一律 409,直到管理员点'允许注册(24 小时)'"——迁移期的三台机器正好都是这种状态,原规则让陌生人报主机名就能领走凭据;凭据接口在库里没有包时回退读 OSS 对象(并已为四个员工回填了包);老版本号的包回退到策略里的固定 key;注册加全局限速、IP 段按 `CF-Connecting-IP` 判;长轮询先登记再读;一个周期只用一份配置;启动注册失败由服务循环持续重试;OSS 关闭后合并基准改读库里的包;备份脚本 `pipefail` + 最小体积。未改:`X-Real-IP` 信任模型与登录限速一致(控制台只听 127.0.0.1,只有 nginx 能到),记为已知取舍。
 
 **迁移步骤因此多一步**:给三台机器点"允许注册"再设全局目标。
+
+### 控制台地址改为写进仓库(2026-09-23)
+
+- 原来从 GitHub 仓库变量读,变量没设只出警告、照样出一个只读 OSS 的包;改变量不留提交记录,而它决定整批机器听哪台控制台的。
+- 现在 `release.yml` 里写死 `AGENT_CONSOLE_URL: https://windows-control.teenet.app`,构建前校验必须是纯 `https://主机[:端口]`,否则失败。
+- agent 侧 `config.CheckConsoleURL`:只收 https,http 仅限回环地址(本地 E2E);不合格就记日志、当作没有控制台继续走 OSS,不退出服务。
+- 地址仍只由 CI 用 ldflags 注入,不作为源码默认值,本地开发构建不会去生产控制台注册。

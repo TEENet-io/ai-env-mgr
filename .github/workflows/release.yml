@@ -42,18 +42,21 @@ jobs:
           AGENT_OSS_ENDPOINT: ${{ secrets.AGENT_OSS_ENDPOINT }}
           AGENT_OSS_ACCESS_KEY_ID: ${{ secrets.AGENT_OSS_ACCESS_KEY_ID }}
           AGENT_OSS_ACCESS_KEY_SECRET: ${{ secrets.AGENT_OSS_ACCESS_KEY_SECRET }}
-          # The console's public address: not a secret, a repository variable.
-          AGENT_CONSOLE_URL: ${{ vars.AGENT_CONSOLE_URL }}
+          # The console every agent.exe enrols with and takes instructions
+          # from. Not a secret, but changing it hands the whole fleet to
+          # another server, so it lives here and changes only by commit.
+          AGENT_CONSOLE_URL: https://windows-control.teenet.app
         run: |
           set -euo pipefail
           VER="${GITHUB_REF_NAME#v}"
           LD="-s -w -X main.version=${VER}"
-          if [ -n "${AGENT_CONSOLE_URL:-}" ]; then
-            LD="${LD} -X main.consoleURL=${AGENT_CONSOLE_URL}"
-            echo "agent.exe: console ${AGENT_CONSOLE_URL} built in"
-          else
-            echo "::warning::AGENT_CONSOLE_URL variable is not set; this agent.exe reads the bucket only"
+          # Bare https origin only: no http, no path, no trailing slash.
+          if ! [[ "${AGENT_CONSOLE_URL}" =~ ^https://[a-z0-9.-]+(:[0-9]+)?$ ]]; then
+            echo "::error::AGENT_CONSOLE_URL is not a bare https origin: '${AGENT_CONSOLE_URL}'"
+            exit 1
           fi
+          LD="${LD} -X main.consoleURL=${AGENT_CONSOLE_URL}"
+          echo "agent.exe: console ${AGENT_CONSOLE_URL} built in"
           if [ -n "${AGENT_OSS_ACCESS_KEY_ID}" ]; then
             LD="${LD} -X main.ossBucket=${AGENT_OSS_BUCKET} -X main.ossAccessKeyID=${AGENT_OSS_ACCESS_KEY_ID} -X main.ossAccessKeySecret=${AGENT_OSS_ACCESS_KEY_SECRET}"
             if [ -n "${AGENT_OSS_ENDPOINT}" ]; then
