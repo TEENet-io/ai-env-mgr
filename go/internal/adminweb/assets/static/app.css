@@ -796,3 +796,15 @@ button.danger-link { color: var(--bad); }
 }
 .summary-row details[open] summary { margin-bottom: 8px; }
 .summary-row details .scroll { max-height: 360px; }
+
+/* Click-to-edit popover: a pencil beside the text, a small form under it.
+ * <details> keeps it script-free under the console's CSP. */
+details.pop-edit { display: inline; vertical-align: middle; margin-left: 4px; }
+details.pop-edit > summary { list-style: none; cursor: pointer; color: var(--ink-faint); padding: 2px 4px; border-radius: 4px; line-height: 0; }
+details.pop-edit > summary::-webkit-details-marker { display: none; }
+details.pop-edit > summary:hover, details.pop-edit[open] > summary { color: var(--accent); background: var(--accent-soft); }
+details.pop-edit > summary { display: inline-block; }
+details.pop-edit > form { display: block; width: 280px; max-width: 100%; margin-top: 8px; padding: 10px;
+  background: var(--panel-sunk); border: 1px solid var(--rule-strong); border-radius: 8px; }
+details.pop-edit textarea { width: 100%; box-sizing: border-box; resize: vertical; font: inherit; }
+details.pop-edit .pop-actions { display: flex; justify-content: flex-end; margin-top: 8px; }

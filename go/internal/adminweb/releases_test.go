@@ -176,7 +176,7 @@ func TestAVersionsRemarkCanBeEdited(t *testing.T) {
 	if got.Notes != "直连控制台" {
 		t.Fatalf("notes = %q", got.Notes)
 	}
-	if !strings.Contains(dbGet(t, h, "/releases", cookie).Body.String(), `value="直连控制台"`) {
+	if !strings.Contains(dbGet(t, h, "/releases", cookie).Body.String(), `>直连控制台</textarea>`) {
 		t.Fatal("the page should show the remark in its edit box")
 	}
 }
