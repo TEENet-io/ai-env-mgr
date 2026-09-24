@@ -66,7 +66,7 @@ func KeyAlias(windowsUser string) string { return "emp-" + strings.ToLower(windo
 // the built-in fallback behind admin/quota-defaults.json (see
 // quotadefaults.go) and the quota given to a user created on the fly while
 // re-issuing a token for an employee who predates user records.
-var DefaultQuota = litellm.Quota{MonthlyBudgetUSD: 20, RPM: 60, TPM: 200000, Parallel: 4}
+var DefaultQuota = litellm.BudgetOnly(20)
 
 // ensureGatewayUser makes sure the gateway user for e exists.
 //

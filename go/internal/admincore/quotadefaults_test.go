@@ -19,8 +19,9 @@ func TestQuotaDefaultsFallBackToBuiltIn(t *testing.T) {
 
 func TestQuotaDefaultsRoundTrip(t *testing.T) {
 	m, _ := newManager()
-	want := litellm.Quota{MonthlyBudgetUSD: 35, RPM: 90, TPM: 300000, Parallel: 6}
-	if err := m.SaveQuotaDefaults(want); err != nil {
+	// Only the budget survives: rates are never limited.
+	want := litellm.BudgetOnly(35)
+	if err := m.SaveQuotaDefaults(litellm.Quota{MonthlyBudgetUSD: 35, RPM: 90, TPM: 300000, Parallel: 6}); err != nil {
 		t.Fatalf("save: %v", err)
 	}
 	got, err := m.LoadQuotaDefaults()

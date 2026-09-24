@@ -42,7 +42,8 @@ func (m *Manager) LoadQuotaDefaults() (litellm.Quota, error) {
 	if err := json.Unmarshal(data, &f); err != nil {
 		return litellm.Quota{}, fmt.Errorf("parse quota defaults: %w", err)
 	}
-	q := litellm.Quota{MonthlyBudgetUSD: f.MonthlyBudgetUSD, RPM: f.RPM, TPM: f.TPM, Parallel: f.Parallel}
+	// Only the budget is kept from the file; see litellm.BudgetOnly.
+	q := litellm.BudgetOnly(f.MonthlyBudgetUSD)
 	if err := q.Validate(); err != nil {
 		return litellm.Quota{}, fmt.Errorf("stored quota defaults are invalid: %w", err)
 	}

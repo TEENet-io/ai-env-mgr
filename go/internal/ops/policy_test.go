@@ -5,6 +5,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/TEENet-io/ai-env-mgr/internal/litellm"
 	"github.com/TEENet-io/ai-env-mgr/internal/repo"
 )
 
@@ -167,11 +168,34 @@ func TestQuotaDefaultsFallBackOnlyWhenNothingIsStored(t *testing.T) {
 	if err != nil {
 		t.Fatalf("defaults: %v", err)
 	}
-	if q.MonthlyBudget != "35.5" || q.TPM != 500000 || version != 1 {
+	// The budget is kept; rates always read back as "no limit".
+	if q.MonthlyBudget != "35.5" || q.TPM != litellm.NoLimitTPM || version != 1 {
 		t.Errorf("defaults = %+v v%d", q, version)
 	}
 	// A stale save is refused, not silently applied over the other one.
 	if err := svc.SetQuotaDefaults(ctx, repo.Quota{MonthlyBudget: "40", RPM: 60, TPM: 500000, Parallel: 4}, 0, "li", ""); !errors.Is(err, repo.ErrConflict) {
 		t.Errorf("stale save: %v", err)
+	}
+}
+
+func TestLiftRateLimitsKeepsTheBudgetAndIsIdempotent(t *testing.T) {
+	svc, store, ctx := newService(t)
+	e, err := svc.Onboard(ctx, OnboardSpec{WindowsUser: "alice", Quota: repo.Quota{MonthlyBudget: "30", RPM: 60, TPM: 200000, Parallel: 4}, Actor: "admin"})
+	if err != nil {
+		t.Fatalf("onboard: %v", err)
+	}
+	changed, err := svc.LiftRateLimits(ctx, "admin", "r1")
+	if err != nil || len(changed) != 1 || changed[0] != "alice" {
+		t.Fatalf("lift: %v %v", changed, err)
+	}
+	q, _ := store.Quotas().Get(ctx, e.ID)
+	if q.MonthlyBudget != "30" && q.MonthlyBudget != "30.000000" {
+		t.Errorf("the budget must stay, got %q", q.MonthlyBudget)
+	}
+	if q.RPM != litellm.NoLimitRPM || q.TPM != litellm.NoLimitTPM || q.Parallel != litellm.NoLimitParallel {
+		t.Errorf("rates still limited: %+v", q)
+	}
+	if again, _ := svc.LiftRateLimits(ctx, "admin", "r2"); len(again) != 0 {
+		t.Errorf("a second run changed %v", again)
 	}
 }

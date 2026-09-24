@@ -21,6 +21,21 @@ type Quota struct {
 	Parallel         int     // concurrent requests
 }
 
+// The console limits an employee by monthly budget only. Requests, tokens
+// and concurrency are written as these values, which no person reaches:
+// the gateway cannot clear a limit once set (see above), so "no limit" has
+// to be a number, and one number for everybody.
+const (
+	NoLimitRPM      = 1_000_000
+	NoLimitTPM      = 10_000_000_000
+	NoLimitParallel = 1_000
+)
+
+// BudgetOnly is a quota that limits the monthly budget and nothing else.
+func BudgetOnly(monthlyBudgetUSD float64) Quota {
+	return Quota{MonthlyBudgetUSD: monthlyBudgetUSD, RPM: NoLimitRPM, TPM: NoLimitTPM, Parallel: NoLimitParallel}
+}
+
 // Validate reports the first field that is not a positive number.
 func (q Quota) Validate() error {
 	switch {

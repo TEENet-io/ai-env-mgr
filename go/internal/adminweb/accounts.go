@@ -362,40 +362,20 @@ func (s *Server) handleUserDetail(w http.ResponseWriter, r *http.Request, sess *
 	s.render(w, "user.html", http.StatusOK, data)
 }
 
-// parseQuotaForm reads the four quota fields. All are required: see
-// litellm.Quota for why zero cannot mean unlimited.
+// parseQuotaForm reads the monthly budget, the one limit an employee has;
+// requests, tokens and concurrency are set to "no limit" (litellm.BudgetOnly).
 func parseQuotaForm(form url.Values) (litellm.Quota, error) {
-	var q litellm.Quota
 	budget := strings.TrimSpace(form.Get("budget"))
 	if budget == "" {
-		return q, fmt.Errorf("月预算不能为空")
+		return litellm.Quota{}, fmt.Errorf("月预算不能为空")
 	}
-	var err error
-	if q.MonthlyBudgetUSD, err = strconv.ParseFloat(budget, 64); err != nil {
-		return q, fmt.Errorf("月预算需要是一个数字")
+	usd, err := strconv.ParseFloat(budget, 64)
+	if err != nil {
+		return litellm.Quota{}, fmt.Errorf("月预算需要是一个数字")
 	}
-	// A slice, not a map, so the first reported error is deterministic
-	// rather than depending on map iteration order.
-	ints := []struct {
-		name  string
-		label string
-		dst   *int
-	}{
-		{"rpm", "每分钟请求数", &q.RPM},
-		{"tpm", "每分钟 token 数", &q.TPM},
-		{"parallel", "并发数", &q.Parallel},
-	}
-	for _, f := range ints {
-		raw := strings.TrimSpace(form.Get(f.name))
-		if raw == "" {
-			return q, fmt.Errorf("%s不能为空", f.label)
-		}
-		if *f.dst, err = strconv.Atoi(raw); err != nil {
-			return q, fmt.Errorf("%s需要是一个整数", f.label)
-		}
-	}
+	q := litellm.BudgetOnly(usd)
 	if err := q.Validate(); err != nil {
-		return q, fmt.Errorf("额度必须都大于 0")
+		return q, fmt.Errorf("月预算必须大于 0")
 	}
 	return q, nil
 }

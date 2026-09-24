@@ -105,16 +105,17 @@ func TestReconcileAccountsSortsByUser(t *testing.T) {
 }
 
 func TestParseQuotaForm(t *testing.T) {
+	// Only the budget is read; stale rate fields in a form are ignored.
 	good := url.Values{"budget": {"20.5"}, "rpm": {"60"}, "tpm": {"200000"}, "parallel": {"4"}}
 	q, err := parseQuotaForm(good)
-	if err != nil || q != (litellm.Quota{MonthlyBudgetUSD: 20.5, RPM: 60, TPM: 200000, Parallel: 4}) {
+	if err != nil || q != litellm.BudgetOnly(20.5) {
 		t.Fatalf("good form: %+v %v", q, err)
 	}
 	for name, bad := range map[string]url.Values{
-		"missing":  {"budget": {"20"}},
-		"zero":     {"budget": {"0"}, "rpm": {"60"}, "tpm": {"1"}, "parallel": {"1"}},
-		"negative": {"budget": {"20"}, "rpm": {"-1"}, "tpm": {"1"}, "parallel": {"1"}},
-		"text":     {"budget": {"abc"}, "rpm": {"1"}, "tpm": {"1"}, "parallel": {"1"}},
+		"missing":  {},
+		"zero":     {"budget": {"0"}},
+		"negative": {"budget": {"-5"}},
+		"text":     {"budget": {"abc"}},
 	} {
 		if _, err := parseQuotaForm(bad); err == nil {
 			t.Errorf("%s form accepted", name)
@@ -192,7 +193,7 @@ func TestAccountPagesRender(t *testing.T) {
 		t.Fatalf("user.html: %v", err)
 	}
 	for _, want := range []string{
-		"/users/quota", "/users/models", "/users/reissue", "/users/offboard", "onboard", "PC-1", `value="60"`,
+		"/users/quota", "/users/models", "/users/reissue", "/users/offboard", "onboard", "PC-1", "请求数、token 数和并发都不限",
 		"alice@codex.example",
 		// 基本信息 (spec 4.2): the form and its prefilled fields.
 		"/users/profile", "基本信息", `value="Alice Wang"`, `value="研发"`,

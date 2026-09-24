@@ -36,6 +36,7 @@ import (
 	"github.com/TEENet-io/ai-env-mgr/internal/dbstore"
 	"github.com/TEENet-io/ai-env-mgr/internal/litellm"
 	"github.com/TEENet-io/ai-env-mgr/internal/migrate"
+	"github.com/TEENet-io/ai-env-mgr/internal/ops"
 	"github.com/TEENet-io/ai-env-mgr/internal/ossclient"
 	"github.com/TEENet-io/ai-env-mgr/internal/secrets"
 )
@@ -57,7 +58,7 @@ func run() error {
 	dryRun := flag.Bool("dry-run", false, "rekey: count what would move, change nothing")
 	pruneUnused := flag.Bool("prune-unused", false, "rekey: afterwards drop key versions nothing references from the key file")
 	flag.Usage = func() {
-		fmt.Fprintf(flag.CommandLine.Output(), "usage: migrate [flags] <status|up|down|grants|probe|import|compare|rekey>\n\n")
+		fmt.Fprintf(flag.CommandLine.Output(), "usage: migrate [flags] <status|up|down|grants|probe|import|compare|rekey|lift-rate-limits>\n\n")
 		flag.PrintDefaults()
 	}
 	flag.Parse()
@@ -176,6 +177,19 @@ func run() error {
 			} else {
 				fmt.Printf("dropped %v from %s (previous file kept as %s.bak)\n", dropped, *masterKey, *masterKey)
 			}
+		}
+		return nil
+	case "lift-rate-limits":
+		// One-off: employees are limited by monthly budget only.
+		changed, err := ops.New(dbstore.NewStore(database)).LiftRateLimits(ctx, "migrate:lift-rate-limits", "lift-rate-limits")
+		for _, u := range changed {
+			fmt.Printf("%s: requests, tokens and concurrency no longer limited; the Worker pushes it to the gateway\n", u)
+		}
+		if err != nil {
+			return err
+		}
+		if len(changed) == 0 {
+			fmt.Println("nothing to do: every active employee is limited by budget only")
 		}
 		return nil
 	case "down":
