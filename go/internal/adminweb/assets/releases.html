@@ -50,7 +50,7 @@
   <div class="sechead">
     <h2>{{$product}} 版本库</h2>
     <span class="dim">全局：{{with index $.GlobalTargets $product}}<span class="mono">{{.}}</span>
-      <form method="post" action="/releases/global-clear" class="inline"><input type="hidden" name="csrf" value="{{$.CSRF}}"><input type="hidden" name="product" value="{{$product}}"><button class="link" title="尚未更新的机器停止尝试；已装上的不回退">清除全局</button></form>
+      {{if may $.Role "/releases/global-clear"}}<form method="post" action="/releases/global-clear" class="inline"><input type="hidden" name="csrf" value="{{$.CSRF}}"><input type="hidden" name="product" value="{{$product}}"><button class="link" title="尚未更新的机器停止尝试；已装上的不回退">清除全局</button></form>{{end}}
       {{else}}未设置{{end}}</span>
   </div>
   <div class="panel scroll"><table class="library">
@@ -70,7 +70,7 @@
           </details></td>
         <td class="actions">
           {{if ne (printf "%s" .Status) "retired"}}
-          {{if not .IsGlobal}}<form method="post" action="/releases/global" class="inline"><input type="hidden" name="csrf" value="{{$.CSRF}}"><input type="hidden" name="product" value="{{$product}}"><input type="hidden" name="version" value="{{.Version}}"><input name="confirm" placeholder="输入版本号确认" size="12" autocomplete="off"><button class="link danger-link">设为全局</button></form>{{end}}
+          {{if and (not .IsGlobal) (may $.Role "/releases/global")}}<form method="post" action="/releases/global" class="inline"><input type="hidden" name="csrf" value="{{$.CSRF}}"><input type="hidden" name="product" value="{{$product}}"><input type="hidden" name="version" value="{{.Version}}"><input name="confirm" placeholder="输入版本号确认" size="12" autocomplete="off"><button class="link danger-link">设为全局</button></form>{{end}}
           <a href="/rollouts/new?artifact={{.ID}}">指定给机器…</a>
           {{if not .IsGlobal}}<form method="post" action="/releases/status" class="inline"><input type="hidden" name="csrf" value="{{$.CSRF}}"><input type="hidden" name="id" value="{{.ID}}"><input type="hidden" name="status" value="retired"><button class="link">停用</button></form>{{end}}
           {{else}}<form method="post" action="/releases/status" class="inline"><input type="hidden" name="csrf" value="{{$.CSRF}}"><input type="hidden" name="id" value="{{.ID}}"><input type="hidden" name="status" value="candidate"><button class="link">恢复</button></form>{{end}}

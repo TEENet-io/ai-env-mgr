@@ -420,6 +420,7 @@ form.aside { margin: 10px 0 4px; }
 }
 .note-err { background: var(--bad-bg); border-color: var(--bad); color: var(--bad); }
 .note-ok { background: var(--ok-bg); border-color: var(--ok); color: var(--ok); }
+.note-info { background: var(--panel-sunk); border-color: var(--rule-strong); color: var(--ink-soft); }
 
 /* Where an action reaches every machine, or cannot be undone. */
 .caution {
@@ -825,3 +826,10 @@ table.library td.actions { white-space: normal; }
 .form.top { align-items: flex-start; }
 .form.top > button { align-self: flex-end; }
 .form label .field-hint { display: block; margin-top: 5px; font-size: 12px; font-weight: 400; color: var(--ink-faint); }
+
+/* A fieldset that only exists to switch a whole page's controls off for a
+ * read-only role; it must not draw anything itself. */
+fieldset.bare { border: 0; margin: 0; padding: 0; min-width: 0; }
+fieldset.bare[disabled] button, fieldset.bare[disabled] input, fieldset.bare[disabled] select, fieldset.bare[disabled] textarea { cursor: not-allowed; }
+fieldset.bare[disabled] button { opacity: 0.4; }
+fieldset.bare[disabled] input, fieldset.bare[disabled] select, fieldset.bare[disabled] textarea { background: var(--panel-sunk); color: var(--ink-soft); }

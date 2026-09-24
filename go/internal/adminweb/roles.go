@@ -20,9 +20,13 @@ var roleRank = map[string]int{
 // matched exactly first, then by the longest prefix ending in "/". Anything
 // not listed needs admin: a new route forgotten here is closed, not open.
 //
-// Reads are for everybody who can sign in. Writes that change employees,
-// machines, policy or releases are for operators. Managing administrators is
-// for admins. Signing out and one's own account are for everybody.
+// Reads are for everybody who can sign in. Day-to-day writes -- employees,
+// machines, their budgets and models, a version pinned to chosen machines --
+// are for operators. What changes every machine or cannot be undone is for
+// admins, following the operations process (ai工作间流程 §2): the block
+// policy, the settings, the fleet-wide version, deleting an account, and
+// managing administrators. Signing out and one's own account are for
+// everybody.
 var minRole = map[string]string{
 	"GET /overview":                 repo.RoleViewer,
 	"GET /users":                    repo.RoleViewer,
@@ -58,10 +62,13 @@ var minRole = map[string]string{
 	"GET /healthz":                  repo.RoleViewer,
 	"GET /static/":                  repo.RoleViewer,
 	"POST /users/":                  repo.RoleOperator,
+	"POST /users/delete":            repo.RoleAdmin,
 	"POST /machines/":               repo.RoleOperator,
-	"POST /sites/":                  repo.RoleOperator,
-	"POST /settings/":               repo.RoleOperator,
+	"POST /sites/":                  repo.RoleAdmin,
+	"POST /settings/":               repo.RoleAdmin,
 	"POST /releases/":               repo.RoleOperator,
+	"POST /releases/global":         repo.RoleAdmin,
+	"POST /releases/global-clear":   repo.RoleAdmin,
 	"POST /rollouts/":               repo.RoleOperator,
 	"POST /tasks/":                  repo.RoleOperator,
 	"GET /admins":                   repo.RoleAdmin,
@@ -106,4 +113,13 @@ func (s *Server) forbid(w http.ResponseWriter, r *http.Request, sess *session) {
 	data := newPage(sess, r, "")
 	data.Error = "你的角色是 " + sess.admin.Role + "，这个操作需要 " + requiredRole(r.Method, r.URL.Path) + "。找 admin 角色的管理员来做，或让他们调整你的角色。"
 	s.render(w, "forbidden.html", http.StatusForbidden, data)
+}
+
+// mayPost is the templates' question "may this person press that button":
+// an admin-only control is left out of an operator's page instead of
+// answering with a refusal. The server still checks every request; this
+// only keeps the page honest. An empty role is the single-user mode, where
+// everything is allowed.
+func mayPost(role, path string) bool {
+	return role == "" || allowed(role, http.MethodPost, path)
 }

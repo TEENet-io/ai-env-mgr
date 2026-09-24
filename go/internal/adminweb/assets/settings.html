@@ -6,6 +6,8 @@
   <header class="pagehead"><h1>设置</h1></header>
   {{template "tabs-settings" .}}
   {{template "notices" .}}
+  {{if not (may .Role "/settings/interval")}}<p class="note note-info">只读：修改这里的设置需要管理员（admin）角色。</p>{{end}}
+  <fieldset class="bare"{{if not (may .Role "/settings/interval")}} disabled{{end}}>
 
   {{if eq .Tab "general"}}
   {{with .Policy}}
@@ -126,6 +128,7 @@
   </table>
   </div>
   {{end}}
+  </fieldset>
 </main>
 </div>
 </body>

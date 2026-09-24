@@ -10,6 +10,8 @@
     共 {{len .BlockedDomains}} 个域名，对机器上所有用户生效。
   </p>{{end}}
   {{template "notices" .}}
+  {{if not (may .Role "/sites/mutate")}}<p class="note note-info">只读：修改这里的设置需要管理员（admin）角色。</p>{{end}}
+  <fieldset class="bare"{{if not (may .Role "/sites/mutate")}} disabled{{end}}>
 
   {{with .Policy}}
   <form method="post" action="/sites/enabled" class="inline">
@@ -90,6 +92,7 @@
     对机器上所有用户生效。<strong>只接受机器级目录</strong>：用户目录、AppData、Temp、整盘一律拒绝，否则白名单形同虚设。
     目录必须以 <code>\*</code> 结尾。没有部署 AppLocker 的机器不受影响。
   </p>
+  </fieldset>
 </main>
 </div>
 </body>

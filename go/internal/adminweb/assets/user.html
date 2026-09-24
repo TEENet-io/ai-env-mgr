@@ -74,7 +74,7 @@
       <input type="hidden" name="csrf" value="{{$.CSRF}}"><input type="hidden" name="windowsUser" value="{{.WindowsUser}}"><input type="hidden" name="back" value="detail">
       <button{{if not $.GatewayEnabled}} disabled{{end}}>重新开户</button>
     </form>
-    {{if $.DB}}
+    {{if and $.DB (may $.Role "/users/delete")}}
     <form method="post" action="/users/delete" class="inline">
       <input type="hidden" name="csrf" value="{{$.CSRF}}"><input type="hidden" name="windowsUser" value="{{.WindowsUser}}">
       <input name="confirm" placeholder="输入用户名确认" size="14" autocomplete="off">

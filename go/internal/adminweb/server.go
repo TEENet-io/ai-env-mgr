@@ -200,6 +200,7 @@ func New(opts Options) (*Server, error) {
 		"money":    func(v float64) string { return strconv.FormatFloat(v, 'f', 2, 64) },
 		"list":     func(xs ...string) []string { return xs },
 		"orDash":   orDash,
+		"may":      mayPost,
 		"astatus":  artifactSeverity,
 		"add":      func(a, b int) int { return a + b },
 		"dur":      humanDuration,
