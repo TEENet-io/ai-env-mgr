@@ -176,3 +176,35 @@ func TestEventAlertsCloseWhenTheStateMovesOn(t *testing.T) {
 		t.Fatalf("still open: %d", n)
 	}
 }
+
+func TestAMachineOfAnEmployeeWhoLeftIsNotReportedOffline(t *testing.T) {
+	store, ctx := newWorkerStore(t)
+	now := time.Date(2026, 9, 24, 12, 0, 0, 0, time.UTC)
+	left, err := store.Employees().Create(ctx, repo.NewEmployee{WindowsUser: "gone"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	pc, _ := store.Devices().EnsureByHostname(ctx, "PC-GONE")
+	if _, err := store.Bindings().Bind(ctx, pc.ID, left.ID, "", "zhang"); err != nil {
+		t.Fatal(err)
+	}
+	store.Devices().MarkSeen(ctx, pc.ID, "1.3.0", now.Add(-48*time.Hour))
+	h := AlertEval{Store: store, Now: func() time.Time { return now }}
+	if _, err := h.Run(ctx, repo.Task{}); err != nil {
+		t.Fatal(err)
+	}
+	if len(openOf(t, ctx, store, repo.AlertMachineOffline)) != 1 {
+		t.Fatal("while the employee is active, a silent bound machine is an alert")
+	}
+	// Offboarded: the binding stays (it carries the revocation), the
+	// instance is shut down the same day, and the alert closes.
+	if _, err := store.Employees().Offboard(ctx, left.ID, left.Version); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := h.Run(ctx, repo.Task{}); err != nil {
+		t.Fatal(err)
+	}
+	if n := len(openOf(t, ctx, store, repo.AlertMachineOffline)); n != 0 {
+		t.Fatalf("an offboarded employee's machine is still reported offline (%d)", n)
+	}
+}

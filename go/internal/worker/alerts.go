@@ -118,7 +118,10 @@ func (h AlertEval) reconcile(ctx context.Context, kind string, open []repo.Alert
 
 // offlineMachines: a machine with an employee on it that has not reported
 // for longer than the threshold. Unbound machines are somebody's spare and
-// are not anybody's problem yet.
+// are not anybody's problem yet. Neither is a machine whose employee has
+// left: offboarding keeps the binding (it is how the revocation reaches the
+// desktop) and the instance is shut down the same day, so its silence is
+// the process working, not a fault.
 func (h AlertEval) offlineMachines(ctx context.Context, now time.Time, s repo.AlertSettings) ([]repo.NewAlert, error) {
 	bindings, err := h.Store.Bindings().ListOpen(ctx)
 	if err != nil {
@@ -132,6 +135,11 @@ func (h AlertEval) offlineMachines(ctx context.Context, now time.Time, s repo.Al
 			return nil, err
 		}
 		if d.LastSeenAt != nil && d.LastSeenAt.After(limit) {
+			continue
+		}
+		if e, err := h.Store.Employees().ByID(ctx, b.EmployeeID); err != nil {
+			return nil, err
+		} else if !e.Active() {
 			continue
 		}
 		title := fmt.Sprintf("机器 %s 从未上报", d.Hostname)
