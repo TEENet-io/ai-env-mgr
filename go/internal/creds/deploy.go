@@ -3,6 +3,7 @@ package creds
 import (
 	"bytes"
 	"crypto/sha256"
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -103,6 +104,14 @@ type Report struct {
 	// hash comparison would call the repair a no-op while the running process
 	// has been reading a file that was not there.
 	Changed []string
+
+	// CredentialChanged is whether the delivered config.toml moved where
+	// Codex sends requests or with which token (see GatewayIdentity). A
+	// change of model or catalog alone leaves it false: the running Codex
+	// keeps working and picks the change up when it next starts, so only
+	// this -- a token the gateway may already have revoked -- is a reason
+	// to end it.
+	CredentialChanged bool
 }
 
 // WriteToProfileReport is WriteToProfile plus the entries it did not
@@ -118,6 +127,9 @@ func WriteToProfileReport(profileDir string, set model.CredentialSet) (Report, e
 	rep := Report{Placed: map[string]string{}}
 	written := 0
 	var skipped []string
+	// The models the delivered catalog offers: an employee's own choice of
+	// model survives the merge only while it is one of them.
+	allowed := catalogSlugs(set[model.PathCodexModels])
 	for entry, data := range set {
 		target, err := TargetPath(profileDir, entry)
 		if err != nil {
@@ -134,7 +146,7 @@ func WriteToProfileReport(profileDir string, set model.CredentialSet) (Report, e
 		switch entry {
 		case model.PathCodexConfig:
 			merged = true
-			mergedBytes, err := mergeCodexConfig(target, data)
+			mergedBytes, err := mergeCodexConfigKeeping(target, data, allowed)
 			if err != nil {
 				rep.Written, rep.Skipped = written, skipped
 				return rep, err
@@ -146,6 +158,9 @@ func WriteToProfileReport(profileDir string, set model.CredentialSet) (Report, e
 		// restart decision possible, this leaves mtimes alone and avoids
 		// churning a file the employee's tools may have open.
 		previous, readErr := os.ReadFile(target)
+		if merged && GatewayIdentity(previous) != GatewayIdentity(payload) {
+			rep.CredentialChanged = true
+		}
 		if readErr != nil || !bytes.Equal(previous, payload) {
 			if err := os.WriteFile(target, payload, 0o600); err != nil {
 				rep.Written, rep.Skipped = written, skipped
@@ -255,4 +270,28 @@ func Remove(profileDir string) (int, error) {
 		return removed, fmt.Errorf("remove credentials: %s", strings.Join(failed, "; "))
 	}
 	return removed, nil
+}
+
+// catalogSlugs lists the models a delivered models.json offers, or nil when
+// there is none or it cannot be read (the merge then keeps its old rule:
+// the delivered model wins).
+func catalogSlugs(data []byte) []string {
+	if len(data) == 0 {
+		return nil
+	}
+	var c struct {
+		Models []struct {
+			Slug string `json:"slug"`
+		} `json:"models"`
+	}
+	if json.Unmarshal(data, &c) != nil {
+		return nil
+	}
+	var out []string
+	for _, m := range c.Models {
+		if m.Slug != "" {
+			out = append(out, m.Slug)
+		}
+	}
+	return out
 }

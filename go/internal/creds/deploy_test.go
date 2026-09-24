@@ -401,3 +401,69 @@ func TestRepeatedDeliveryToAnEditedProfileChangesNothingAfterTheFirst(t *testing
 		}
 	}
 }
+
+// Codex writes the employee's model choice into config.toml. A delivery
+// keeps it while the catalog still offers it, and ends the running Codex
+// only when the token or the gateway changed.
+func TestADeliveryKeepsTheEmployeesModelAndStopsCodexOnlyForNewCredentials(t *testing.T) {
+	dir := t.TempDir()
+	cfgPath := filepath.Join(dir, ".codex", "config.toml")
+	fragment := func(token string) []byte {
+		return []byte("model              = \"gpt-5\"\n" +
+			"model_provider     = \"gateway\"\n" +
+			"model_catalog_json = \"C:/Users/work1/.codex/models.json\"\n\n" +
+			"[model_providers.gateway]\n" +
+			"name     = \"Gateway\"\n" +
+			"base_url = \"https://gw.example/v1\"\n" +
+			"experimental_bearer_token = \"" + token + "\"\n")
+	}
+	catalog := func(slugs ...string) []byte {
+		var parts []string
+		for _, s := range slugs {
+			parts = append(parts, `{"slug":"`+s+`"}`)
+		}
+		return []byte(`{"models":[` + strings.Join(parts, ",") + `]}`)
+	}
+	deliver := func(token string, slugs ...string) Report {
+		t.Helper()
+		rep, err := WriteToProfileReport(dir, model.CredentialSet{
+			model.PathCodexConfig: fragment(token), model.PathCodexModels: catalog(slugs...)})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return rep
+	}
+	modelIn := func() string {
+		data, _ := os.ReadFile(cfgPath)
+		v, _ := rootStringValue(data, "model")
+		return v
+	}
+
+	if rep := deliver("sk-1", "gpt-5", "claude-5"); !rep.CredentialChanged || modelIn() != "gpt-5" {
+		t.Fatalf("first delivery: credential changed %v, model %q", rep.CredentialChanged, modelIn())
+	}
+	// The employee picks another model in Codex, which writes it back.
+	data, _ := os.ReadFile(cfgPath)
+	edited, _ := setRootString(data, "model", "claude-5")
+	os.WriteFile(cfgPath, append(edited, []byte("\n[projects.'C:/work']\ntrust_level = \"trusted\"\n")...), 0o600)
+
+	// A new catalog (a model added): the choice stays, Codex keeps running.
+	rep := deliver("sk-1", "gpt-5", "claude-5", "gemini-3")
+	if modelIn() != "claude-5" || rep.CredentialChanged {
+		t.Fatalf("catalog change: model %q, credential changed %v", modelIn(), rep.CredentialChanged)
+	}
+	if again := deliver("sk-1", "gpt-5", "claude-5", "gemini-3"); len(again.Changed) != 0 {
+		t.Fatalf("the same package again moved %v", again.Changed)
+	}
+	if got, _ := os.ReadFile(cfgPath); !strings.Contains(string(got), "trust_level") {
+		t.Fatal("Codex's own settings must survive a delivery")
+	}
+	// A new token: Codex has to go.
+	if rep := deliver("sk-2", "gpt-5", "claude-5", "gemini-3"); !rep.CredentialChanged || modelIn() != "claude-5" {
+		t.Fatalf("token change: credential changed %v, model %q", rep.CredentialChanged, modelIn())
+	}
+	// The chosen model is taken off the catalog: back to the default.
+	if rep := deliver("sk-2", "gpt-5", "gemini-3"); modelIn() != "gpt-5" || rep.CredentialChanged {
+		t.Fatalf("model removed: model %q, credential changed %v", modelIn(), rep.CredentialChanged)
+	}
+}

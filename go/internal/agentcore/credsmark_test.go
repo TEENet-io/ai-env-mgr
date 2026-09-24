@@ -28,7 +28,7 @@ func TestLegacyBareETagMarkerForcesRedelivery(t *testing.T) {
 	}
 }
 
-func TestMarkRoundTripsAndVerifies(t *testing.T) {
+func TestMarkRoundTrips(t *testing.T) {
 	dir := t.TempDir()
 	s := &Syncer{StateDir: dir}
 
@@ -43,24 +43,6 @@ func TestMarkRoundTripsAndVerifies(t *testing.T) {
 	m, ok := s.readCredsMark()
 	if !ok || m.ETag != "etag-1" || len(m.Placed) != 1 {
 		t.Fatalf("marker did not round-trip: %+v ok=%v", m, ok)
-	}
-	if !(&Syncer{StateDir: dir}).credsIntact(m) {
-		t.Error("an untouched file failed verification")
-	}
-
-	// The employee edits the delivered file: the next cycle must notice and
-	// redeliver rather than trust the ETag.
-	if err := os.WriteFile(target, []byte("model = \"something-else\"\n"), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	if (&Syncer{StateDir: dir}).credsIntact(m) {
-		t.Error("an edited file passed verification")
-	}
-
-	// And a deleted one.
-	os.Remove(target)
-	if (&Syncer{StateDir: dir}).credsIntact(m) {
-		t.Error("a deleted file passed verification")
 	}
 }
 

@@ -336,6 +336,12 @@ func (a *fakeApplier) DeployCreds(profileDir string, set model.CredentialSet) (D
 		previous, readErr := os.ReadFile(path)
 		if readErr != nil || !bytes.Equal(previous, data) {
 			d.Changed = append(d.Changed, name)
+			// The fake's config.toml is the token itself ("token=old"), so
+			// any change to it is a change of credentials; a model-only
+			// change is creds.WriteToProfileReport's to tell apart.
+			if name == model.PathCodexConfig {
+				d.CredentialChanged = true
+			}
 		}
 		if os.WriteFile(path, data, 0o600) == nil {
 			d.Placed[path] = fmt.Sprintf("%x", sha256.Sum256(data))
@@ -1625,5 +1631,43 @@ func TestRunOnceCatalogAndTokenChangePolicy(t *testing.T) {
 				t.Error("unchanged next cycle interrupted again")
 			}
 		})
+	}
+}
+
+// Files are written when the console delivers something new, not repaired
+// every cycle: Codex edits its own config while it runs.
+func TestAnUnchangedPackageIsNotRedeliveredOverLocalEdits(t *testing.T) {
+	store := newFakeStore()
+	bind(t, store, "DESKTOP-A", "work1")
+	store.set(ossclient.PolicyKey(), policyBytes(t, model.Policy{BlockEnabled: true}), "p1")
+	key := ossclient.UserKey("work1", "credentials.zip")
+	store.set(key, credsBytesFor(t, model.CredentialSet{model.PathCodexConfig: []byte("token=old"), model.PathCodexModels: []byte(`{"models":[{"slug":"old"}]}`)}), "c1")
+	app := &fakeApplier{stopKilled: 1}
+	s := newSyncer(t, store, app)
+	if _, err := s.RunOnce(); err != nil {
+		t.Fatal(err)
+	}
+	if len(app.deployed) != 1 {
+		t.Fatalf("first delivery: %d", len(app.deployed))
+	}
+	// Codex (or the employee) rewrites the delivered files.
+	for _, set := range app.deployed {
+		for name := range set {
+			os.WriteFile(filepath.Join(s.Machine.ProfileDir("work1"), filepath.Base(name)), []byte("edited"), 0o600)
+		}
+	}
+	if _, err := s.RunOnce(); err != nil {
+		t.Fatal(err)
+	}
+	if len(app.deployed) != 1 {
+		t.Fatal("an unchanged package must not be delivered again over local edits")
+	}
+	// The console delivers again (重发令牌 / 模型下发): written.
+	store.set(key, credsBytesFor(t, model.CredentialSet{model.PathCodexConfig: []byte("token=new"), model.PathCodexModels: []byte(`{"models":[{"slug":"old"}]}`)}), "c2")
+	if _, err := s.RunOnce(); err != nil {
+		t.Fatal(err)
+	}
+	if len(app.deployed) != 2 {
+		t.Fatal("a new package from the console must be delivered")
 	}
 }

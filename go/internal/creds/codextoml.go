@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"fmt"
 	"os"
+	"strconv"
 	"strings"
 )
 
@@ -45,6 +46,19 @@ const codexManagedTable = "model_providers.gateway"
 // fixed and small. Anything it cannot make sense of is carried through
 // untouched.
 func mergeCodexConfig(target string, incoming []byte) ([]byte, error) {
+	return mergeCodexConfigKeeping(target, incoming, nil)
+}
+
+// mergeCodexConfigKeeping is mergeCodexConfig that leaves the employee's
+// chosen model alone. Codex writes `model = "..."` into config.toml when the
+// employee switches models; resetting it on every delivery took their choice
+// away and, because the file then changed, ended their running session.
+// The existing model is kept when it is one of allowed (the models the
+// delivered catalog offers); a model that is no longer offered is replaced
+// by the delivered default, since Codex would otherwise start on a model the
+// gateway refuses. With no allowed list the delivered model always wins, as
+// before.
+func mergeCodexConfigKeeping(target string, incoming []byte, allowed []string) ([]byte, error) {
 	existing, err := os.ReadFile(target)
 	if err != nil {
 		// No file yet, or unreadable: the delivered config is the whole truth.
@@ -52,6 +66,16 @@ func mergeCodexConfig(target string, incoming []byte) ([]byte, error) {
 	}
 	if len(bytes.TrimSpace(existing)) == 0 {
 		return incoming, nil
+	}
+
+	// The employee's model goes into the delivered line, in the delivered
+	// place, rather than being kept where it stood: the output then does not
+	// depend on where the old line was, so redelivering the same package
+	// writes the same bytes and is not mistaken for a change.
+	if current, ok := rootStringValue(existing, "model"); ok && current != "" && containsString(allowed, current) {
+		if replaced, err := setRootString(incoming, "model", current); err == nil {
+			incoming = replaced
+		}
 	}
 
 	kept, err := stripCodexManaged(existing)
@@ -670,4 +694,106 @@ func tomlRootKey(trimmed string) (string, bool) {
 		return "", false
 	}
 	return key, true
+}
+
+// rootStringValue reads a root-level `key = "value"` (or 'value') line. It
+// answers only for a single-line string value; anything else is "not
+// found", which leaves the caller on its default behaviour.
+func rootStringValue(src []byte, key string) (string, bool) {
+	lines, err := scanTomlLines(src)
+	if err != nil {
+		return "", false
+	}
+	owner := tomlSectionOwners(lines)
+	for i, ln := range lines {
+		if ln.continuation || ln.isHeader || owner[i] != -1 {
+			continue
+		}
+		trimmed := strings.TrimSpace(ln.text)
+		k, ok := tomlRootKey(trimmed)
+		if !ok || k != key {
+			continue
+		}
+		value := strings.TrimSpace(trimmed[strings.Index(trimmed, "=")+1:])
+		if hash := strings.Index(value, " #"); hash > 0 {
+			value = strings.TrimSpace(value[:hash])
+		}
+		switch {
+		case len(value) >= 2 && value[0] == '"' && value[len(value)-1] == '"':
+			if v, err := strconv.Unquote(value); err == nil {
+				return v, true
+			}
+		case len(value) >= 2 && value[0] == '\'' && value[len(value)-1] == '\'':
+			return value[1 : len(value)-1], true
+		}
+		return "", false
+	}
+	return "", false
+}
+
+// setRootString rewrites the value of a single-line root-level assignment of
+// key, keeping everything up to and including the "=" as it was.
+func setRootString(src []byte, key, value string) ([]byte, error) {
+	lines, err := scanTomlLines(src)
+	if err != nil {
+		return nil, err
+	}
+	owner := tomlSectionOwners(lines)
+	var out bytes.Buffer
+	for i, ln := range lines {
+		text := ln.text
+		if !ln.continuation && !ln.isHeader && owner[i] == -1 {
+			if k, ok := tomlRootKey(strings.TrimSpace(text)); ok && k == key {
+				eq := strings.Index(text, "=")
+				text = text[:eq+1] + " " + strconv.Quote(value)
+			}
+		}
+		out.WriteString(text)
+		out.WriteString("\n")
+	}
+	return out.Bytes(), nil
+}
+
+// GatewayIdentity is what, in a config.toml, decides where Codex sends its
+// requests and with which token: the root model_provider and the body of
+// the managed [model_providers.gateway] table, comments and blank lines
+// aside. Two configs with the same identity can differ in model or catalog
+// but not in credentials -- which is the test for whether a running Codex,
+// holding the old values in memory, has to be stopped.
+func GatewayIdentity(config []byte) string {
+	lines, err := scanTomlLines(config)
+	if err != nil {
+		return string(config)
+	}
+	owner := tomlSectionOwners(lines)
+	var b strings.Builder
+	for i, ln := range lines {
+		trimmed := strings.TrimSpace(ln.text)
+		if trimmed == "" || strings.HasPrefix(trimmed, "#") {
+			continue
+		}
+		inTable := owner[i] != -1 && lines[owner[i]].header == codexManagedTable
+		atRoot := owner[i] == -1 && !ln.continuation && !ln.isHeader
+		if inTable {
+			b.WriteString(trimmed)
+			b.WriteString("\n")
+			continue
+		}
+		if atRoot {
+			if k, ok := tomlRootKey(trimmed); ok && k == "model_provider" {
+				b.WriteString(trimmed)
+				b.WriteString("\n")
+			}
+		}
+	}
+	return b.String()
+}
+
+func containsString(list []string, v string) bool {
+	for _, x := range list {
+		if x == v {
+			return true
+		}
+	}
+	return false
 }

@@ -178,6 +178,7 @@ func (localApplier) DeployCreds(profileDir string, set model.CredentialSet) (age
 	// had.
 	return agentcore.Delivery{
 		Written: rep.Written, Placed: rep.Placed, Merged: rep.Merged, Changed: rep.Changed,
+		CredentialChanged: rep.CredentialChanged,
 	}, nil
 }
 

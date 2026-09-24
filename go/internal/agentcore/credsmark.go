@@ -2,12 +2,8 @@ package agentcore
 
 import (
 	"encoding/json"
-	"log"
 	"path/filepath"
 	"sort"
-	"strings"
-
-	"github.com/TEENet-io/ai-env-mgr/internal/creds"
 )
 
 // credsMark is what the agent remembers about the last credential delivery.
@@ -50,21 +46,6 @@ func (s *Syncer) writeCredsMark(etag string, placed map[string]string, merged []
 		return
 	}
 	s.writeMarker(credsMarkerFile, string(data))
-}
-
-// credsIntact reports whether the recorded delivery is still good, and says
-// why in the log when it is not.
-//
-// The reason matters as much as the answer: a redelivery with no explanation
-// looks like the agent thrashing, when in fact it is repairing a file that
-// was removed, edited, or never written in the first place.
-func (s *Syncer) credsIntact(m credsMark) bool {
-	ok, drifted := creds.VerifyPlaced(m.Placed, m.Merged)
-	if !ok {
-		log.Printf("credentials: redelivering, %d file(s) missing or changed: %s",
-			len(drifted), strings.Join(baseNames(drifted), ", "))
-	}
-	return ok
 }
 
 // baseNames shortens paths for the log. The full profile path adds nothing --

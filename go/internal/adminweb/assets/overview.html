@@ -126,7 +126,7 @@
       </form>
     </div>
     {{end}}
-    <p class="hint">下发会按网关现在的模型，给员工重新生成 Codex 配置和模型清单。机器同步后收到（1.3.0 起几秒内，旧版 agent 按同步间隔）；员工当前的请求完成后<strong>重启 Codex</strong> 才生效。下架的模型在员工重启后从选择器里消失。</p>
+    <p class="hint">下发会按网关现在的模型，给员工重新生成 Codex 配置和模型清单。机器同步后收到（1.3.0 起几秒内，旧版 agent 按同步间隔）；员工方便时<strong>重启 Codex</strong> 生效，员工自己选的模型会保留（除非它被下架）。<strong>agent 1.3.1 起下发不会打断正在运行的 Codex</strong>；更早的 agent 上，员工在 Codex 里切换过模型的，下发时 Codex 会被关闭，请挑员工不在干活时下发。</p>
     {{with .Last}}
     <p>最近一次：{{if eq .Scope "all"}}全部下发{{else}}测试下发{{end}} · {{$md.LastAt}} · {{.By}} · 已收到 <b>{{$md.Received}}</b> / {{len $md.Rows}}</p>
     <div class="scroll"><table>

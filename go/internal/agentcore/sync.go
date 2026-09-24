@@ -104,6 +104,12 @@ type Delivery struct {
 	// re-fetched whenever its ETag moves or the local marker cannot be read,
 	// and either can happen with every byte on disk already correct.
 	Changed []string
+
+	// CredentialChanged is whether config.toml now sends Codex somewhere
+	// else or with another token (creds.GatewayIdentity). Only this, among
+	// changes to config.toml, ends the employee's running Codex: a new
+	// model or catalog waits for the next start.
+	CredentialChanged bool
 }
 
 // Machine describes what the agent can learn about the box it runs on.
@@ -390,12 +396,14 @@ func (s *Syncer) RunOnce() (model.Status, error) {
 		var exists, unchanged bool
 		var err error
 		if boundUserExists {
+			// An unchanged bundle is left alone even if the files it placed
+			// were edited or removed since: Codex rewrites its own config
+			// while it runs, and "repairing" that every cycle overwrote the
+			// employee's settings. Files are written when the console
+			// delivers something new (or on the first delivery, when there
+			// is no mark yet); to put damaged files back, deliver again from
+			// the console (重发令牌 or 模型下发).
 			data, etag, exists, unchanged, err = src.Credentials(binding.User, ifNoneMatch)
-			if err == nil && exists && unchanged && !s.credsIntact(mark) {
-				// The bundle is the one we delivered, but a file it placed
-				// is gone or altered: fetch it again and put it back.
-				data, etag, exists, unchanged, err = src.Credentials(binding.User, "")
-			}
 		}
 		if !boundUserExists {
 			warns = append(warns, "credentials skipped: no profile to deliver them to")
@@ -449,19 +457,21 @@ func (s *Syncer) RunOnce() (model.Status, error) {
 				// exact gap that let a silently skipped entry go unnoticed.
 				log.Printf("credentials: placed %d file(s): %s", d.Written,
 					strings.Join(append(baseNames(d.Placed), baseNames(d.Merged)...), ", "))
-				// A catalog-only update is safe to pick up on the next launch.
-				// Gateway permissions already enforce removed models. Other
-				// changes (especially tokens) still need the old process ended.
-				restart := false
+				// Only a new token or gateway ends the running Codex: it holds
+				// the old ones in memory, and the gateway may already refuse
+				// them. A new model or catalog is picked up on the next start
+				// -- the gateway enforces a removed model meanwhile -- so the
+				// employee's task in progress is left to finish.
+				restart := d.CredentialChanged
 				for _, name := range d.Changed {
-					if name != model.PathCodexModels {
+					if name != model.PathCodexModels && name != model.PathCodexConfig {
 						restart = true
 					}
 				}
 				if restart {
 					warns = append(warns, s.stopCodex(binding.User, "a credential update", &sweep))
 				} else if len(d.Changed) > 0 {
-					warns = append(warns, "model catalog updated; restart Codex when convenient to load it; running task was not stopped")
+					warns = append(warns, "model settings updated; restart Codex when convenient to load them; running task was not stopped")
 				}
 			} else {
 				// The archive held nothing we recognise. Saying so beats
