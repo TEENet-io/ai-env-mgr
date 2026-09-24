@@ -88,24 +88,22 @@ jobs:
         run: sha256sum agent.exe admin-linux-amd64 admin-windows-amd64.exe admin-darwin-arm64 | tee SHA256SUMS.txt
 
       # Put agent.exe where the console's version library expects it, so the
-      # 10 MB binary never has to pass through the console host. The CI key
-      # can only PutObject under _agent/*/agent.exe (dist/ram-policy-ci.json);
-      # an existing key is never overwritten -- a version names one set of
-      # bytes -- so a re-cut of the same tag fails here on purpose.
+      # 10 MB binary never has to pass through the console host. A dedicated
+      # OSS_CI_* key is used when the repository has one; otherwise the
+      # agent's own AGENT_OSS_* key (the operator's choice: one key for both).
+      # An existing object is never overwritten -- a version names one set
+      # of bytes -- so a re-cut of the same tag fails here on purpose.
       - name: Upload agent.exe to the OSS version library
         env:
-          OSS_CI_ACCESS_KEY_ID: ${{ secrets.OSS_CI_ACCESS_KEY_ID }}
-          OSS_CI_ACCESS_KEY_SECRET: ${{ secrets.OSS_CI_ACCESS_KEY_SECRET }}
-          OSS_CI_BUCKET: ${{ secrets.OSS_CI_BUCKET }}
-          OSS_CI_ENDPOINT: ${{ secrets.OSS_CI_ENDPOINT }}
+          OSS_CI_ACCESS_KEY_ID: ${{ secrets.OSS_CI_ACCESS_KEY_ID || secrets.AGENT_OSS_ACCESS_KEY_ID }}
+          OSS_CI_ACCESS_KEY_SECRET: ${{ secrets.OSS_CI_ACCESS_KEY_SECRET || secrets.AGENT_OSS_ACCESS_KEY_SECRET }}
+          OSS_CI_BUCKET: ${{ secrets.OSS_CI_BUCKET || secrets.AGENT_OSS_BUCKET }}
+          OSS_CI_ENDPOINT: ${{ secrets.OSS_CI_ENDPOINT || secrets.AGENT_OSS_ENDPOINT }}
         run: |
           set -euo pipefail
-          if [ -z "${OSS_CI_ACCESS_KEY_ID}" ]; then
-            echo "::warning::OSS_CI_ACCESS_KEY_ID is not set; agent.exe was not uploaded to OSS"
-            exit 0
-          fi
-          for v in OSS_CI_ACCESS_KEY_SECRET OSS_CI_BUCKET OSS_CI_ENDPOINT; do
-            [ -n "${!v}" ] || { echo "::error::secret $v is not set"; exit 1; }
+          # No silent success: a release the console cannot see is not a release.
+          for v in OSS_CI_ACCESS_KEY_ID OSS_CI_ACCESS_KEY_SECRET OSS_CI_BUCKET OSS_CI_ENDPOINT; do
+            [ -n "${!v}" ] || { echo "::error::$v is empty (neither OSS_CI_* nor AGENT_OSS_* is set); agent.exe cannot be uploaded"; exit 1; }
           done
           VER="${GITHUB_REF_NAME#v}"
           KEY="agent_workdir/_agent/${VER}/agent.exe"
