@@ -23,7 +23,6 @@
           <td class="dim">{{if .Compatible}}{{if .HasOpen}}<span class="tag tag-warn">已单独指定过，会被替换</span>{{else}}可以{{end}}{{else}}<span class="tag tag-bad">不能</span> {{.Why}}{{end}}</td>
         </tr>{{else}}<tr><td colspan="6" class="dim">没有机器</td></tr>{{end}}
       </tbody></table></div>
-    <label class="wide">说明<input name="note" placeholder="可选：试用 / 紧急修复…"></label>
     <button type="submit" class="danger">对选中的机器指定</button>
   </form>
 </main>
