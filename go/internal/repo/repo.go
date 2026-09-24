@@ -106,6 +106,7 @@ type Employee struct {
 	Name         string
 	Department   string
 	CodexAccount string // administrator's note: which login this person uses
+	Email        string // where the cloud desktop's verification codes go (a note; nothing sends to it)
 	Status       EmployeeStatus
 	AuthEpoch    int
 	Version      int
@@ -130,6 +131,7 @@ type NewEmployee struct {
 	Name         string
 	Department   string
 	CodexAccount string
+	Email        string
 }
 
 // Profile is the set of fields an administrator edits by hand.
@@ -137,6 +139,7 @@ type Profile struct {
 	Name         string
 	Department   string
 	CodexAccount string
+	Email        string
 	ExternalID   string
 }
 

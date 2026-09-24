@@ -30,9 +30,9 @@ func TestAuditPageFiltersAndExportsCSV(t *testing.T) {
 	cookie := signedIn(t, s)
 	csrf := csrfFrom(t, s, cookie, "/users")
 	for _, u := range []string{"work1", "work2"} {
-		dbPost(t, h, "/users/onboard", url.Values{"csrf": {csrf}, "windowsUser": {u}, "budget": {"20"}, "rpm": {"60"}, "tpm": {"100000"}, "parallel": {"4"}}, cookie)
+		dbPost(t, h, "/users/onboard", url.Values{"csrf": {csrf}, "windowsUser": {u}, "email": {"t@example.com"}, "budget": {"20"}, "rpm": {"60"}, "tpm": {"100000"}, "parallel": {"4"}}, cookie)
 	}
-	dbPost(t, h, "/users/quota", url.Values{"csrf": {csrf}, "windowsUser": {"work1"}, "budget": {"50"}, "rpm": {"60"}, "tpm": {"100000"}, "parallel": {"4"}}, cookie)
+	dbPost(t, h, "/users/quota", url.Values{"csrf": {csrf}, "windowsUser": {"work1"}, "email": {"t@example.com"}, "budget": {"50"}, "rpm": {"60"}, "tpm": {"100000"}, "parallel": {"4"}}, cookie)
 
 	page := dbGet(t, h, "/audit?action=account.quota", cookie)
 	body := page.Body.String()
@@ -94,7 +94,7 @@ func TestAuditCSVNeutralisesFormulas(t *testing.T) {
 	cookie := signedIn(t, s)
 	csrf := csrfFrom(t, s, cookie, "/users")
 	req := httptest.NewRequest(http.MethodPost, "/users/onboard", strings.NewReader(url.Values{
-		"csrf": {csrf}, "windowsUser": {"work1"}, "budget": {"20"}, "rpm": {"60"}, "tpm": {"100000"}, "parallel": {"4"},
+		"csrf": {csrf}, "windowsUser": {"work1"}, "email": {"t@example.com"}, "budget": {"20"}, "rpm": {"60"}, "tpm": {"100000"}, "parallel": {"4"},
 	}.Encode()))
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	req.Header.Set("X-Request-ID", "=1+1")

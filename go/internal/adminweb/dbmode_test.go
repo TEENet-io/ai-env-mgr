@@ -273,7 +273,7 @@ func TestDatabaseModeOnboardingIsATransactionWithQueuedWork(t *testing.T) {
 
 	rec := dbPost(t, h, "/users/onboard", url.Values{
 		"csrf": {csrf}, "windowsUser": {"Work1"}, "name": {"张三"}, "department": {"研发"},
-		"budget": {"50"}, "rpm": {"60"}, "tpm": {"2000000"}, "parallel": {"8"},
+		"email": {"t@example.com"}, "budget": {"50"}, "rpm": {"60"}, "tpm": {"2000000"}, "parallel": {"8"},
 		"models": {"claude-4.5-sonnet"},
 	}, session)
 	if rec.Code != http.StatusSeeOther || !strings.Contains(rec.Header().Get("Location"), "ok=1") {
@@ -341,7 +341,7 @@ func TestDatabaseModePolicyEditsAndMachinesRender(t *testing.T) {
 	// A machine bound through the form appears on the overview.
 	csrf = csrfFrom(t, s, session, "/users")
 	dbPost(t, h, "/users/onboard", url.Values{
-		"csrf": {csrf}, "windowsUser": {"work1"}, "budget": {"50"}, "rpm": {"60"}, "tpm": {"2000000"}, "parallel": {"8"},
+		"csrf": {csrf}, "windowsUser": {"work1"}, "email": {"t@example.com"}, "budget": {"50"}, "rpm": {"60"}, "tpm": {"2000000"}, "parallel": {"8"},
 	}, session)
 	rec = dbPost(t, h, "/machines/bind", url.Values{"csrf": {csrf}, "machine": {"DESKTOP-01"}, "user": {"work1"}}, session)
 	if rec.Code != http.StatusSeeOther || !strings.Contains(rec.Header().Get("Location"), "ok=1") {
@@ -381,7 +381,7 @@ func TestDeletedAccountsLeaveTheListUntilAskedFor(t *testing.T) {
 		}
 		return v
 	}
-	if rec := dbPost(t, h, "/users/onboard", form(url.Values{"budget": {"20"}, "rpm": {"60"}, "tpm": {"100000"}, "parallel": {"4"}}), cookie); rec.Code != http.StatusSeeOther {
+	if rec := dbPost(t, h, "/users/onboard", form(url.Values{"email": {"t@example.com"}, "budget": {"20"}, "rpm": {"60"}, "tpm": {"100000"}, "parallel": {"4"}}), cookie); rec.Code != http.StatusSeeOther {
 		t.Fatalf("onboard: %d %s", rec.Code, rec.Body.String())
 	}
 	// Open accounts cannot be deleted, even with the name typed.
@@ -413,7 +413,7 @@ func TestDeletedAccountsLeaveTheListUntilAskedFor(t *testing.T) {
 		t.Fatal("a deleted account must not link to a detail page")
 	}
 	// The name is free again.
-	if rec := dbPost(t, h, "/users/onboard", form(url.Values{"budget": {"20"}, "rpm": {"60"}, "tpm": {"100000"}, "parallel": {"4"}}), cookie); rec.Code != http.StatusSeeOther {
+	if rec := dbPost(t, h, "/users/onboard", form(url.Values{"email": {"t@example.com"}, "budget": {"20"}, "rpm": {"60"}, "tpm": {"100000"}, "parallel": {"4"}}), cookie); rec.Code != http.StatusSeeOther {
 		t.Fatalf("re-onboard: %d %s", rec.Code, rec.Body.String())
 	}
 	if list := dbGet(t, h, "/users?show=active", cookie); !strings.Contains(list.Body.String(), "work5") {
@@ -427,7 +427,7 @@ func TestTheAllBoxMeansNoModelAllowlist(t *testing.T) {
 	cookie := signedIn(t, s)
 	csrf := csrfFrom(t, s, cookie, "/users")
 	dbPost(t, h, "/users/onboard", url.Values{"csrf": {csrf}, "windowsUser": {"work8"},
-		"budget": {"20"}, "rpm": {"60"}, "tpm": {"100000"}, "parallel": {"4"}, "models": {"glm-5"}}, cookie)
+		"email": {"t@example.com"}, "budget": {"20"}, "rpm": {"60"}, "tpm": {"100000"}, "parallel": {"4"}, "models": {"glm-5"}}, cookie)
 	e, err := s.dbm.store.Employees().ByWindowsUser(t.Context(), "work8")
 	if err != nil {
 		t.Fatal(err)
@@ -479,7 +479,7 @@ func TestAStalePageCannotOverwriteAnotherAdministratorsSave(t *testing.T) {
 	cookie := signedIn(t, s)
 	csrf := csrfFrom(t, s, cookie, "/users")
 	dbPost(t, h, "/users/onboard", url.Values{"csrf": {csrf}, "windowsUser": {"work4"}, "name": {"甲"},
-		"budget": {"20"}, "rpm": {"60"}, "tpm": {"100000"}, "parallel": {"4"}}, cookie)
+		"email": {"t@example.com"}, "budget": {"20"}, "rpm": {"60"}, "tpm": {"100000"}, "parallel": {"4"}}, cookie)
 	e, _ := s.dbm.store.Employees().ByWindowsUser(t.Context(), "work4")
 	stale := e.Version
 

@@ -17,7 +17,7 @@ type employeeRepo struct{ q querier }
 // scanEmployee expects. One list means a column added in a migration is added
 // in one place, not in six that must agree.
 const employeeColumns = `id, windows_user, coalesce(external_id, ''), name, department,
-	codex_account, status, auth_epoch, version,
+	codex_account, email, status, auth_epoch, version,
 	created_at, updated_at, offboarded_at, deleted_at`
 
 type scanner interface{ Scan(dest ...any) error }
@@ -27,7 +27,7 @@ func scanEmployee(row scanner) (repo.Employee, error) {
 	var status string
 	var offboardedAt, deletedAt *time.Time
 	err := row.Scan(&e.ID, &e.WindowsUser, &e.ExternalID, &e.Name, &e.Department,
-		&e.CodexAccount, &status, &e.AuthEpoch, &e.Version,
+		&e.CodexAccount, &e.Email, &status, &e.AuthEpoch, &e.Version,
 		&e.CreatedAt, &e.UpdatedAt, &offboardedAt, &deletedAt)
 	if err != nil {
 		return repo.Employee{}, err
@@ -90,10 +90,10 @@ func (r employeeRepo) Create(ctx context.Context, n repo.NewEmployee) (repo.Empl
 		return repo.Employee{}, errors.New("create employee: windows user must not be empty")
 	}
 	e, err := scanEmployee(r.q.QueryRow(ctx,
-		`insert into employees (windows_user, external_id, name, department, codex_account)
-		 values ($1, nullif($2, ''), $3, $4, $5)
+		`insert into employees (windows_user, external_id, name, department, codex_account, email)
+		 values ($1, nullif($2, ''), $3, $4, $5, $6)
 		 returning `+employeeColumns,
-		user, n.ExternalID, n.Name, n.Department, n.CodexAccount))
+		user, n.ExternalID, n.Name, n.Department, n.CodexAccount, n.Email))
 	if err != nil {
 		return repo.Employee{}, mapError(err, "create employee")
 	}
@@ -104,10 +104,10 @@ func (r employeeRepo) UpdateProfile(ctx context.Context, id string, version int,
 	e, err := scanEmployee(r.q.QueryRow(ctx,
 		`update employees
 		    set name = $3, department = $4, codex_account = $5,
-		        external_id = nullif($6, ''), version = version + 1, updated_at = now()
+		        external_id = nullif($6, ''), email = $7, version = version + 1, updated_at = now()
 		  where id = $1 and version = $2
 		  returning `+employeeColumns,
-		id, version, p.Name, p.Department, p.CodexAccount, p.ExternalID))
+		id, version, p.Name, p.Department, p.CodexAccount, p.ExternalID, p.Email))
 	if err == nil {
 		return e, nil
 	}

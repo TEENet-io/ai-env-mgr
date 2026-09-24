@@ -476,7 +476,7 @@ func TestSetModelsLeavesTheTokenAloneWhenTheUserWriteFails(t *testing.T) {
 
 func TestUpdateProfileWritesRosterAndMirrorsTheGatewayUser(t *testing.T) {
 	m, _, gw := onboarded(t)
-	err := m.UpdateProfile(context.Background(), gw, "alice", "Alice Wong", "运营", "alice@codex.example")
+	err := m.UpdateProfile(context.Background(), gw, "alice", "Alice Wong", "运营", "alice@codex.example", "")
 	if err != nil {
 		t.Fatalf("profile: %v", err)
 	}
@@ -505,7 +505,7 @@ func TestUpdateProfileWithoutAGatewayUserSavesTheRoster(t *testing.T) {
 	m, _ := newManager()
 	_ = m.SaveUsers(model.Users{Users: []model.UserEntry{{WindowsUser: "alice", Enabled: true}}})
 	gw := newFakeGateway()
-	if err := m.UpdateProfile(context.Background(), gw, "alice", "Alice Wang", "研发", ""); err != nil {
+	if err := m.UpdateProfile(context.Background(), gw, "alice", "Alice Wang", "研发", "", ""); err != nil {
 		t.Fatalf("profile: %v", err)
 	}
 	us, _ := m.LoadUsers()
@@ -519,7 +519,7 @@ func TestUpdateProfileWithoutAGatewayUserSavesTheRoster(t *testing.T) {
 
 func TestUpdateProfileRequiresARosterEntry(t *testing.T) {
 	m, _ := newManager()
-	if err := m.UpdateProfile(context.Background(), newFakeGateway(), "ghost", "G", "", ""); err == nil {
+	if err := m.UpdateProfile(context.Background(), newFakeGateway(), "ghost", "G", "", "", ""); err == nil {
 		t.Fatal("expected an error")
 	}
 }

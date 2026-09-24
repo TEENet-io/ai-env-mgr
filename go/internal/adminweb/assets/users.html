@@ -20,7 +20,7 @@
     {{range .Accounts}}
       <tr>
         <td class="id">{{if .OnRoster}}<a href="/users/detail?user={{.WindowsUser}}">{{.WindowsUser}}</a>{{else}}<span class="id">{{.WindowsUser}}</span>{{end}}</td>
-        <td>{{if .Name}}{{.Name}}{{else}}<span class="dim">—</span>{{end}}</td>
+        <td>{{if .Name}}{{.Name}}{{else}}<span class="dim">—</span>{{end}}{{if .Email}}<div class="rowsub">{{.Email}}</div>{{end}}</td>
         <td class="dim">{{if .Department}}{{.Department}}{{else}}—{{end}}</td>
         <td>
           {{if .Deleted}}<span class="tag">已删除 {{.DeletedAt}}</span>{{else if .Enabled}}<span class="tag tag-ok">在职</span>{{else}}<span class="tag tag-bad">已离职</span>{{end}}
@@ -73,6 +73,7 @@
   <form method="post" action="/users/onboard" class="form top">
     <input type="hidden" name="csrf" value="{{.CSRF}}">
     <label>Windows 用户<input name="windowsUser" required placeholder="work1"><span class="field-hint">按小写保存，机器上的账号大小写无关</span></label>
+    <label>邮箱<input name="email" type="email" required placeholder="zhangsan@example.com"><span class="field-hint">员工用它接收云电脑的登录验证码</span></label>
     <label>姓名<input name="name" placeholder="张三"></label>
     <label>部门<input name="department" placeholder="研发"></label>
     <label>月预算（美元）<input name="budget" type="number" step="0.01" min="0.01" value="{{.QuotaDefaults.MonthlyBudgetUSD}}" required></label>

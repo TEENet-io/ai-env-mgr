@@ -174,7 +174,7 @@ func TestRotationSettingsAndTheTokenColumn(t *testing.T) {
 	}
 
 	// An account with a live token shows its age, and past the limit, a tag.
-	dbPost(t, h, "/users/onboard", url.Values{"csrf": {csrf}, "windowsUser": {"work1"}, "budget": {"20"}, "rpm": {"60"}, "tpm": {"100000"}, "parallel": {"4"}}, cookie)
+	dbPost(t, h, "/users/onboard", url.Values{"csrf": {csrf}, "windowsUser": {"work1"}, "email": {"t@example.com"}, "budget": {"20"}, "rpm": {"60"}, "tpm": {"100000"}, "parallel": {"4"}}, cookie)
 	e, _ := s.dbm.store.Employees().ByWindowsUser(ctx, "work1")
 	cred, _ := s.dbm.store.Credentials().Store(ctx, repo.NewCredential{EmployeeID: e.ID, Epoch: e.AuthEpoch, Purpose: repo.PurposeCodexGateway, Ciphertext: []byte("x"), KeyVersion: "k1"})
 	grant, _ := s.dbm.store.Grants().Create(ctx, repo.NewGrant{EmployeeID: e.ID, Epoch: e.AuthEpoch, ExternalUser: "emp-work1", KeyAlias: "emp-work1-e1", CredentialID: cred.ID})

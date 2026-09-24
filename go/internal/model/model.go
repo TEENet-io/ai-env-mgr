@@ -251,6 +251,7 @@ func (s Status) HasLocalUser(name string) bool {
 type UserEntry struct {
 	WindowsUser  string `json:"windowsUser"`
 	CodexAccount string `json:"codexAccount"`
+	Email        string `json:"email,omitempty"`
 	// Name and Department are labels for the administrator's benefit and
 	// are mirrored onto the gateway user (user_alias, metadata.department)
 	// so the gateway UI shows the same person. The roster is authoritative.

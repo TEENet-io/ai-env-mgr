@@ -25,6 +25,9 @@ type AccountSpec struct {
 	// is already on the roster alone, so reopening an account (adminweb's
 	// actionAccountReopen) never blanks a note nobody re-typed.
 	CodexAccount string
+	// Email is where the cloud desktop's verification codes go: a note, like
+	// CodexAccount, and likewise left alone when empty.
+	Email string
 }
 
 // Onboard opens an account: roster entry, gateway user with its limits, a
@@ -70,6 +73,9 @@ func (m *Manager) Onboard(ctx context.Context, gw Gateway, cfg GatewayConfig, sp
 	e.Name, e.Department, e.Enabled = spec.Name, spec.Department, true
 	if spec.CodexAccount != "" {
 		e.CodexAccount = spec.CodexAccount
+	}
+	if spec.Email != "" {
+		e.Email = spec.Email
 	}
 	if err := m.SaveUsers(us); err != nil {
 		return err
@@ -207,7 +213,7 @@ func (m *Manager) requireActive(windowsUser string) (model.UserEntry, error) {
 // creating one here would leave it without the limits Onboard gives it. A
 // user whose stored limits are unusable is left alone rather than being
 // written back with them, since UpsertUser would send them on as they are.
-func (m *Manager) UpdateProfile(ctx context.Context, gw Gateway, windowsUser, name, department, codexAccount string) error {
+func (m *Manager) UpdateProfile(ctx context.Context, gw Gateway, windowsUser, name, department, codexAccount, email string) error {
 	defer lockProvision(windowsUser)()
 
 	us, err := m.LoadUsers()
@@ -223,6 +229,7 @@ func (m *Manager) UpdateProfile(ctx context.Context, gw Gateway, windowsUser, na
 	}
 	e.Name, e.Department = name, department
 	e.CodexAccount = codexAccount
+	e.Email = email
 	if err := m.SaveUsers(us); err != nil {
 		return err
 	}

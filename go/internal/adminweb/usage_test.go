@@ -32,7 +32,7 @@ func TestUsagePageSumsAndExports(t *testing.T) {
 	ctx := t.Context()
 	csrf := csrfFrom(t, s, cookie, "/users")
 	for _, u := range []string{"work1", "work2"} {
-		dbPost(t, h, "/users/onboard", url.Values{"csrf": {csrf}, "windowsUser": {u}, "budget": {"20"}, "rpm": {"60"}, "tpm": {"100000"}, "parallel": {"4"}}, cookie)
+		dbPost(t, h, "/users/onboard", url.Values{"csrf": {csrf}, "windowsUser": {u}, "email": {"t@example.com"}, "budget": {"20"}, "rpm": {"60"}, "tpm": {"100000"}, "parallel": {"4"}}, cookie)
 	}
 	work1, _ := s.dbm.store.Employees().ByWindowsUser(ctx, "work1")
 	work2, _ := s.dbm.store.Employees().ByWindowsUser(ctx, "work2")

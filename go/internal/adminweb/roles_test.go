@@ -69,7 +69,7 @@ func TestRolesGateWrites(t *testing.T) {
 		t.Fatalf("viewer audit: %d", rec.Code)
 	}
 	csrf := csrfFrom(t, s, viewerCookie, "/users")
-	onboard := url.Values{"csrf": {csrf}, "windowsUser": {"work1"}, "budget": {"20"}, "rpm": {"60"}, "tpm": {"100000"}, "parallel": {"4"}}
+	onboard := url.Values{"csrf": {csrf}, "windowsUser": {"work1"}, "email": {"t@example.com"}, "budget": {"20"}, "rpm": {"60"}, "tpm": {"100000"}, "parallel": {"4"}}
 	if rec := dbPost(t, h, "/users/onboard", onboard, viewerCookie); rec.Code != http.StatusForbidden {
 		t.Fatalf("viewer onboard: %d, want 403", rec.Code)
 	}
@@ -111,7 +111,7 @@ func TestAnOperatorCannotChangeFleetWideThings(t *testing.T) {
 	for path, form := range map[string]url.Values{
 		"/sites/mutate":            {"op": {"add"}, "domain": {"example.com"}},
 		"/sites/enabled":           {"enabled": {"0"}},
-		"/settings/quota-defaults": {"budget": {"50"}},
+		"/settings/quota-defaults": {"email": {"t@example.com"}, "budget": {"50"}},
 		"/settings/interval":       {"minutes": {"5"}},
 		"/releases/global":         {"product": {"agent"}, "version": {"1.3.0"}, "confirm": {"1.3.0"}},
 		"/releases/global-clear":   {"product": {"agent"}},

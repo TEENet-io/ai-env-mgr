@@ -18,7 +18,7 @@ func TestMachinePageTellsTheMachinesStory(t *testing.T) {
 	store := s.dbm.store
 	csrf := csrfFrom(t, s, cookie, "/users")
 	for _, u := range []string{"alice", "bob"} {
-		dbPost(t, h, "/users/onboard", url.Values{"csrf": {csrf}, "windowsUser": {u}, "budget": {"20"}, "rpm": {"60"}, "tpm": {"100000"}, "parallel": {"4"}}, cookie)
+		dbPost(t, h, "/users/onboard", url.Values{"csrf": {csrf}, "windowsUser": {u}, "email": {"t@example.com"}, "budget": {"20"}, "rpm": {"60"}, "tpm": {"100000"}, "parallel": {"4"}}, cookie)
 	}
 	device, _ := store.Devices().EnsureByHostname(ctx, "PC-STORY")
 	store.Devices().MarkSeen(ctx, device.ID, "1.2.16", time.Now())
@@ -69,7 +69,7 @@ func TestUserDetailShowsTheEmployeesHistory(t *testing.T) {
 	cookie := signedIn(t, s)
 	ctx := t.Context()
 	csrf := csrfFrom(t, s, cookie, "/users")
-	dbPost(t, h, "/users/onboard", url.Values{"csrf": {csrf}, "windowsUser": {"carol"}, "budget": {"20"}, "rpm": {"60"}, "tpm": {"100000"}, "parallel": {"4"}}, cookie)
+	dbPost(t, h, "/users/onboard", url.Values{"csrf": {csrf}, "windowsUser": {"carol"}, "email": {"t@example.com"}, "budget": {"20"}, "rpm": {"60"}, "tpm": {"100000"}, "parallel": {"4"}}, cookie)
 	carol, _ := s.dbm.store.Employees().ByWindowsUser(ctx, "carol")
 	s.dbm.ops.SetModels(ctx, carol.ID, []string{"glm-5"}, "admin", "r1")
 	s.dbm.ops.BindMachine(ctx, "PC-C1", carol.ID, "desk 4", "admin", "r2")

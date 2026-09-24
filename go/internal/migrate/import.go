@@ -172,6 +172,7 @@ func (im *Importer) upsertEmployee(ctx context.Context, tx repo.Store, entry mod
 	updated, err := tx.Employees().UpdateProfile(ctx, existing.ID, existing.Version, repo.Profile{
 		Name: entry.Name, Department: entry.Department,
 		CodexAccount: entry.CodexAccount,
+		Email:        firstNonEmptyString(entry.Email, existing.Email),
 		ExternalID:   existing.ExternalID,
 	})
 	if err != nil {
@@ -327,4 +328,11 @@ func normalise(v any) any {
 		out[key] = value
 	}
 	return out
+}
+
+func firstNonEmptyString(a, b string) string {
+	if a != "" {
+		return a
+	}
+	return b
 }

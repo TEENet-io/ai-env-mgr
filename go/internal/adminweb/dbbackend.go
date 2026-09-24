@@ -51,7 +51,7 @@ func (b dbBackend) Roster(ctx context.Context) ([]model.UserEntry, error) {
 func entryFrom(e repo.Employee) model.UserEntry {
 	return model.UserEntry{
 		WindowsUser: e.WindowsUser, Name: e.Name, Department: e.Department,
-		CodexAccount: e.CodexAccount, Enabled: e.Active(),
+		CodexAccount: e.CodexAccount, Email: e.Email, Enabled: e.Active(),
 	}
 }
 
@@ -319,7 +319,7 @@ func (b dbBackend) AccountRow(ctx context.Context, windowsUser string, _ []litel
 func (b dbBackend) accountRow(ctx context.Context, e repo.Employee, gwUsers []litellm.User) (accountRow, error) {
 	row := accountRow{
 		WindowsUser: e.WindowsUser, Name: e.Name, Department: e.Department, Enabled: e.Active(),
-		OnRoster: true, CodexAccount: e.CodexAccount, Version: e.Version,
+		OnRoster: true, CodexAccount: e.CodexAccount, Email: e.Email, Version: e.Version,
 	}
 	if q, err := b.store.Quotas().Get(ctx, e.ID); err == nil {
 		row.QuotaVersion = q.Version
@@ -394,8 +394,8 @@ func (b dbBackend) accountRow(ctx context.Context, e repo.Employee, gwUsers []li
 func (b dbBackend) Onboard(ctx context.Context, _ *litellm.Client, _ admincore.GatewayConfig, spec admincore.AccountSpec) error {
 	_, err := b.ops.Onboard(ctx, ops.OnboardSpec{
 		WindowsUser: spec.WindowsUser, Name: spec.Name, Department: spec.Department,
-		CodexAccount: spec.CodexAccount,
-		Quota:        storedQuota(spec.Quota), Models: spec.Models,
+		CodexAccount: spec.CodexAccount, Email: spec.Email,
+		Quota: storedQuota(spec.Quota), Models: spec.Models,
 		Actor: b.actor, RequestID: b.requestID,
 	})
 	return err
@@ -441,7 +441,7 @@ func (b dbBackend) DeletedAccounts(ctx context.Context) ([]accountRow, error) {
 		}
 		rows = append(rows, accountRow{
 			WindowsUser: e.WindowsUser, Name: e.Name, Department: e.Department,
-			CodexAccount: e.CodexAccount, Deleted: true, DeletedAt: e.DeletedAt.Format("2006-01-02"),
+			CodexAccount: e.CodexAccount, Email: e.Email, Deleted: true, DeletedAt: e.DeletedAt.Format("2006-01-02"),
 		})
 	}
 	return rows, nil
@@ -472,7 +472,7 @@ func (b dbBackend) SetModels(ctx context.Context, _ *litellm.Client, _ admincore
 	return b.ops.SetModels(ctx, e.ID, models, b.actor, b.requestID)
 }
 
-func (b dbBackend) UpdateProfile(ctx context.Context, _ *litellm.Client, windowsUser, name, department, codexAccount string, version int) error {
+func (b dbBackend) UpdateProfile(ctx context.Context, _ *litellm.Client, windowsUser, name, department, codexAccount, email string, version int) error {
 	e, err := b.employee(ctx, windowsUser)
 	if err != nil {
 		return err
@@ -481,7 +481,7 @@ func (b dbBackend) UpdateProfile(ctx context.Context, _ *litellm.Client, windows
 		version = e.Version
 	}
 	return b.ops.UpdateProfile(ctx, e.ID, version, repo.Profile{
-		Name: name, Department: department, CodexAccount: codexAccount,
+		Name: name, Department: department, CodexAccount: codexAccount, Email: email,
 		ExternalID: e.ExternalID,
 	}, b.actor, b.requestID)
 }

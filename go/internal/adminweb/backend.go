@@ -47,7 +47,7 @@ type backend interface {
 	// form carried none. The legacy backend has no versions and ignores it.
 	SetQuota(ctx context.Context, gw *litellm.Client, windowsUser string, q litellm.Quota, version int) error
 	SetModels(ctx context.Context, gw *litellm.Client, cfg admincore.GatewayConfig, windowsUser string, models []string) error
-	UpdateProfile(ctx context.Context, gw *litellm.Client, windowsUser, name, department, codexAccount string, version int) error
+	UpdateProfile(ctx context.Context, gw *litellm.Client, windowsUser, name, department, codexAccount, email string, version int) error
 	Reissue(ctx context.Context, gw *litellm.Client, cfg admincore.GatewayConfig, windowsUser string) error
 
 	BindMachine(ctx context.Context, machine, windowsUser, note string) error
@@ -158,8 +158,8 @@ func (b legacyBackend) SetModels(ctx context.Context, gw *litellm.Client, cfg ad
 	return b.mgr.SetModels(ctx, gw, cfg, windowsUser, models)
 }
 
-func (b legacyBackend) UpdateProfile(ctx context.Context, gw *litellm.Client, windowsUser, name, department, codexAccount string, _ int) error {
-	return b.mgr.UpdateProfile(ctx, gw, windowsUser, name, department, codexAccount)
+func (b legacyBackend) UpdateProfile(ctx context.Context, gw *litellm.Client, windowsUser, name, department, codexAccount, email string, _ int) error {
+	return b.mgr.UpdateProfile(ctx, gw, windowsUser, name, department, codexAccount, email)
 }
 
 func (b legacyBackend) Reissue(ctx context.Context, gw *litellm.Client, cfg admincore.GatewayConfig, windowsUser string) error {

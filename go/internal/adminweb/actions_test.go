@@ -39,10 +39,10 @@ func TestWritesRequireCSRFToken(t *testing.T) {
 		path string
 		form url.Values
 	}{
-		{"/users/onboard", url.Values{"windowsUser": {"mallory"}, "budget": {"20"}, "rpm": {"60"}, "tpm": {"200000"}, "parallel": {"4"}}},
+		{"/users/onboard", url.Values{"windowsUser": {"mallory"}, "email": {"t@example.com"}, "budget": {"20"}, "rpm": {"60"}, "tpm": {"200000"}, "parallel": {"4"}}},
 		{"/users/reopen", url.Values{"windowsUser": {"work1"}}},
 		{"/users/offboard", url.Values{"windowsUser": {"work1"}}},
-		{"/users/quota", url.Values{"windowsUser": {"work1"}, "budget": {"20"}, "rpm": {"60"}, "tpm": {"200000"}, "parallel": {"4"}}},
+		{"/users/quota", url.Values{"windowsUser": {"work1"}, "email": {"t@example.com"}, "budget": {"20"}, "rpm": {"60"}, "tpm": {"200000"}, "parallel": {"4"}}},
 		{"/users/models", url.Values{"windowsUser": {"work1"}}},
 		{"/users/reissue", url.Values{"windowsUser": {"work1"}}},
 		{"/users/profile", url.Values{"windowsUser": {"work1"}, "name": {"Mallory"}}},
@@ -54,7 +54,7 @@ func TestWritesRequireCSRFToken(t *testing.T) {
 		{"/sites/applocker-mode", url.Values{"mode": {"audit"}}},
 		{"/settings/interval", url.Values{"minutes": {"1"}}},
 		{"/settings/collect", url.Values{"enabled": {"1"}}},
-		{"/settings/quota-defaults", url.Values{"budget": {"20"}, "rpm": {"60"}, "tpm": {"200000"}, "parallel": {"4"}}},
+		{"/settings/quota-defaults", url.Values{"email": {"t@example.com"}, "budget": {"20"}, "rpm": {"60"}, "tpm": {"200000"}, "parallel": {"4"}}},
 	}
 	for _, w := range writes {
 		fs := newFakeStore()
@@ -170,7 +170,7 @@ func TestDetailPageErrorRedirectStaysOnDetailPage(t *testing.T) {
 	cookie := signIn(t, s)
 	form := url.Values{
 		"csrf": {csrfOf(t, s, cookie)}, "windowsUser": {"work1"}, "back": {"detail"},
-		"budget": {"abc"}, "rpm": {"60"}, "tpm": {"200000"}, "parallel": {"4"},
+		"email": {"t@example.com"}, "budget": {"abc"}, "rpm": {"60"}, "tpm": {"200000"}, "parallel": {"4"},
 	}
 
 	rec := post(t, s, "/users/quota", cookie, form)

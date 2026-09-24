@@ -101,6 +101,7 @@ type OnboardSpec struct {
 	Name         string
 	Department   string
 	CodexAccount string
+	Email        string
 	ExternalID   string
 	Quota        repo.Quota
 	Models       []string
@@ -132,7 +133,7 @@ func (s *Service) Onboard(ctx context.Context, spec OnboardSpec) (repo.Employee,
 		case errors.Is(err, repo.ErrNotFound):
 			employee, err = tx.Employees().Create(ctx, repo.NewEmployee{
 				WindowsUser: user, Name: spec.Name, Department: spec.Department,
-				CodexAccount: spec.CodexAccount, ExternalID: spec.ExternalID,
+				CodexAccount: spec.CodexAccount, Email: spec.Email, ExternalID: spec.ExternalID,
 			})
 			if err != nil {
 				return err
@@ -761,6 +762,7 @@ func (s *Service) applyProfile(ctx context.Context, tx repo.Store, employee repo
 		Name:         firstNonEmpty(spec.Name, employee.Name),
 		Department:   firstNonEmpty(spec.Department, employee.Department),
 		CodexAccount: firstNonEmpty(spec.CodexAccount, employee.CodexAccount),
+		Email:        firstNonEmpty(spec.Email, employee.Email),
 		ExternalID:   firstNonEmpty(spec.ExternalID, employee.ExternalID),
 	}
 	return tx.Employees().UpdateProfile(ctx, employee.ID, employee.Version, profile)

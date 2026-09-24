@@ -6,6 +6,7 @@ import (
 	"log"
 	"net/http"
 	"net/url"
+	"regexp"
 	"sort"
 	"strconv"
 	"strings"
@@ -40,6 +41,7 @@ type accountRow struct {
 	// Administrator note, carried through from the roster untouched by
 	// anything here -- see admincore.AccountSpec.
 	CodexAccount string
+	Email        string
 
 	// Version and QuotaVersion are what the detail page's forms carry back,
 	// so a save from a page rendered before somebody else's save is refused
@@ -106,6 +108,7 @@ func reconcileAccounts(users []model.UserEntry, keys []litellm.Key, gwUsers []li
 			WindowsUser: e.WindowsUser, Name: e.Name, Department: e.Department, Enabled: e.Enabled,
 			OnRoster:     onRoster,
 			CodexAccount: e.CodexAccount,
+			Email:        e.Email,
 		}
 		if u, ok := userByID[id]; ok {
 			r.HasUser = true
@@ -410,7 +413,12 @@ func (s *Server) actionAccountOnboard(sess *session, r *http.Request) error {
 	if err != nil {
 		return err
 	}
+	email, err := parseEmail(formValue(r, "email"), true)
+	if err != nil {
+		return err
+	}
 	return sess.be.Onboard(ctx, gw, cfg, admincore.AccountSpec{
+		Email:        email,
 		WindowsUser:  user,
 		Name:         formValue(r, "name"),
 		Department:   formValue(r, "department"),
@@ -577,9 +585,35 @@ func (s *Server) actionAccountProfile(sess *session, r *http.Request) error {
 	if user == "" {
 		return fmt.Errorf("a Windows user name is required")
 	}
+	email, err := parseEmail(formValue(r, "email"), false)
+	if err != nil {
+		return err
+	}
 	return sess.be.UpdateProfile(ctx, gw, user,
 		formValue(r, "name"), formValue(r, "department"),
-		formValue(r, "codexAccount"), formInt(r, "version"))
+		formValue(r, "codexAccount"), email, formInt(r, "version"))
+}
+
+// emailPattern is deliberately loose: one @, something on each side, a dot
+// in the domain, no spaces. The address is where Alibaba Cloud sends the
+// desktop's verification codes; the console only keeps it.
+var emailPattern = regexp.MustCompile(`^[^@\s]+@[^@\s]+\.[^@\s]+$`)
+
+// parseEmail trims and checks an address. Onboarding requires one (the
+// process opens an account with a user name and an email); the profile
+// form may leave it empty.
+func parseEmail(raw string, required bool) (string, error) {
+	email := strings.TrimSpace(raw)
+	if email == "" {
+		if required {
+			return "", fmt.Errorf("邮箱不能为空（员工用它接收云电脑的登录验证码）")
+		}
+		return "", nil
+	}
+	if !emailPattern.MatchString(email) || len(email) > 254 {
+		return "", fmt.Errorf("邮箱格式不对：%s", email)
+	}
+	return email, nil
 }
 
 func (s *Server) actionAccountReissue(sess *session, r *http.Request) error {

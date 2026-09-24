@@ -3,6 +3,7 @@ package adminweb
 import (
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -106,16 +107,16 @@ func TestReconcileAccountsSortsByUser(t *testing.T) {
 
 func TestParseQuotaForm(t *testing.T) {
 	// Only the budget is read; stale rate fields in a form are ignored.
-	good := url.Values{"budget": {"20.5"}, "rpm": {"60"}, "tpm": {"200000"}, "parallel": {"4"}}
+	good := url.Values{"email": {"t@example.com"}, "budget": {"20.5"}, "rpm": {"60"}, "tpm": {"200000"}, "parallel": {"4"}}
 	q, err := parseQuotaForm(good)
 	if err != nil || q != litellm.BudgetOnly(20.5) {
 		t.Fatalf("good form: %+v %v", q, err)
 	}
 	for name, bad := range map[string]url.Values{
 		"missing":  {},
-		"zero":     {"budget": {"0"}},
-		"negative": {"budget": {"-5"}},
-		"text":     {"budget": {"abc"}},
+		"zero":     {"email": {"t@example.com"}, "budget": {"0"}},
+		"negative": {"email": {"t@example.com"}, "budget": {"-5"}},
+		"text":     {"email": {"t@example.com"}, "budget": {"abc"}},
 	} {
 		if _, err := parseQuotaForm(bad); err == nil {
 			t.Errorf("%s form accepted", name)
@@ -198,7 +199,7 @@ func TestAccountPagesRender(t *testing.T) {
 		// 基本信息 (spec 4.2): the form and its prefilled fields.
 		"/users/profile", "基本信息", `value="Alice Wang"`, `value="研发"`,
 		`name="codexAccount" value="alice@codex.example"`,
-		"修改姓名或部门不影响令牌与额度。",
+		"修改姓名、部门或邮箱不影响令牌与额度",
 	} {
 		if !strings.Contains(detail.String(), want) {
 			t.Errorf("user.html missing %q", want)
@@ -271,7 +272,7 @@ func TestQuotaDefaultsActionPersists(t *testing.T) {
 	s := newTestServer(t, fs)
 	cookie := signIn(t, s)
 	rec := post(t, s, "/settings/quota-defaults", cookie, url.Values{
-		"csrf": {csrfOf(t, s, cookie)}, "budget": {"33"}, "rpm": {"70"}, "tpm": {"250000"}, "parallel": {"5"},
+		"csrf": {csrfOf(t, s, cookie)}, "email": {"t@example.com"}, "budget": {"33"}, "rpm": {"70"}, "tpm": {"250000"}, "parallel": {"5"},
 	})
 	if rec.Code != http.StatusSeeOther || !strings.Contains(rec.Header().Get("Location"), "ok=1") {
 		t.Fatalf("expected redirect with ok, got %d %s", rec.Code, rec.Header().Get("Location"))
@@ -316,5 +317,44 @@ func TestReopenSpec(t *testing.T) {
 	got = reopenSpec(e, defaults, litellm.User{}, false, litellm.Key{}, false)
 	if got.Quota != defaults || got.Models != nil {
 		t.Errorf("with nothing: %+v", got)
+	}
+}
+
+func TestOnboardingTakesAnEmail(t *testing.T) {
+	s, _ := newDatabaseServer(t)
+	h := s.Handler()
+	cookie := signedIn(t, s)
+	csrf := csrfFrom(t, s, cookie, "/users")
+	form := func(email string) url.Values {
+		return url.Values{"csrf": {csrf}, "windowsUser": {"zhangsan"}, "budget": {"20"}, "email": {email}}
+	}
+	for _, bad := range []string{"", "zhangsan", "zhang san@example.com", "a@b"} {
+		rec := dbPost(t, h, "/users/onboard", form(bad), cookie)
+		if !strings.Contains(rec.Header().Get("Location"), "err=") {
+			t.Errorf("onboarding with email %q was accepted", bad)
+		}
+	}
+	rec := dbPost(t, h, "/users/onboard", form("  zhangsan@example.com "), cookie)
+	if loc := rec.Header().Get("Location"); strings.Contains(loc, "err=") {
+		t.Fatalf("onboard: %s", loc)
+	}
+	e, err := s.dbm.store.Employees().ByWindowsUser(t.Context(), "zhangsan")
+	if err != nil || e.Email != "zhangsan@example.com" {
+		t.Fatalf("stored email = %q (%v)", e.Email, err)
+	}
+	if list := dbGet(t, h, "/users", cookie).Body.String(); !strings.Contains(list, "zhangsan@example.com") {
+		t.Error("the list should show the email under the name")
+	}
+	// The profile form changes it; a bad one is refused, not stored.
+	rec = dbPost(t, h, "/users/profile", url.Values{"csrf": {csrf}, "windowsUser": {"zhangsan"}, "email": {"nope"}, "version": {strconv.Itoa(e.Version)}}, cookie)
+	if !strings.Contains(rec.Header().Get("Location"), "err=") {
+		t.Error("a malformed email was saved")
+	}
+	rec = dbPost(t, h, "/users/profile", url.Values{"csrf": {csrf}, "windowsUser": {"zhangsan"}, "email": {"zs@example.org"}, "version": {strconv.Itoa(e.Version)}}, cookie)
+	if loc := rec.Header().Get("Location"); strings.Contains(loc, "err=") {
+		t.Fatalf("profile: %s", loc)
+	}
+	if e, _ = s.dbm.store.Employees().ByWindowsUser(t.Context(), "zhangsan"); e.Email != "zs@example.org" {
+		t.Fatalf("email after edit = %q", e.Email)
 	}
 }
