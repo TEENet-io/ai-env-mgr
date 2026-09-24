@@ -808,3 +808,14 @@ details.pop-edit > form { display: block; width: 280px; max-width: 100%; margin-
   background: var(--panel-sunk); border: 1px solid var(--rule-strong); border-radius: 8px; }
 details.pop-edit textarea { width: 100%; box-sizing: border-box; resize: vertical; font: inherit; }
 details.pop-edit .pop-actions { display: flex; justify-content: flex-end; margin-top: 8px; }
+
+/* Version library: codex and agent are two tables with one set of column
+ * widths, so they line up; the full checksum wraps instead of being cut. */
+table.library { table-layout: fixed; width: 100%; }
+table.library col.c-ver { width: 27%; }
+table.library col.c-size { width: 7%; }
+table.library col.c-time { width: 9%; }
+table.library col.c-note { width: 19%; }
+table.library col.c-act { width: 38%; }
+table.library .rowsub.hash { word-break: break-all; white-space: normal; }
+table.library td.actions { white-space: normal; }

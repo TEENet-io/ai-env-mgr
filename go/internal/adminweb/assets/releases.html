@@ -53,11 +53,12 @@
       <form method="post" action="/releases/global-clear" class="inline"><input type="hidden" name="csrf" value="{{$.CSRF}}"><input type="hidden" name="product" value="{{$product}}"><button class="link" title="尚未更新的机器停止尝试；已装上的不回退">清除全局</button></form>
       {{else}}未设置{{end}}</span>
   </div>
-  <div class="panel scroll"><table>
+  <div class="panel scroll"><table class="library">
+    <colgroup><col class="c-ver"><col class="c-size"><col class="c-time"><col class="c-note"><col class="c-act"></colgroup>
     <thead><tr><th>版本</th><th>大小</th><th>上传</th><th>说明</th><th>操作</th></tr></thead>
     <tbody>{{range index $.Artifacts $product}}
       <tr>
-        <td class="id" title="SHA-256 {{.SHA256}}">{{.Version}}{{if .IsGlobal}} <span class="tag tag-ok">全局</span>{{end}}{{if eq (printf "%s" .Status) "retired"}} <span class="tag tag-bad">已停用</span>{{end}}<div class="rowsub">sha256 {{slice .SHA256 0 12}}…{{if .MinAgentVersion}} · 需 agent ≥ {{.MinAgentVersion}}{{end}}</div></td>
+        <td class="id" title="SHA-256 {{.SHA256}}">{{.Version}}{{if .IsGlobal}} <span class="tag tag-ok">全局</span>{{end}}{{if eq (printf "%s" .Status) "retired"}} <span class="tag tag-bad">已停用</span>{{end}}<div class="rowsub hash">sha256 {{.SHA256}}{{if .MinAgentVersion}} · 需 agent ≥ {{.MinAgentVersion}}{{end}}</div></td>
         <td class="num">{{.SizeMB}} MB</td>
         <td class="dim nowrap">{{.CreatedAt.Local.Format "01-02 15:04"}}</td>
         <td class="remark">{{if .Notes}}{{.Notes}}{{else}}<span class="muted">—</span>{{end}}
