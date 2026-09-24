@@ -74,6 +74,33 @@ func (s *Service) SetArtifactStatus(ctx context.Context, id string, status repo.
 	return result, nil
 }
 
+// SetArtifactNotes rewrites a version's remark ("修复 xxx", "别用"). It
+// changes what the page says, never what a machine does.
+func (s *Service) SetArtifactNotes(ctx context.Context, id, notes, actor, requestID string) error {
+	notes = strings.TrimSpace(notes)
+	if len([]rune(notes)) > 500 {
+		return errors.New("说明最多 500 字")
+	}
+	err := s.store.InTx(ctx, func(tx repo.Store) error {
+		before, err := tx.Releases().ArtifactByID(ctx, id)
+		if err != nil {
+			return err
+		}
+		if before.Notes == notes {
+			return nil
+		}
+		if _, err := tx.Releases().SetArtifactNotes(ctx, id, notes); err != nil {
+			return err
+		}
+		return s.auditTarget(ctx, tx, actor, requestID, ActionArtifactNotes, "artifact", id,
+			map[string]any{"notes": before.Notes}, map[string]any{"notes": notes, "version": before.Version})
+	})
+	if err != nil {
+		return fmt.Errorf("set artifact notes: %w", err)
+	}
+	return nil
+}
+
 // SetGlobalTarget points every machine that reads the fleet policy at a
 // registered artifact. This is the old channel, and stays the only channel
 // for agents older than 1.2.16. The checksum and key come from the artifact

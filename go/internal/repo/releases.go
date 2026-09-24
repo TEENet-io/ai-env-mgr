@@ -104,6 +104,7 @@ type Releases interface {
 	ArtifactByVersion(ctx context.Context, product, version string) (Artifact, error)
 	ListArtifacts(ctx context.Context, product string) ([]Artifact, error) // newest first; "" = both products
 	SetArtifactStatus(ctx context.Context, id string, status ArtifactStatus, note, by string) (Artifact, error)
+	SetArtifactNotes(ctx context.Context, id, notes string) (Artifact, error)
 
 	CreateRollout(ctx context.Context, r NewRollout) (Rollout, error)
 	RolloutByID(ctx context.Context, id string) (Rollout, error)

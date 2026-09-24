@@ -88,6 +88,15 @@ func (r releaseRepo) SetArtifactStatus(ctx context.Context, id string, status re
 	return a, nil
 }
 
+func (r releaseRepo) SetArtifactNotes(ctx context.Context, id, notes string) (repo.Artifact, error) {
+	a, err := scanArtifact(r.q.QueryRow(ctx,
+		`update release_artifacts set notes = $2, updated_at = now() where id = $1 returning `+artifactColumns, id, notes))
+	if err != nil {
+		return repo.Artifact{}, mapError(err, "set artifact notes")
+	}
+	return a, nil
+}
+
 const rolloutColumns = `id, product, artifact_id, kind, coalesce(rollback_of::text, ''), note, created_by, created_at, paused_at, paused_by`
 
 func scanRollout(row scanner) (repo.Rollout, error) {

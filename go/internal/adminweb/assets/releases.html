@@ -60,7 +60,7 @@
         <td class="id" title="SHA-256 {{.SHA256}}">{{.Version}}{{if .IsGlobal}} <span class="tag tag-ok">全局</span>{{end}}{{if eq (printf "%s" .Status) "retired"}} <span class="tag tag-bad">已停用</span>{{end}}<div class="rowsub">sha256 {{slice .SHA256 0 12}}…{{if .MinAgentVersion}} · 需 agent ≥ {{.MinAgentVersion}}{{end}}</div></td>
         <td class="num">{{.SizeMB}} MB</td>
         <td class="dim nowrap">{{.CreatedAt.Local.Format "01-02 15:04"}}</td>
-        <td class="remark">{{.Notes}}</td>
+        <td class="remark"><form method="post" action="/releases/notes" class="inline"><input type="hidden" name="csrf" value="{{$.CSRF}}"><input type="hidden" name="id" value="{{.ID}}"><input name="notes" value="{{.Notes}}" placeholder="写点备注…" size="22" maxlength="500"><button class="link">保存</button></form></td>
         <td class="actions">
           {{if ne (printf "%s" .Status) "retired"}}
           {{if not .IsGlobal}}<form method="post" action="/releases/global" class="inline"><input type="hidden" name="csrf" value="{{$.CSRF}}"><input type="hidden" name="product" value="{{$product}}"><input type="hidden" name="version" value="{{.Version}}"><input name="confirm" placeholder="输入版本号确认" size="12" autocomplete="off"><button class="link danger-link">设为全局</button></form>{{end}}

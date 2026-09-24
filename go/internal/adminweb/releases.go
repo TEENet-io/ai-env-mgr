@@ -214,3 +214,7 @@ func (s *Server) actionReleaseGlobalClear(sess *session, r *http.Request) error 
 	_, err := s.dbm.ops.ClearGlobalTarget(r.Context(), formValue(r, "product"), sess.actor, s.clientKey(r))
 	return err
 }
+
+func (s *Server) actionReleaseNotes(sess *session, r *http.Request) error {
+	return s.dbm.ops.SetArtifactNotes(r.Context(), formValue(r, "id"), formValue(r, "notes"), sess.actor, s.clientKey(r))
+}

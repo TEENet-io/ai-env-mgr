@@ -85,6 +85,7 @@ const (
 
 	ActionArtifactRegister = "release.artifact_register"
 	ActionArtifactStatus   = "release.artifact_status"
+	ActionArtifactNotes    = "release.artifact_notes"
 	ActionGlobalTarget     = "release.global_target"
 	ActionRolloutCreate    = "release.rollout_create"
 	ActionRolloutPause     = "release.rollout_pause"

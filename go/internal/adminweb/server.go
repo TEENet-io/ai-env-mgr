@@ -407,6 +407,7 @@ func (s *Server) Handler() http.Handler {
 		mux.HandleFunc("/releases/register", s.requirePost("/releases", s.actionReleaseRegister))
 		mux.HandleFunc("/releases/scan", s.requirePostNotice("/releases", s.actionReleaseScanNow))
 		mux.HandleFunc("/releases/status", s.requirePost("/releases", s.actionReleaseStatus))
+		mux.HandleFunc("/releases/notes", s.requirePost("/releases", s.actionReleaseNotes))
 		mux.HandleFunc("/releases/global", s.requirePost("/releases", s.actionReleaseGlobal))
 		mux.HandleFunc("/releases/global-clear", s.requirePost("/releases", s.actionReleaseGlobalClear))
 		mux.HandleFunc("/rollouts", s.requireSession(s.handleRollouts))
