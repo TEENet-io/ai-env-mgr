@@ -190,6 +190,11 @@ func (s *Server) actionAlertSettings(sess *session, r *http.Request) error {
 		Enabled:           formValue(r, "enabled") == "1",
 		OfflineAfterHours: formInt(r, "offline_hours"),
 		BudgetWarnPercent: formInt(r, "budget_warn"),
+		CleanupAfterDays:  formInt(r, "cleanup_days"),
+	}
+	if after.CleanupAfterDays == 0 {
+		// A form from before the field existed keeps what is stored.
+		after.CleanupAfterDays = before.CleanupAfterDays
 	}
 	if err := after.Validate(); err != nil {
 		return err

@@ -208,3 +208,48 @@ func TestAMachineOfAnEmployeeWhoLeftIsNotReportedOffline(t *testing.T) {
 		t.Fatalf("an offboarded employee's machine is still reported offline (%d)", n)
 	}
 }
+
+func TestALeaverWithAMachineIsDueForCleanupAfterSevenDays(t *testing.T) {
+	store, ctx := newWorkerStore(t)
+	left, _ := store.Employees().Create(ctx, repo.NewEmployee{WindowsUser: "gone"})
+	never, _ := store.Employees().Create(ctx, repo.NewEmployee{WindowsUser: "nomachine"})
+	pc, _ := store.Devices().EnsureByHostname(ctx, "PC-GONE")
+	if _, err := store.Bindings().Bind(ctx, pc.ID, left.ID, "", "zhang"); err != nil {
+		t.Fatal(err)
+	}
+	for _, e := range []repo.Employee{left, never} {
+		if _, err := store.Employees().Offboard(ctx, e.ID, e.Version); err != nil {
+			t.Fatal(err)
+		}
+	}
+	at := func(days int) AlertEval {
+		now := time.Now().Add(time.Duration(days) * 24 * time.Hour)
+		return AlertEval{Store: store, Now: func() time.Time { return now }}
+	}
+	if _, err := at(3).Run(ctx, repo.Task{}); err != nil {
+		t.Fatal(err)
+	}
+	if n := len(openOf(t, ctx, store, repo.AlertOffboardCleanup)); n != 0 {
+		t.Fatalf("three days after offboarding the instance is still kept; got %d alert(s)", n)
+	}
+	if _, err := at(8).Run(ctx, repo.Task{}); err != nil {
+		t.Fatal(err)
+	}
+	due := openOf(t, ctx, store, repo.AlertOffboardCleanup)
+	if len(due) != 1 || due[0].SubjectID != left.ID || !strings.Contains(due[0].Title, "gone 已离职 8 天") || !strings.Contains(due[0].Detail, "PC-GONE") {
+		t.Fatalf("after seven days the leaver with a machine is due, the one without is not: %+v", due)
+	}
+	// Forgetting the machine (机器页「注销」) closes it.
+	if _, err := store.Bindings().Unbind(ctx, pc.ID, "zhang"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.Devices().Revoke(ctx, pc.ID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := at(8).Run(ctx, repo.Task{}); err != nil {
+		t.Fatal(err)
+	}
+	if n := len(openOf(t, ctx, store, repo.AlertOffboardCleanup)); n != 0 {
+		t.Fatalf("a forgotten machine leaves nothing to clean up; %d still open", n)
+	}
+}

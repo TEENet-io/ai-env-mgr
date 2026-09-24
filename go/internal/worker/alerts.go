@@ -67,6 +67,8 @@ func (h AlertEval) Run(ctx context.Context, _ repo.Task) (Result, error) {
 	apply(repo.AlertMachineOffline, want, err)
 	want, err = h.failedRollouts(ctx, now)
 	apply(repo.AlertRolloutFailed, want, err)
+	want, err = h.offboardCleanup(ctx, now, settings)
+	apply(repo.AlertOffboardCleanup, want, err)
 	if h.Gateway != nil {
 		want, err = h.budgets(ctx, settings)
 		apply(repo.AlertBudget, want, err)
@@ -152,6 +154,52 @@ func (h AlertEval) offlineMachines(ctx context.Context, now time.Time, s repo.Al
 			Kind: repo.AlertMachineOffline, Fingerprint: repo.AlertMachineOffline + ":" + d.ID,
 			Severity: repo.SeverityWarn, SubjectType: "device", SubjectID: d.ID,
 			Title: title, Detail: detail,
+		})
+	}
+	return out, nil
+}
+
+// offboardCleanup: an employee who left at least CleanupAfterDays ago and
+// still has a machine in the console. The process (ai工作间流程 §8) deletes
+// the cloud account and releases the instance then; the console's part is
+// to forget the machine, and forgetting it is what closes the alert. An
+// employee who never had a machine here has nothing for the console to
+// track, and is not reported.
+func (h AlertEval) offboardCleanup(ctx context.Context, now time.Time, s repo.AlertSettings) ([]repo.NewAlert, error) {
+	employees, err := h.Store.Employees().List(ctx, repo.EmployeeFilter{IncludeOffboarded: true})
+	if err != nil {
+		return nil, err
+	}
+	due := now.Add(-time.Duration(s.CleanupAfterDays) * 24 * time.Hour)
+	var out []repo.NewAlert
+	for _, e := range employees {
+		if e.Status != repo.StatusOffboarded || e.OffboardedAt == nil || e.OffboardedAt.After(due) {
+			continue
+		}
+		bindings, err := h.Store.Bindings().OpenByEmployee(ctx, e.ID)
+		if err != nil {
+			return nil, err
+		}
+		var machines []string
+		for _, b := range bindings {
+			d, err := h.Store.Devices().ByID(ctx, b.DeviceID)
+			if err != nil {
+				return nil, err
+			}
+			if d.Status != repo.DeviceRevoked {
+				machines = append(machines, d.Hostname)
+			}
+		}
+		if len(machines) == 0 {
+			continue
+		}
+		days := int(now.Sub(*e.OffboardedAt).Hours() / 24)
+		out = append(out, repo.NewAlert{
+			Kind: repo.AlertOffboardCleanup, Fingerprint: repo.AlertOffboardCleanup + ":" + e.ID,
+			Severity: repo.SeverityWarn, SubjectType: "employee", SubjectID: e.ID,
+			Title: fmt.Sprintf("%s 已离职 %d 天，待清理", e.WindowsUser, days),
+			Detail: fmt.Sprintf("关户于 %s。按流程删除阿里云账号、释放实例并删除数据，然后在机器页「注销」%s；注销后这条自动关闭。",
+				e.OffboardedAt.Local().Format("2006-01-02"), strings.Join(machines, "、")),
 		})
 	}
 	return out, nil

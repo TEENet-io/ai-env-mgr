@@ -16,6 +16,10 @@ const (
 	AlertGatewayDrift   = "gateway_drift"
 	AlertBudget         = "budget"
 	AlertTaskFailed     = "task_failed"
+	// AlertOffboardCleanup: an employee left long enough ago that the cloud
+	// account and instance are due for deletion (ai工作间流程 §8), and the
+	// console still has a machine of theirs.
+	AlertOffboardCleanup = "offboard_cleanup"
 
 	SeverityWarn = "warn"
 	SeverityCrit = "crit"
@@ -80,12 +84,19 @@ type AlertSettings struct {
 	Enabled           bool `json:"enabled"`
 	OfflineAfterHours int  `json:"offline_after_hours"`
 	BudgetWarnPercent int  `json:"budget_warn_percent"`
+	// CleanupAfterDays is how long after offboarding the instance is to be
+	// released (the process says 7). Settings saved before it existed read
+	// as the default.
+	CleanupAfterDays int `json:"cleanup_after_days"`
 }
+
+// DefaultCleanupAfterDays is the process's retention after offboarding.
+const DefaultCleanupAfterDays = 7
 
 // DefaultAlertSettings is what applies until an administrator changes it:
 // on, a day of silence, a warning at four fifths of the budget.
 func DefaultAlertSettings() AlertSettings {
-	return AlertSettings{Enabled: true, OfflineAfterHours: 24, BudgetWarnPercent: 80}
+	return AlertSettings{Enabled: true, OfflineAfterHours: 24, BudgetWarnPercent: 80, CleanupAfterDays: DefaultCleanupAfterDays}
 }
 
 // Validate rejects thresholds that would fire always or never.
@@ -95,6 +106,9 @@ func (s AlertSettings) Validate() error {
 	}
 	if s.BudgetWarnPercent < 1 || s.BudgetWarnPercent > 99 {
 		return errors.New("budget warning must be between 1% and 99%")
+	}
+	if s.CleanupAfterDays < 1 || s.CleanupAfterDays > 90 {
+		return errors.New("cleanup reminder must be between 1 and 90 days after offboarding")
 	}
 	return nil
 }
@@ -112,6 +126,9 @@ func LoadAlertSettings(ctx context.Context, settings Settings) (AlertSettings, i
 	var s AlertSettings
 	if err := json.Unmarshal(setting.Value, &s); err != nil {
 		return AlertSettings{}, 0, fmt.Errorf("the stored alert settings are not readable: %w", err)
+	}
+	if s.CleanupAfterDays == 0 {
+		s.CleanupAfterDays = DefaultCleanupAfterDays
 	}
 	return s, setting.Version, nil
 }
