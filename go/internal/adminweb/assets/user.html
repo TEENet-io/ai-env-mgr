@@ -13,7 +13,6 @@
     {{if .Enabled}}<span class="tag tag-ok">在职</span>{{else}}<span class="tag tag-bad">已离职</span>{{end}}
     {{range .Flags}}<span class="tag tag-{{.Severity}}">{{.Label}}</span>{{end}}
     {{if .Name}}{{.Name}}{{end}}{{if .Department}} · {{.Department}}{{end}}
-    {{if .CodexAccount}} · Codex 账号：{{noscan .CodexAccount}}{{end}}
     
     {{if .Machines}} · 机器：{{range $i, $m := .Machines}}{{if $i}}, {{end}}<code>{{$m}}</code>{{end}}{{end}}
   </p>
@@ -30,7 +29,7 @@
     <input type="hidden" name="csrf" value="{{$.CSRF}}"><input type="hidden" name="windowsUser" value="{{.WindowsUser}}"><input type="hidden" name="back" value="detail"><input type="hidden" name="version" value="{{.Version}}">
     <label>姓名<input name="name" value="{{.Name}}" placeholder="张三"></label>
     <label>部门<input name="department" value="{{.Department}}" placeholder="研发"></label>
-    <label>Codex 账号（备注）<input name="codexAccount" value="{{.CodexAccount}}"></label>
+    <input type="hidden" name="codexAccount" value="{{.CodexAccount}}">
     <button type="submit"{{if not .Enabled}} disabled{{end}}>保存基本信息</button>
   </form>
   <p class="hint">修改姓名或部门不影响令牌与额度。留空即清空该项；姓名与部门会同步到网关用户。</p>

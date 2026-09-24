@@ -70,13 +70,11 @@
   </div>
 
   <h2>开户</h2>
-  <form method="post" action="/users/onboard" class="form">
+  <form method="post" action="/users/onboard" class="form top">
     <input type="hidden" name="csrf" value="{{.CSRF}}">
-    <label>Windows 用户<input name="windowsUser" required placeholder="work1"></label>
-    <p class="hint">Windows 用户名统一按小写保存；机器上的账号大小写无关。</p>
+    <label>Windows 用户<input name="windowsUser" required placeholder="work1"><span class="field-hint">按小写保存，机器上的账号大小写无关</span></label>
     <label>姓名<input name="name" placeholder="张三"></label>
     <label>部门<input name="department" placeholder="研发"></label>
-    <label>Codex 账号（备注）<input name="codexAccount"></label>
     <label>月预算（美元）<input name="budget" type="number" step="0.01" min="0.01" value="{{.QuotaDefaults.MonthlyBudgetUSD}}" required></label>
     <fieldset class="checks">
       <legend>可用模型</legend>

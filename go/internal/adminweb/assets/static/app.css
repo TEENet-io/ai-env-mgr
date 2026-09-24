@@ -819,3 +819,9 @@ table.library col.c-note { width: 19%; }
 table.library col.c-act { width: 38%; }
 table.library .rowsub.hash { word-break: break-all; white-space: normal; }
 table.library td.actions { white-space: normal; }
+
+/* A short note under one field, inside its label. The form's fields line up
+ * at the top then, so the note does not push its neighbours out of line. */
+.form.top { align-items: flex-start; }
+.form.top > button { align-self: flex-end; }
+.form label .field-hint { display: block; margin-top: 5px; font-size: 12px; font-weight: 400; color: var(--ink-faint); }
