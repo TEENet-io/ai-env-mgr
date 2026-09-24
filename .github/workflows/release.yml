@@ -19,6 +19,7 @@ permissions:
 jobs:
   release:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
@@ -105,16 +106,19 @@ jobs:
           for v in OSS_CI_ACCESS_KEY_ID OSS_CI_ACCESS_KEY_SECRET OSS_CI_BUCKET OSS_CI_ENDPOINT; do
             [ -n "${!v}" ] || { echo "::error::$v is empty (neither OSS_CI_* nor AGENT_OSS_* is set); agent.exe cannot be uploaded"; exit 1; }
           done
+          # The agent key carries the in-region endpoint (…-internal.aliyuncs.com),
+          # which a GitHub runner cannot reach: ossutil would retry for hours.
+          OSS_CI_ENDPOINT="${OSS_CI_ENDPOINT/-internal./.}"
           VER="${GITHUB_REF_NAME#v}"
           KEY="agent_workdir/_agent/${VER}/agent.exe"
           curl -fsSL https://gosspublic.alicdn.com/ossutil/1.7.19/ossutil-v1.7.19-linux-amd64.zip -o /tmp/ossutil.zip
           unzip -q -o /tmp/ossutil.zip -d /tmp/ossutil && OSSUTIL=$(find /tmp/ossutil -name 'ossutil64' -type f | head -1) && chmod +x "$OSSUTIL"
           CFG=(-e "${OSS_CI_ENDPOINT}" -i "${OSS_CI_ACCESS_KEY_ID}" -k "${OSS_CI_ACCESS_KEY_SECRET}")
-          if "$OSSUTIL" "${CFG[@]}" stat "oss://${OSS_CI_BUCKET}/${KEY}" >/dev/null 2>&1; then
+          if timeout 120 "$OSSUTIL" "${CFG[@]}" stat "oss://${OSS_CI_BUCKET}/${KEY}" >/dev/null 2>&1; then
             echo "::error::${KEY} already exists; a version names one set of bytes -- cut a new version"
             exit 1
           fi
-          "$OSSUTIL" "${CFG[@]}" cp dist/agent.exe "oss://${OSS_CI_BUCKET}/${KEY}"
+          timeout 900 "$OSSUTIL" "${CFG[@]}" cp dist/agent.exe "oss://${OSS_CI_BUCKET}/${KEY}"
           echo "uploaded ${KEY} sha256 $(sha256sum dist/agent.exe | cut -d' ' -f1)"
 
       - name: Create GitHub Release
