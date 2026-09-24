@@ -700,8 +700,15 @@ func (s *Service) enqueueGatewayWork(ctx context.Context, tx repo.Store, employe
 // binding was never written. Anything that should reach a desktop needs a
 // marker that moves.
 func (s *Service) enqueueEmployeeExport(ctx context.Context, tx repo.Store, employee repo.Employee, marker string) error {
+	_, err := s.enqueueEmployeeExportTask(ctx, tx, employee, marker)
+	return err
+}
+
+// enqueueEmployeeExportTask is enqueueEmployeeExport for a caller that
+// follows the task.
+func (s *Service) enqueueEmployeeExportTask(ctx context.Context, tx repo.Store, employee repo.Employee, marker string) (repo.Task, error) {
 	epoch := employee.AuthEpoch
-	_, _, err := tx.Tasks().Enqueue(ctx, repo.NewTask{
+	task, _, err := tx.Tasks().Enqueue(ctx, repo.NewTask{
 		Kind:           repo.TaskOSSExport,
 		IdempotencyKey: fmt.Sprintf("oss_export:employee:%s:%s", employee.ID, marker),
 		Payload: mustJSON(map[string]any{
@@ -710,7 +717,7 @@ func (s *Service) enqueueEmployeeExport(ctx context.Context, tx repo.Store, empl
 		TargetEpoch: &epoch,
 		EmployeeID:  employee.ID,
 	})
-	return err
+	return task, err
 }
 
 // enqueueDeviceExport asks for one machine's binding object to be rewritten.

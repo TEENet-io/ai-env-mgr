@@ -64,6 +64,7 @@ var minRole = map[string]string{
 	"POST /users/":                  repo.RoleOperator,
 	"POST /users/delete":            repo.RoleAdmin,
 	"POST /machines/":               repo.RoleOperator,
+	"POST /models/":                 repo.RoleOperator,
 	"POST /sites/":                  repo.RoleAdmin,
 	"POST /settings/":               repo.RoleAdmin,
 	"POST /releases/":               repo.RoleOperator,

@@ -101,6 +101,45 @@
     {{end}}
   </section>
 
+  {{with .ModelDelivery}}{{$md := .}}
+  <h2 id="models">模型下发</h2>
+  <section class="panel summary-row">
+    <p>
+    {{if .NeverDelivered}}还没有从这里下发过模型配置。网关现在有 <b>{{len $.GatewayModels}}</b> 个模型。
+    {{else if .Changed}}<span class="tag tag-warn">有变化</span> 自上次全部下发（{{.FleetAt}} · {{.FleetBy}}）以来，网关上：
+      {{if .Added}}新增 {{range $i, $n := .Added}}{{if $i}}、{{end}}<span class="mono">{{$n}}</span>{{end}}{{end}}
+      {{if .Removed}}{{if .Added}}；{{end}}下架 {{range $i, $n := .Removed}}{{if $i}}、{{end}}<span class="mono">{{$n}}</span>{{end}}{{end}}
+      {{if .MetaChanged}}模型信息（显示名、上下文、推理档位）有改动{{end}}
+    {{else}}<span class="tag tag-ok">已是最新</span> 与上次全部下发（{{.FleetAt}} · {{.FleetBy}}）一致。{{end}}
+    </p>
+    {{if may $.Role "/models/deliver"}}
+    <div class="deliver-bar">
+      <form method="post" action="/models/deliver">
+        <input type="hidden" name="csrf" value="{{$.CSRF}}"><input type="hidden" name="version" value="{{.Version}}"><input type="hidden" name="scope" value="test">
+        <select name="employee"><option value="">选一个测试员工…</option>{{range .Employees}}<option value="{{.ID}}">{{.WindowsUser}}</option>{{end}}</select>
+        <button class="link">先发给他</button>
+      </form>
+      <span class="muted">或</span>
+      <form method="post" action="/models/deliver">
+        <input type="hidden" name="csrf" value="{{$.CSRF}}"><input type="hidden" name="version" value="{{.Version}}"><input type="hidden" name="scope" value="all">
+        <button{{if not .Changed}} class="link"{{end}}>全部下发</button>
+      </form>
+    </div>
+    {{end}}
+    <p class="hint">下发会按网关现在的模型，给员工重新生成 Codex 配置和模型清单。机器同步后收到（1.3.0 起几秒内，旧版 agent 按同步间隔）；员工当前的请求完成后<strong>重启 Codex</strong> 才生效。下架的模型在员工重启后从选择器里消失。</p>
+    {{with .Last}}
+    <p>最近一次：{{if eq .Scope "all"}}全部下发{{else}}测试下发{{end}} · {{$md.LastAt}} · {{.By}} · 已收到 <b>{{$md.Received}}</b> / {{len $md.Rows}}</p>
+    <div class="scroll"><table>
+      <thead><tr><th>员工</th><th>机器</th><th>状态</th><th>说明</th></tr></thead>
+      <tbody>{{range $md.Rows}}
+        <tr><td class="id">{{.WindowsUser}}</td><td class="mono">{{orDash .Hostname}}</td>
+          <td><span class="tag tag-{{.Sev}}">{{.State}}</span></td><td class="remark">{{.Detail}}</td></tr>
+      {{end}}</tbody>
+    </table></div>
+    {{end}}
+  </section>
+  {{end}}
+
   <h2>机器</h2>
   {{if .MachinesError}}<p class="note note-err">{{.MachinesError}}</p>{{end}}
   <div class="panel scroll">

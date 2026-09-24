@@ -833,3 +833,9 @@ fieldset.bare { border: 0; margin: 0; padding: 0; min-width: 0; }
 fieldset.bare[disabled] button, fieldset.bare[disabled] input, fieldset.bare[disabled] select, fieldset.bare[disabled] textarea { cursor: not-allowed; }
 fieldset.bare[disabled] button { opacity: 0.4; }
 fieldset.bare[disabled] input, fieldset.bare[disabled] select, fieldset.bare[disabled] textarea { background: var(--panel-sunk); color: var(--ink-soft); }
+
+/* 模型下发: test one employee, or deliver to everybody, on one line. */
+.deliver-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin: 12px 0 4px; }
+.deliver-bar form { display: flex; align-items: center; gap: 8px; margin: 0; }
+.deliver-bar select { width: auto; min-width: 180px; }
+.deliver-bar button, .deliver-bar button.link { padding: 7px 14px; font-size: 13px; }

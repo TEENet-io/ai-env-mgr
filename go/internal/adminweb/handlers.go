@@ -134,6 +134,8 @@ type pageData struct {
 	GatewayURL     string
 	GatewayEnabled bool
 	GatewayModels  []litellm.Model
+	// ModelDelivery is the 模型下发 block (database mode, gateway readable).
+	ModelDelivery *modelDelivery
 	// GatewayUnusable is why the panel cannot act. Only rendered when
 	// GatewayURL is set: with no gateway configured at all the panel says so
 	// in its own words rather than reporting a missing address as a fault.
@@ -379,6 +381,7 @@ func (s *Server) handleOverview(w http.ResponseWriter, r *http.Request, sess *se
 	}
 
 	s.loadGatewayPanel(ctx, &data)
+	s.loadModelDelivery(ctx, &data)
 	// The probe bar is the log page's, reused rather than reimplemented: two
 	// renderings of "is the gateway up" would eventually disagree.
 	//
