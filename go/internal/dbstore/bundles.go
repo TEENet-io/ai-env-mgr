@@ -31,6 +31,18 @@ func (r bundleRepo) Live(ctx context.Context, employeeID string) ([]byte, string
 	return zip, etag, nil
 }
 
+func (r bundleRepo) LiveETag(ctx context.Context, employeeID string) (string, error) {
+	var etag string
+	err := r.q.QueryRow(ctx,
+		`select b.etag from credential_bundles b
+		   join employees e on e.id = b.employee_id and e.auth_epoch = b.epoch
+		  where b.employee_id = $1`, employeeID).Scan(&etag)
+	if err != nil {
+		return "", mapError(err, "read credential bundle etag")
+	}
+	return etag, nil
+}
+
 func (r bundleRepo) Purge(ctx context.Context, employeeID string) error {
 	_, err := r.q.Exec(ctx, `delete from credential_bundles where employee_id = $1`, employeeID)
 	return mapError(err, "purge credential bundles")

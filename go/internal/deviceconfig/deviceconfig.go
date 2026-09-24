@@ -116,7 +116,16 @@ func Build(ctx context.Context, store repo.Store, deviceID string) (Config, erro
 			credential, err := store.Credentials().Live(ctx, employee.ID, repo.PurposeCodexGateway)
 			switch {
 			case err == nil:
+				// The bundle's own etag when there is one: a change of models
+				// rewrites the bundle but not the token, and it is this value
+				// changing that ends the agent's wait. The token id stands in
+				// only until a bundle has been built.
 				cfg.CredentialsETag = credential.ID
+				if etag, err := store.CredentialBundles().LiveETag(ctx, employee.ID); err == nil {
+					cfg.CredentialsETag = etag
+				} else if !errors.Is(err, repo.ErrNotFound) {
+					return cfg, err
+				}
 			case errors.Is(err, repo.ErrNotFound):
 			default:
 				return cfg, err

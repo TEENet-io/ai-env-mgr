@@ -1098,6 +1098,8 @@ type CredentialBundles interface {
 	// Live returns the bundle for the employee's current epoch, or
 	// ErrNotFound when none has been built for it.
 	Live(ctx context.Context, employeeID string) (zip []byte, etag string, err error)
+	// LiveETag is Live without the bytes, for the per-request configuration.
+	LiveETag(ctx context.Context, employeeID string) (string, error)
 	// Purge removes every bundle of the employee: offboarded or deleted.
 	Purge(ctx context.Context, employeeID string) error
 }

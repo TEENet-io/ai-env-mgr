@@ -76,6 +76,17 @@ func TestBuildDescribesAMachineAndChangesWhenItDoes(t *testing.T) {
 		t.Fatalf("a new credential must show in the etag: %+v", withCreds)
 	}
 
+	// Once a bundle is built, its etag is what the machine waits on: a
+	// change of models rewrites the bundle without a new token, and must
+	// still end the agent's wait.
+	store.CredentialBundles().Put(ctx, e.ID, e.AuthEpoch, []byte("zip-1"), "bundle-1")
+	b1, _ := Build(ctx, store, device.ID)
+	store.CredentialBundles().Put(ctx, e.ID, e.AuthEpoch, []byte("zip-2"), "bundle-2")
+	b2, _ := Build(ctx, store, device.ID)
+	if b1.CredentialsETag != "bundle-1" || b2.CredentialsETag != "bundle-2" || b1.ETag == b2.ETag {
+		t.Fatalf("a rewritten bundle must change the configuration: %q %q", b1.CredentialsETag, b2.CredentialsETag)
+	}
+
 	// The rendered binding object is what the OSS exporter has always
 	// written: the same fields an old agent reads.
 	obj, _ := withCreds.BindingObject()
