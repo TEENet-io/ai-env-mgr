@@ -36,7 +36,7 @@ func TestReleasesPageListsCandidatesAndAimsOnlyOnRequest(t *testing.T) {
 		t.Fatalf("policy = %+v", pol)
 	}
 	page = dbGet(t, h, "/releases", cookie)
-	if !strings.Contains(page.Body.String(), "全局目标</span>") {
+	if !strings.Contains(page.Body.String(), `tag-ok">全局</span>`) {
 		t.Fatal("the page does not mark the fleet target")
 	}
 	// The old fleet-wide publish routes lead here in the database mode.
@@ -128,9 +128,9 @@ func TestThePageListsWhatCIUploadedUntilItIsRegistered(t *testing.T) {
 		t.Fatalf("register: redirect %s, job %+v", rec.Header().Get("Location"), snap)
 	}
 	page = dbGet(t, h, "/releases", cookie)
-	// The unregistered table is empty now; the version shows only in the
+	// The unregistered table is gone now; the version shows only in the
 	// library table (whose "set as fleet target" form also carries it).
-	if !strings.Contains(page.Body.String(), "没有待登记的包") {
+	if strings.Contains(page.Body.String(), "未能自动登记的包") {
 		t.Fatalf("a registered package must leave the unregistered list (redirect %s)", rec.Header().Get("Location"))
 	}
 	if !strings.Contains(page.Body.String(), `action="/releases/global"`) {

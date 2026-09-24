@@ -380,5 +380,5 @@ func (s *Server) actionRevokeToken(sess *session, r *http.Request) (string, erro
 	if err := s.dbm.ops.RevokeDeviceToken(r.Context(), formValue(r, "machine"), sess.actor, s.clientKey(r)); err != nil {
 		return "", err
 	}
-	return "令牌已吊销；机器下一次请求会被拒，随后自己重新注册", nil
+	return "令牌已吊销；机器下一次请求会被拒，随后一小时内可以自己重新注册", nil
 }

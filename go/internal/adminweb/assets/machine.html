@@ -20,9 +20,31 @@
     <tr><th></th><td class="actions">
       <form method="post" action="/machines/allow-reenrol" class="inline"><input type="hidden" name="csrf" value="{{$.CSRF}}"><input type="hidden" name="machine" value="{{.Device.Hostname}}"><button class="link">允许注册（24 小时）</button></form>
       {{if .TokenIssuedAt}}<form method="post" action="/machines/revoke-token" class="inline"><input type="hidden" name="csrf" value="{{$.CSRF}}"><input type="hidden" name="machine" value="{{.Device.Hostname}}"><button class="link danger">吊销令牌</button></form>{{end}}
-      <div class="rowsub">控制台已经认识的机器(绑定过员工、持有过令牌、或被注销过)来注册会被拒,防止别人冒用它的主机名;升级到 1.3.0 前、重装后,先点"允许注册"。从未绑定过的新机器自己就能注册。吊销令牌后机器下一次请求被拒,在允许的窗口内会自己重新注册。</div>
+      <div class="rowsub">控制台已经认识的机器(绑定过员工、持有过令牌、或被注销过)来注册会被拒,防止别人冒用它的主机名;升级到 1.3.0 前、重装后,先点"允许注册"。从未绑定过的新机器自己就能注册。吊销令牌会同时放行一小时,机器下一次请求被拒后随即自己重新注册;要彻底锁住用"注销机器"。</div>
     </td></tr>
   </tbody></table></div>
+
+  <h2>版本</h2>
+  {{$host := .Device.Hostname}}
+  <div class="panel scroll"><table>
+    <thead><tr><th>产品</th><th>当前</th><th>应装</th><th>设置</th></tr></thead>
+    <tbody>{{range .Versions}}
+      <tr>
+        <td>{{.Product}}</td>
+        <td class="mono">{{orDash .Running}}</td>
+        <td>{{if .Pinned}}<span class="mono">{{.Pinned}}</span> <span class="tag tag-warn">单独指定</span>{{else if .Global}}<span class="mono">{{.Global}}</span> <span class="tag tag-muted">跟随全局</span>{{else}}<span class="dim">跟随全局（未设置）</span>{{end}}
+          {{$want := .Global}}{{if .Pinned}}{{$want = .Pinned}}{{end}}{{if and $want .Running (ne $want .Running)}}<div class="rowsub">等待机器更新</div>{{end}}</td>
+        <td class="actions">{{if .Why}}<span class="dim">{{.Why}}</span>{{else}}
+          <form method="post" action="/machines/version" class="inline">
+            <input type="hidden" name="csrf" value="{{$.CSRF}}"><input type="hidden" name="machine" value="{{$host}}"><input type="hidden" name="product" value="{{.Product}}">
+            <select name="artifact">
+              <option value="">跟随全局{{if .Global}}（{{.Global}}）{{end}}</option>
+              {{$pinned := .Pinned}}{{range .Choices}}<option value="{{.ID}}"{{if eq .Version $pinned}} selected{{end}}>指定 {{.Version}}</option>{{end}}
+            </select>
+            <button class="link">保存</button>
+          </form>{{end}}</td>
+      </tr>{{end}}
+    </tbody></table></div>
 
   {{with .Report}}
   <h2>最近一次上报</h2>
@@ -48,7 +70,7 @@
       </tr>{{else}}<tr><td colspan="4" class="empty">从未绑定过员工</td></tr>{{end}}
     </tbody></table></div>
 
-  <h2>发布目标</h2>
+  <h2>版本记录</h2>
   <div class="panel scroll"><table>
     <thead><tr><th>产品</th><th>版本</th><th>代次</th><th>状态</th><th>详情</th><th>创建</th><th>结束</th><th></th></tr></thead>
     <tbody>{{range .Targets}}
@@ -57,8 +79,8 @@
         <td>{{.Label}}</td><td class="remark">{{.Detail}}</td>
         <td class="dim">{{.CreatedAt.Local.Format "01-02 15:04"}}</td>
         <td class="dim">{{if .FinishedAt}}{{.FinishedAt.Local.Format "01-02 15:04"}}{{end}}</td>
-        <td><a href="/rollouts/detail?id={{.RolloutID}}">发布任务</a></td>
-      </tr>{{else}}<tr><td colspan="8" class="empty">没有针对这台机器的发布目标；它按全局策略更新</td></tr>{{end}}
+        <td><a href="/rollouts/detail?id={{.RolloutID}}">详情</a></td>
+      </tr>{{else}}<tr><td colspan="8" class="empty">没有单独指定过版本；它跟随全局</td></tr>{{end}}
     </tbody></table></div>
 
   <h2>操作记录</h2>

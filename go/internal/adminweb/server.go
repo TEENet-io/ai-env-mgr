@@ -199,6 +199,7 @@ func New(opts Options) (*Server, error) {
 		"usagesev": usageSeverity,
 		"money":    func(v float64) string { return strconv.FormatFloat(v, 'f', 2, 64) },
 		"list":     func(xs ...string) []string { return xs },
+		"orDash":   orDash,
 		"astatus":  artifactSeverity,
 		"add":      func(a, b int) int { return a + b },
 		"dur":      humanDuration,
@@ -396,6 +397,7 @@ func (s *Server) Handler() http.Handler {
 		mux.HandleFunc("/settings/device-channel", s.requirePost("/settings/devices", s.actionDeviceChannel))
 		mux.HandleFunc("/machines/allow-reenrol", s.requirePostNotice("/overview", s.actionAllowReenrol))
 		mux.HandleFunc("/machines/revoke-token", s.requirePostNotice("/overview", s.actionRevokeToken))
+		mux.HandleFunc("/machines/version", s.requirePostBack(backToMachine, s.actionMachineVersion))
 		// The agents' own API: device tokens, not administrator sessions.
 		mux.Handle("/agent/v1/", s.dbm.devices.Handler())
 		mux.HandleFunc("/usage", s.requireSession(s.handleUsage))
@@ -410,7 +412,7 @@ func (s *Server) Handler() http.Handler {
 		mux.HandleFunc("/rollouts", s.requireSession(s.handleRollouts))
 		mux.HandleFunc("/rollouts/new", s.requireSession(s.handleRolloutNew))
 		mux.HandleFunc("/rollouts/detail", s.requireSession(s.handleRolloutDetail))
-		mux.HandleFunc("/rollouts/create", s.requirePostBack(backToRollout, s.actionRolloutCreate))
+		mux.HandleFunc("/rollouts/create", s.requirePost("/releases", s.actionRolloutCreate))
 		mux.HandleFunc("/rollouts/pause", s.requirePostBack(backToRollout, s.actionRolloutPause))
 		mux.HandleFunc("/rollouts/resume", s.requirePostBack(backToRollout, s.actionRolloutResume))
 		mux.HandleFunc("/rollouts/cancel", s.requirePostBack(backToRollout, s.actionRolloutCancel))

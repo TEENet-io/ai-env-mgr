@@ -196,12 +196,22 @@ func (r releaseRepo) OpenTarget(ctx context.Context, deviceID, product string) (
 func (r releaseRepo) LastSucceededTarget(ctx context.Context, deviceID, product string) (repo.Target, error) {
 	t, err := scanTarget(r.q.QueryRow(ctx,
 		`select `+targetColumns+` from release_targets
-		  where device_id = $1 and product = $2 and status = 'succeeded'
+		  where device_id = $1 and product = $2 and status = 'succeeded' and released_at is null
 		  order by generation desc limit 1`, deviceID, product))
 	if err != nil {
 		return repo.Target{}, mapError(err, "read last succeeded target")
 	}
 	return t, nil
+}
+
+func (r releaseRepo) ReleaseSucceeded(ctx context.Context, deviceID, product string) (int, error) {
+	tag, err := r.q.Exec(ctx,
+		`update release_targets set released_at = now(), updated_at = now()
+		  where device_id = $1 and product = $2 and status = 'succeeded' and released_at is null`, deviceID, product)
+	if err != nil {
+		return 0, mapError(err, "release succeeded targets")
+	}
+	return int(tag.RowsAffected()), nil
 }
 
 func (r releaseRepo) TargetByID(ctx context.Context, id string) (repo.Target, error) {

@@ -6,7 +6,8 @@
 <main class="sheet">
   <header class="pagehead"><h1>发布</h1></header>
   {{template "tabs-releases" .}}
-  <p class="lede">CI 出的包自动进 OSS，在这里登记、验收、下发；进度在<a href="/rollouts">发布任务</a>页。没有一步会碰到员工的机器，直到你点「设为全局目标」或「创建发布」。</p>
+  <p class="lede">CI 传到 OSS 的 agent 和 Codex 安装包会自动出现在这里（每天扫描一次，刚传完可点「立即扫描」）。<b>设为全局</b>：所有跟随全局的机器一起更新。<b>指定给机器</b>：只更新选中的机器；在机器页可以改回「跟随全局」。
+    <form method="post" action="/releases/scan" class="inline"><input type="hidden" name="csrf" value="{{.CSRF}}"><button class="link">立即扫描 OSS</button></form></p>
   {{template "notices" .}}
 
   {{with .Job}}
@@ -25,18 +26,8 @@
   </section>
   {{end}}
 
-  <section class="flow">
-    <div class="step"><span class="n">1</span><b>CI 出包</b>agent 打 <span class="mono">v&lt;版本&gt;</span> tag；Codex 在 codex-kiosk 点 <span class="mono">push-codex-to-oss</span>。包自动进 OSS。</div>
-    <div class="step"><span class="n">2</span><b>登记</b>每天自动扫一次；刚传完就点「立即扫描」。核对 SHA-256 与 CI 日志一致。</div>
-    <div class="step"><span class="n">3</span><b>验收</b>测试机用员工账户手动装一次：升级、回退、配置和会话保留。通过后「登记验收」。</div>
-    <div class="step"><span class="n">4</span><b>下发</b>agent ≥ 1.2.16 用「创建发布」先勾 1～2 台，观察一个工作日再扩大；旧 agent 只能「设为全局目标」。</div>
-    <div class="step"><span class="n">5</span><b>观察</b>发布任务页逐台看结果；失败可重试，长期离线可排除。出问题：清除目标、暂停任务，已装上的要建回滚任务。</div>
-  </section>
-
-  <div class="sechead">
-    <h2>待登记的包</h2>
-    <form method="post" action="/releases/scan" class="inline"><input type="hidden" name="csrf" value="{{.CSRF}}"><button class="link">立即扫描 OSS</button></form>
-  </div>
+  {{if .Unregistered}}
+  <h2>未能自动登记的包</h2>
   <div class="panel scroll"><table>
     <thead><tr><th>产品</th><th>版本</th><th>大小</th><th>上传时间</th><th>操作</th></tr></thead>
     <tbody>{{range .Unregistered}}
@@ -48,39 +39,36 @@
         <td class="actions">
           <form method="post" action="/releases/register" class="inline">
             <input type="hidden" name="csrf" value="{{$.CSRF}}"><input type="hidden" name="product" value="{{.Product}}"><input type="hidden" name="version" value="{{.Version}}">
-            <input name="min_agent" placeholder="最低 agent" size="9" title="能装这个包的最低 agent 版本，如 1.2.16；留空不限"><input name="notes" placeholder="变更说明" size="18">
-            <button>登记</button>
+            <button class="link">重新登记</button>
           </form>
         </td>
-      </tr>{{else}}<tr><td colspan="5" class="empty">没有待登记的包。CI 上传到 <span class="mono">_codex/codex-setup-&lt;版本&gt;.exe</span> 或 <span class="mono">_agent/&lt;版本&gt;/agent.exe</span> 后会出现在这里。</td></tr>{{end}}
+      </tr>{{end}}
     </tbody></table></div>
+  {{end}}
 
   {{range $product := list "codex" "agent"}}
   <div class="sechead">
     <h2>{{$product}} 版本库</h2>
-    <span class="dim">全局目标：{{with index $.GlobalTargets $product}}<span class="mono">{{.}}</span>
-      <form method="post" action="/releases/global-clear" class="inline"><input type="hidden" name="csrf" value="{{$.CSRF}}"><input type="hidden" name="product" value="{{$product}}"><button class="link" title="尚未更新的机器停止尝试；已装上的不回退">清除</button></form>
+    <span class="dim">全局：{{with index $.GlobalTargets $product}}<span class="mono">{{.}}</span>
+      <form method="post" action="/releases/global-clear" class="inline"><input type="hidden" name="csrf" value="{{$.CSRF}}"><input type="hidden" name="product" value="{{$product}}"><button class="link" title="尚未更新的机器停止尝试；已装上的不回退">清除全局</button></form>
       {{else}}未设置{{end}}</span>
   </div>
   <div class="panel scroll"><table>
-    <thead><tr><th>版本</th><th>状态</th><th>大小</th><th>登记</th><th>验收</th><th>说明</th><th>操作</th></tr></thead>
+    <thead><tr><th>版本</th><th>大小</th><th>上传</th><th>说明</th><th>操作</th></tr></thead>
     <tbody>{{range index $.Artifacts $product}}
       <tr>
-        <td class="id" title="SHA-256 {{.SHA256}}">{{.Version}}{{if .IsGlobal}} <span class="tag tag-ok">全局目标</span>{{end}}<div class="rowsub">sha256 {{slice .SHA256 0 12}}…{{if .MinAgentVersion}} · 需 agent ≥ {{.MinAgentVersion}}{{end}}</div></td>
-        <td><span class="tag tag-{{astatus .Status}}">{{astatus .Status | alabel}}</span></td>
+        <td class="id" title="SHA-256 {{.SHA256}}">{{.Version}}{{if .IsGlobal}} <span class="tag tag-ok">全局</span>{{end}}{{if eq (printf "%s" .Status) "retired"}} <span class="tag tag-bad">已停用</span>{{end}}<div class="rowsub">sha256 {{slice .SHA256 0 12}}…{{if .MinAgentVersion}} · 需 agent ≥ {{.MinAgentVersion}}{{end}}</div></td>
         <td class="num">{{.SizeMB}} MB</td>
-        <td class="dim">{{.CreatedAt.Local.Format "01-02 15:04"}}<div class="rowsub">{{.CreatedBy}}</div></td>
-        <td class="dim">{{if .AcceptedAt}}{{.AcceptedAt.Local.Format "01-02"}} {{.AcceptedBy}}<div class="rowsub">{{.AcceptanceNote}}</div>{{else}}—{{end}}</td>
+        <td class="dim nowrap">{{.CreatedAt.Local.Format "01-02 15:04"}}</td>
         <td class="remark">{{.Notes}}</td>
         <td class="actions">
           {{if ne (printf "%s" .Status) "retired"}}
-          <a href="/rollouts/new?artifact={{.ID}}">创建发布…</a>
-          <form method="post" action="/releases/status" class="inline"><input type="hidden" name="csrf" value="{{$.CSRF}}"><input type="hidden" name="id" value="{{.ID}}"><input type="hidden" name="status" value="accepted"><input name="note" placeholder="测试机、日期" size="12"><button class="link">登记验收</button></form>
-          <form method="post" action="/releases/global" class="inline"><input type="hidden" name="csrf" value="{{$.CSRF}}"><input type="hidden" name="product" value="{{$product}}"><input type="hidden" name="version" value="{{.Version}}"><input name="confirm" placeholder="输入版本号" size="12" autocomplete="off"><button class="link danger-link">设为全局目标</button></form>
-          <form method="post" action="/releases/status" class="inline"><input type="hidden" name="csrf" value="{{$.CSRF}}"><input type="hidden" name="id" value="{{.ID}}"><input type="hidden" name="status" value="retired"><button class="link">停用</button></form>
-          {{else}}<span class="dim">已停用</span>{{end}}
+          {{if not .IsGlobal}}<form method="post" action="/releases/global" class="inline"><input type="hidden" name="csrf" value="{{$.CSRF}}"><input type="hidden" name="product" value="{{$product}}"><input type="hidden" name="version" value="{{.Version}}"><input name="confirm" placeholder="输入版本号确认" size="12" autocomplete="off"><button class="link danger-link">设为全局</button></form>{{end}}
+          <a href="/rollouts/new?artifact={{.ID}}">指定给机器…</a>
+          {{if not .IsGlobal}}<form method="post" action="/releases/status" class="inline"><input type="hidden" name="csrf" value="{{$.CSRF}}"><input type="hidden" name="id" value="{{.ID}}"><input type="hidden" name="status" value="retired"><button class="link">停用</button></form>{{end}}
+          {{else}}<form method="post" action="/releases/status" class="inline"><input type="hidden" name="csrf" value="{{$.CSRF}}"><input type="hidden" name="id" value="{{.ID}}"><input type="hidden" name="status" value="candidate"><button class="link">恢复</button></form>{{end}}
         </td>
-      </tr>{{else}}<tr><td colspan="7" class="empty">还没有 {{$product}} 版本。</td></tr>{{end}}
+      </tr>{{else}}<tr><td colspan="5" class="empty">还没有 {{$product}} 版本。CI 上传到 <span class="mono">{{if eq $product "agent"}}_agent/&lt;版本&gt;/agent.exe{{else}}_codex/codex-setup-&lt;版本&gt;.exe{{end}}</span> 后会自动出现。</td></tr>{{end}}
     </tbody></table></div>
   {{end}}
 

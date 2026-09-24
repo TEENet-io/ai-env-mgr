@@ -115,11 +115,15 @@ type Releases interface {
 	// the next generation for that pair.
 	CreateTarget(ctx context.Context, deviceID, product, artifactID, rolloutID string) (Target, error)
 	OpenTarget(ctx context.Context, deviceID, product string) (Target, error)
-	// LastSucceededTarget is the newest target this machine took. It is what
+	// LastSucceededTarget is the newest target this machine took and that
+	// was not released since. It is what
 	// the machine is kept on once the rollout is over: with nothing said, the
 	// agent would fall back to the fleet target and, if that is older,
 	// install it.
 	LastSucceededTarget(ctx context.Context, deviceID, product string) (Target, error)
+	// ReleaseSucceeded lets go of the machine's succeeded targets for a
+	// product, so the fleet target applies to it again. They stay as history.
+	ReleaseSucceeded(ctx context.Context, deviceID, product string) (int, error)
 	TargetByID(ctx context.Context, id string) (Target, error)
 	TargetsByRollout(ctx context.Context, rolloutID string) ([]Target, error)
 	TargetsByDevice(ctx context.Context, deviceID string) ([]Target, error) // newest first

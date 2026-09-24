@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/TEENet-io/ai-env-mgr/internal/model"
 	"github.com/TEENet-io/ai-env-mgr/internal/repo"
@@ -362,5 +363,45 @@ func (s *Service) reexportPending(ctx context.Context, tx repo.Store, rolloutID,
 			return err
 		}
 	}
+	return nil
+}
+
+// FollowGlobal hands one machine back to the fleet target for a product: an
+// open target is cancelled, and the version a finished rollout left it on
+// stops holding it. It is what the machine page's "跟随全局" does.
+func (s *Service) FollowGlobal(ctx context.Context, deviceID, product, actor, requestID string) error {
+	if product != repo.ProductAgent && product != repo.ProductCodex {
+		return fmt.Errorf("unknown product %q", product)
+	}
+	err := s.store.InTx(ctx, func(tx repo.Store) error {
+		device, err := tx.Devices().ByID(ctx, deviceID)
+		if err != nil {
+			return err
+		}
+		change := map[string]any{"product": product}
+		open, err := tx.Releases().OpenTarget(ctx, device.ID, product)
+		switch {
+		case err == nil:
+			if _, err := tx.Releases().FinishTarget(ctx, open.ID, repo.TargetCancelled, "改为跟随全局", ""); err != nil {
+				return err
+			}
+			change["cancelled"] = open.ID
+		case !errors.Is(err, repo.ErrNotFound):
+			return err
+		}
+		n, err := tx.Releases().ReleaseSucceeded(ctx, device.ID, product)
+		if err != nil {
+			return err
+		}
+		change["released"] = n
+		if err := s.enqueueDeviceExport(ctx, tx, device, "follow-global:"+product+":"+s.now().UTC().Format(time.RFC3339Nano)); err != nil {
+			return err
+		}
+		return s.auditTarget(ctx, tx, actor, requestID, ActionFollowGlobal, "device", device.ID, nil, change)
+	})
+	if err != nil {
+		return fmt.Errorf("follow the fleet target: %w", err)
+	}
+	s.wake(deviceID)
 	return nil
 }

@@ -89,3 +89,44 @@ func TestUserDetailShowsTheEmployeesHistory(t *testing.T) {
 		t.Fatalf("status %d", page.Code)
 	}
 }
+
+func TestTheMachinePageSetsTheMachinesVersion(t *testing.T) {
+	s, _ := newDatabaseServer(t)
+	h := s.Handler()
+	cookie := signedIn(t, s)
+	ctx := t.Context()
+	store := s.dbm.store
+	device, _ := store.Devices().EnsureByHostname(ctx, "PC-V")
+	store.Devices().MarkSeen(ctx, device.ID, "1.3.0", time.Now())
+	old, _ := store.Devices().EnsureByHostname(ctx, "PC-OLD")
+	store.Devices().MarkSeen(ctx, old.ID, "1.2.14", time.Now())
+	a, _ := s.dbm.ops.RegisterArtifact(ctx, repo.NewArtifact{Product: repo.ProductAgent, Version: "1.3.1",
+		SHA256: strings.Repeat("d", 64), SizeBytes: 1, ObjectKey: "k", CreatedBy: "t"}, "t", "r")
+
+	page := dbGet(t, h, "/machines/detail?machine=PC-V", cookie).Body.String()
+	if !strings.Contains(page, "跟随全局") || !strings.Contains(page, `value="`+a.ID+`"`) {
+		t.Fatal("the machine page should offer 跟随全局 and the library's versions")
+	}
+	if page := dbGet(t, h, "/machines/detail?machine=PC-OLD", cookie).Body.String(); !strings.Contains(page, "太旧") {
+		t.Fatal("an agent that cannot read a target of its own must be told so, not offered a choice")
+	}
+
+	csrf := csrfFrom(t, s, cookie, "/machines/detail?machine=PC-V")
+	rec := dbPost(t, h, "/machines/version", url.Values{"csrf": {csrf}, "machine": {"PC-V"}, "product": {"agent"}, "artifact": {a.ID}}, cookie)
+	if loc := rec.Header().Get("Location"); strings.Contains(loc, "err=") || !strings.Contains(loc, "/machines/detail?machine=PC-V") {
+		t.Fatalf("pin: %s", loc)
+	}
+	if _, err := store.Releases().OpenTarget(ctx, device.ID, repo.ProductAgent); err != nil {
+		t.Fatalf("pinning must open a target: %v", err)
+	}
+	if page := dbGet(t, h, "/machines/detail?machine=PC-V", cookie).Body.String(); !strings.Contains(page, "单独指定") {
+		t.Fatal("the page should say the machine has a version of its own")
+	}
+	rec = dbPost(t, h, "/machines/version", url.Values{"csrf": {csrf}, "machine": {"PC-V"}, "product": {"agent"}, "artifact": {""}}, cookie)
+	if loc := rec.Header().Get("Location"); strings.Contains(loc, "err=") {
+		t.Fatalf("follow global: %s", loc)
+	}
+	if _, err := store.Releases().OpenTarget(ctx, device.ID, repo.ProductAgent); err == nil {
+		t.Fatal("跟随全局 must drop the machine's own target")
+	}
+}

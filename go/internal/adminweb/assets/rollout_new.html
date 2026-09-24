@@ -1,12 +1,12 @@
-{{define "rollout_new.html"}}{{template "head" "创建发布"}}
+{{define "rollout_new.html"}}{{template "head" "指定给机器"}}
 <body>
 <div class="app">
 {{template "nav" .}}
 <main class="sheet">
-  <header class="pagehead"><h1>创建发布：{{.Artifact.Product}} <span class="mono">{{.Artifact.Version}}</span></h1></header>
+  <header class="pagehead"><h1>指定给机器：{{.Artifact.Product}} <span class="mono">{{.Artifact.Version}}</span></h1></header>
   {{template "notices" .}}
-  <p class="dim">状态 {{.Artifact.Status}}{{if .Artifact.MinAgentVersion}} · 最低 agent {{.Artifact.MinAgentVersion}}{{end}}{{if .Artifact.AcceptedAt}} · 验收：{{.Artifact.AcceptedBy}} {{.Artifact.AcceptanceNote}}{{end}}</p>
-  <div class="caution">只有勾选的机器会收到这个目标；范围是当时的快照，之后新增的机器不会自动加入。先选 1～2 台试发，观察一个工作日再扩大范围。</div>
+  {{if .Artifact.MinAgentVersion}}<p class="dim">最低 agent {{.Artifact.MinAgentVersion}}</p>{{end}}
+  <div class="caution">勾选的机器改为单独使用这个版本，不再跟随全局；已在线的 1.3.0 及以上机器几秒内开始更新。以后要改回，在机器页选「跟随全局」。</div>
   <form method="post" action="/rollouts/create" class="form">
     <input type="hidden" name="csrf" value="{{.CSRF}}">
     <input type="hidden" name="product" value="{{.Artifact.Product}}">
@@ -20,11 +20,11 @@
           <td class="mono">{{.AgentVersion}}</td>
           <td class="mono">{{.CodexVersion}}</td>
           <td class="dim">{{if .LastSync}}{{.LastSync.Format "01-02 15:04"}} {{if .Online}}<span class="tag tag-ok">在线</span>{{else}}<span class="tag">离线</span>{{end}}{{else}}从未上报{{end}}</td>
-          <td class="dim">{{if .Compatible}}{{if .HasOpen}}<span class="tag tag-warn">已有未完成目标，会被取代</span>{{else}}可以{{end}}{{else}}<span class="tag tag-bad">不能</span> {{.Why}}{{end}}</td>
+          <td class="dim">{{if .Compatible}}{{if .HasOpen}}<span class="tag tag-warn">已单独指定过，会被替换</span>{{else}}可以{{end}}{{else}}<span class="tag tag-bad">不能</span> {{.Why}}{{end}}</td>
         </tr>{{else}}<tr><td colspan="6" class="dim">没有机器</td></tr>{{end}}
       </tbody></table></div>
-    <label class="wide">说明<input name="note" placeholder="试发 / 扩大范围 / 紧急修复…"></label>
-    <button type="submit" class="danger">对选中的机器下发</button>
+    <label class="wide">说明<input name="note" placeholder="可选：试用 / 紧急修复…"></label>
+    <button type="submit" class="danger">对选中的机器指定</button>
   </form>
 </main>
 </div>

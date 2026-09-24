@@ -91,6 +91,7 @@ const (
 	ActionRolloutCancel    = "release.rollout_cancel"
 	ActionTargetExclude    = "release.target_exclude"
 	ActionTargetRetry      = "release.target_retry"
+	ActionFollowGlobal     = "release.follow_global"
 )
 
 // OnboardSpec is everything opening an account needs.
@@ -834,9 +835,13 @@ func (s *Service) AllowReenrol(ctx context.Context, hostname, actor, requestID s
 	return until, nil
 }
 
+// revokeReenrolWindow is how long a machine whose token was revoked may
+// enrol again on its own.
+const revokeReenrolWindow = time.Hour
+
 // RevokeDeviceToken ends the machine's token at once. Its next request is
-// refused and its agent enrols again, which succeeds because nothing is
-// live any more -- so this is "make the machine start over", not "lock it
+// refused and its agent enrols again, inside the hour this opens -- so
+// this is "make the machine start over", not "lock it
 // out"; forgetting the machine is what locks it out.
 func (s *Service) RevokeDeviceToken(ctx context.Context, hostname, actor, requestID string) error {
 	var deviceID string
@@ -850,8 +855,15 @@ func (s *Service) RevokeDeviceToken(ctx context.Context, hostname, actor, reques
 		if err != nil {
 			return err
 		}
+		// The console knows this machine, so its enrolment is refused unless
+		// a window is open. Open a short one: the agent is woken below and
+		// enrols again within seconds, which closes it.
+		until := s.now().Add(revokeReenrolWindow)
+		if err := tx.Devices().AllowReenrol(ctx, device.ID, until); err != nil {
+			return err
+		}
 		return s.auditTarget(ctx, tx, actor, requestID, ActionRevokeToken, "device", device.ID,
-			nil, map[string]any{"hostname": device.Hostname, "revoked": n})
+			nil, map[string]any{"hostname": device.Hostname, "revoked": n, "reenrol_until": until.UTC().Format(time.RFC3339)})
 	})
 	if err != nil {
 		return fmt.Errorf("revoke the token of %s: %w", hostname, err)

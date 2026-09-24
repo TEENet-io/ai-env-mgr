@@ -170,3 +170,54 @@ func TestAgentCanTakeTargetsIsWhatTheRolloutChecks(t *testing.T) {
 		t.Fatal("the floor moved; update the rollout check and this test together")
 	}
 }
+
+func TestFollowGlobalLetsGoOfTheMachinesOwnVersion(t *testing.T) {
+	svc, store, ctx := newService(t)
+	a, _ := svc.RegisterArtifact(ctx, newArtifact(repo.ProductAgent, "1.3.1"), "admin", "r1")
+	win, _ := store.Devices().EnsureByHostname(ctx, "WIN-01")
+	store.Devices().MarkSeen(ctx, win.ID, "1.3.0", time.Now())
+
+	// Pinned, installed, and the rollout over: the machine is held there.
+	if _, err := svc.CreateRollout(ctx, RolloutSpec{Product: repo.ProductAgent, ArtifactID: a.ID,
+		DeviceIDs: []string{win.ID}, Kind: repo.RolloutRelease, Actor: "admin", RequestID: "r2"}); err != nil {
+		t.Fatalf("pin: %v", err)
+	}
+	open, _ := store.Releases().OpenTarget(ctx, win.ID, repo.ProductAgent)
+	store.Releases().FinishTarget(ctx, open.ID, repo.TargetSucceeded, "", "1.3.1")
+	if _, err := store.Releases().LastSucceededTarget(ctx, win.ID, repo.ProductAgent); err != nil {
+		t.Fatalf("a finished pin should still hold the machine: %v", err)
+	}
+	if err := svc.FollowGlobal(ctx, win.ID, repo.ProductAgent, "admin", "r3"); err != nil {
+		t.Fatalf("follow global: %v", err)
+	}
+	if _, err := store.Releases().LastSucceededTarget(ctx, win.ID, repo.ProductAgent); !errors.Is(err, repo.ErrNotFound) {
+		t.Fatalf("after 跟随全局 nothing may hold the machine, err = %v", err)
+	}
+
+	// A pin not yet installed is cancelled, not left pending.
+	if _, err := svc.CreateRollout(ctx, RolloutSpec{Product: repo.ProductAgent, ArtifactID: a.ID,
+		DeviceIDs: []string{win.ID}, Kind: repo.RolloutRelease, Actor: "admin", RequestID: "r4"}); err != nil {
+		t.Fatalf("pin again: %v", err)
+	}
+	if err := svc.FollowGlobal(ctx, win.ID, repo.ProductAgent, "admin", "r5"); err != nil {
+		t.Fatalf("follow global: %v", err)
+	}
+	if _, err := store.Releases().OpenTarget(ctx, win.ID, repo.ProductAgent); !errors.Is(err, repo.ErrNotFound) {
+		t.Fatalf("the open pin must be cancelled, err = %v", err)
+	}
+}
+
+func TestRevokingATokenLetsTheMachineEnrolAgain(t *testing.T) {
+	svc, store, ctx := newService(t)
+	win, _ := store.Devices().EnsureByHostname(ctx, "WIN-01")
+	if _, err := store.DeviceTokens().Issue(ctx, win.ID); err != nil {
+		t.Fatalf("issue: %v", err)
+	}
+	if err := svc.RevokeDeviceToken(ctx, "WIN-01", "admin", "r1"); err != nil {
+		t.Fatalf("revoke: %v", err)
+	}
+	got, _ := store.Devices().ByID(ctx, win.ID)
+	if got.ReenrolAllowedUntil == nil || !got.ReenrolAllowedUntil.After(time.Now()) {
+		t.Fatal("revoking must open an enrolment window, or a machine the console knows is locked out")
+	}
+}
