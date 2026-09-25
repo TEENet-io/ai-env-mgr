@@ -153,7 +153,12 @@ func (s *Syncer) applyApplication(item model.DesiredApplication) model.Applicati
 	st.State = AppDownloading
 	s.reportApplicationProgress(st)
 	destDir := filepath.Join(s.StateDir, "applications", safeName(app.AppID), safeName(app.Version))
-	dest := filepath.Join(destDir, installerFilename(app.InstallerType))
+	// Never reuse a fixed installer.exe name. On Windows a timed-out installer
+	// can keep the old file open for a short while; a retry that downloads to
+	// the same destination then fails its final rename with Access is denied.
+	// Task-scoped names let the new download proceed independently and also
+	// make the local files traceable to the Admin task that created them.
+	dest := filepath.Join(destDir, installerFilename(app.InstallerType, item.TaskID))
 	sum, err := s.source().ApplicationToFile(app.AppID, app.Version, dest)
 	if err != nil {
 		return appFailure(st, AppFailed, fmt.Sprintf("download: %v", err))
@@ -174,11 +179,15 @@ func (s *Syncer) applyApplication(item model.DesiredApplication) model.Applicati
 	return s.finishApplication(st, app)
 }
 
-func installerFilename(installerType string) string {
-	if strings.EqualFold(installerType, "msi") {
-		return "installer.msi"
+func installerFilename(installerType, taskID string) string {
+	suffix := safeName(taskID)
+	if suffix == "_invalid" || suffix == "." {
+		suffix = "current"
 	}
-	return "installer.exe"
+	if strings.EqualFold(installerType, "msi") {
+		return "installer-" + suffix + ".msi"
+	}
+	return "installer-" + suffix + ".exe"
 }
 
 func (s *Syncer) finishApplication(st model.ApplicationStatus, app model.Application) model.ApplicationStatus {
