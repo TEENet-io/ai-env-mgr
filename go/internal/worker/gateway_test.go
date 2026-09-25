@@ -708,3 +708,65 @@ func TestTheTokenAndItsDeliveryAreQueuedTogether(t *testing.T) {
 	}
 	t.Fatal("the token is stored but nothing will deliver it")
 }
+
+// staticCatalog is a gateway /model/info with a fixed answer.
+type staticCatalog []litellm.Model
+
+func (c staticCatalog) Models(context.Context) ([]litellm.Model, error) { return c, nil }
+
+// An employee allowed every model is held to the unpaused channels while a
+// channel is paused, and given every model back -- explicitly, since the
+// gateway ignores a missing list -- when it is resumed.
+func TestAPausedChannelNarrowsEveryModelAndResumingWidensIt(t *testing.T) {
+	store, ctx := newWorkerStore(t)
+	service := ops.New(store)
+	gateway := newFakeGateway()
+	catalog := staticCatalog{
+		{Name: "grok-4.6", Info: litellm.ModelInfo{LitellmProvider: "bedrock", CatalogVisible: true}},
+		{Name: "qwen3-coder-480b", Info: litellm.ModelInfo{LitellmProvider: "bedrock", CatalogVisible: true}},
+		{Name: "gemini-3.1-pro", Info: litellm.ModelInfo{LitellmProvider: "vertex_ai", CatalogVisible: true}},
+	}
+	w := New(store, Options{Owner: "worker-1", BaseBackoff: 5 * time.Millisecond, MaxBackoff: 20 * time.Millisecond})
+	w.Register(repo.TaskGatewayProvision, GatewayProvision{Store: store, Gateway: gateway, Keyring: testKeyring(t), Catalog: catalog})
+	w.Register(repo.TaskOSSExport, HandlerFunc(func(context.Context, repo.Task) (Result, error) { return Result{}, nil }))
+
+	e, err := service.Onboard(ctx, ops.OnboardSpec{WindowsUser: "alice", Actor: "zhang",
+		Quota: repo.Quota{MonthlyBudget: "20", RPM: 1, TPM: 1, Parallel: 1}}) // no list: every model
+	if err != nil {
+		t.Fatal(err)
+	}
+	drain(t, ctx, w)
+	user := gateway.users[GatewayUserID("alice")]
+	if user.Models == nil || len(user.Models) != 0 {
+		t.Fatalf("every model is sent as an explicit empty list, got %#v", user.Models)
+	}
+
+	n, err := service.SetChannelPaused(ctx, litellm.ChannelGoogle, true, "403", 0, "zhang", "r1")
+	if err != nil || n != 1 {
+		t.Fatalf("pause: %d %v", n, err)
+	}
+	drain(t, ctx, w)
+	want := []string{"grok-4.6", "qwen3-coder-480b"}
+	if got := gateway.users[GatewayUserID("alice")].Models; !sameSet(got, want) {
+		t.Fatalf("paused: user models %v, want %v", got, want)
+	}
+	for _, k := range gateway.keys {
+		if !sameSet(k.Models, want) {
+			t.Fatalf("paused: key models %v, want %v", k.Models, want)
+		}
+	}
+
+	if _, err := service.SetChannelPaused(ctx, litellm.ChannelGoogle, false, "", 1, "zhang", "r2"); err != nil {
+		t.Fatal(err)
+	}
+	drain(t, ctx, w)
+	if got := gateway.users[GatewayUserID("alice")].Models; got == nil || len(got) != 0 {
+		t.Fatalf("resumed: user models %#v, want an explicit empty list", got)
+	}
+	for _, k := range gateway.keys {
+		if len(k.Models) != 0 {
+			t.Fatalf("resumed: key models %v, want every model", k.Models)
+		}
+	}
+	_ = e
+}

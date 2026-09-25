@@ -522,3 +522,32 @@ func TestExportsWakeTheMachinesTheyTouch(t *testing.T) {
 		t.Fatalf("PC-1 woken %d time(s) by %v", n, hub.woken)
 	}
 }
+
+func TestAPausedChannelLeavesThePicker(t *testing.T) {
+	store, service, _, ring, w, ctx := provisioned(t)
+	objects := newFakeObjects()
+	w.Register(repo.TaskOSSExport, OSSExport{
+		Store: store, Objects: objects, Keyring: ring, GatewayBaseURL: "https://litellm.teenet.app",
+		Catalog: staticCatalog{
+			{Name: "grok-4.6", Info: litellm.ModelInfo{DisplayName: "Grok", ContextWindow: 200000, CatalogVisible: true, LitellmProvider: "bedrock"}},
+			{Name: "gemini-3.1-pro", Info: litellm.ModelInfo{DisplayName: "Gemini", ContextWindow: 200000, CatalogVisible: true, LitellmProvider: "vertex_ai"}},
+		},
+	})
+	if _, err := service.SetChannelPaused(ctx, litellm.ChannelGoogle, true, "", 0, "zhang", "r1"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := service.Onboard(ctx, ops.OnboardSpec{WindowsUser: "work1", Actor: "zhang",
+		Quota: repo.Quota{MonthlyBudget: "20", RPM: 1, TPM: 1, Parallel: 1}}); err != nil {
+		t.Fatal(err)
+	}
+	drain(t, ctx, w)
+	blob, ok := objects.get(ossclient.UserKey("work1", "credentials.zip"))
+	if !ok {
+		t.Fatal("nothing was published")
+	}
+	set, _ := creds.Unpack(blob)
+	catalog := string(set[model.PathCodexModels])
+	if !strings.Contains(catalog, "grok-4.6") || strings.Contains(catalog, "gemini-3.1-pro") {
+		t.Fatalf("the picker should hold grok and not the paused channel's gemini:\n%s", catalog)
+	}
+}

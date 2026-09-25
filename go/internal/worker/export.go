@@ -314,6 +314,12 @@ func (h OSSExport) exportEmployee(ctx context.Context, employeeID string) (Resul
 		if err != nil {
 			return Result{}, ClassError("gateway_catalog", err)
 		}
+		// A paused channel's models leave the picker (设置在总览"渠道").
+		channels, _, err := repo.LoadGatewayChannels(ctx, h.Store.Settings())
+		if err != nil {
+			return Result{}, err
+		}
+		available = litellm.WithoutChannels(available, channels.PausedSet())
 		routable := intersect(available, models)
 		if len(routable) == 0 {
 			return Result{}, Permanent(fmt.Errorf(

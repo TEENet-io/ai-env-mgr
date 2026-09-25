@@ -230,7 +230,7 @@ func (s *Server) buildWorker(st *dbState) *worker.Worker {
 		gw = litellm.New(s.opts.GatewayURL, s.opts.GatewayAdminKey)
 	}
 	if gw != nil {
-		w.Register(repo.TaskGatewayProvision, worker.GatewayProvision{Store: st.store, Gateway: gw, Keyring: st.ring})
+		w.Register(repo.TaskGatewayProvision, worker.GatewayProvision{Store: st.store, Gateway: gw, Keyring: st.ring, Catalog: gw})
 		w.Register(repo.TaskGatewayRevoke, worker.GatewayRevoke{Store: st.store, Gateway: gw})
 		w.Register(repo.TaskReconcile, worker.Reconcile{
 			Store: st.store, Gateway: gw,

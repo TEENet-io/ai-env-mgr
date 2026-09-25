@@ -19,6 +19,7 @@ import (
 	"github.com/TEENet-io/ai-env-mgr/internal/admincore"
 	"github.com/TEENet-io/ai-env-mgr/internal/config"
 	"github.com/TEENet-io/ai-env-mgr/internal/eventlog"
+	"github.com/TEENet-io/ai-env-mgr/internal/litellm"
 	"github.com/TEENet-io/ai-env-mgr/internal/ossclient"
 )
 
@@ -201,6 +202,8 @@ func New(opts Options) (*Server, error) {
 		"list":     func(xs ...string) []string { return xs },
 		"orDash":   orDash,
 		"may":      mayPost,
+		"chof":     litellm.ChannelOf,
+		"chlabel":  litellm.ChannelLabel,
 		"astatus":  artifactSeverity,
 		"add":      func(a, b int) int { return a + b },
 		"dur":      humanDuration,
@@ -400,6 +403,7 @@ func (s *Server) Handler() http.Handler {
 		mux.HandleFunc("/machines/revoke-token", s.requirePostNotice("/overview", s.actionRevokeToken))
 		mux.HandleFunc("/machines/version", s.requirePostBack(backToMachine, s.actionMachineVersion))
 		mux.HandleFunc("/models/deliver", s.requirePostNotice("/overview", s.actionModelsDeliver))
+		mux.HandleFunc("/channels/pause", s.requirePostNotice("/overview", s.actionChannelPause))
 		// The agents' own API: device tokens, not administrator sessions.
 		mux.Handle("/agent/v1/", s.dbm.devices.Handler())
 		mux.HandleFunc("/usage", s.requireSession(s.handleUsage))

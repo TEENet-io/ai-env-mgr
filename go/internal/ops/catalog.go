@@ -39,7 +39,19 @@ func SnapshotOf(models []litellm.Model) CatalogSnapshot {
 	for _, m := range sorted {
 		names = append(names, m.Name)
 	}
-	data, _ := json.Marshal(sorted)
+	// Only what the picker shows counts as a change: where a model is routed
+	// from (provider, endpoint, channel) is not the employee's business.
+	type shown struct {
+		Name string
+		Info litellm.ModelInfo
+	}
+	view := make([]shown, 0, len(sorted))
+	for _, m := range sorted {
+		info := m.Info
+		info.LitellmProvider, info.Channel = "", ""
+		view = append(view, shown{m.Name, info})
+	}
+	data, _ := json.Marshal(view)
 	sum := sha256.Sum256(data)
 	return CatalogSnapshot{Models: names, Digest: hex.EncodeToString(sum[:12])}
 }

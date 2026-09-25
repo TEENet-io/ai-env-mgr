@@ -72,6 +72,21 @@ type ModelInfo struct {
 	DefaultReasoning string   `json:"default_reasoning"`
 	Modalities       []string `json:"modalities"`
 	CatalogVisible   bool     `json:"catalog_visible"`
+
+	// LitellmProvider is LiteLLM's own name for how it calls the model
+	// ("bedrock", "vertex_ai", "openai", ...). It is not the supplier:
+	// Azure deployments reached through the OpenAI-compatible route say
+	// "openai". See ChannelOf.
+	LitellmProvider string `json:"litellm_provider"`
+	// Channel, when an administrator sets it in the gateway's model_info,
+	// names the supplier outright and wins over what ChannelOf infers.
+	Channel string `json:"channel"`
+}
+
+// ModelParams is the part of a deployment's litellm_params ChannelOf reads.
+type ModelParams struct {
+	Model   string `json:"model"`
+	APIBase string `json:"api_base"`
 }
 
 // Model pairs a routing key with its catalog metadata.
@@ -80,8 +95,9 @@ type ModelInfo struct {
 // sends back. The two cannot drift: a slug with no matching model_name
 // routes nowhere.
 type Model struct {
-	Name string    `json:"model_name"`
-	Info ModelInfo `json:"model_info"`
+	Name   string      `json:"model_name"`
+	Info   ModelInfo   `json:"model_info"`
+	Params ModelParams `json:"litellm_params"`
 }
 
 // GenerateKey mints a token for one employee, owned by userID.

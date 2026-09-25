@@ -55,7 +55,12 @@ func (s *Server) loadModelDelivery(ctx context.Context, data *pageData) {
 		data.Error = "could not read the model delivery: " + err.Error()
 		return
 	}
-	now := ops.SnapshotOf(data.GatewayModels)
+	deliverable, err := s.deliverableModels(ctx, data.GatewayModels)
+	if err != nil {
+		data.Error = "could not read the channels: " + err.Error()
+		return
+	}
+	now := ops.SnapshotOf(deliverable)
 	v := &modelDelivery{Version: version, NeverDelivered: state.FleetAt == ""}
 	if state.FleetAt != "" {
 		v.FleetAt, v.FleetBy = localTime(state.FleetAt), state.FleetBy
@@ -200,8 +205,11 @@ func (s *Server) actionModelsDeliver(sess *session, r *http.Request) (string, er
 	if err != nil {
 		return "", fmt.Errorf("读不到网关模型清单，没有下发：%w", err)
 	}
+	if models, err = s.deliverableModels(r.Context(), models); err != nil {
+		return "", err
+	}
 	if len(models) == 0 {
-		return "", errors.New("网关没有报告任何可展示的模型，没有下发")
+		return "", errors.New("网关没有可下发的模型（没有可展示的模型，或渠道全部暂停），没有下发")
 	}
 	employeeID := formValue(r, "employee")
 	if formValue(r, "scope") == "all" {

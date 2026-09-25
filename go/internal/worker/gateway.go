@@ -65,6 +65,39 @@ type GatewayProvision struct {
 	Store   repo.Store
 	Gateway Gateway
 	Keyring secrets.Keyring
+	// Catalog is read only while a channel is paused, to hold employees
+	// allowed "every model" to the models of the other channels. Nil: a
+	// paused channel is not enforced on the gateway (the picker still
+	// hides it).
+	Catalog ModelCatalog
+}
+
+// effectiveModels is the allowlist the gateway should hold for an employee.
+// An explicit list is theirs, as chosen. "Every model" (no list) is sent as
+// an explicit empty list -- the gateway drops a missing field instead of
+// clearing it, so leaving it out after a pause would keep the pause's list
+// for good -- except while a channel is paused, when it becomes every model
+// the unpaused channels serve.
+func (h GatewayProvision) effectiveModels(ctx context.Context, models []string) ([]string, error) {
+	if len(models) > 0 {
+		return models, nil
+	}
+	channels, _, err := repo.LoadGatewayChannels(ctx, h.Store.Settings())
+	if err != nil {
+		return nil, err
+	}
+	if len(channels.Paused) == 0 || h.Catalog == nil {
+		return []string{}, nil
+	}
+	available, err := h.Catalog.Models(ctx)
+	if err != nil {
+		return nil, ClassError("gateway_catalog", err)
+	}
+	names := litellm.Names(litellm.WithoutChannels(available, channels.PausedSet()))
+	if len(names) == 0 {
+		return nil, Permanent(errors.New("every channel is paused; there is no model left to allow"))
+	}
+	return names, nil
 }
 
 // Run provisions one employee.
@@ -88,6 +121,9 @@ func (h GatewayProvision) Run(ctx context.Context, task repo.Task) (Result, erro
 	}
 	models, err := h.Store.Employees().Models(ctx, employee.ID)
 	if err != nil {
+		return Result{}, err
+	}
+	if models, err = h.effectiveModels(ctx, models); err != nil {
 		return Result{}, err
 	}
 
