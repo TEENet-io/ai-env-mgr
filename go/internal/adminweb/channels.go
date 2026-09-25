@@ -136,3 +136,14 @@ func (s *Server) actionChannelPause(sess *session, r *http.Request) (string, err
 	}
 	return fmt.Sprintf("%s；已给 %d 位员工重新生成模型清单，进度见\"模型下发\"", notice, n), nil
 }
+
+// handleModels is 员工账号 › 模型与渠道: the gateway's models, the channels
+// they come from, and the delivery that puts them in the pickers.
+func (s *Server) handleModels(w http.ResponseWriter, r *http.Request, sess *session) {
+	data := newPage(sess, r, "users")
+	data.Tab = "models"
+	s.loadGatewayPanel(r.Context(), &data)
+	s.loadChannels(r.Context(), &data)
+	s.loadModelDelivery(r.Context(), &data)
+	s.render(w, "models.html", http.StatusOK, data)
+}

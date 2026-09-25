@@ -402,8 +402,9 @@ func (s *Server) Handler() http.Handler {
 		mux.HandleFunc("/machines/allow-reenrol", s.requirePostNotice("/overview", s.actionAllowReenrol))
 		mux.HandleFunc("/machines/revoke-token", s.requirePostNotice("/overview", s.actionRevokeToken))
 		mux.HandleFunc("/machines/version", s.requirePostBack(backToMachine, s.actionMachineVersion))
-		mux.HandleFunc("/models/deliver", s.requirePostNotice("/overview", s.actionModelsDeliver))
-		mux.HandleFunc("/channels/pause", s.requirePostNotice("/overview", s.actionChannelPause))
+		mux.HandleFunc("/models", s.requireSession(s.handleModels))
+		mux.HandleFunc("/models/deliver", s.requirePostNotice("/models", s.actionModelsDeliver))
+		mux.HandleFunc("/channels/pause", s.requirePostNotice("/models", s.actionChannelPause))
 		// The agents' own API: device tokens, not administrator sessions.
 		mux.Handle("/agent/v1/", s.dbm.devices.Handler())
 		mux.HandleFunc("/usage", s.requireSession(s.handleUsage))

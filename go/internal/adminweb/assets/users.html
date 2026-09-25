@@ -4,6 +4,7 @@
 {{template "nav" .}}
 <main class="sheet">
   <header class="pagehead"><h1>员工账号</h1></header>
+  {{template "tabs-users" .}}
   {{template "notices" .}}
   {{if .GatewayUnusable}}<p class="note note-err">{{.GatewayUnusable}}<br><span class="dim">额度与令牌列暂不可用；关户仍可执行。</span></p>{{end}}
   <p class="dim">显示：

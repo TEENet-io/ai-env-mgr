@@ -385,8 +385,8 @@ func (s *Server) handleOverview(w http.ResponseWriter, r *http.Request, sess *se
 	}
 
 	s.loadGatewayPanel(ctx, &data)
+	// The overview says which channels are paused; the rest is on /models.
 	s.loadChannels(ctx, &data)
-	s.loadModelDelivery(ctx, &data)
 	// The probe bar is the log page's, reused rather than reimplemented: two
 	// renderings of "is the gateway up" would eventually disagree.
 	//

@@ -48,16 +48,16 @@ func TestTheOverviewDeliversTheModelConfiguration(t *testing.T) {
 	pc, _ := store.Devices().EnsureByHostname(ctx, "PC-A")
 	store.Bindings().Bind(ctx, pc.ID, e.ID, "", "admin")
 
-	page := dbGet(t, h, "/overview", cookie).Body.String()
+	page := dbGet(t, h, "/models", cookie).Body.String()
 	if !strings.Contains(page, "还没有从这里下发过模型配置") || !strings.Contains(page, `action="/models/deliver"`) {
 		t.Fatal("the overview should offer the first delivery")
 	}
-	csrf := csrfFrom(t, s, cookie, "/overview")
+	csrf := csrfFrom(t, s, cookie, "/models")
 	rec := dbPost(t, h, "/models/deliver", url.Values{"csrf": {csrf}, "scope": {"all"}, "version": {"0"}}, cookie)
 	if loc := rec.Header().Get("Location"); strings.Contains(loc, "err=") {
 		t.Fatalf("deliver: %s", loc)
 	}
-	page = dbGet(t, h, "/overview", cookie).Body.String()
+	page = dbGet(t, h, "/models", cookie).Body.String()
 	// No Worker in the test: the export is still queued.
 	if !strings.Contains(page, "已是最新") || !strings.Contains(page, "全部下发") || !strings.Contains(page, "生成中") {
 		t.Fatal("after delivering, the block should say it is current and follow the delivery")
@@ -73,13 +73,13 @@ func TestTheOverviewDeliversTheModelConfiguration(t *testing.T) {
 		Report: []byte(`{"errors":[]}`), SourceETag: "s1"}); err != nil {
 		t.Fatal(err)
 	}
-	if page = dbGet(t, h, "/overview", cookie).Body.String(); !strings.Contains(page, "已收到") || !strings.Contains(page, "PC-A") {
+	if page = dbGet(t, h, "/models", cookie).Body.String(); !strings.Contains(page, "已收到") || !strings.Contains(page, "PC-A") {
 		t.Fatal("a machine that synced after the export has the new configuration")
 	}
 
 	// The gateway changes: the block says what.
 	gw.set("gpt-5", "gemini-3")
-	page = dbGet(t, h, "/overview", cookie).Body.String()
+	page = dbGet(t, h, "/models", cookie).Body.String()
 	if !strings.Contains(page, "有变化") || !strings.Contains(page, `新增 <span class="mono">gemini-3</span>`) || !strings.Contains(page, `下架 <span class="mono">claude-5</span>`) {
 		t.Fatal("a changed gateway should be shown as added and removed models")
 	}

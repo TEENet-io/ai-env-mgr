@@ -40,13 +40,13 @@ func TestAnAdministratorPausesAndResumesAChannel(t *testing.T) {
 	e, _ := s.dbm.store.Employees().Create(ctx, repo.NewEmployee{WindowsUser: "alice"})
 	s.dbm.store.Credentials().Store(ctx, repo.NewCredential{EmployeeID: e.ID, Epoch: e.AuthEpoch, Purpose: repo.PurposeCodexGateway, Ciphertext: []byte("x"), KeyVersion: "k1"})
 
-	page := dbGet(t, h, "/overview", admin).Body.String()
+	page := dbGet(t, h, "/models", admin).Body.String()
 	for _, want := range []string{"AWS Bedrock", "Google Vertex", "Azure OpenAI", `action="/channels/pause"`} {
 		if !strings.Contains(page, want) {
 			t.Fatalf("the channel table lacks %q", want)
 		}
 	}
-	csrf := csrfFrom(t, s, admin, "/overview")
+	csrf := csrfFrom(t, s, admin, "/models")
 	// A pause wants the channel typed out.
 	rec := dbPost(t, h, "/channels/pause", url.Values{"csrf": {csrf}, "channel": {"google"}, "pause": {"1"}, "version": {"0"}, "confirm": {"yes"}}, admin)
 	if !strings.Contains(rec.Header().Get("Location"), "err=") {
@@ -60,18 +60,23 @@ func TestAnAdministratorPausesAndResumesAChannel(t *testing.T) {
 	if _, ok := state.Paused["google"]; !ok || version != 1 {
 		t.Fatalf("paused = %+v v%d", state, version)
 	}
-	page = dbGet(t, h, "/overview", admin).Body.String()
+	page = dbGet(t, h, "/models", admin).Body.String()
 	if !strings.Contains(page, "已暂停") || !strings.Contains(page, "Vertex 403") || !strings.Contains(page, "全部下发") {
 		t.Fatal("the page should show Google paused, why, and the delivery it made")
+	}
+
+	// The overview only says so, and points to the page.
+	if ov := dbGet(t, h, "/overview", admin).Body.String(); !strings.Contains(ov, "Google Vertex 已暂停") || !strings.Contains(ov, `href="/models"`) || strings.Contains(ov, `action="/channels/pause"`) {
+		t.Error("the overview should summarise the pause and link to 模型与渠道, without the controls")
 	}
 
 	// An operator sees it and cannot touch it.
 	_, pw, _ := s.dbm.auth.CreateAccount(ctx, "olga", "", "operator")
 	op := signInAs(t, s, "olga", pw)
-	if page := dbGet(t, h, "/overview", op).Body.String(); !strings.Contains(page, "需要管理员") {
+	if page := dbGet(t, h, "/models", op).Body.String(); !strings.Contains(page, "需要管理员") {
 		t.Error("an operator should see the channels without the buttons")
 	}
-	opCSRF := csrfFrom(t, s, op, "/overview")
+	opCSRF := csrfFrom(t, s, op, "/models")
 	if rec := dbPost(t, h, "/channels/pause", url.Values{"csrf": {opCSRF}, "channel": {"google"}, "pause": {"0"}, "version": {"1"}}, op); rec.Code != http.StatusForbidden {
 		t.Errorf("operator resume: %d, want 403", rec.Code)
 	}

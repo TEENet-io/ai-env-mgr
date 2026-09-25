@@ -63,6 +63,10 @@
     {{if .ProbeNotice}}<p class="hint">探测状态读不到：{{.ProbeNotice}}</p>{{end}}
     {{if .ProbeIncomplete}}<p class="hint muted">探测数据可能不完整</p>{{end}}
 
+    {{if .DB}}
+    <p>{{if not .GatewayEnabled}}{{.GatewayUnusable}}{{else if .GatewayUnusable}}<span class="tag tag-bad">网关不可达</span>{{else}}可用模型 <b>{{len .GatewayModels}}</b> 个{{range .GatewayChannels}}{{if .Paused}} · <span class="tag tag-bad">{{.Label}} 已暂停</span>{{end}}{{end}}{{end}}
+      · <a href="/models">模型、渠道与下发 →</a></p>
+    {{else}}
     <details>
       {{/* Three different states, and conflating the first two sends somebody
       to debug a network that is fine: the gateway is configured but this
@@ -97,71 +101,11 @@
       {{end}}
       <p class="hint">发放、吊销令牌与额度管理在<a href="/users">员工账号</a>页。</p>
     </details>
+    {{end}}
     {{else}}
     <p class="hint">未配置网关。配置好网关地址与管理密钥后，这里会显示可用模型。</p>
     {{end}}
   </section>
-
-  {{if .GatewayChannels}}
-  <h2 id="channels">渠道</h2>
-  <div class="panel scroll"><table class="channels">
-    <thead><tr><th>渠道</th><th>员工可见的模型</th><th>状态</th><th>操作</th></tr></thead>
-    <tbody>{{range .GatewayChannels}}
-      <tr>
-        <td class="id nowrap">{{.Label}}<div class="rowsub mono">{{.ID}}</div></td>
-        <td class="wrap">{{range $i, $m := .Models}}{{if $i}}、{{end}}<span class="mono">{{$m}}</span>{{else}}<span class="dim">网关现在没有报告它的模型</span>{{end}}</td>
-        <td class="nowrap">{{if .Paused}}<span class="tag tag-bad">已暂停</span><div class="rowsub">{{.Pause.At}} · {{.Pause.By}}{{if .Pause.Reason}}<br>{{.Pause.Reason}}{{end}}</div>{{else}}<span class="tag tag-ok">正常</span>{{end}}</td>
-        <td class="actions">{{if may $.Role "/channels/pause"}}
-          {{if .Paused}}
-          <form method="post" action="/channels/pause" class="inline"><input type="hidden" name="csrf" value="{{$.CSRF}}"><input type="hidden" name="version" value="{{$.ChannelsVersion}}"><input type="hidden" name="channel" value="{{.ID}}"><input type="hidden" name="pause" value="0"><button class="link">恢复</button></form>
-          {{else}}
-          <form method="post" action="/channels/pause" class="inline"><input type="hidden" name="csrf" value="{{$.CSRF}}"><input type="hidden" name="version" value="{{$.ChannelsVersion}}"><input type="hidden" name="channel" value="{{.ID}}"><input type="hidden" name="pause" value="1">
-            <input name="reason" placeholder="原因（可选）" size="14"><input name="confirm" placeholder="输入 {{.ID}} 确认" size="12" autocomplete="off"><button class="link danger-link">暂停</button></form>
-          {{end}}
-        {{else}}<span class="dim">需要管理员</span>{{end}}</td>
-      </tr>{{end}}
-    </tbody></table></div>
-  <p class="hint">暂停一个渠道：所有员工的模型选择器里去掉它的模型（员工重启 Codex 后生效，正在跑的任务不打断——agent 1.3.1 起），勾了"全部模型"的员工在网关上只能调其他渠道的模型；另一个渠道也提供的同名模型不受影响。恢复则反过来。渠道按网关的模型信息判断，在网关模型的 <code>model_info</code> 里写 <code>channel</code> 可以明确指定。</p>
-  {{end}}
-
-  {{with .ModelDelivery}}{{$md := .}}
-  <h2 id="models">模型下发</h2>
-  <section class="panel summary-row">
-    <p>
-    {{if .NeverDelivered}}还没有从这里下发过模型配置。网关现在有 <b>{{len $.GatewayModels}}</b> 个模型。
-    {{else if .Changed}}<span class="tag tag-warn">有变化</span> 自上次全部下发（{{.FleetAt}} · {{.FleetBy}}）以来，网关上：
-      {{if .Added}}新增 {{range $i, $n := .Added}}{{if $i}}、{{end}}<span class="mono">{{$n}}</span>{{end}}{{end}}
-      {{if .Removed}}{{if .Added}}；{{end}}下架 {{range $i, $n := .Removed}}{{if $i}}、{{end}}<span class="mono">{{$n}}</span>{{end}}{{end}}
-      {{if .MetaChanged}}模型信息（显示名、上下文、推理档位）有改动{{end}}
-    {{else}}<span class="tag tag-ok">已是最新</span> 与上次全部下发（{{.FleetAt}} · {{.FleetBy}}）一致。{{end}}
-    </p>
-    {{if may $.Role "/models/deliver"}}
-    <div class="deliver-bar">
-      <form method="post" action="/models/deliver">
-        <input type="hidden" name="csrf" value="{{$.CSRF}}"><input type="hidden" name="version" value="{{.Version}}"><input type="hidden" name="scope" value="test">
-        <select name="employee"><option value="">选一个测试员工…</option>{{range .Employees}}<option value="{{.ID}}">{{.WindowsUser}}</option>{{end}}</select>
-        <button class="link">先发给他</button>
-      </form>
-      <span class="muted">或</span>
-      <form method="post" action="/models/deliver">
-        <input type="hidden" name="csrf" value="{{$.CSRF}}"><input type="hidden" name="version" value="{{.Version}}"><input type="hidden" name="scope" value="all">
-        <button{{if not .Changed}} class="link"{{end}}>全部下发</button>
-      </form>
-    </div>
-    {{end}}
-    <p class="hint">下发会按网关现在的模型，给员工重新生成 Codex 配置和模型清单。机器同步后收到（1.3.0 起几秒内，旧版 agent 按同步间隔）；员工方便时<strong>重启 Codex</strong> 生效，员工自己选的模型会保留（除非它被下架）。<strong>agent 1.3.1 起下发不会打断正在运行的 Codex</strong>；更早的 agent 上，员工在 Codex 里切换过模型的，下发时 Codex 会被关闭，请挑员工不在干活时下发。</p>
-    {{with .Last}}
-    <p>最近一次：{{if eq .Scope "all"}}全部下发{{else}}测试下发{{end}} · {{$md.LastAt}} · {{.By}} · 已收到 <b>{{$md.Received}}</b> / {{len $md.Rows}}</p>
-    <div class="scroll"><table>
-      <thead><tr><th>员工</th><th>机器</th><th>状态</th><th>说明</th></tr></thead>
-      <tbody>{{range $md.Rows}}
-        <tr><td class="id">{{.WindowsUser}}</td><td class="mono">{{orDash .Hostname}}</td>
-          <td><span class="tag tag-{{.Sev}}">{{.State}}</span></td><td class="remark">{{.Detail}}</td></tr>
-      {{end}}</tbody>
-    </table></div>
-    {{end}}
-  </section>
-  {{end}}
 
   <h2>机器</h2>
   {{if .MachinesError}}<p class="note note-err">{{.MachinesError}}</p>{{end}}

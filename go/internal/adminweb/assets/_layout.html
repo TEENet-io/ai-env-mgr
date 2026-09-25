@@ -43,6 +43,10 @@ file stays out of it. */}}
 {{/* Second-level navigation inside a group. One strip per group; the page
 sets .Tab to the entry it is. */}}
 {{define "tabs-releases"}}{{end}}
+{{define "tabs-users"}}{{if .DB}}<nav class="tabs">
+  <a href="/users"{{if eq .Tab ""}} class="active"{{end}}>员工</a>
+  <a href="/models"{{if eq .Tab "models"}} class="active"{{end}}>模型与渠道</a>
+</nav>{{end}}{{end}}
 {{define "tabs-usage"}}<nav class="tabs">
   {{if .DB}}<a href="/usage"{{if eq .Tab "usage"}} class="active"{{end}}>按月汇总</a>{{end}}
   {{if .SLS}}<a href="/logs"{{if eq .Tab "logs"}} class="active"{{end}}>调用明细</a>{{end}}
