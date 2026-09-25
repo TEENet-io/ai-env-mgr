@@ -108,7 +108,14 @@ func (applicationInstaller) Install(app model.Application, setupPath string) err
 		}
 	case <-time.After(30 * time.Minute):
 		_ = cmd.Process.Kill()
-		return fmt.Errorf("installer did not finish within 30 minutes")
+		// Reap the child before returning. A GUI installer that was launched
+		// without silent arguments can otherwise survive the timeout and keep
+		// the old executable open while the next task starts.
+		select {
+		case <-done:
+		case <-time.After(5 * time.Second):
+		}
+		return fmt.Errorf("installer did not finish within 30 minutes; configure silent installer arguments for non-interactive installation")
 	}
 	return nil
 }
