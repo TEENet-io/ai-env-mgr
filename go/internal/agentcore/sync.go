@@ -215,6 +215,12 @@ type Syncer struct {
 	// what every non-Windows build and every test gets.
 	Codex        CodexInstaller
 	Applications ApplicationInstaller
+	// ApplicationProgress is called before a potentially long application
+	// operation (download/install). It is deliberately optional so the sync
+	// core remains usable in tests and on older hosts. The Windows entrypoint
+	// uses it to flush a progress line to the console before the operation
+	// blocks the normal end-of-cycle status report.
+	ApplicationProgress func(model.ApplicationStatus)
 
 	// mu guards lastStatus. ReportEvent runs on the service control handler's
 	// goroutine, which can overlap the worker goroutine's RunOnce/Heartbeat, so

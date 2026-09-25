@@ -186,6 +186,18 @@ func newSyncer() (*agentcore.Syncer, error) {
 		Codex:        newCodexInstaller(),
 		Applications: newApplicationInstaller(),
 	}
+	// Application downloads can be hundreds of megabytes and therefore outlive
+	// a normal sync cycle. Flush a progress line before each long phase so the
+	// local log and the Admin log tail show that the Agent is working instead
+	// of looking frozen until the installer finishes.
+	s.ApplicationProgress = func(st model.ApplicationStatus) {
+		log.Printf("application %s@%s task=%s state=%s", st.AppID, st.DesiredVersion, st.TaskID, st.State)
+		if tail := readLogTail(stateDir()); tail != nil {
+			if err := s.UploadLog(tail); err != nil {
+				log.Printf("application progress log upload failed: %v", err)
+			}
+		}
+	}
 	// The console, when this build knows one: instructions and reports go
 	// there, and session files are uploaded through links it signs.
 	consoleTarget = cfg.ConsoleURL

@@ -62,6 +62,10 @@ func (s *Syncer) updateApplications(machine string, errs *[]string) []model.Appl
 	statuses := make([]model.ApplicationStatus, 0, len(desired.Apps))
 	for _, item := range desired.Apps {
 		if item.Desired != "installed" {
+			// Cancelling a request also clears the local failure gate. Without
+			// this, a later install of the same app could inherit a stale
+			// marker forever and remain in "previous attempt failed".
+			s.writeMarker(applicationFailureMarker(item.AppID), "")
 			statuses = append(statuses, model.ApplicationStatus{
 				AppID: item.AppID, DesiredVersion: item.Version, TaskID: item.TaskID,
 				State: AppCancelled, UpdatedAt: time.Now().UTC().Format(time.RFC3339),
@@ -76,6 +80,8 @@ func (s *Syncer) updateApplications(machine string, errs *[]string) []model.Appl
 			})
 			continue
 		}
+		queued := model.ApplicationStatus{AppID: item.AppID, DesiredVersion: item.Version, TaskID: item.TaskID, State: AppQueued, UpdatedAt: time.Now().UTC().Format(time.RFC3339)}
+		s.reportApplicationProgress(queued)
 		st := s.applyApplication(item)
 		if item.TaskID != "" {
 			if st.State == AppFailed || st.State == AppBlocked {
@@ -90,6 +96,12 @@ func (s *Syncer) updateApplications(machine string, errs *[]string) []model.Appl
 		}
 	}
 	return statuses
+}
+
+func (s *Syncer) reportApplicationProgress(st model.ApplicationStatus) {
+	if s.ApplicationProgress != nil {
+		s.ApplicationProgress(st)
+	}
 }
 
 func applicationFailureMarker(appID string) string {
@@ -139,6 +151,7 @@ func (s *Syncer) applyApplication(item model.DesiredApplication) model.Applicati
 	}
 
 	st.State = AppDownloading
+	s.reportApplicationProgress(st)
 	destDir := filepath.Join(s.StateDir, "applications", safeName(app.AppID), safeName(app.Version))
 	dest := filepath.Join(destDir, installerFilename(app.InstallerType))
 	sum, err := s.source().ApplicationToFile(app.AppID, app.Version, dest)
@@ -146,11 +159,13 @@ func (s *Syncer) applyApplication(item model.DesiredApplication) model.Applicati
 		return appFailure(st, AppFailed, fmt.Sprintf("download: %v", err))
 	}
 	st.State = AppVerifying
+	s.reportApplicationProgress(st)
 	if !strings.EqualFold(sum, app.SHA256) {
 		_ = os.Remove(dest)
 		return appFailure(st, AppBlocked, fmt.Sprintf("sha256 mismatch: got %s", sum))
 	}
 	st.State = AppInstalling
+	s.reportApplicationProgress(st)
 	if err := s.Applications.Install(app, dest); err != nil {
 		return appFailure(st, AppFailed, fmt.Sprintf("install: %v", err))
 	}

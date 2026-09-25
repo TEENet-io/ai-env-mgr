@@ -720,27 +720,31 @@ func (s *Server) handleTasks(w http.ResponseWriter, r *http.Request, sess *sessi
 				statusOf[m.Machine+"\x00"+st.AppID] = st
 			}
 		}
-		if keys, listErr := s.dbm.objects.List(ossclient.MachineAppPrefix); listErr == nil {
-			for _, key := range keys {
-				if !strings.HasSuffix(key, "/apps.json") {
-					continue
+		// Read one deterministic key per known device instead of listing the
+		// prefix. The console's RAM policy intentionally permits Get/Put for
+		// machine plans but may not grant ListObjects on _machines/. A failed
+		// or empty prefix listing used to make a freshly-created install task
+		// disappear from the task center even though the Agent could fetch it.
+		for _, machine := range machines {
+			key := ossclient.MachineApplicationsKey(machine.Machine)
+			dataBytes, _, getErr := s.dbm.objects.Get(key)
+			if getErr != nil {
+				continue
+			}
+			var desired model.MachineApplications
+			if json.Unmarshal(dataBytes, &desired) != nil {
+				continue
+			}
+			if desired.Machine == "" {
+				desired.Machine = machine.Machine
+			}
+			for _, item := range desired.Apps {
+				st := statusOf[desired.Machine+"\x00"+item.AppID]
+				// A previous attempt must not mark this request complete.
+				if st.TaskID != item.TaskID || st.DesiredVersion != item.Version {
+					st = model.ApplicationStatus{UpdatedAt: desired.UpdatedAt}
 				}
-				dataBytes, _, getErr := s.dbm.objects.Get(key)
-				if getErr != nil {
-					continue
-				}
-				var desired model.MachineApplications
-				if json.Unmarshal(dataBytes, &desired) != nil {
-					continue
-				}
-				for _, item := range desired.Apps {
-					st := statusOf[desired.Machine+"\x00"+item.AppID]
-					// A previous attempt must not mark this request complete.
-					if st.TaskID != item.TaskID || st.DesiredVersion != item.Version {
-						st = model.ApplicationStatus{UpdatedAt: desired.UpdatedAt}
-					}
-					data.ApplicationTasks = append(data.ApplicationTasks, applicationTaskRow{Machine: desired.Machine, AppID: item.AppID, Version: item.Version, TaskID: item.TaskID, Desired: item.Desired, State: st.State, Updated: st.UpdatedAt, LastError: st.LastError})
-				}
+				data.ApplicationTasks = append(data.ApplicationTasks, applicationTaskRow{Machine: desired.Machine, AppID: item.AppID, Version: item.Version, TaskID: item.TaskID, Desired: item.Desired, State: st.State, Updated: st.UpdatedAt, LastError: st.LastError})
 			}
 		}
 	}
