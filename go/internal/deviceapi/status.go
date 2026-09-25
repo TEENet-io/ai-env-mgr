@@ -8,6 +8,7 @@ import (
 	"io"
 	"net/http"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/TEENet-io/ai-env-mgr/internal/ossclient"
 	"github.com/TEENet-io/ai-env-mgr/internal/repo"
@@ -59,7 +60,19 @@ func (s *Server) handleLog(w http.ResponseWriter, r *http.Request, device repo.D
 		http.Error(w, "the log tail is limited to 64 KB", http.StatusRequestEntityTooLarge)
 		return
 	}
-	if err := s.Store.Devices().SetLogTail(r.Context(), device.ID, string(raw), s.now()); err != nil {
+	// Windows processes can write localized diagnostics in the active system
+	// code page (GBK/CP1252), which is not valid UTF-8. PostgreSQL text rejects
+	// those bytes and would turn an otherwise successful log upload into a 500
+	// on every cycle. Preserve the readable parts and replace invalid byte
+	// sequences before storing the tail.
+	clean := []byte(strings.ToValidUTF8(string(raw), "\uFFFD"))
+	if len(clean) > maxLogTail {
+		clean = clean[len(clean)-maxLogTail:]
+		for len(clean) > 0 && !utf8.Valid(clean) {
+			clean = clean[1:]
+		}
+	}
+	if err := s.Store.Devices().SetLogTail(r.Context(), device.ID, string(clean), s.now()); err != nil {
 		s.fail(w, r, "store log", err)
 		return
 	}

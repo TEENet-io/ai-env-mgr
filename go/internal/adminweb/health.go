@@ -29,7 +29,7 @@ func stateLabel(m admincore.MachineState) string {
 	case admincore.HealthCredsPending:
 		return "待代登录"
 	case admincore.HealthStopped:
-		return "已关机"
+		return "Agent 已停止"
 	case admincore.HealthSleeping:
 		return "休眠中"
 	case admincore.HealthHibernated:

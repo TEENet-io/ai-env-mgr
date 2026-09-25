@@ -49,7 +49,13 @@ func (localUpdater) ApplyUpdate(newBinary []byte) error {
 // keeps the helper alive across the stop.
 func restartServiceDetached(svc string) error {
 	cmd := exec.Command("cmd.exe", "/c",
-		"timeout /t 3 /nobreak >nul & sc stop "+svc+" & sc start "+svc)
+		// sc stop returns after sending the control, not necessarily after the
+		// service has reached STOPPED. Starting immediately races the SCM and
+		// leaves a machine on the old stopped report. Give the service a short
+		// grace period, then poll until it is really stopped before starting it.
+		"timeout /t 3 /nobreak >nul & sc stop "+svc+" >nul & "+
+			"for /l %%i in (1,1,30) do (sc query "+svc+" | find \"STOPPED\" >nul && goto :startsvc || timeout /t 1 /nobreak >nul) & "+
+			":startsvc & sc start "+svc)
 	cmd.SysProcAttr = &syscall.SysProcAttr{
 		HideWindow:    true,
 		CreationFlags: 0x00000008 | 0x00000200, // DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP
