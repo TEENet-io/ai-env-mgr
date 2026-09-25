@@ -1,10 +1,11 @@
-{{define "releases.html"}}{{template "head" "版本库"}}
+{{define "releases.html"}}{{template "head" "软件安装"}}
 {{template "refresh-while-running" .}}
 <body>
 <div class="app">
 {{template "nav" .}}
 <main class="sheet">
-  <header class="pagehead"><h1>发布</h1></header>
+  <header class="pagehead"><h1>软件安装</h1></header>
+  <p class="dim"><a href="/tasks">查看全局任务与安装进度 →</a></p>
   {{template "tabs-releases" .}}
   <p class="lede">CI 传到 OSS 的 agent 和 Codex 安装包会自动出现在这里（每天扫描一次，刚传完可点「立即扫描」）。<b>设为全局</b>：所有跟随全局的机器一起更新。<b>指定给机器</b>：只更新选中的机器；在机器页可以改回「跟随全局」。
     <form method="post" action="/releases/scan" class="inline"><input type="hidden" name="csrf" value="{{.CSRF}}"><button class="link">立即扫描 OSS</button></form></p>
@@ -78,6 +79,21 @@
       </tr>{{else}}<tr><td colspan="5" class="empty">还没有 {{$product}} 版本。CI 上传到 <span class="mono">{{if eq $product "agent"}}_agent/&lt;版本&gt;/agent.exe{{else}}_codex/codex-setup-&lt;版本&gt;.exe{{end}}</span> 后会自动出现。</td></tr>{{end}}
     </tbody></table></div>
   {{end}}
+
+  <h2>其他软件</h2>
+  <p class="dim">仅允许管理员审核后的 MSI/EXE，按机器安装；Agent 会校验 SHA-256、检测安装结果，并可创建公共桌面快捷方式。</p>
+  <div class="panel scroll"><table><thead><tr><th>应用</th><th>版本</th><th>类型</th><th>状态</th></tr></thead><tbody>
+    {{range .Applications}}<tr><td>{{.DisplayName}} <span class="mono dim">{{.AppID}}</span></td><td class="mono">{{.Version}}</td><td>{{.InstallerType}}</td><td>{{if and .Enabled .Approved}}已审核{{else}}已停用{{end}}</td></tr>{{else}}<tr><td colspan="4" class="dim">还没有应用包</td></tr>{{end}}
+  </tbody></table></div>
+  <form method="post" action="/apps/publish" enctype="multipart/form-data" class="form panel"><input type="hidden" name="csrf" value="{{.CSRF}}"><h3>添加其他软件</h3>
+    <p class="dim">选择安装包或粘贴下载 URL。应用名称、版本和 MSI/EXE 类型会从文件名自动识别。</p>
+    <div class="grid"><label>安装包文件 <input type="file" name="file"></label><label>或下载 URL <input name="url" placeholder="https://.../app-1.2.3.exe"></label><label>显示名称（可选） <input name="displayName"></label><label>确认输入 <input name="confirm" required placeholder="INSTALL"></label></div>
+    <details><summary>高级选项（静默参数、安装检测、快捷方式）</summary><div class="grid">
+      <label>应用 ID <input name="appId" placeholder="自动生成"></label><label>版本 <input name="version" placeholder="自动识别"></label><label>厂商 <input name="publisher"></label><label>类型 <select name="installerType"><option value="">自动识别</option><option value="msi">MSI</option><option value="exe">EXE</option></select></label>
+      <label>静默参数 <input name="silentArgs" placeholder="/qn /norestart"></label><label>检测类型 <select name="detectionType"><option value="file_exists">文件存在</option><option value="file_version">文件版本</option></select></label><label>检测路径 <input name="detectionPath" placeholder="默认 C:\\Program Files\\应用\\应用.exe"></label><label>检测版本 <input name="detectionVersion"></label>
+      <label>快捷方式名称 <input name="shortcutName"></label><label>快捷方式目标 <input name="shortcutTarget"></label>
+    </div></details><button>上传并审核</button></form>
+  <form method="post" action="/apps/install" class="form panel"><input type="hidden" name="csrf" value="{{.CSRF}}"><h3>按机器安装</h3><div class="grid"><label>机器 <select name="machine" required><option value="">请选择机器</option>{{range .Machines}}<option value="{{.Machine}}">{{.Machine}}{{if .Bound}}（已绑定）{{end}}</option>{{end}}</select></label><label>应用与版本 <select name="appKey" required><option value="">请选择应用</option>{{range .Applications}}<option value="{{.AppID}}|{{.Version}}">{{.DisplayName}} {{.Version}}（{{.InstallerType}}）</option>{{end}}</select></label><label><input type="checkbox" name="allowDowngrade" value="1"> 允许降级</label></div><button>创建安装任务</button></form>
 
   {{template "fleet" .}}
 </main>

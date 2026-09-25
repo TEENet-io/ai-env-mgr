@@ -7,6 +7,7 @@ import (
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log"
@@ -24,7 +25,9 @@ import (
 	"github.com/TEENet-io/ai-env-mgr/internal/deviceapi"
 	"github.com/TEENet-io/ai-env-mgr/internal/ecdclient"
 	"github.com/TEENet-io/ai-env-mgr/internal/litellm"
+	"github.com/TEENet-io/ai-env-mgr/internal/model"
 	"github.com/TEENet-io/ai-env-mgr/internal/ops"
+	"github.com/TEENet-io/ai-env-mgr/internal/ossclient"
 	"github.com/TEENet-io/ai-env-mgr/internal/repo"
 	"github.com/TEENet-io/ai-env-mgr/internal/secrets"
 	"github.com/TEENet-io/ai-env-mgr/internal/slsclient"
@@ -662,8 +665,19 @@ type taskRow struct {
 	Open      bool
 }
 
+var hiddenTaskKinds = map[string]bool{
+	"audit_publish": true,
+	"alert_notify":  true,
+	"status_import": true,
+}
+
+type applicationTaskRow struct {
+	Machine, AppID, Version, TaskID, Desired, State, Updated, LastError string
+}
+
 func (s *Server) handleTasks(w http.ResponseWriter, r *http.Request, sess *session) {
-	data := newPage(sess, r, "alerts")
+	data := newPage(sess, r, "tasks")
+	data.TaskColumns = buildTaskBoard(nil, nil)
 	data.Tab = "tasks"
 	tasks, err := s.dbm.store.Tasks().ListRecent(r.Context(), 200)
 	if err != nil {
@@ -673,6 +687,9 @@ func (s *Server) handleTasks(w http.ResponseWriter, r *http.Request, sess *sessi
 	}
 	names := map[string]string{}
 	for _, t := range tasks {
+		if hiddenTaskKinds[t.Kind] {
+			continue
+		}
 		row := taskRow{
 			ID: t.ID, Kind: t.Kind, Status: string(t.Status), Attempts: t.Attempts,
 			LastError: t.LastError, Open: t.Open(),
@@ -693,6 +710,41 @@ func (s *Server) handleTasks(w http.ResponseWriter, r *http.Request, sess *sessi
 		}
 		data.Tasks = append(data.Tasks, row)
 	}
+	// Application installs are intentionally pulled by the Windows Agent, so
+	// their desired state lives in OSS and their observed state in the machine
+	// report. Present them beside database-backed Worker tasks in one view.
+	if machines, machineErr := sess.be.Machines(r.Context()); machineErr == nil {
+		statusOf := map[string]model.ApplicationStatus{}
+		for _, m := range machines {
+			for _, st := range m.Status.Apps {
+				statusOf[m.Machine+"\x00"+st.AppID] = st
+			}
+		}
+		if keys, listErr := s.dbm.objects.List(ossclient.MachineAppPrefix); listErr == nil {
+			for _, key := range keys {
+				if !strings.HasSuffix(key, "/apps.json") {
+					continue
+				}
+				dataBytes, _, getErr := s.dbm.objects.Get(key)
+				if getErr != nil {
+					continue
+				}
+				var desired model.MachineApplications
+				if json.Unmarshal(dataBytes, &desired) != nil {
+					continue
+				}
+				for _, item := range desired.Apps {
+					st := statusOf[desired.Machine+"\x00"+item.AppID]
+					// A previous attempt must not mark this request complete.
+					if st.TaskID != item.TaskID || st.DesiredVersion != item.Version {
+						st = model.ApplicationStatus{UpdatedAt: desired.UpdatedAt}
+					}
+					data.ApplicationTasks = append(data.ApplicationTasks, applicationTaskRow{Machine: desired.Machine, AppID: item.AppID, Version: item.Version, TaskID: item.TaskID, Desired: item.Desired, State: st.State, Updated: st.UpdatedAt, LastError: st.LastError})
+				}
+			}
+		}
+	}
+	data.TaskColumns = buildTaskBoard(data.Tasks, data.ApplicationTasks)
 	s.render(w, "tasks.html", http.StatusOK, data)
 }
 

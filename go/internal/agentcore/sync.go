@@ -213,7 +213,8 @@ type Syncer struct {
 	// Codex installs the repackaged Codex desktop when the policy targets a
 	// version this machine does not have. Optional: nil disables it, which is
 	// what every non-Windows build and every test gets.
-	Codex CodexInstaller
+	Codex        CodexInstaller
+	Applications ApplicationInstaller
 
 	// mu guards lastStatus. ReportEvent runs on the service control handler's
 	// goroutine, which can overlap the worker goroutine's RunOnce/Heartbeat, so
@@ -511,6 +512,7 @@ func (s *Syncer) RunOnce() (model.Status, error) {
 	// a Codex install interrupted halfway is worse than one that waits a cycle.
 	agentTarget, codexTarget := effectiveTargets(pol, binding)
 	codex := s.updateCodex(codexTarget, &errs)
+	appStatuses := s.updateApplications(machine, &errs)
 
 	// ---- self-update: download + verify ----
 	// The binary is fetched and checksummed now so any problem surfaces in this
@@ -535,6 +537,7 @@ func (s *Syncer) RunOnce() (model.Status, error) {
 		CollectUploaded: collectUploaded,
 		CodexVersion:    codex.Version,
 		CodexState:      codex.State,
+		Apps:            appStatuses,
 		CodexRestart: status.CodexRestart{
 			Nonce: codexRestart.Nonce, At: codexRestart.At, Note: codexRestart.Note,
 		},

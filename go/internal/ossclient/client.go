@@ -77,7 +77,7 @@ func NewSplit(endpoint, publicEndpoint, bucket, accessKeyID, accessKeySecret str
 	case accessKeySecret == "":
 		return nil, fmt.Errorf("access key secret is required")
 	}
-	cli, err := oss.New(withHTTPS(endpoint), accessKeyID, accessKeySecret)
+	cli, err := oss.New(withHTTPS(endpoint), accessKeyID, accessKeySecret, oss.Timeout(30, 30))
 	if err != nil {
 		return nil, fmt.Errorf("create oss client: %w", err)
 	}
@@ -87,7 +87,7 @@ func NewSplit(endpoint, publicEndpoint, bucket, accessKeyID, accessKeySecret str
 	}
 	signBucket := b
 	if publicEndpoint != "" && publicEndpoint != endpoint {
-		signCli, err := oss.New(withHTTPS(publicEndpoint), accessKeyID, accessKeySecret)
+		signCli, err := oss.New(withHTTPS(publicEndpoint), accessKeyID, accessKeySecret, oss.Timeout(30, 30))
 		if err != nil {
 			return nil, fmt.Errorf("create oss signing client: %w", err)
 		}
@@ -194,10 +194,26 @@ func AdminKey(name string) string {
 
 // The fixed prefixes inside Root.
 const (
-	BindingPrefix = Root + "_bindings/"
-	StatusPrefix  = Root + "_status/"
-	AgentPrefix   = Root + "_agent/"
+	BindingPrefix    = Root + "_bindings/"
+	StatusPrefix     = Root + "_status/"
+	AgentPrefix      = Root + "_agent/"
+	AppPrefix        = Root + "_apps/"
+	MachineAppPrefix = Root + "_machines/"
 )
+
+func ApplicationKey(appID, version string) string {
+	return AppPrefix + sanitiseSegment(appID) + "/" + sanitiseSegment(version) + "/manifest.json"
+}
+func ApplicationPackageKey(appID, version, installerType string) string {
+	ext := ".exe"
+	if strings.EqualFold(installerType, "msi") {
+		ext = ".msi"
+	}
+	return AppPrefix + sanitiseSegment(appID) + "/" + sanitiseSegment(version) + "/installer" + ext
+}
+func MachineApplicationsKey(machine string) string {
+	return MachineAppPrefix + sanitiseSegment(machine) + "/apps.json"
+}
 
 // AgentBinaryKey is where the administrator stages a new agent binary for
 // self-update. Agents read it (their RAM policy needs GetObject on

@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/TEENet-io/ai-env-mgr/internal/admincore"
 	"github.com/TEENet-io/ai-env-mgr/internal/ossclient"
 	"github.com/TEENet-io/ai-env-mgr/internal/repo"
 )
@@ -165,6 +166,10 @@ func (s *Server) handleReleases(w http.ResponseWriter, r *http.Request, sess *se
 	data := newPage(sess, r, "releases")
 	data.Tab = "releases"
 	data.Job = s.jobs.snapshot()
+	if machines, machineErr := sess.be.Machines(r.Context()); machineErr == nil {
+		data.Machines = machines
+		data.Fleet = summariseFleet(machines)
+	}
 	pol, _, err := s.dbm.ops.CurrentPolicy(r.Context())
 	if err != nil {
 		data.Error = "could not read the policy"
@@ -183,6 +188,10 @@ func (s *Server) handleReleases(w http.ResponseWriter, r *http.Request, sess *se
 			Artifact: a, SizeMB: fmt.Sprintf("%.1f", float64(a.SizeBytes)/(1<<20)),
 			IsGlobal: data.GlobalTargets[a.Product] == a.Version,
 		})
+	}
+	appMgr := &admincore.Manager{Store: s.dbm.objects, Events: s.events}
+	if data.Applications, err = appMgr.ListApplications(); err != nil {
+		data.Error = "could not list application catalog: " + err.Error()
 	}
 	s.render(w, "releases.html", http.StatusOK, data)
 }

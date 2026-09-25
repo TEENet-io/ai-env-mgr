@@ -64,6 +64,12 @@ func TestAnAdministratorPausesAndResumesAChannel(t *testing.T) {
 	if !strings.Contains(page, "已暂停") || !strings.Contains(page, "Vertex 403") || !strings.Contains(page, "全部下发") {
 		t.Fatal("the page should show Google paused, why, and the delivery it made")
 	}
+	// The raw gateway catalog remains visible on the channel page, but account
+	// pickers must only offer models that the current channel policy allows.
+	users := dbGet(t, h, "/users", admin).Body.String()
+	if strings.Contains(users, "gemini-3.1-pro") {
+		t.Fatal("the onboarding picker still offers a model from the paused Google channel")
+	}
 
 	// The overview only says so, and points to the page.
 	if ov := dbGet(t, h, "/overview", admin).Body.String(); !strings.Contains(ov, "Google Vertex 已暂停") || !strings.Contains(ov, `href="/models"`) || strings.Contains(ov, `action="/channels/pause"`) {
