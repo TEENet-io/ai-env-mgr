@@ -187,8 +187,9 @@ func newSyncer() (*agentcore.Syncer, error) {
 			Machine:  machine,
 			StateDir: stateDir(),
 		},
-		Updater: localUpdater{},
-		Codex:   newCodexInstaller(),
+		Updater:      localUpdater{},
+		Codex:        newCodexInstaller(),
+		Applications: newApplicationInstaller(),
 	}
 	// The console, when this build knows one: instructions and reports go
 	// there, and session files are uploaded through links it signs.

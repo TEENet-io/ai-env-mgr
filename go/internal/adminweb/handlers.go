@@ -66,11 +66,13 @@ type pageData struct {
 	// NewPassword and NewUsername are a freshly generated password, rendered
 	// straight from the POST that created the account and never carried in
 	// a URL: shown once.
-	NewPassword string
-	NewUsername string
-	Tasks       []taskRow
-	Error       string
-	OK          bool
+	NewPassword      string
+	NewUsername      string
+	Tasks            []taskRow
+	ApplicationTasks []applicationTaskRow
+	TaskColumns      []taskColumn
+	Error            string
+	OK               bool
 	// Notice replaces the standard "已保存" for an action whose outcome needs
 	// explaining -- see requirePostNotice.
 	Notice string
@@ -98,8 +100,9 @@ type pageData struct {
 
 	// Version library (database mode).
 	Artifacts     map[string][]artifactRow // by product
-	Unregistered  []packageRow             // in the bucket, not yet in the library
-	GlobalTargets map[string]string        // product -> the fleet policy's version
+	Applications  []model.Application
+	Unregistered  []packageRow      // in the bucket, not yet in the library
+	GlobalTargets map[string]string // product -> the fleet policy's version
 	Rollouts      []rolloutView
 	AuditPage     *auditPage
 	UsagePage     *usagePage

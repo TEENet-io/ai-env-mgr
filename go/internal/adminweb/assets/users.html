@@ -71,6 +71,7 @@
   </div>
 
   <h2>开户</h2>
+  {{if and .GatewayEnabled (not .GatewayModels)}}<p class="note note-err">当前没有可用模型：所有模型渠道都已暂停，暂时不能开户。</p>{{end}}
   <form method="post" action="/users/onboard" class="form top">
     <input type="hidden" name="csrf" value="{{.CSRF}}">
     <label>Windows 用户<input name="windowsUser" required placeholder="work1"><span class="field-hint">按小写保存，机器上的账号大小写无关</span></label>
@@ -80,12 +81,12 @@
     <label>月预算（美元）<input name="budget" type="number" step="0.01" min="0.01" value="{{.QuotaDefaults.MonthlyBudgetUSD}}" required></label>
     <fieldset class="checks">
       <legend>可用模型</legend>
-      <label class="check"><input type="checkbox" name="all" value="1"> <strong>全部</strong> <span class="dim">网关上的全部模型，含以后新增的；勾上后下面的选择不再生效</span></label>
+      <label class="check"><input type="checkbox" name="all" value="1"> <strong>全部</strong> <span class="dim">所有未暂停渠道的模型，含以后新增的；勾上后下面的选择不再生效</span></label>
       {{range .GatewayModels}}
         <label class="check"><input type="checkbox" name="models" value="{{.Name}}"> {{.Info.DisplayName}} <span class="dim">{{.Name}}</span></label>
       {{end}}
     </fieldset>
-    <button type="submit"{{if not .GatewayEnabled}} disabled{{end}}>开户并下发配置</button>
+    <button type="submit"{{if or (not .GatewayEnabled) (not .GatewayModels)}} disabled{{end}}>开户并下发配置</button>
   </form>
   <p class="hint">
     开户一次完成：入名册、在网关建用户与令牌、生成并下发 Codex 配置。机器绑定在<a href="/machines">机器</a>页。

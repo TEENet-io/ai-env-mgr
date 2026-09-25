@@ -1,0 +1,179 @@
+//go:build windows
+
+package main
+
+import (
+	"fmt"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"strings"
+	"time"
+	"unsafe"
+
+	"golang.org/x/sys/windows"
+
+	"github.com/TEENet-io/ai-env-mgr/internal/agentcore"
+	"github.com/TEENet-io/ai-env-mgr/internal/model"
+)
+
+type applicationInstaller struct{}
+
+func newApplicationInstaller() agentcore.ApplicationInstaller { return applicationInstaller{} }
+
+func (applicationInstaller) InstalledVersion(app model.Application) (string, error) {
+	if _, err := os.Stat(app.Detection.Path); err != nil {
+		if os.IsNotExist(err) {
+			return "", nil
+		}
+		return "", err
+	}
+	if app.Detection.Type == "file_exists" || app.Detection.Version == "" {
+		return app.Version, nil
+	}
+	// VersionInfo is read through PowerShell's fixed Get-Item cmdlet. The path
+	// is escaped as a literal path and comes only from the approved manifest.
+	path := psQuote(app.Detection.Path)
+	out, err := exec.Command("powershell.exe", "-NoProfile", "-NonInteractive", "-Command",
+		"(Get-Item -LiteralPath '"+path+"').VersionInfo.ProductVersion").Output()
+	if err != nil {
+		return "", err
+	}
+	return strings.TrimSpace(string(out)), nil
+}
+
+func (applicationInstaller) Running(app model.Application) (bool, error) {
+	name := strings.ToLower(filepath.Base(app.Detection.Path))
+	if name == "." || name == "" {
+		return false, nil
+	}
+	snap, err := windows.CreateToolhelp32Snapshot(windows.TH32CS_SNAPPROCESS, 0)
+	if err != nil {
+		return false, err
+	}
+	defer windows.CloseHandle(snap)
+	var e windows.ProcessEntry32
+	e.Size = uint32(unsafe.Sizeof(e))
+	if err := windows.Process32First(snap, &e); err != nil {
+		return false, err
+	}
+	for {
+		if strings.EqualFold(windows.UTF16ToString(e.ExeFile[:]), name) {
+			return true, nil
+		}
+		if err := windows.Process32Next(snap, &e); err != nil {
+			return false, nil
+		}
+	}
+}
+
+func (applicationInstaller) FreeBytes(app model.Application) (uint64, error) {
+	vol := filepath.VolumeName(app.Detection.Path)
+	if vol == "" {
+		vol = "C:"
+	}
+	p, err := windows.UTF16PtrFromString(vol + `\`)
+	if err != nil {
+		return 0, err
+	}
+	var free, total, totalFree uint64
+	if err := windows.GetDiskFreeSpaceEx(p, &free, &total, &totalFree); err != nil {
+		return 0, err
+	}
+	return free, nil
+}
+
+func (applicationInstaller) Install(app model.Application, setupPath string) error {
+	var cmd *exec.Cmd
+	if strings.EqualFold(app.InstallerType, "msi") {
+		args := []string{"/i", setupPath, "/qn", "/norestart"}
+		args = append(args, app.SilentArgs...)
+		cmd = exec.Command("msiexec.exe", args...)
+	} else {
+		cmd = exec.Command(setupPath, app.SilentArgs...)
+	}
+	if err := cmd.Start(); err != nil {
+		return fmt.Errorf("start installer: %w", err)
+	}
+	done := make(chan error, 1)
+	go func() { done <- cmd.Wait() }()
+	select {
+	case err := <-done:
+		code := 0
+		if cmd.ProcessState != nil {
+			code = cmd.ProcessState.ExitCode()
+		}
+		if err != nil && code != 1641 && code != 3010 {
+			return fmt.Errorf("installer exited %d: %w", code, err)
+		}
+	case <-time.After(30 * time.Minute):
+		_ = cmd.Process.Kill()
+		return fmt.Errorf("installer did not finish within 30 minutes")
+	}
+	return nil
+}
+
+func (applicationInstaller) EnsureShortcut(app model.Application) (bool, error) {
+	if !app.Shortcut.Enabled {
+		return true, nil
+	}
+	if !app.Shortcut.PublicDesktop {
+		return false, fmt.Errorf("only public desktop shortcuts are supported")
+	}
+	public := os.Getenv("PUBLIC")
+	if public == "" {
+		public = `C:\Users\Public`
+	}
+	link := filepath.Join(public, "Desktop", app.Shortcut.Name+".lnk")
+	if err := os.MkdirAll(filepath.Dir(link), 0o755); err != nil {
+		return false, err
+	}
+	cmd := "$w=New-Object -ComObject WScript.Shell; $s=$w.CreateShortcut('" + psQuote(link) + "'); $s.TargetPath='" + psQuote(app.Shortcut.Target) + "';"
+	if app.Shortcut.WorkingDirectory != "" {
+		cmd += "$s.WorkingDirectory='" + psQuote(app.Shortcut.WorkingDirectory) + "';"
+	}
+	if app.Shortcut.Icon != "" {
+		cmd += "$s.IconLocation='" + psQuote(app.Shortcut.Icon) + "';"
+	}
+	cmd += "$s.Save()"
+	if out, err := exec.Command("powershell.exe", "-NoProfile", "-NonInteractive", "-Command", cmd).CombinedOutput(); err != nil {
+		return false, fmt.Errorf("create public desktop shortcut: %v: %s", err, strings.TrimSpace(string(out)))
+	}
+	_, err := os.Stat(link)
+	return err == nil, err
+}
+
+func (applicationInstaller) LaunchAsStandardUser(app model.Application) (bool, error) {
+	// A SYSTEM service must not launch the employee's application. Verify the
+	// executable is present and readable; the shortcut is what the employee
+	// launches in their own session.
+	target := app.Shortcut.Target
+	if target == "" {
+		target = app.Detection.Path
+	}
+	info, err := os.Stat(target)
+	if err != nil {
+		return false, err
+	}
+	return !info.IsDir(), nil
+}
+
+func (applicationInstaller) AppLockerAllowed(app model.Application) (bool, error) {
+	// Ask AppLocker for a decision without starting the application. If the
+	// machine is not enforcing AppLocker, it cannot block this launch.
+	target := app.Shortcut.Target
+	if target == "" {
+		target = app.Detection.Path
+	}
+	path := psQuote(target)
+	cmd := "$p=Get-AppLockerPolicy -Effective; if ($null -eq $p) { 'true'; exit }; $f=Get-AppLockerFileInformation -Path '" + path + "'; $r=Test-AppLockerPolicy -PolicyObject $p -FileInformation $f; if ($r.PolicyRuleMatch -eq 'Allowed') {'true'} else {'false'}"
+	out, err := exec.Command("powershell.exe", "-NoProfile", "-NonInteractive", "-Command", cmd).Output()
+	if err != nil {
+		// On older Windows images the cmdlet can be unavailable. Returning an
+		// error blocks the task instead of claiming an unsafe install succeeded.
+		return false, err
+	}
+	return strings.EqualFold(strings.TrimSpace(string(out)), "true"), nil
+}
+
+func psQuote(v string) string { return strings.ReplaceAll(v, "'", "''") }

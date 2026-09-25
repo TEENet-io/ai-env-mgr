@@ -35,6 +35,7 @@ type Report struct {
 	CollectUploaded int
 	CodexVersion    string
 	CodexState      string
+	Apps            []model.ApplicationStatus
 	CodexRestart    CodexRestart
 
 	CodexTarget           string
@@ -86,6 +87,7 @@ func Build(r Report) model.Status {
 		CollectUploaded:       r.CollectUploaded,
 		CodexVersion:          r.CodexVersion,
 		CodexState:            r.CodexState,
+		Apps:                  r.Apps,
 		CodexRestartNonce:     r.CodexRestart.Nonce,
 		CodexRestartAt:        r.CodexRestart.At,
 		CodexRestartNote:      r.CodexRestart.Note,

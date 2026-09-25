@@ -76,6 +76,62 @@ type Policy struct {
 	UpdatedAt string `json:"updatedAt"`
 }
 
+type Application struct {
+	AppID          string               `json:"appId"`
+	DisplayName    string               `json:"displayName"`
+	Publisher      string               `json:"publisher"`
+	Version        string               `json:"version"`
+	InstallerType  string               `json:"installerType"`
+	ObjectKey      string               `json:"objectKey"`
+	SHA256         string               `json:"sha256"`
+	Size           int64                `json:"size"`
+	SilentArgs     []string             `json:"silentArgs,omitempty"`
+	Shortcut       ApplicationShortcut  `json:"shortcut,omitempty"`
+	Detection      ApplicationDetection `json:"detection"`
+	RequiresReboot bool                 `json:"requiresReboot"`
+	Enabled        bool                 `json:"enabled"`
+	Approved       bool                 `json:"approved"`
+	UpdatedAt      string               `json:"updatedAt"`
+}
+type ApplicationShortcut struct {
+	Enabled          bool   `json:"enabled"`
+	PublicDesktop    bool   `json:"publicDesktop"`
+	Name             string `json:"name"`
+	Target           string `json:"target"`
+	WorkingDirectory string `json:"workingDirectory,omitempty"`
+	Icon             string `json:"icon,omitempty"`
+}
+type ApplicationDetection struct {
+	Type    string `json:"type"`
+	Path    string `json:"path"`
+	Version string `json:"version,omitempty"`
+}
+type MachineApplications struct {
+	Machine   string               `json:"machine"`
+	UpdatedAt string               `json:"updatedAt"`
+	Apps      []DesiredApplication `json:"apps"`
+}
+type DesiredApplication struct {
+	AppID          string `json:"appId"`
+	Version        string `json:"version"`
+	Desired        string `json:"desired"`
+	TaskID         string `json:"taskId"`
+	AllowDowngrade bool   `json:"allowDowngrade,omitempty"`
+}
+type ApplicationStatus struct {
+	AppID                 string `json:"appId"`
+	DesiredVersion        string `json:"desiredVersion"`
+	InstalledVersion      string `json:"installedVersion,omitempty"`
+	State                 string `json:"state"`
+	TaskID                string `json:"taskId,omitempty"`
+	PublicDesktopShortcut bool   `json:"publicDesktopShortcut"`
+	LaunchAsStandardUser  bool   `json:"launchAsStandardUser"`
+	AppLockerAllowed      bool   `json:"appLockerAllowed"`
+	RebootRequired        bool   `json:"rebootRequired"`
+	LastError             string `json:"lastError,omitempty"`
+	UpdatedAt             string `json:"updatedAt"`
+}
+
 // Sync interval bounds. The interval can lock a machine out of reach if set
 // badly, so it is always clamped.
 const (
@@ -232,8 +288,9 @@ type Status struct {
 	CodexRestartNonce string `json:"codexRestartNonce,omitempty"`
 	// CodexRestartAt is when the agent acted (RFC3339), and CodexRestartNote
 	// is what came of it: "killed 1 process", "no process", or the error.
-	CodexRestartAt   string `json:"codexRestartAt,omitempty"`
-	CodexRestartNote string `json:"codexRestartNote,omitempty"`
+	CodexRestartAt   string              `json:"codexRestartAt,omitempty"`
+	CodexRestartNote string              `json:"codexRestartNote,omitempty"`
+	Apps             []ApplicationStatus `json:"apps,omitempty"`
 }
 
 // HasLocalUser reports whether a given account has a profile on the machine.

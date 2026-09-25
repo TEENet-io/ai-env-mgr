@@ -241,6 +241,15 @@ func (s *Server) handleUsers(w http.ResponseWriter, r *http.Request, sess *sessi
 		if data.GatewayModels, err = gw.Models(ctx); err != nil {
 			data.GatewayUnusable = "无法读取网关模型清单：" + err.Error()
 		}
+		// The gateway catalog is the source of truth, but a paused supplier is
+		// an administrative decision layered on top of it.  The account picker
+		// must show what a new employee can actually receive, not the raw
+		// catalog (the 渠道 page intentionally keeps the raw list visible).
+		if data.GatewayUnusable == "" && s.dbm != nil {
+			if data.GatewayModels, err = s.deliverableModels(r.Context(), data.GatewayModels); err != nil {
+				data.GatewayUnusable = "无法读取渠道状态：" + err.Error()
+			}
+		}
 		if keys, err = gw.ListKeys(ctx); err != nil && data.GatewayUnusable == "" {
 			data.GatewayUnusable = "无法读取网关令牌清单：" + err.Error()
 		}
@@ -332,6 +341,11 @@ func (s *Server) handleUserDetail(w http.ResponseWriter, r *http.Request, sess *
 		defer cancel()
 		if data.GatewayModels, err = gw.Models(ctx); err != nil {
 			data.GatewayUnusable = "无法读取网关模型清单：" + err.Error()
+		}
+		if data.GatewayUnusable == "" && s.dbm != nil {
+			if data.GatewayModels, err = s.deliverableModels(r.Context(), data.GatewayModels); err != nil {
+				data.GatewayUnusable = "无法读取渠道状态：" + err.Error()
+			}
 		}
 		if k, found, err := gw.FindKeyByAlias(ctx, admincore.KeyAlias(user)); err != nil {
 			data.GatewayUnusable = "无法读取网关令牌：" + err.Error()

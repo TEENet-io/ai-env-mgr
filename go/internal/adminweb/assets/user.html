@@ -50,12 +50,12 @@
     <input type="hidden" name="csrf" value="{{$.CSRF}}"><input type="hidden" name="windowsUser" value="{{.WindowsUser}}"><input type="hidden" name="back" value="detail">
     <fieldset class="checks">
       <legend>可用模型</legend>
-      <label class="check"><input type="checkbox" name="all" value="1"{{if not .Models}} checked{{end}}> <strong>全部</strong> <span class="dim">网关上的全部模型，含以后新增的；勾上后下面的选择不再生效</span></label>
+      <label class="check"><input type="checkbox" name="all" value="1"{{if not .Models}} checked{{end}}> <strong>全部</strong> <span class="dim">所有未暂停渠道的模型，含以后新增的；勾上后下面的选择不再生效</span></label>
       {{$row := .}}{{range $.GatewayModels}}
         <label class="check"><input type="checkbox" name="models" value="{{.Name}}"{{if has $row.Models .Name}} checked{{end}}> {{.Info.DisplayName}} <span class="dim">{{.Name}}</span></label>
       {{end}}
     </fieldset>
-    <button type="submit"{{if or (not $.GatewayEnabled) (not .HasToken)}} disabled{{end}}>保存模型并重发目录</button>
+    <button type="submit"{{if or (not $.GatewayEnabled) (not .HasToken) (not $.GatewayModels)}} disabled{{end}}>保存模型并重发目录</button>
   </form>
 
   <h2>令牌</h2>
