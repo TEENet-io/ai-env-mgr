@@ -72,21 +72,22 @@ jobs:
 
       # Put agent.exe where the console's version library expects it, so the
       # 10 MB binary never has to pass through the console host. A dedicated
-      # The dedicated OSS_CI_* key uploads the binary; it is never embedded
-      # in agent.exe.
+      # Prefer the dedicated OSS_CI_* upload key. Existing repositories may
+      # still have only AGENT_OSS_* secrets: they are used by this CI upload
+      # step only and are never linked into agent.exe.
       # An existing object is never overwritten -- a version names one set
       # of bytes -- so a re-cut of the same tag fails here on purpose.
       - name: Upload agent.exe to the OSS version library
         env:
-          OSS_CI_ACCESS_KEY_ID: ${{ secrets.OSS_CI_ACCESS_KEY_ID }}
-          OSS_CI_ACCESS_KEY_SECRET: ${{ secrets.OSS_CI_ACCESS_KEY_SECRET }}
-          OSS_CI_BUCKET: ${{ secrets.OSS_CI_BUCKET }}
-          OSS_CI_ENDPOINT: ${{ secrets.OSS_CI_ENDPOINT }}
+          OSS_CI_ACCESS_KEY_ID: ${{ secrets.OSS_CI_ACCESS_KEY_ID || secrets.AGENT_OSS_ACCESS_KEY_ID }}
+          OSS_CI_ACCESS_KEY_SECRET: ${{ secrets.OSS_CI_ACCESS_KEY_SECRET || secrets.AGENT_OSS_ACCESS_KEY_SECRET }}
+          OSS_CI_BUCKET: ${{ secrets.OSS_CI_BUCKET || secrets.AGENT_OSS_BUCKET }}
+          OSS_CI_ENDPOINT: ${{ secrets.OSS_CI_ENDPOINT || secrets.AGENT_OSS_ENDPOINT }}
         run: |
           set -euo pipefail
           # No silent success: a release the console cannot see is not a release.
           for v in OSS_CI_ACCESS_KEY_ID OSS_CI_ACCESS_KEY_SECRET OSS_CI_BUCKET OSS_CI_ENDPOINT; do
-            [ -n "${!v}" ] || { echo "::error::$v is empty; agent.exe cannot be uploaded"; exit 1; }
+            [ -n "${!v}" ] || { echo "::error::$v is empty (set OSS_CI_* or legacy AGENT_OSS_*); agent.exe cannot be uploaded"; exit 1; }
           done
           # The CI key may carry the in-region endpoint (…-internal.aliyuncs.com),
           # which a GitHub runner cannot reach: ossutil would retry for hours.
