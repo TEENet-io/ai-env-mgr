@@ -9,10 +9,12 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
 
 	"github.com/TEENet-io/ai-env-mgr/internal/deviceconfig"
+	"github.com/TEENet-io/ai-env-mgr/internal/model"
 )
 
 // Errors a caller decides on.
@@ -271,6 +273,48 @@ func (c *Client) ArtifactURL(ctx context.Context, product, version string) (link
 	default:
 		msg, _ := io.ReadAll(io.LimitReader(res.Body, 512))
 		return "", "", fmt.Errorf("artifact %s %s: %s: %s", product, version, res.Status, strings.TrimSpace(string(msg)))
+	}
+}
+
+func (c *Client) ApplicationManifest(ctx context.Context, appID, version string) (model.Application, error) {
+	var out model.Application
+	req, err := c.request(ctx, http.MethodGet, "/agent/v1/application/"+url.PathEscape(appID)+"/"+url.PathEscape(version)+"/manifest", nil, "")
+	if err != nil {
+		return out, err
+	}
+	res, err := c.do(req)
+	if err != nil {
+		return out, err
+	}
+	defer res.Body.Close()
+	if err := json.NewDecoder(res.Body).Decode(&out); err != nil {
+		return out, fmt.Errorf("application manifest: unreadable reply: %w", err)
+	}
+	return out, nil
+}
+
+func (c *Client) ApplicationURL(ctx context.Context, appID, version string) (link, sha256hex string, err error) {
+	req, err := c.request(ctx, http.MethodGet, "/agent/v1/application/"+url.PathEscape(appID)+"/"+url.PathEscape(version), nil, "")
+	if err != nil {
+		return "", "", err
+	}
+	client := *c.http()
+	client.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
+	res, err := client.Do(req)
+	if err != nil {
+		return "", "", err
+	}
+	defer res.Body.Close()
+	switch res.StatusCode {
+	case http.StatusFound, http.StatusTemporaryRedirect:
+		return res.Header.Get("Location"), res.Header.Get("X-Artifact-SHA256"), nil
+	case http.StatusUnauthorized:
+		return "", "", ErrUnauthorized
+	case http.StatusNotFound:
+		return "", "", ErrNotFound
+	default:
+		msg, _ := io.ReadAll(io.LimitReader(res.Body, 512))
+		return "", "", fmt.Errorf("application %s@%s: %s: %s", appID, version, res.Status, strings.TrimSpace(string(msg)))
 	}
 }
 

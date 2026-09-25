@@ -12,10 +12,9 @@ import (
 )
 
 // connectConsole builds the console-backed Source when this build knows a
-// console and the machine holds, or can get, a device token. Nil means
-// "read the bucket this cycle": no console configured, or the console
-// could not be reached and there is no token yet. The service loop keeps
-// trying to enrol in that case (see enrolUntilDone).
+// console and the machine holds, or can get, a device token. Nil means the
+// agent is waiting for console enrolment; the service loop keeps trying in
+// that case (see enrolUntilDone).
 func connectConsole(consoleURL, hostname, stateDir string) *agentcore.APISource {
 	if consoleURL == "" {
 		return nil
@@ -25,7 +24,7 @@ func connectConsole(consoleURL, hostname, stateDir string) *agentcore.APISource 
 		token, err = enrolConsole(consoleURL, hostname, stateDir)
 	}
 	if err != nil {
-		log.Printf("console: %v; reading the bucket for now", err)
+		log.Printf("console: %v; waiting for console enrolment", err)
 		return nil
 	}
 	return newAPISource(consoleURL, token)

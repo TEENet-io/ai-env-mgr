@@ -1,6 +1,7 @@
 package agentcore
 
 import (
+	"encoding/json"
 	"errors"
 
 	"github.com/TEENet-io/ai-env-mgr/internal/model"
@@ -28,11 +29,18 @@ type Source interface {
 	// data -- it holds live tokens and is not moved across the network to
 	// learn that nothing changed. exists false means nothing is published.
 	Credentials(user, ifNoneMatch string) (data []byte, etag string, exists, unchanged bool, err error)
+	// Applications is the desired machine-wide software state. The bool is
+	// false when no application plan has been published for this machine.
+	Applications(machine string) (data []byte, exists bool, err error)
+	Application(appID, version string) ([]byte, error)
 	// ArtifactBytes downloads a targeted build into memory (the agent
 	// binary); ArtifactToFile streams one to disk (the Codex installer)
 	// and returns its SHA-256.
 	ArtifactBytes(product string, target model.ReleaseTarget) ([]byte, error)
 	ArtifactToFile(product string, target model.ReleaseTarget, dest string) (sha256hex string, err error)
+	// ApplicationToFile streams an approved application package through the
+	// console's signed-link endpoint. The agent never needs bucket keys.
+	ApplicationToFile(appID, version, dest string) (sha256hex string, err error)
 	// ReportStatus sends the machine's status; UploadLog its recent log.
 	ReportStatus(machine string, data []byte) error
 	UploadLog(machine string, tail []byte) error
@@ -79,6 +87,22 @@ func (o ossSource) Credentials(user, ifNoneMatch string) ([]byte, string, bool, 
 	return data, etag, true, false, nil
 }
 
+func (o ossSource) Applications(machine string) ([]byte, bool, error) {
+	data, _, err := o.Store.Get(ossclient.MachineApplicationsKey(machine))
+	if errors.Is(err, ossclient.ErrNotFound) {
+		return nil, false, nil
+	}
+	if err != nil {
+		return nil, false, err
+	}
+	return data, true, nil
+}
+
+func (o ossSource) Application(appID, version string) ([]byte, error) {
+	data, _, err := o.Store.Get(ossclient.ApplicationKey(appID, version))
+	return data, err
+}
+
 func (o ossSource) ArtifactBytes(_ string, target model.ReleaseTarget) ([]byte, error) {
 	data, _, err := o.Store.Get(target.Key)
 	return data, err
@@ -86,6 +110,18 @@ func (o ossSource) ArtifactBytes(_ string, target model.ReleaseTarget) ([]byte, 
 
 func (o ossSource) ArtifactToFile(_ string, target model.ReleaseTarget, dest string) (string, error) {
 	return o.Store.GetToFile(target.Key, dest)
+}
+
+func (o ossSource) ApplicationToFile(appID, version, dest string) (string, error) {
+	data, _, err := o.Store.Get(ossclient.ApplicationKey(appID, version))
+	if err != nil {
+		return "", err
+	}
+	var app model.Application
+	if err := json.Unmarshal(data, &app); err != nil {
+		return "", err
+	}
+	return o.Store.GetToFile(app.ObjectKey, dest)
 }
 
 func (o ossSource) ReportStatus(machine string, data []byte) error {
@@ -127,8 +163,15 @@ func (s *Syncer) source() Source {
 	if s.Source != nil {
 		return s.Source
 	}
+	if s.Store == nil {
+		return nil
+	}
 	return ossSource{Store: s.Store}
 }
+
+// Ready reports whether an instruction channel is available. API-only agents
+// use this while waiting for their first console enrolment.
+func (s *Syncer) Ready() bool { return s.source() != nil }
 
 // SetSource switches where instructions come from: the service loop calls
 // it once a late enrolment succeeds. The next cycle uses it.

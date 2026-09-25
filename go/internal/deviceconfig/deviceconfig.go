@@ -42,6 +42,11 @@ type Config struct {
 	// Bound is whether an employee is assigned; the name is in Binding.User.
 	Bound bool `json:"bound"`
 
+	// Applications is the desired machine-wide software plan. It is included
+	// in the same document so an agent can receive an install immediately
+	// without reading _machines/* from OSS.
+	Applications *model.MachineApplications `json:"applications,omitempty"`
+
 	// CredentialsETag identifies the credential bundle the machine should
 	// hold for its assignee: empty when unbound or when no token has been
 	// issued yet. A change here is what makes the agent fetch credentials.
@@ -189,6 +194,11 @@ func etagOf(cfg Config) string {
 	sum := sha256.Sum256(data)
 	return hex.EncodeToString(sum[:16])
 }
+
+// RecomputeETag refreshes the public configuration etag after a caller adds
+// data sourced outside the relational store (currently the application plan
+// retained in the object store during the migration).
+func (c *Config) RecomputeETag() { c.ETag = etagOf(*c) }
 
 // BindingObject renders the binding as the OSS exporter writes it, so the
 // object an old agent reads and the configuration a new one fetches say

@@ -1,11 +1,14 @@
 package deviceapi
 
 import (
+	"context"
+	"encoding/json"
 	"errors"
 	"net/http"
 	"strings"
 
 	"github.com/TEENet-io/ai-env-mgr/internal/deviceconfig"
+	"github.com/TEENet-io/ai-env-mgr/internal/model"
 	"github.com/TEENet-io/ai-env-mgr/internal/ossclient"
 	"github.com/TEENet-io/ai-env-mgr/internal/repo"
 )
@@ -67,12 +70,98 @@ func (s *Server) handleArtifact(w http.ResponseWriter, r *http.Request, device r
 		s.fail(w, r, "read artifact", err)
 		return
 	}
+	if key == "" {
+		http.Error(w, "no such version", http.StatusNotFound)
+		return
+	}
 	link, err := s.Objects.SignedURL(key, artifactTTL)
 	if err != nil {
 		s.fail(w, r, "sign download", err)
 		return
 	}
 	w.Header().Set("X-Artifact-SHA256", sha)
+	w.Header().Set("Cache-Control", "no-store")
+	http.Redirect(w, r, link, http.StatusFound)
+}
+
+func (s *Server) applicationManifest(ctx context.Context, device repo.Device, appID, version string) (model.Application, error) {
+	var app model.Application
+	cfg, err := s.config(ctx, device)
+	if err != nil {
+		return app, err
+	}
+	found := false
+	if cfg.Applications != nil {
+		for _, item := range cfg.Applications.Apps {
+			if item.AppID == appID && item.Version == version && item.Desired == "installed" {
+				found = true
+				break
+			}
+		}
+	}
+	if !found {
+		return app, errors.New("application is not assigned to this machine")
+	}
+	if s.Bucket == nil {
+		return app, errors.New("application manifest store is unavailable")
+	}
+	data, _, err := s.Bucket.Get(ossclient.ApplicationKey(appID, version))
+	if err != nil {
+		return app, err
+	}
+	if err := json.Unmarshal(data, &app); err != nil {
+		return app, err
+	}
+	if app.AppID != appID || app.Version != version || !app.Enabled || !app.Approved || app.ObjectKey == "" || app.SHA256 == "" {
+		return app, errors.New("application manifest is not approved")
+	}
+	if app.ObjectKey != ossclient.ApplicationPackageKey(appID, version, app.InstallerType) {
+		return app, errors.New("application package key is outside the approved namespace")
+	}
+	return app, nil
+}
+
+func (s *Server) handleApplicationManifest(w http.ResponseWriter, r *http.Request, device repo.Device) {
+	app, err := s.applicationManifest(r.Context(), device, r.PathValue("appID"), r.PathValue("version"))
+	if err != nil {
+		if errors.Is(err, repo.ErrNotFound) || strings.Contains(err.Error(), "not assigned") {
+			http.Error(w, "application not found", http.StatusNotFound)
+			return
+		}
+		if strings.Contains(err.Error(), "not approved") {
+			http.Error(w, "application not approved", http.StatusForbidden)
+			return
+		}
+		s.fail(w, r, "read application manifest", err)
+		return
+	}
+	writeJSON(w, http.StatusOK, app)
+}
+
+func (s *Server) handleApplication(w http.ResponseWriter, r *http.Request, device repo.Device) {
+	if s.Objects == nil {
+		http.Error(w, "downloads are not available", http.StatusServiceUnavailable)
+		return
+	}
+	app, err := s.applicationManifest(r.Context(), device, r.PathValue("appID"), r.PathValue("version"))
+	if err != nil {
+		if errors.Is(err, repo.ErrNotFound) || strings.Contains(err.Error(), "not assigned") {
+			http.Error(w, "application not found", http.StatusNotFound)
+			return
+		}
+		if strings.Contains(err.Error(), "not approved") {
+			http.Error(w, "application not approved", http.StatusForbidden)
+			return
+		}
+		s.fail(w, r, "read application manifest", err)
+		return
+	}
+	link, err := s.Objects.SignedURL(app.ObjectKey, artifactTTL)
+	if err != nil {
+		s.fail(w, r, "sign application download", err)
+		return
+	}
+	w.Header().Set("X-Artifact-SHA256", app.SHA256)
 	w.Header().Set("Cache-Control", "no-store")
 	http.Redirect(w, r, link, http.StatusFound)
 }

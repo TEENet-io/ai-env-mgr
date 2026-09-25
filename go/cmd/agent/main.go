@@ -1,6 +1,6 @@
-// Command agent runs on each cloud desktop as a Windows service. It pulls the
-// website block policy and the AI tool credentials from OSS, applies them
-// locally, and reports back what it did.
+// Command agent runs on each cloud desktop as a Windows service. It pulls
+// policy, credentials and software tasks from the Admin console, applies them
+// locally, and reports back what it did. It never carries bucket credentials.
 package main
 
 import (
@@ -15,7 +15,6 @@ import (
 	"github.com/TEENet-io/ai-env-mgr/internal/agentcore"
 	"github.com/TEENet-io/ai-env-mgr/internal/config"
 	"github.com/TEENet-io/ai-env-mgr/internal/model"
-	"github.com/TEENet-io/ai-env-mgr/internal/ossclient"
 	"github.com/TEENet-io/ai-env-mgr/internal/policy"
 	"github.com/TEENet-io/ai-env-mgr/internal/winsvc"
 )
@@ -111,7 +110,7 @@ func printStatus(st model.Status, verbose bool) {
 	// Worth printing: a shipped agent has its settings written into the
 	// binary, so someone editing agent.config.json and seeing nothing
 	// change needs to be told why.
-	fmt.Printf("config=%s\n", config.Source(builtIn()))
+	fmt.Printf("config=console (%s)\n", builtIn().ConsoleURL)
 	fmt.Printf("machine=%s\n", st.Machine)
 	if st.BoundUser == "" {
 		fmt.Println("bound to: (nothing yet -- ask the administrator to bind this machine)")
@@ -160,13 +159,10 @@ func formatAppLockerAllow(n int) string {
 	return strconv.Itoa(n)
 }
 
-// newSyncer wires the real OSS store and the real local applier together.
+// newSyncer wires the local applier to the console-backed source. The agent
+// deliberately has no OSS client or bucket credentials.
 func newSyncer() (*agentcore.Syncer, error) {
-	cfg, _, err := config.Resolve(builtIn(), config.DefaultAgentPath())
-	if err != nil {
-		return nil, err
-	}
-	store, err := ossclient.New(cfg.Endpoint, cfg.Bucket, cfg.AccessKeyID, cfg.AccessKeySecret)
+	cfg, _, err := config.ResolveAgent(builtIn(), config.DefaultAgentPath())
 	if err != nil {
 		return nil, err
 	}
@@ -175,14 +171,13 @@ func newSyncer() (*agentcore.Syncer, error) {
 		return nil, err
 	}
 	s := &agentcore.Syncer{
-		Store:            store,
 		Applier:          localApplier{},
 		Machine:          machine,
 		Version:          version,
 		StateDir:         stateDir(),
 		FallbackInterval: cfg.IntervalMinutes,
 		Collector: &agentcore.Collector{
-			Store:    store,
+			Store:    nil,
 			Source:   localFileSource{},
 			Machine:  machine,
 			StateDir: stateDir(),
@@ -196,10 +191,7 @@ func newSyncer() (*agentcore.Syncer, error) {
 	consoleTarget = cfg.ConsoleURL
 	if consoleTarget != "" {
 		if err := config.CheckConsoleURL(consoleTarget); err != nil {
-			// Staying on the bucket keeps the machine managed; the console
-			// sees it never move off the OSS channel.
-			log.Printf("console: %v; ignoring it and reading the bucket", err)
-			consoleTarget = ""
+			return nil, err
 		}
 	}
 	if api := connectConsole(consoleTarget, machine.Name(), stateDir()); api != nil {
@@ -208,7 +200,7 @@ func newSyncer() (*agentcore.Syncer, error) {
 	return s, nil
 }
 
-// consoleTarget is the console this build talks to, "" for bucket only.
+// consoleTarget is the console this build talks to.
 // The service loop uses it to keep enrolling when the start-up attempt
 // did not get a token.
 var consoleTarget string
@@ -237,11 +229,11 @@ func readLocalState() (localReport, error) {
 // that lives in the store -- who this machine is assigned to, when it last
 // synced -- is deliberately absent rather than shown as empty.
 func printLocalState(r localReport) {
-	fmt.Printf("config=%s\n", config.Source(builtIn()))
+	fmt.Printf("config=console (%s)\n", builtIn().ConsoleURL)
 	if consoleURL != "" {
 		fmt.Printf("console=%s\n", consoleURL)
 	} else {
-		fmt.Println("console=none (bucket only)")
+		fmt.Println("console=none (not configured)")
 	}
 	fmt.Printf("machine=%s\n", r.Machine)
 	fmt.Printf("local users: %s\n", strings.Join(r.LocalUsers, ", "))
@@ -375,9 +367,8 @@ func loop(s *agentcore.Syncer, stop <-chan struct{}, wake <-chan struct{}) {
 		for _, w := range st.Warnings {
 			log.Printf("  - %s", w)
 		}
-		// Push the recent log to OSS so the admin can read it without reaching
-		// the machine. Best effort: a failed upload (e.g. the RAM policy has no
-		// _logs/ write yet) is logged, not fatal.
+		// Push the recent log through the console's signed upload URL. Best
+		// effort: a failed upload is logged, not fatal.
 		if tail := readLogTail(stateDir()); tail != nil {
 			if err := s.UploadLog(tail); err != nil {
 				log.Printf("log upload failed: %v", err)

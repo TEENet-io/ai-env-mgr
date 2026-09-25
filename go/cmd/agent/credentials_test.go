@@ -8,14 +8,10 @@ import (
 	"testing"
 )
 
-// The credentials are plain strings in the source, so whichever binary is
-// compiled from a package carries them verbatim. That is fine as long as the
-// two sets stay in separate packages: agent.exe ships to employees' machines
-// and must never contain the administrator's read-write key.
-//
-// This test compiles both binaries with distinctive keys injected through the
-// linker and checks that each one carries only its own.
-func TestAdminKeyNeverLandsInTheAgent(t *testing.T) {
+// Agent releases are credential-free. The administrator may still carry its
+// own runtime-configurable template, but no linker secret may land in the
+// employee binary.
+func TestAgentNeverCarriesAnOSSKey(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping build in -short mode")
 	}
@@ -41,22 +37,14 @@ func TestAdminKeyNeverLandsInTheAgent(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Each binary must carry its own key -- otherwise the test is vacuous,
-	// because a linker flag that silently failed would also produce two
-	// binaries with no sentinel in either.
-	if !bytes.Contains(agentBin, []byte(agentKey)) {
-		t.Fatal("agent.exe does not carry its own key; the injection did not take, so this test proves nothing")
-	}
 	if !bytes.Contains(adminBin, []byte(adminKey)) {
-		t.Fatal("admin.exe does not carry its own key; the injection did not take, so this test proves nothing")
+		t.Fatal("admin linker test did not take")
 	}
-
-	// The point of the split.
+	if bytes.Contains(agentBin, []byte(agentKey)) {
+		t.Error("agent.exe contains an OSS key")
+	}
 	if bytes.Contains(agentBin, []byte(adminKey)) {
 		t.Error("agent.exe contains the administrator's key -- the credentials must stay in separate packages")
-	}
-	if bytes.Contains(adminBin, []byte(agentKey)) {
-		t.Error("admin.exe contains the agent's key")
 	}
 }
 

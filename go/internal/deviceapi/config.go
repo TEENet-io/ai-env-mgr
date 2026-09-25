@@ -2,15 +2,43 @@ package deviceapi
 
 import (
 	"context"
+	"encoding/json"
+	"errors"
 	"net/http"
 	"time"
 
 	"github.com/TEENet-io/ai-env-mgr/internal/deviceconfig"
+	"github.com/TEENet-io/ai-env-mgr/internal/model"
+	"github.com/TEENet-io/ai-env-mgr/internal/ossclient"
 	"github.com/TEENet-io/ai-env-mgr/internal/repo"
 )
 
+func (s *Server) config(ctx context.Context, device repo.Device) (deviceconfig.Config, error) {
+	cfg, err := deviceconfig.Build(ctx, s.Store, device.ID)
+	if err != nil {
+		return cfg, err
+	}
+	if s.Bucket != nil && !cfg.Forgotten {
+		data, _, err := s.Bucket.Get(ossclient.MachineApplicationsKey(device.Hostname))
+		switch {
+		case err == nil:
+			var apps model.MachineApplications
+			if err := json.Unmarshal(data, &apps); err != nil {
+				return cfg, err
+			}
+			cfg.Applications = &apps
+			cfg.RecomputeETag()
+		case errors.Is(err, ossclient.ErrNotFound):
+			// No plan is the normal state for machines without software tasks.
+		case err != nil:
+			return cfg, err
+		}
+	}
+	return cfg, nil
+}
+
 func (s *Server) handleConfig(w http.ResponseWriter, r *http.Request, device repo.Device) {
-	cfg, err := deviceconfig.Build(r.Context(), s.Store, device.ID)
+	cfg, err := s.config(r.Context(), device)
 	if err != nil {
 		s.fail(w, r, "build config", err)
 		return
@@ -41,7 +69,7 @@ func (s *Server) handleWait(w http.ResponseWriter, r *http.Request, device repo.
 		// Register for the wake before reading, so a change that lands
 		// between the two is not missed until the recheck.
 		mine, all := s.Hub.Wait(device.ID)
-		cfg, err := deviceconfig.Build(ctx, s.Store, device.ID)
+		cfg, err := s.config(ctx, device)
 		if err != nil {
 			if ctx.Err() != nil {
 				w.WriteHeader(http.StatusNoContent)

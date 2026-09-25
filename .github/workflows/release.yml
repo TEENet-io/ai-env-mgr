@@ -3,8 +3,8 @@ name: Release
 # On a version tag (e.g. v1.2.0), build the binaries and attach them to a
 # GitHub Release so they can be downloaded directly.
 #
-#   agent.exe            windows -- RESTRICTED agent OSS key injected from repo
-#                        secrets at link time (-ldflags -X), ready to run.
+#   agent.exe            windows -- credential-free; enrols with the console
+#                        and uses short-lived signed links for objects.
 #   admin-<os>-<arch>    linux/windows/macos, NO key -- the admin enters OSS
 #                        credentials interactively at runtime (nothing saved to
 #                        disk). The full read-write key must never be baked into
@@ -31,18 +31,9 @@ jobs:
         working-directory: go
         run: make check
 
-      # agent.exe only: the RESTRICTED agent key is injected via -ldflags -X on
-      # the string vars in cmd/agent/credentials.go, so nothing is written to
-      # disk. Secrets arrive via env (never interpolated into the script) and
-      # GitHub masks them in logs. OSS bucket/endpoint/keys contain no spaces,
-      # which is what keeps the space-split ldflags safe.
-      - name: Build agent.exe (windows, injected key)
+      - name: Build agent.exe (windows, console only)
         working-directory: go
         env:
-          AGENT_OSS_BUCKET: ${{ secrets.AGENT_OSS_BUCKET }}
-          AGENT_OSS_ENDPOINT: ${{ secrets.AGENT_OSS_ENDPOINT }}
-          AGENT_OSS_ACCESS_KEY_ID: ${{ secrets.AGENT_OSS_ACCESS_KEY_ID }}
-          AGENT_OSS_ACCESS_KEY_SECRET: ${{ secrets.AGENT_OSS_ACCESS_KEY_SECRET }}
           # The console every agent.exe enrols with and takes instructions
           # from. Not a secret, but changing it hands the whole fleet to
           # another server, so it lives here and changes only by commit.
@@ -58,15 +49,6 @@ jobs:
           fi
           LD="${LD} -X main.consoleURL=${AGENT_CONSOLE_URL}"
           echo "agent.exe: console ${AGENT_CONSOLE_URL} built in"
-          if [ -n "${AGENT_OSS_ACCESS_KEY_ID}" ]; then
-            LD="${LD} -X main.ossBucket=${AGENT_OSS_BUCKET} -X main.ossAccessKeyID=${AGENT_OSS_ACCESS_KEY_ID} -X main.ossAccessKeySecret=${AGENT_OSS_ACCESS_KEY_SECRET}"
-            if [ -n "${AGENT_OSS_ENDPOINT}" ]; then
-              LD="${LD} -X main.ossEndpoint=${AGENT_OSS_ENDPOINT}"
-            fi
-            echo "agent.exe: restricted OSS credentials injected (config=built-in)"
-          else
-            echo "::warning::AGENT_OSS_ACCESS_KEY_ID secret is not set; building a credential-less template agent.exe"
-          fi
           GOOS=windows GOARCH=amd64 go build -trimpath -ldflags "${LD}" -o ../dist/agent.exe ./cmd/agent
 
       # admin: no key, ever. The administrator enters credentials in the console
@@ -90,23 +72,23 @@ jobs:
 
       # Put agent.exe where the console's version library expects it, so the
       # 10 MB binary never has to pass through the console host. A dedicated
-      # OSS_CI_* key is used when the repository has one; otherwise the
-      # agent's own AGENT_OSS_* key (the operator's choice: one key for both).
+      # The dedicated OSS_CI_* key uploads the binary; it is never embedded
+      # in agent.exe.
       # An existing object is never overwritten -- a version names one set
       # of bytes -- so a re-cut of the same tag fails here on purpose.
       - name: Upload agent.exe to the OSS version library
         env:
-          OSS_CI_ACCESS_KEY_ID: ${{ secrets.OSS_CI_ACCESS_KEY_ID || secrets.AGENT_OSS_ACCESS_KEY_ID }}
-          OSS_CI_ACCESS_KEY_SECRET: ${{ secrets.OSS_CI_ACCESS_KEY_SECRET || secrets.AGENT_OSS_ACCESS_KEY_SECRET }}
-          OSS_CI_BUCKET: ${{ secrets.OSS_CI_BUCKET || secrets.AGENT_OSS_BUCKET }}
-          OSS_CI_ENDPOINT: ${{ secrets.OSS_CI_ENDPOINT || secrets.AGENT_OSS_ENDPOINT }}
+          OSS_CI_ACCESS_KEY_ID: ${{ secrets.OSS_CI_ACCESS_KEY_ID }}
+          OSS_CI_ACCESS_KEY_SECRET: ${{ secrets.OSS_CI_ACCESS_KEY_SECRET }}
+          OSS_CI_BUCKET: ${{ secrets.OSS_CI_BUCKET }}
+          OSS_CI_ENDPOINT: ${{ secrets.OSS_CI_ENDPOINT }}
         run: |
           set -euo pipefail
           # No silent success: a release the console cannot see is not a release.
           for v in OSS_CI_ACCESS_KEY_ID OSS_CI_ACCESS_KEY_SECRET OSS_CI_BUCKET OSS_CI_ENDPOINT; do
-            [ -n "${!v}" ] || { echo "::error::$v is empty (neither OSS_CI_* nor AGENT_OSS_* is set); agent.exe cannot be uploaded"; exit 1; }
+            [ -n "${!v}" ] || { echo "::error::$v is empty; agent.exe cannot be uploaded"; exit 1; }
           done
-          # The agent key carries the in-region endpoint (…-internal.aliyuncs.com),
+          # The CI key may carry the in-region endpoint (…-internal.aliyuncs.com),
           # which a GitHub runner cannot reach: ossutil would retry for hours.
           OSS_CI_ENDPOINT="${OSS_CI_ENDPOINT/-internal./.}"
           VER="${GITHUB_REF_NAME#v}"

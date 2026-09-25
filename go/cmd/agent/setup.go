@@ -22,8 +22,7 @@ const installRoot = `C:\Program Files\AIEnvMgr`
 // a running service, in one step.
 //
 // This exists because the manual sequence -- copy, lock down, register,
-// start, verify -- is five commands where forgetting the third silently
-// leaves the OSS key readable by every employee on the machine. It runs once,
+// start, verify -- is five commands. It runs once,
 // on the template machine, before the image is taken; every desktop created
 // from that image already has the service registered.
 //
@@ -61,9 +60,8 @@ func cmdSetup() error {
 		fmt.Printf("[1/5] copied to %s\n", target)
 	}
 
-	// 2. Lock the binary down. The OSS key is inside it, so a standard user
-	// must not be able to read it -- this is the step most easily forgotten
-	// when the sequence is run by hand.
+	// 2. Lock the binary down so employees cannot replace or retarget the
+	// service executable.
 	if err := restrictAccess(target); err != nil {
 		return fmt.Errorf("restrict access to %s: %w", target, err)
 	}

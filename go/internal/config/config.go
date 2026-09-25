@@ -105,6 +105,33 @@ func Resolve(builtIn Config, path string) (*Config, string, error) {
 	return cfg, SourceFile, nil
 }
 
+// ResolveAgent loads the credential-free agent configuration. Agents talk to
+// the console and receive short-lived signed object links; they no longer
+// need bucket credentials at build time or on disk.
+func ResolveAgent(builtIn Config, path string) (*Config, string, error) {
+	if builtIn.ConsoleURL != "" {
+		if builtIn.IntervalMinutes <= 0 {
+			builtIn.IntervalMinutes = DefaultIntervalMinutes
+		}
+		return &builtIn, SourceBuiltIn, nil
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil, "", fmt.Errorf("read agent config %s: %w", path, err)
+	}
+	var cfg Config
+	if err := json.Unmarshal(data, &cfg); err != nil {
+		return nil, "", fmt.Errorf("parse agent config %s: %w", path, err)
+	}
+	if cfg.ConsoleURL == "" {
+		return nil, "", fmt.Errorf("agent config %s: missing required field %q", path, "consoleUrl")
+	}
+	if cfg.IntervalMinutes <= 0 {
+		cfg.IntervalMinutes = DefaultIntervalMinutes
+	}
+	return &cfg, SourceFile, nil
+}
+
 // HasBuiltIn reports whether a binary carries its own credentials.
 func HasBuiltIn(builtIn Config) bool { return builtIn.AccessKeyID != "" }
 

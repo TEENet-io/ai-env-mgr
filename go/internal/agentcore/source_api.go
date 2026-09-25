@@ -169,6 +169,30 @@ func (a *APISource) Credentials(_ string, ifNoneMatch string) ([]byte, string, b
 	return data, etag, exists, unchanged, a.note(err)
 }
 
+func (a *APISource) Applications(_ string) ([]byte, bool, error) {
+	a.mu.Lock()
+	cfg := a.cycle
+	if cfg == nil {
+		cfg = a.cfg
+	}
+	a.mu.Unlock()
+	if cfg == nil || cfg.Applications == nil {
+		return nil, false, nil
+	}
+	data, err := json.Marshal(*cfg.Applications)
+	return data, err == nil, err
+}
+
+func (a *APISource) Application(appID, version string) ([]byte, error) {
+	ctx, cancel := a.ctx()
+	defer cancel()
+	app, err := a.Client.ApplicationManifest(ctx, appID, version)
+	if err != nil {
+		return nil, a.note(err)
+	}
+	return json.Marshal(app)
+}
+
 func (a *APISource) download() *http.Client {
 	if a.Download != nil {
 		return a.Download
@@ -233,6 +257,50 @@ func (a *APISource) ArtifactToFile(product string, target model.ReleaseTarget, d
 	}
 	if err := os.Rename(tmp, dest); err != nil {
 		os.Remove(tmp)
+		return "", err
+	}
+	return hex.EncodeToString(h.Sum(nil)), nil
+}
+
+func (a *APISource) ApplicationToFile(appID, version, dest string) (string, error) {
+	ctx, cancel := a.ctx()
+	defer cancel()
+	link, _, err := a.Client.ApplicationURL(ctx, appID, version)
+	if err != nil {
+		return "", a.note(err)
+	}
+	return a.downloadToFile(link, dest)
+}
+
+func (a *APISource) downloadToFile(link, dest string) (string, error) {
+	body, err := a.download().Get(link)
+	if err != nil {
+		return "", err
+	}
+	defer body.Body.Close()
+	if body.StatusCode != http.StatusOK {
+		return "", fmt.Errorf("download application: %s", body.Status)
+	}
+	if err := os.MkdirAll(filepath.Dir(dest), 0o700); err != nil {
+		return "", err
+	}
+	tmp := dest + ".part"
+	f, err := os.OpenFile(tmp, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0o600)
+	if err != nil {
+		return "", err
+	}
+	h := sha256.New()
+	if _, err := io.Copy(io.MultiWriter(f, h), body.Body); err != nil {
+		f.Close()
+		_ = os.Remove(tmp)
+		return "", err
+	}
+	if err := f.Close(); err != nil {
+		_ = os.Remove(tmp)
+		return "", err
+	}
+	if err := os.Rename(tmp, dest); err != nil {
+		_ = os.Remove(tmp)
 		return "", err
 	}
 	return hex.EncodeToString(h.Sum(nil)), nil

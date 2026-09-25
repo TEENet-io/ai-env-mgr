@@ -288,7 +288,11 @@ func (s *Syncer) DueForSync(interval time.Duration) bool {
 // object with no user is "not bound" too, but its targets still count: a
 // machine nobody is assigned to can still be told what to run.
 func (s *Syncer) loadBinding(machine string) (model.Binding, bool) {
-	data, etag, exists, err := s.source().Binding(machine)
+	src := s.source()
+	if src == nil {
+		return model.Binding{}, false
+	}
+	data, etag, exists, err := src.Binding(machine)
 	if err != nil {
 		return model.Binding{}, false
 	}
@@ -311,7 +315,11 @@ func (s *Syncer) loadBinding(machine string) (model.Binding, bool) {
 // machine on the next heartbeat instead of the next interval. A store that
 // cannot be reached answers "no": the scheduled sync is the fallback.
 func (s *Syncer) ChangedSinceLastSync() (bool, string) {
-	return s.source().Changed(s.Machine.Name(), s.readMarker(policySeenMarkerFile), s.readMarker(bindingSeenMarkerFile))
+	src := s.source()
+	if src == nil {
+		return false, ""
+	}
+	return src.Changed(s.Machine.Name(), s.readMarker(policySeenMarkerFile), s.readMarker(bindingSeenMarkerFile))
 }
 
 // RunOnce performs one full cycle: apply the machine-wide block policy, work
@@ -322,6 +330,9 @@ func (s *Syncer) ChangedSinceLastSync() (bool, string) {
 // object must not stop credentials from being delivered, and a failed status
 // upload must not undo work that already landed on the machine.
 func (s *Syncer) RunOnce() (model.Status, error) {
+	if s.source() == nil {
+		return model.Status{}, errors.New("console source is not available; waiting for enrolment")
+	}
 	machine := s.Machine.Name()
 	localUsers := s.Machine.LocalUsers()
 
@@ -617,7 +628,10 @@ func (s *Syncer) prepareUpdate(target model.ReleaseTarget, errs *[]string) ([]by
 // it remotely (see `admin log <machine>`). Best effort: the caller logs and
 // ignores failures rather than failing the sync over a log upload.
 func (s *Syncer) UploadLog(tail []byte) error {
-	return s.source().UploadLog(s.Machine.Name(), tail)
+	if src := s.source(); src != nil {
+		return src.UploadLog(s.Machine.Name(), tail)
+	}
+	return errors.New("console source is not available")
 }
 
 // Heartbeat re-uploads the machine's last status with a fresh timestamp, so
@@ -629,6 +643,9 @@ func (s *Syncer) UploadLog(tail []byte) error {
 // config pulls) while liveness stays fresh. A no-op before the first full sync,
 // since there is no status to refresh yet.
 func (s *Syncer) Heartbeat() error {
+	if s.source() == nil {
+		return errors.New("console source is not available")
+	}
 	s.mu.Lock()
 	if s.lastStatus.Machine == "" {
 		s.mu.Unlock()
@@ -666,6 +683,9 @@ func (s *Syncer) Heartbeat() error {
 // sleep open. A failed or timed-out upload simply means the admin falls back to
 // the graduated-staleness view instead of the positive marker.
 func (s *Syncer) ReportEvent(event string) {
+	if s.source() == nil {
+		return
+	}
 	s.mu.Lock()
 	if s.lastStatus.Machine == "" {
 		s.mu.Unlock()

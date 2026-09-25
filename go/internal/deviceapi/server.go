@@ -143,6 +143,8 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /agent/v1/status", s.authed(s.handleStatus))
 	mux.HandleFunc("POST /agent/v1/log", s.authed(s.handleLog))
 	mux.HandleFunc("GET /agent/v1/artifact/{product}/{version}", s.authed(s.handleArtifact))
+	mux.HandleFunc("GET /agent/v1/application/{appID}/{version}/manifest", s.authed(s.handleApplicationManifest))
+	mux.HandleFunc("GET /agent/v1/application/{appID}/{version}", s.authed(s.handleApplication))
 	mux.HandleFunc("POST /agent/v1/collect/upload-url", s.authed(s.handleCollectURL))
 	mux.HandleFunc("POST /agent/v1/token/rotate", s.authed(s.handleRotate))
 	return mux

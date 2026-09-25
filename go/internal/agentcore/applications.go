@@ -46,12 +46,12 @@ func (s *Syncer) updateApplications(machine string, errs *[]string) []model.Appl
 	if s.Applications == nil {
 		return nil
 	}
-	data, _, err := s.Store.Get(ossclient.MachineApplicationsKey(machine))
+	data, exists, err := s.source().Applications(machine)
 	if err != nil {
-		if strings.Contains(strings.ToLower(err.Error()), "not found") {
-			return nil
-		}
 		*errs = append(*errs, fmt.Sprintf("applications: read desired state: %v", err))
+		return nil
+	}
+	if !exists {
 		return nil
 	}
 	var desired model.MachineApplications
@@ -101,7 +101,7 @@ func (s *Syncer) applyApplication(item model.DesiredApplication) model.Applicati
 		AppID: item.AppID, DesiredVersion: item.Version, TaskID: item.TaskID,
 		State: AppQueued, UpdatedAt: time.Now().UTC().Format(time.RFC3339),
 	}
-	data, _, err := s.Store.Get(ossclient.ApplicationKey(item.AppID, item.Version))
+	data, err := s.source().Application(item.AppID, item.Version)
 	if err != nil {
 		return appFailure(st, AppFailed, fmt.Sprintf("read manifest: %v", err))
 	}
@@ -141,7 +141,7 @@ func (s *Syncer) applyApplication(item model.DesiredApplication) model.Applicati
 	st.State = AppDownloading
 	destDir := filepath.Join(s.StateDir, "applications", safeName(app.AppID), safeName(app.Version))
 	dest := filepath.Join(destDir, "installer")
-	sum, err := s.Store.GetToFile(app.ObjectKey, dest)
+	sum, err := s.source().ApplicationToFile(app.AppID, app.Version, dest)
 	if err != nil {
 		return appFailure(st, AppFailed, fmt.Sprintf("download: %v", err))
 	}

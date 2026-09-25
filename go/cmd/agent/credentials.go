@@ -10,28 +10,9 @@ import "github.com/TEENet-io/ai-env-mgr/internal/config"
 // already fetched it. If you push a real key by accident, rotate it rather
 // than trying to erase it.
 //
-// FILL THESE IN BEFORE BUILDING agent.exe.
-//
-// These are the OSS settings that end up in every cloud desktop's agent.
-// Use the RESTRICTED RAM user -- the one whose policy only allows reading
-// policy/credentials and writing status. Never the administrator's key.
-//
-// ossEndpoint must be the INTERNAL one (with -internal), so the cloud
-// desktops reach OSS over the VPC and the traffic is free.
-//
-// Leaving the key blank is fine for development: the agent then reads
-// agent.config.json from its own directory instead. That is not how the image
-// should be built -- `agent.exe status` prints which one is in effect.
-//
-// This lives in the agent's own package on purpose. Keeping it out of a
-// shared package is what guarantees the administrator's read-write key is
-// never compiled into a binary that ships to employees' machines. There is a
-// test that builds both binaries and checks exactly that.
+// The agent carries no OSS bucket credentials. It enrols with the console and
+// uses the device token plus short-lived signed links for objects and uploads.
 var (
-	ossBucket          = ""
-	ossEndpoint        = "oss-cn-hangzhou-internal.aliyuncs.com"
-	ossAccessKeyID     = ""
-	ossAccessKeySecret = ""
 	// consoleURL is the console the agent enrols with and talks to directly.
 	// Not a secret: it is the public address. Empty means the bucket is the
 	// only channel, as before 1.3.0.
@@ -49,10 +30,6 @@ const defaultSyncMinutes = 30
 // linker and still see the result.
 func builtIn() config.Config {
 	return config.Config{
-		Bucket:          ossBucket,
-		Endpoint:        ossEndpoint,
-		AccessKeyID:     ossAccessKeyID,
-		AccessKeySecret: ossAccessKeySecret,
 		IntervalMinutes: defaultSyncMinutes,
 		ConsoleURL:      consoleURL,
 	}
