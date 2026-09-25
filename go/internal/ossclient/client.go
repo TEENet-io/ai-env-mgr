@@ -562,6 +562,23 @@ func (c *Client) SignedURL(key string, ttl time.Duration) (string, error) {
 	return url, nil
 }
 
+// SignedDataURL is the data-plane counterpart to SignedURL. When the client
+// was built with NewSplit, this signs against the transfer endpoint (for
+// example an Aliyun VPC internal endpoint) instead of the public endpoint
+// reserved for links that leave the VPC. It is used only when the caller has
+// explicitly configured a data endpoint; New keeps both endpoints the same.
+func (c *Client) SignedDataURL(key string, ttl time.Duration) (string, error) {
+	secs := int64(ttl / time.Second)
+	if secs <= 0 {
+		return "", fmt.Errorf("expiry must be positive, got %s", ttl)
+	}
+	url, err := c.bucket.SignURL(key, oss.HTTPGet, secs)
+	if err != nil {
+		return "", fmt.Errorf("sign data url for %q: %w", key, err)
+	}
+	return url, nil
+}
+
 // SignedPutURL returns a URL that lets its holder write one object, once,
 // for ttl, with exactly the given Content-Type. It is how a machine uploads
 // a session archive without holding any bucket credentials: the console
@@ -578,6 +595,22 @@ func (c *Client) SignedPutURL(key string, ttl time.Duration, contentType string)
 	url, err := c.signBucket.SignURL(key, oss.HTTPPut, secs, oss.ContentType(contentType))
 	if err != nil {
 		return "", fmt.Errorf("sign put url for %q: %w", key, err)
+	}
+	return url, nil
+}
+
+// SignedDataPutURL is SignedPutURL on the configured data endpoint.
+func (c *Client) SignedDataPutURL(key string, ttl time.Duration, contentType string) (string, error) {
+	secs := int64(ttl / time.Second)
+	if secs <= 0 {
+		return "", fmt.Errorf("expiry must be positive, got %s", ttl)
+	}
+	if contentType == "" {
+		return "", errors.New("a content type is required: it is part of what the signature binds")
+	}
+	url, err := c.bucket.SignURL(key, oss.HTTPPut, secs, oss.ContentType(contentType))
+	if err != nil {
+		return "", fmt.Errorf("sign data put url for %q: %w", key, err)
 	}
 	return url, nil
 }

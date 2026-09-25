@@ -13,6 +13,13 @@ import (
 	"github.com/TEENet-io/ai-env-mgr/internal/repo"
 )
 
+func (s *Server) signedDownload(key string) (string, error) {
+	if p, ok := s.Objects.(DataPresigner); ok {
+		return p.SignedDataURL(key, artifactTTL)
+	}
+	return s.Objects.SignedURL(key, artifactTTL)
+}
+
 // handleArtifact hands out a download link for a version this machine is
 // meant to install: its own target or the fleet's. Anything else is 403 --
 // the version library is not a public download site.
@@ -74,7 +81,7 @@ func (s *Server) handleArtifact(w http.ResponseWriter, r *http.Request, device r
 		http.Error(w, "no such version", http.StatusNotFound)
 		return
 	}
-	link, err := s.Objects.SignedURL(key, artifactTTL)
+	link, err := s.signedDownload(key)
 	if err != nil {
 		s.fail(w, r, "sign download", err)
 		return
@@ -156,7 +163,7 @@ func (s *Server) handleApplication(w http.ResponseWriter, r *http.Request, devic
 		s.fail(w, r, "read application manifest", err)
 		return
 	}
-	link, err := s.Objects.SignedURL(app.ObjectKey, artifactTTL)
+	link, err := s.signedDownload(app.ObjectKey)
 	if err != nil {
 		s.fail(w, r, "sign application download", err)
 		return
@@ -207,7 +214,12 @@ func (s *Server) handleCollectURL(w http.ResponseWriter, r *http.Request, device
 		http.Error(w, "this machine may only upload for its own user", http.StatusForbidden)
 		return
 	}
-	link, err := s.Objects.SignedPutURL(ossclient.DataCollectKey(employee.WindowsUser, req.Rel), uploadTTL, "application/octet-stream")
+	var link string
+	if p, ok := s.Objects.(DataPresigner); ok {
+		link, err = p.SignedDataPutURL(ossclient.DataCollectKey(employee.WindowsUser, req.Rel), uploadTTL, "application/octet-stream")
+	} else {
+		link, err = s.Objects.SignedPutURL(ossclient.DataCollectKey(employee.WindowsUser, req.Rel), uploadTTL, "application/octet-stream")
+	}
 	if err != nil {
 		s.fail(w, r, "sign upload", err)
 		return

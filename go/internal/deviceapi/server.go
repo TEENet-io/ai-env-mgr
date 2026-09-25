@@ -24,6 +24,14 @@ type Presigner interface {
 	SignedPutURL(key string, ttl time.Duration, contentType string) (string, error)
 }
 
+// DataPresigner is optional. OSS clients built with a split public/data
+// endpoint implement it so agents in the same VPC receive an internal link;
+// test doubles and legacy stores continue using Presigner's public URL.
+type DataPresigner interface {
+	SignedDataURL(key string, ttl time.Duration) (string, error)
+	SignedDataPutURL(key string, ttl time.Duration, contentType string) (string, error)
+}
+
 // BucketReader reads one object: the fallback for a credentials bundle that
 // predates the bundle table, while the bucket is still written.
 type BucketReader interface {

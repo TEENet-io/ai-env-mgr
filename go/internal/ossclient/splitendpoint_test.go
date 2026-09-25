@@ -33,6 +33,21 @@ func TestSignedURLsUseThePublicEndpoint(t *testing.T) {
 	}
 }
 
+func TestSignedDataURLsUseTheInternalEndpoint(t *testing.T) {
+	const internal = "oss-ap-southeast-1-internal.aliyuncs.com"
+	c, err := NewSplit(internal, "oss-ap-southeast-1.aliyuncs.com", "ai-collect-sg", "ak", "sk")
+	if err != nil {
+		t.Fatal(err)
+	}
+	url, err := c.SignedDataURL(UserKey("work1", "credentials.zip"), time.Hour)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(url, internal) {
+		t.Fatalf("unexpected data endpoint: %s", url)
+	}
+}
+
 // With no public endpoint given, both roles use the one endpoint -- the case
 // for the agent and for an administrator's own machine.
 func TestSignedURLsFallBackToTheOnlyEndpoint(t *testing.T) {
