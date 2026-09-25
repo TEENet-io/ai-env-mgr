@@ -347,9 +347,23 @@ func loop(s *agentcore.Syncer, stop <-chan struct{}, wake <-chan struct{}) {
 	}
 
 	var lastRun time.Time
-	sync := func(reason string) {
+	type syncResult struct {
+		reason string
+		status model.Status
+		err    error
+	}
+	syncDone := make(chan syncResult, 1)
+	syncing := false
+	pendingSync := false
+
+	startSync := func(reason string) {
 		if !s.Ready() {
 			log.Printf("%s sync waiting for console enrolment", reason)
+			return
+		}
+		if syncing {
+			pendingSync = true
+			log.Printf("skipping %s sync: another sync is still running", reason)
 			return
 		}
 		if !lastRun.IsZero() && time.Since(lastRun) < minSyncGap {
@@ -365,17 +379,32 @@ func loop(s *agentcore.Syncer, stop <-chan struct{}, wake <-chan struct{}) {
 			return
 		}
 		lastRun = time.Now()
+		syncing = true
+		// RunOnce can download and install a large application. Keep it off the
+		// service/event loop so heartbeats, long-poll configuration changes and
+		// stop handling continue while that work is in progress.
+		go func() {
+			st, err := s.RunOnce()
+			syncDone <- syncResult{reason: reason, status: st, err: err}
+		}()
+	}
 
-		st, err := s.RunOnce()
-		if err != nil {
-			log.Printf("%s sync failed: %v", reason, err)
+	finishSync := func(result syncResult) {
+		syncing = false
+		if pendingSync {
+			pendingSync = false
+			nudge()
+		}
+		if result.err != nil {
+			log.Printf("%s sync failed: %v", result.reason, result.err)
 			return
 		}
+		st := result.status
 		// Errors and warnings are counted separately: "errors=1" for a machine
 		// merely waiting to be signed in for reads as a fault when nothing is
 		// wrong, and a log that says that routinely is one nobody trusts.
 		log.Printf("%s sync ok: policyEtag=%s credsEtag=%s interval=%dm errors=%d warnings=%d",
-			reason, orDash(st.PolicyETag), orDash(st.CredsETag), st.SyncIntervalMinutes,
+			result.reason, orDash(st.PolicyETag), orDash(st.CredsETag), st.SyncIntervalMinutes,
 			len(st.Errors), len(st.Warnings))
 		for _, e := range st.Errors {
 			log.Printf("  ! %s", e)
@@ -399,7 +428,7 @@ func loop(s *agentcore.Syncer, stop <-chan struct{}, wake <-chan struct{}) {
 	}
 
 	// Trigger 1: the service just started, so do not wait out a whole interval.
-	sync("startup")
+	startSync("startup")
 
 	hostname := s.Machine.Name()
 	startWaiter := func(api *agentcore.APISource) {
@@ -422,32 +451,35 @@ func loop(s *agentcore.Syncer, stop <-chan struct{}, wake <-chan struct{}) {
 
 	for {
 		select {
+		case result := <-syncDone:
+			finishSync(result)
+
 		case <-stop:
 			log.Printf("stopping")
 			return
 
 		case <-notify:
-			sync("console changed")
+			startSync("console changed")
 
 		case api := <-adopted:
 			// Enrolled after start-up: from here on the console is the source.
 			adoptConsole(s, api)
 			startWaiter(api)
-			sync("console enrolled")
+			startSync("console enrolled")
 
 		case <-wake:
 			// Trigger 2: the machine resumed from sleep.
-			sync("wake-up")
+			startSync("wake-up")
 
 		case <-ticker.C:
 			// Trigger 3: the wall clock says we are overdue. This also catches
 			// a resume whose power event was never delivered.
 			if s.DueForSync(interval) {
-				sync("scheduled")
+				startSync("scheduled")
 			} else if changed, what := s.ChangedSinceLastSync(); changed {
 				// The console changed something for this machine; do not
 				// make it wait out the interval.
-				sync(what + " changed")
+				startSync(what + " changed")
 			} else if err := s.Heartbeat(); err != nil {
 				// Between full syncs, just refresh "last seen" so the admin can
 				// tell the machine is alive without waiting a whole interval.
