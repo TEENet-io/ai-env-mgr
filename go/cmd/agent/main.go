@@ -39,6 +39,13 @@ func stateDir() string {
 }
 
 func main() {
+	// A self-update launches a copy of the old image as a detached helper. It
+	// must enter this path before normal service setup so it never opens the
+	// service log or starts a second sync loop.
+	if len(os.Args) > 1 && os.Args[1] == "--update-helper" {
+		must(runUpdateHelper(os.Args[2:]))
+		return
+	}
 	// The AppLocker policy handed to Set-AppLockerPolicy is staged here, not
 	// in os.TempDir() -- which for a service running as LocalSystem is
 	// C:\Windows\Temp, a directory standard users can write to. See
@@ -292,6 +299,10 @@ func runService() {
 		log.SetOutput(f)
 		defer f.Close()
 	}
+	if result := consumeUpdateHelperResult(); result != "" {
+		log.Printf("agent update helper: %s", result)
+	}
+	go cleanupUpdateHelpers()
 
 	// Build the syncer once and share it between the worker loop and the
 	// power/stop event handler: OnEvent must report on the very same status the
