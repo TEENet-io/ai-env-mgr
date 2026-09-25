@@ -21,12 +21,15 @@
         <td class="num">{{.Generation}}</td>
         <td class="dim">{{.CreatedAt.Format "01-02 15:04"}}</td>
         <td class="dim">{{if .FinishedAt}}{{.FinishedAt.Format "01-02 15:04"}}{{end}}</td>
-        <td>
+        <td class="actions">
           {{if eq (printf "%s" .Status) "failed"}}
           <form method="post" action="/rollouts/retry" class="inline"><input type="hidden" name="csrf" value="{{$.CSRF}}"><input type="hidden" name="id" value="{{.RolloutID}}"><input type="hidden" name="target" value="{{.ID}}"><button class="link">重试</button></form>
           {{end}}
           {{if eq (printf "%s" .Status) "pending"}}
           <form method="post" action="/rollouts/exclude" class="inline"><input type="hidden" name="csrf" value="{{$.CSRF}}"><input type="hidden" name="id" value="{{.RolloutID}}"><input type="hidden" name="target" value="{{.ID}}"><input name="reason" placeholder="排除原因（必填）" size="16"><button class="link">排除</button></form>
+          {{end}}
+          {{if or (eq (printf "%s" .Status) "pending") (eq (printf "%s" .Status) "succeeded") (eq (printf "%s" .Status) "failed")}}
+          <form method="post" action="/machines/version" class="inline"><input type="hidden" name="csrf" value="{{$.CSRF}}"><input type="hidden" name="machine" value="{{.Hostname}}"><input type="hidden" name="product" value="{{.Product}}"><input type="hidden" name="artifact" value=""><button class="link">改回跟随全局</button></form>
           {{end}}
         </td>
       </tr>{{end}}
