@@ -140,7 +140,7 @@ func (s *Syncer) applyApplication(item model.DesiredApplication) model.Applicati
 
 	st.State = AppDownloading
 	destDir := filepath.Join(s.StateDir, "applications", safeName(app.AppID), safeName(app.Version))
-	dest := filepath.Join(destDir, "installer")
+	dest := filepath.Join(destDir, installerFilename(app.InstallerType))
 	sum, err := s.source().ApplicationToFile(app.AppID, app.Version, dest)
 	if err != nil {
 		return appFailure(st, AppFailed, fmt.Sprintf("download: %v", err))
@@ -157,6 +157,13 @@ func (s *Syncer) applyApplication(item model.DesiredApplication) model.Applicati
 	_ = os.Remove(dest)
 	st.State = AppVerifyingInstall
 	return s.finishApplication(st, app)
+}
+
+func installerFilename(installerType string) string {
+	if strings.EqualFold(installerType, "msi") {
+		return "installer.msi"
+	}
+	return "installer.exe"
 }
 
 func (s *Syncer) finishApplication(st model.ApplicationStatus, app model.Application) model.ApplicationStatus {
