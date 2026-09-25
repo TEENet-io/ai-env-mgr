@@ -529,7 +529,11 @@ func (s *Syncer) RunOnce() (model.Status, error) {
 	// a Codex install interrupted halfway is worse than one that waits a cycle.
 	agentTarget, codexTarget := effectiveTargets(pol, binding)
 	codex := s.updateCodex(codexTarget, &errs)
-	appStatuses := s.updateApplications(machine, &errs)
+	var appStatuses []model.ApplicationStatus
+	// The API worker owns current Admin tasks. This path remains for direct
+	// OSS/legacy sources and for compatibility tests; the device API no longer
+	// embeds OSS machine plans in its configuration.
+	appStatuses = s.updateApplications(machine, &errs)
 
 	// ---- self-update: download + verify ----
 	// The binary is fetched and checksummed now so any problem surfaces in this

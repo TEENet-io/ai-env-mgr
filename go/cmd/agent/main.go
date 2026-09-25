@@ -428,6 +428,9 @@ func loop(s *agentcore.Syncer, stop <-chan struct{}, wake <-chan struct{}) {
 	}
 
 	// Trigger 1: the service just started, so do not wait out a whole interval.
+	// Application jobs have their own lease-aware worker. An installer may run
+	// for 30 minutes without blocking policy sync, heartbeat, or Admin control.
+	go applicationTaskLoop(s, stop)
 	startSync("startup")
 
 	hostname := s.Machine.Name()

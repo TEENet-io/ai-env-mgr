@@ -63,6 +63,7 @@ type Store interface {
 	Alerts() Alerts
 	DeviceTokens() DeviceTokens
 	CredentialBundles() CredentialBundles
+	ApplicationTasks() ApplicationTasks
 
 	// InTx runs fn in a transaction, committing if it returns nil. The Store
 	// passed to fn is the transactional one: using the outer Store inside fn

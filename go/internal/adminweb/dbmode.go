@@ -7,7 +7,6 @@ import (
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/hex"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"log"
@@ -25,9 +24,7 @@ import (
 	"github.com/TEENet-io/ai-env-mgr/internal/deviceapi"
 	"github.com/TEENet-io/ai-env-mgr/internal/ecdclient"
 	"github.com/TEENet-io/ai-env-mgr/internal/litellm"
-	"github.com/TEENet-io/ai-env-mgr/internal/model"
 	"github.com/TEENet-io/ai-env-mgr/internal/ops"
-	"github.com/TEENet-io/ai-env-mgr/internal/ossclient"
 	"github.com/TEENet-io/ai-env-mgr/internal/repo"
 	"github.com/TEENet-io/ai-env-mgr/internal/secrets"
 	"github.com/TEENet-io/ai-env-mgr/internal/slsclient"
@@ -710,42 +707,18 @@ func (s *Server) handleTasks(w http.ResponseWriter, r *http.Request, sess *sessi
 		}
 		data.Tasks = append(data.Tasks, row)
 	}
-	// Application installs are intentionally pulled by the Windows Agent, so
-	// their desired state lives in OSS and their observed state in the machine
-	// report. Present them beside database-backed Worker tasks in one view.
-	if machines, machineErr := sess.be.Machines(r.Context()); machineErr == nil {
-		statusOf := map[string]model.ApplicationStatus{}
-		for _, m := range machines {
-			for _, st := range m.Status.Apps {
-				statusOf[m.Machine+"\x00"+st.AppID] = st
+	// PostgreSQL owns the install lifecycle. OSS contains only immutable
+	// manifests/packages; a stale machine plan must never resurrect a task.
+	if appTasks, err := s.dbm.store.ApplicationTasks().ListRecent(r.Context(), 200); err == nil {
+		for _, task := range appTasks {
+			machine := task.DeviceID
+			if d, err := s.dbm.store.Devices().ByID(r.Context(), task.DeviceID); err == nil {
+				machine = d.Hostname
 			}
-		}
-		// Read one deterministic key per known device instead of listing the
-		// prefix. The console's RAM policy intentionally permits Get/Put for
-		// machine plans but may not grant ListObjects on _machines/. A failed
-		// or empty prefix listing used to make a freshly-created install task
-		// disappear from the task center even though the Agent could fetch it.
-		for _, machine := range machines {
-			key := ossclient.MachineApplicationsKey(machine.Machine)
-			dataBytes, _, getErr := s.dbm.objects.Get(key)
-			if getErr != nil {
-				continue
-			}
-			var desired model.MachineApplications
-			if json.Unmarshal(dataBytes, &desired) != nil {
-				continue
-			}
-			if desired.Machine == "" {
-				desired.Machine = machine.Machine
-			}
-			for _, item := range desired.Apps {
-				st := statusOf[desired.Machine+"\x00"+item.AppID]
-				// A previous attempt must not mark this request complete.
-				if st.TaskID != item.TaskID || st.DesiredVersion != item.Version {
-					st = model.ApplicationStatus{UpdatedAt: desired.UpdatedAt}
-				}
-				data.ApplicationTasks = append(data.ApplicationTasks, applicationTaskRow{Machine: desired.Machine, AppID: item.AppID, Version: item.Version, TaskID: item.TaskID, Desired: item.Desired, State: st.State, Updated: st.UpdatedAt, LastError: st.LastError})
-			}
+			data.ApplicationTasks = append(data.ApplicationTasks, applicationTaskRow{
+				Machine: machine, AppID: task.AppID, Version: task.Version, TaskID: task.ID,
+				Desired: "installed", State: task.State, Updated: task.UpdatedAt.In(shanghai()).Format("01-02 15:04:05"), LastError: task.LastError,
+			})
 		}
 	}
 	data.TaskColumns = buildTaskBoard(data.Tasks, data.ApplicationTasks)

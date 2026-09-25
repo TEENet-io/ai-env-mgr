@@ -3,6 +3,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"os/exec"
@@ -84,13 +85,19 @@ func (applicationInstaller) FreeBytes(app model.Application) (uint64, error) {
 }
 
 func (applicationInstaller) Install(app model.Application, setupPath string) error {
+	return applicationInstaller{}.InstallContext(context.Background(), app, setupPath)
+}
+
+func (applicationInstaller) InstallContext(parent context.Context, app model.Application, setupPath string) error {
+	ctx, cancel := context.WithTimeout(parent, 30*time.Minute)
+	defer cancel()
 	var cmd *exec.Cmd
 	if strings.EqualFold(app.InstallerType, "msi") {
 		args := []string{"/i", setupPath, "/qn", "/norestart"}
 		args = append(args, app.SilentArgs...)
-		cmd = exec.Command("msiexec.exe", args...)
+		cmd = exec.CommandContext(ctx, "msiexec.exe", args...)
 	} else {
-		cmd = exec.Command(setupPath, app.SilentArgs...)
+		cmd = exec.CommandContext(ctx, setupPath, app.SilentArgs...)
 	}
 	if err := cmd.Start(); err != nil {
 		return fmt.Errorf("start installer: %w", err)
@@ -106,7 +113,7 @@ func (applicationInstaller) Install(app model.Application, setupPath string) err
 		if err != nil && code != 1641 && code != 3010 {
 			return fmt.Errorf("installer exited %d: %w", code, err)
 		}
-	case <-time.After(30 * time.Minute):
+	case <-ctx.Done():
 		_ = cmd.Process.Kill()
 		// Reap the child before returning. A GUI installer that was launched
 		// without silent arguments can otherwise survive the timeout and keep
@@ -114,6 +121,9 @@ func (applicationInstaller) Install(app model.Application, setupPath string) err
 		select {
 		case <-done:
 		case <-time.After(5 * time.Second):
+		}
+		if parent.Err() != nil {
+			return parent.Err()
 		}
 		return fmt.Errorf("installer did not finish within 30 minutes; configure silent installer arguments for non-interactive installation")
 	}

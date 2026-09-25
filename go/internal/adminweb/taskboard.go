@@ -4,6 +4,7 @@ package adminweb
 type taskCard struct {
 	ID, Title, Subject, Detail, Status, Updated, NextRun, Error string
 	Attempts                                                    int
+	Cancelable                                                  bool
 }
 
 type taskColumn struct {
@@ -64,7 +65,7 @@ func buildTaskBoard(tasks []taskRow, apps []applicationTaskRow) []taskColumn {
 		if state == "" {
 			label = "等待 Agent 回报"
 		}
-		columns[col].Cards = append(columns[col].Cards, taskCard{ID: app.TaskID, Title: "软件安装", Subject: app.Machine, Detail: app.AppID + " · " + app.Version, Status: label, Updated: app.Updated, Error: app.LastError})
+		columns[col].Cards = append(columns[col].Cards, taskCard{ID: app.TaskID, Title: "软件安装", Subject: app.Machine, Detail: app.AppID + " · " + app.Version, Status: label, Updated: app.Updated, Error: app.LastError, Cancelable: state == "pending" || state == "running"})
 	}
 	for _, task := range tasks {
 		col, label := taskPlacement(task.Status)

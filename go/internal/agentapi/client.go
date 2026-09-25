@@ -27,6 +27,7 @@ var (
 	ErrAlreadyEnrolled = errors.New("the console already holds a token for this machine")
 	// ErrNotFound is a 404: no credentials published, no such artifact.
 	ErrNotFound = errors.New("not found")
+	ErrTaskLost = errors.New("application task cancelled or lease lost")
 )
 
 // Client talks to one console with one device token.
@@ -86,6 +87,9 @@ func (c *Client) do(req *http.Request) (*http.Response, error) {
 	case http.StatusNotFound:
 		res.Body.Close()
 		return nil, ErrNotFound
+	case http.StatusConflict:
+		res.Body.Close()
+		return nil, ErrTaskLost
 	}
 	if res.StatusCode >= 400 {
 		msg, _ := io.ReadAll(io.LimitReader(res.Body, 512))

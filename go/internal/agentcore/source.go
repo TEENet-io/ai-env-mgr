@@ -173,6 +173,12 @@ func (s *Syncer) source() Source {
 // use this while waiting for their first console enrolment.
 func (s *Syncer) Ready() bool { return s.source() != nil }
 
+// DeviceAPI is the current authenticated Admin channel, if enrolled.
+func (s *Syncer) DeviceAPI() *APISource {
+	a, _ := s.source().(*APISource)
+	return a
+}
+
 // SetSource switches where instructions come from: the service loop calls
 // it once a late enrolment succeeds. The next cycle uses it.
 func (s *Syncer) SetSource(src Source) {

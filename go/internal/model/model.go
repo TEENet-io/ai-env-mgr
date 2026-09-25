@@ -132,6 +132,17 @@ type ApplicationStatus struct {
 	UpdatedAt             string `json:"updatedAt"`
 }
 
+// ApplicationTask is a leased Admin command. The lease token is opaque and
+// only the agent that claimed this attempt may renew or finish it.
+type ApplicationTask struct {
+	ID             string `json:"id"`
+	AppID          string `json:"appId"`
+	Version        string `json:"version"`
+	LeaseToken     string `json:"leaseToken"`
+	Attempts       int    `json:"attempts"`
+	AllowDowngrade bool   `json:"allowDowngrade,omitempty"`
+}
+
 // Sync interval bounds. The interval can lock a machine out of reach if set
 // badly, so it is always clamped.
 const (

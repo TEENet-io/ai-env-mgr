@@ -55,6 +55,9 @@ func (s *Store) Usage() repo.Usage                         { return usageRepo{s.
 func (s *Store) Alerts() repo.Alerts                       { return alertRepo{s.q} }
 func (s *Store) DeviceTokens() repo.DeviceTokens           { return deviceTokenRepo{s.q} }
 func (s *Store) CredentialBundles() repo.CredentialBundles { return bundleRepo{s.q} }
+func (s *Store) ApplicationTasks() repo.ApplicationTasks {
+	return applicationTaskRepo{s.q, s.db, s.inTx}
+}
 
 // errNoRow is what an Exec that matched nothing reports, so that a statement
 // written as an UPDATE goes through the same mapping as one written with

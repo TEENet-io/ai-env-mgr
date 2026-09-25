@@ -2,14 +2,10 @@ package deviceapi
 
 import (
 	"context"
-	"encoding/json"
-	"errors"
 	"net/http"
 	"time"
 
 	"github.com/TEENet-io/ai-env-mgr/internal/deviceconfig"
-	"github.com/TEENet-io/ai-env-mgr/internal/model"
-	"github.com/TEENet-io/ai-env-mgr/internal/ossclient"
 	"github.com/TEENet-io/ai-env-mgr/internal/repo"
 )
 
@@ -18,22 +14,10 @@ func (s *Server) config(ctx context.Context, device repo.Device) (deviceconfig.C
 	if err != nil {
 		return cfg, err
 	}
-	if s.Bucket != nil && !cfg.Forgotten {
-		data, _, err := s.Bucket.Get(ossclient.MachineApplicationsKey(device.Hostname))
-		switch {
-		case err == nil:
-			var apps model.MachineApplications
-			if err := json.Unmarshal(data, &apps); err != nil {
-				return cfg, err
-			}
-			cfg.Applications = &apps
-			cfg.RecomputeETag()
-		case errors.Is(err, ossclient.ErrNotFound):
-			// No plan is the normal state for machines without software tasks.
-		case err != nil:
-			return cfg, err
-		}
-	}
+	// Application tasks are now leased from PostgreSQL by the Agent worker.
+	// Do not copy the legacy OSS machine plan into this API configuration:
+	// an old object must never resurrect a cancelled Admin task. Bucket remains
+	// available for pre-API agents and immutable package objects.
 	return cfg, nil
 }
 

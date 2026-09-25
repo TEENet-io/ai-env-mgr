@@ -265,15 +265,27 @@ func (a *APISource) ArtifactToFile(product string, target model.ReleaseTarget, d
 func (a *APISource) ApplicationToFile(appID, version, dest string) (string, error) {
 	ctx, cancel := a.ctx()
 	defer cancel()
+	return a.ApplicationToFileContext(ctx, appID, version, dest)
+}
+
+func (a *APISource) ApplicationToFileContext(ctx context.Context, appID, version, dest string) (string, error) {
 	link, _, err := a.Client.ApplicationURL(ctx, appID, version)
 	if err != nil {
 		return "", a.note(err)
 	}
-	return a.downloadToFile(link, dest)
+	return a.downloadToFileContext(ctx, link, dest)
 }
 
 func (a *APISource) downloadToFile(link, dest string) (string, error) {
-	body, err := a.download().Get(link)
+	return a.downloadToFileContext(context.Background(), link, dest)
+}
+
+func (a *APISource) downloadToFileContext(ctx context.Context, link, dest string) (string, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, link, nil)
+	if err != nil {
+		return "", err
+	}
+	body, err := a.download().Do(req)
 	if err != nil {
 		return "", err
 	}

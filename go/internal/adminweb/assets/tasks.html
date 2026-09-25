@@ -24,6 +24,7 @@
           <p class="task-subject">{{.Subject}}</p>
           <p class="task-detail">{{.Detail}}</p>
           {{if .Error}}<p class="task-error">{{.Error}}</p>{{end}}
+		  {{if .Cancelable}}<form method="post" action="/apps/cancel" class="inline"><input type="hidden" name="csrf" value="{{$.CSRF}}"><input type="hidden" name="taskId" value="{{.ID}}"><button class="link danger-link">取消安装</button></form>{{end}}
           <div class="task-meta">
             {{if .Updated}}<span>更新于 {{.Updated}}</span>{{end}}
             {{if .Attempts}}<span>执行 {{.Attempts}} 次</span>{{end}}

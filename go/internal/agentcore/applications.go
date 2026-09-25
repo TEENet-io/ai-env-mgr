@@ -1,6 +1,7 @@
 package agentcore
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -37,6 +38,11 @@ type ApplicationInstaller interface {
 	EnsureShortcut(app model.Application) (bool, error)
 	LaunchAsStandardUser(app model.Application) (bool, error)
 	AppLockerAllowed(app model.Application) (bool, error)
+}
+
+// ContextApplicationInstaller lets the Admin revoke an in-flight install.
+type ContextApplicationInstaller interface {
+	InstallContext(context.Context, model.Application, string) error
 }
 
 // updateApplications applies the desired machine application state. A single
@@ -109,9 +115,22 @@ func applicationFailureMarker(appID string) string {
 }
 
 func (s *Syncer) applyApplication(item model.DesiredApplication) model.ApplicationStatus {
+	return s.applyApplicationContext(context.Background(), item, s.reportApplicationProgress)
+}
+
+// ExecuteApplication runs one Admin-leased task. No local failure marker is
+// read or written; Admin owns retry, cancellation, and terminal state.
+func (s *Syncer) ExecuteApplication(ctx context.Context, item model.DesiredApplication, progress func(model.ApplicationStatus)) model.ApplicationStatus {
+	return s.applyApplicationContext(ctx, item, progress)
+}
+
+func (s *Syncer) applyApplicationContext(ctx context.Context, item model.DesiredApplication, progress func(model.ApplicationStatus)) model.ApplicationStatus {
 	st := model.ApplicationStatus{
 		AppID: item.AppID, DesiredVersion: item.Version, TaskID: item.TaskID,
 		State: AppQueued, UpdatedAt: time.Now().UTC().Format(time.RFC3339),
+	}
+	if err := ctx.Err(); err != nil {
+		return appFailure(st, AppCancelled, err.Error())
 	}
 	data, err := s.source().Application(item.AppID, item.Version)
 	if err != nil {
@@ -151,7 +170,9 @@ func (s *Syncer) applyApplication(item model.DesiredApplication) model.Applicati
 	}
 
 	st.State = AppDownloading
-	s.reportApplicationProgress(st)
+	if progress != nil {
+		progress(st)
+	}
 	destDir := filepath.Join(s.StateDir, "applications", safeName(app.AppID), safeName(app.Version))
 	// Never reuse a fixed installer.exe name. On Windows a timed-out installer
 	// can keep the old file open for a short while; a retry that downloads to
@@ -159,22 +180,50 @@ func (s *Syncer) applyApplication(item model.DesiredApplication) model.Applicati
 	// Task-scoped names let the new download proceed independently and also
 	// make the local files traceable to the Admin task that created them.
 	dest := filepath.Join(destDir, installerFilename(app.InstallerType, item.TaskID))
-	sum, err := s.source().ApplicationToFile(app.AppID, app.Version, dest)
+	var sum string
+	if src, ok := s.source().(interface {
+		ApplicationToFileContext(context.Context, string, string, string) (string, error)
+	}); ok {
+		sum, err = src.ApplicationToFileContext(ctx, app.AppID, app.Version, dest)
+	} else {
+		sum, err = s.source().ApplicationToFile(app.AppID, app.Version, dest)
+	}
 	if err != nil {
+		if ctx.Err() != nil {
+			return appFailure(st, AppCancelled, ctx.Err().Error())
+		}
 		return appFailure(st, AppFailed, fmt.Sprintf("download: %v", err))
 	}
 	st.State = AppVerifying
-	s.reportApplicationProgress(st)
+	if progress != nil {
+		progress(st)
+	}
 	if !strings.EqualFold(sum, app.SHA256) {
 		_ = os.Remove(dest)
 		return appFailure(st, AppBlocked, fmt.Sprintf("sha256 mismatch: got %s", sum))
 	}
 	st.State = AppInstalling
-	s.reportApplicationProgress(st)
-	if err := s.Applications.Install(app, dest); err != nil {
+	if progress != nil {
+		progress(st)
+	}
+	if err := ctx.Err(); err != nil {
+		return appFailure(st, AppCancelled, err.Error())
+	}
+	if installer, ok := s.Applications.(ContextApplicationInstaller); ok {
+		err = installer.InstallContext(ctx, app, dest)
+	} else {
+		err = s.Applications.Install(app, dest)
+	}
+	if err != nil {
+		if ctx.Err() != nil {
+			return appFailure(st, AppCancelled, ctx.Err().Error())
+		}
 		return appFailure(st, AppFailed, fmt.Sprintf("install: %v", err))
 	}
 	_ = os.Remove(dest)
+	if err := ctx.Err(); err != nil {
+		return appFailure(st, AppCancelled, err.Error())
+	}
 	st.State = AppVerifyingInstall
 	return s.finishApplication(st, app)
 }

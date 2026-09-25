@@ -102,25 +102,33 @@ func (s *Server) actionApplicationInstall(sess *session, r *http.Request) error 
 	if machine == "" || appID == "" || version == "" {
 		return fmt.Errorf("machine, application and version are required")
 	}
-	if _, err := s.dbm.store.Devices().ByHostname(r.Context(), machine); err != nil {
+	device, err := s.dbm.store.Devices().ByHostname(r.Context(), machine)
+	if err != nil {
 		return fmt.Errorf("unknown machine %q", machine)
 	}
-	item, err := s.appManager().InstallApplication(machine, appID, version, formValue(r, "allowDowngrade") == "1")
+	if _, err := s.appManager().GetApplication(appID, version); err != nil {
+		return err
+	}
+	item, err := s.dbm.store.ApplicationTasks().Create(r.Context(), device.ID, appID, version, s.clientKey(r), formValue(r, "allowDowngrade") == "1")
 	if err != nil {
 		return err
 	}
-	logAudit(s.clientKey(r), "scheduled application %s %s on %s as %s", appID, version, machine, item.TaskID)
+	logAudit(s.clientKey(r), "scheduled application %s %s on %s as %s", appID, version, machine, item.ID)
 	return nil
 }
 
 func (s *Server) actionApplicationCancel(sess *session, r *http.Request) error {
-	machine, appID := formValue(r, "machine"), formValue(r, "appId")
-	if machine == "" || appID == "" {
-		return fmt.Errorf("machine and application are required")
+	id := formValue(r, "taskId")
+	if id == "" {
+		return fmt.Errorf("task id is required")
 	}
-	if err := s.appManager().CancelApplication(machine, appID); err != nil {
+	task, err := s.dbm.store.ApplicationTasks().ByID(r.Context(), id)
+	if err != nil {
 		return err
 	}
-	logAudit(s.clientKey(r), "cancelled application %s on %s", appID, machine)
+	if _, err := s.dbm.store.ApplicationTasks().Cancel(r.Context(), id, task.DeviceID); err != nil {
+		return err
+	}
+	logAudit(s.clientKey(r), "cancelled application task %s", id)
 	return nil
 }
