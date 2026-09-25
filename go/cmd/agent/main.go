@@ -336,6 +336,10 @@ func loop(s *agentcore.Syncer, stop <-chan struct{}, wake <-chan struct{}) {
 
 	var lastRun time.Time
 	sync := func(reason string) {
+		if !s.Ready() {
+			log.Printf("%s sync waiting for console enrolment", reason)
+			return
+		}
 		if !lastRun.IsZero() && time.Since(lastRun) < minSyncGap {
 			since := time.Since(lastRun).Round(time.Second)
 			if reason == "console changed" {
@@ -366,6 +370,10 @@ func loop(s *agentcore.Syncer, stop <-chan struct{}, wake <-chan struct{}) {
 		}
 		for _, w := range st.Warnings {
 			log.Printf("  - %s", w)
+		}
+		for _, app := range st.Apps {
+			log.Printf("  application %s@%s task=%s state=%s error=%s",
+				app.AppID, app.DesiredVersion, app.TaskID, app.State, orDash(app.LastError))
 		}
 		// Push the recent log through the console's signed upload URL. Best
 		// effort: a failed upload is logged, not fatal.

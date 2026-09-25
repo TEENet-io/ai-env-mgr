@@ -2,6 +2,8 @@ package agentcore
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -16,20 +18,22 @@ import (
 	"github.com/TEENet-io/ai-env-mgr/internal/creds"
 	"github.com/TEENet-io/ai-env-mgr/internal/deviceconfig"
 	"github.com/TEENet-io/ai-env-mgr/internal/model"
+	"github.com/TEENet-io/ai-env-mgr/internal/ossclient"
 )
 
 // fakeConsole is enough of the device API for a full cycle.
 type fakeConsole struct {
-	mu       sync.Mutex
-	cfg      deviceconfig.Config
-	creds    []byte
-	credsTag string
-	statuses [][]byte
-	logs     [][]byte
-	uploads  map[string][]byte
-	calls    []string
-	artifact []byte
-	srv      *httptest.Server
+	mu          sync.Mutex
+	cfg         deviceconfig.Config
+	creds       []byte
+	credsTag    string
+	statuses    [][]byte
+	logs        [][]byte
+	uploads     map[string][]byte
+	calls       []string
+	artifact    []byte
+	application model.Application
+	srv         *httptest.Server
 }
 
 func newFakeConsole(t *testing.T) *fakeConsole {
@@ -103,6 +107,12 @@ func newFakeConsole(t *testing.T) *fakeConsole {
 	mux.HandleFunc("GET /agent/v1/artifact/{product}/{version}", authed(func(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, f.srv.URL+"/blob/"+r.PathValue("product"), 302)
 	}))
+	mux.HandleFunc("GET /agent/v1/application/{appID}/{version}/manifest", authed(func(w http.ResponseWriter, r *http.Request) {
+		json.NewEncoder(w).Encode(f.application)
+	}))
+	mux.HandleFunc("GET /agent/v1/application/{appID}/{version}", authed(func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, f.srv.URL+"/blob/application", 302)
+	}))
 	mux.HandleFunc("GET /blob/{product}", func(w http.ResponseWriter, r *http.Request) {
 		if r.Header.Get("Authorization") != "" {
 			http.Error(w, "the bucket must never see the token", 400)
@@ -126,6 +136,30 @@ func newFakeConsole(t *testing.T) *fakeConsole {
 	f.srv = httptest.NewServer(mux)
 	t.Cleanup(f.srv.Close)
 	return f
+}
+
+func TestAPISourceInstallsApplicationWithoutBucketCredentials(t *testing.T) {
+	console := newFakeConsole(t)
+	s, _ := apiSyncer(t, console, &fakeApplier{})
+	packageData := []byte("approved installer")
+	sum := sha256.Sum256(packageData)
+	app := model.Application{AppID: "editor", Version: "1.0", InstallerType: "msi", Enabled: true, Approved: true,
+		ObjectKey: ossclient.ApplicationPackageKey("editor", "1.0", "msi"), SHA256: hex.EncodeToString(sum[:]), Size: int64(len(packageData))}
+	console.application = app
+	console.artifact = packageData
+	console.cfg.Applications = &model.MachineApplications{Machine: "DESKTOP-A", Apps: []model.DesiredApplication{{AppID: app.AppID, Version: app.Version, Desired: "installed", TaskID: "task-1"}}}
+	installer := &fakeApplicationInstaller{}
+	s.Applications = installer
+	st, err := s.RunOnce()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(st.Apps) != 1 || st.Apps[0].State != AppSucceeded || installer.installs != 1 {
+		t.Fatalf("app status=%+v installs=%d errors=%v", st.Apps, installer.installs, st.Errors)
+	}
+	if s.Store != nil {
+		t.Fatal("API-only agent unexpectedly has a bucket store")
+	}
 }
 
 func apiSyncer(t *testing.T, console *fakeConsole, app *fakeApplier) (*Syncer, *APISource) {
