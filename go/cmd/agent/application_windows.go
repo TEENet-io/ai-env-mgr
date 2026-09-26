@@ -3,11 +3,13 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 	"unsafe"
@@ -101,10 +103,18 @@ func (applicationInstaller) InstallContext(parent context.Context, app model.App
 	} else if strings.EqualFold(app.InstallerType, "exe") && model.IsVSCodeApplication(app) {
 		// The only trusted EXE template. Do not accept manifest-provided
 		// switches here: VS Code's Inno Setup switches are fixed and silent.
-		cmd = exec.CommandContext(ctx, setupPath, model.VSCodeSilentArgs()...)
+		args := append([]string{}, model.VSCodeSilentArgs()...)
+		// Keep the vendor's diagnostic log beside the task-scoped installer so
+		// an exit code such as 1 is actionable instead of opaque. The log is
+		// removed after a successful install and retained on failure.
+		args = append(args, "/LOG="+setupPath+".log")
+		cmd = exec.CommandContext(ctx, setupPath, args...)
 	} else {
 		return fmt.Errorf("only MSI or the trusted VS Code installer is supported")
 	}
+	var stdout, stderr bytes.Buffer
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
 	if err := cmd.Start(); err != nil {
 		return fmt.Errorf("start installer: %w", err)
 	}
@@ -117,10 +127,14 @@ func (applicationInstaller) InstallContext(parent context.Context, app model.App
 			code = cmd.ProcessState.ExitCode()
 		}
 		if err != nil && code != 1641 && code != 3010 {
+			detail := installerDiagnostics(setupPath+".log", stdout.String(), stderr.String())
+			if detail != "" {
+				return fmt.Errorf("installer exited %d: %w (%s)", code, err, detail)
+			}
 			return fmt.Errorf("installer exited %d: %w", code, err)
 		}
 	case <-ctx.Done():
-		_ = cmd.Process.Kill()
+		killProcessTree(cmd.Process.Pid)
 		// Reap the child before returning. A GUI installer that was launched
 		// without silent arguments can otherwise survive the timeout and keep
 		// the old executable open while the next task starts.
@@ -133,7 +147,29 @@ func (applicationInstaller) InstallContext(parent context.Context, app model.App
 		}
 		return fmt.Errorf("installer did not finish within 30 minutes; configure silent installer arguments for non-interactive installation")
 	}
+	_ = os.Remove(setupPath + ".log")
 	return nil
+}
+
+func installerDiagnostics(logPath, stdout, stderr string) string {
+	if data, err := os.ReadFile(logPath); err == nil && len(data) > 0 {
+		const max = 8 << 10
+		if len(data) > max {
+			data = data[len(data)-max:]
+		}
+		return strings.TrimSpace(string(data))
+	}
+	if strings.TrimSpace(stderr) != "" {
+		return strings.TrimSpace(stderr)
+	}
+	return strings.TrimSpace(stdout)
+}
+
+func killProcessTree(pid int) {
+	if pid <= 0 {
+		return
+	}
+	_ = exec.Command("taskkill.exe", "/PID", strconv.Itoa(pid), "/T", "/F").Run()
 }
 
 func (applicationInstaller) EnsureShortcut(app model.Application) (bool, error) {
