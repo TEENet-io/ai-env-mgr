@@ -155,7 +155,10 @@ func (s *Syncer) applyApplicationContext(ctx context.Context, item model.Desired
 	if err := json.Unmarshal(data, &app); err != nil {
 		return appFailure(st, AppBlocked, fmt.Sprintf("parse manifest: %v", err))
 	}
-	if (!strings.EqualFold(app.InstallerType, "msi") && !strings.EqualFold(app.InstallerType, "exe")) || !app.Enabled || !app.Approved || app.ObjectKey == "" || app.SHA256 == "" {
+	if !strings.EqualFold(app.InstallerType, "msi") {
+		return appFailure(st, AppBlocked, "only MSI installers are supported")
+	}
+	if !app.Enabled || !app.Approved || app.ObjectKey == "" || app.SHA256 == "" {
 		return appFailure(st, AppBlocked, "manifest is not enabled, approved, and complete")
 	}
 	if app.ObjectKey != ossclient.ApplicationPackageKey(app.AppID, app.Version, app.InstallerType) {
@@ -256,10 +259,7 @@ func installerFilename(installerType, taskID string) string {
 	if suffix == "_invalid" || suffix == "." {
 		suffix = "current"
 	}
-	if strings.EqualFold(installerType, "msi") {
-		return "installer-" + suffix + ".msi"
-	}
-	return "installer-" + suffix + ".exe"
+	return "installer-" + suffix + ".msi"
 }
 
 func (s *Syncer) finishApplication(st model.ApplicationStatus, app model.Application) model.ApplicationStatus {

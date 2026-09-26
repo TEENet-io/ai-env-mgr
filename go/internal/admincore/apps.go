@@ -49,8 +49,8 @@ func validateApplication(app model.Application, installer []byte) error {
 	if len(installer) == 0 {
 		return fmt.Errorf("the application installer is empty")
 	}
-	if !strings.EqualFold(app.InstallerType, "msi") && !strings.EqualFold(app.InstallerType, "exe") {
-		return fmt.Errorf("installer type must be msi or exe")
+	if !strings.EqualFold(app.InstallerType, "msi") {
+		return fmt.Errorf("only MSI installers are supported")
 	}
 	if app.Detection.Path == "" || (app.Detection.Type != "file_exists" && app.Detection.Type != "file_version") {
 		return fmt.Errorf("a file_exists or file_version detection rule is required")
@@ -103,6 +103,9 @@ func (m *Manager) GetApplication(appID, version string) (model.Application, erro
 	}
 	if !app.Enabled || !app.Approved {
 		return model.Application{}, fmt.Errorf("application %q version %q is not enabled and approved", appID, version)
+	}
+	if !strings.EqualFold(app.InstallerType, "msi") {
+		return model.Application{}, fmt.Errorf("application %q version %q is not supported: only MSI installers are allowed", appID, version)
 	}
 	if app.ObjectKey != ossclient.ApplicationPackageKey(app.AppID, app.Version, app.InstallerType) {
 		return model.Application{}, fmt.Errorf("application manifest points outside its approved package key")

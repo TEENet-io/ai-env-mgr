@@ -91,14 +91,15 @@ func (applicationInstaller) Install(app model.Application, setupPath string) err
 func (applicationInstaller) InstallContext(parent context.Context, app model.Application, setupPath string) error {
 	ctx, cancel := context.WithTimeout(parent, 30*time.Minute)
 	defer cancel()
-	var cmd *exec.Cmd
-	if strings.EqualFold(app.InstallerType, "msi") {
-		args := []string{"/i", setupPath, "/qn", "/norestart"}
-		args = append(args, app.SilentArgs...)
-		cmd = exec.CommandContext(ctx, "msiexec.exe", args...)
-	} else {
-		cmd = exec.CommandContext(ctx, setupPath, app.SilentArgs...)
+	if !strings.EqualFold(app.InstallerType, "msi") {
+		return fmt.Errorf("only MSI installers are supported")
 	}
+	// MSI has a standard unattended invocation. Optional manifest arguments
+	// remain available for vendor properties, but EXE command execution is
+	// deliberately not supported by the generic application path.
+	args := []string{"/i", setupPath, "/qn", "/norestart"}
+	args = append(args, app.SilentArgs...)
+	cmd := exec.CommandContext(ctx, "msiexec.exe", args...)
 	if err := cmd.Start(); err != nil {
 		return fmt.Errorf("start installer: %w", err)
 	}

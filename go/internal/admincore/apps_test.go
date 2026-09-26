@@ -4,6 +4,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"strings"
 	"testing"
 
 	"github.com/TEENet-io/ai-env-mgr/internal/model"
@@ -61,6 +62,16 @@ func TestInstallApplicationRejectsUnapprovedManifest(t *testing.T) {
 	m := &Manager{Store: store}
 	if _, err := m.InstallApplication("PC-1", app.AppID, app.Version, false); err == nil {
 		t.Fatal("unapproved application should not be scheduled")
+	}
+}
+
+func TestPublishApplicationRejectsExe(t *testing.T) {
+	store := newFakeStore()
+	m := &Manager{Store: store}
+	app := testApplication()
+	app.InstallerType = "exe"
+	if _, err := m.PublishApplication(app, []byte("installer"), nil); err == nil || !strings.Contains(err.Error(), "only MSI") {
+		t.Fatalf("EXE should be rejected, got %v", err)
 	}
 }
 
