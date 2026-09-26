@@ -1,6 +1,7 @@
 package adminweb
 
 import (
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"net/url"
@@ -10,6 +11,7 @@ import (
 
 	"github.com/TEENet-io/ai-env-mgr/internal/admincore"
 	"github.com/TEENet-io/ai-env-mgr/internal/model"
+	"github.com/TEENet-io/ai-env-mgr/internal/ossclient"
 )
 
 var packageVersionRE = regexp.MustCompile(`(?i)(\d+(?:\.\d+){1,3})`)
@@ -130,5 +132,46 @@ func (s *Server) actionApplicationCancel(sess *session, r *http.Request) error {
 		return err
 	}
 	logAudit(s.clientKey(r), "cancelled application task %s", id)
+	return nil
+}
+
+// Deleting a catalog entry removes only its OSS manifest and installer; it
+// does not uninstall software from a machine or erase completed task history.
+func (s *Server) actionApplicationDelete(sess *session, r *http.Request) error {
+	appID, version := strings.TrimSpace(formValue(r, "appId")), strings.TrimSpace(formValue(r, "version"))
+	if appID == "" || version == "" {
+		return fmt.Errorf("application ID and version are required")
+	}
+	if err := confirmMatches(r, "confirm", appID+"@"+version); err != nil {
+		return err
+	}
+	manifestKey := ossclient.ApplicationKey(appID, version)
+	data, _, err := s.dbm.objects.Get(manifestKey)
+	if err != nil {
+		return fmt.Errorf("read application manifest: %w", err)
+	}
+	var app model.Application
+	if err := json.Unmarshal(data, &app); err != nil {
+		return fmt.Errorf("parse application manifest: %w", err)
+	}
+	if app.AppID != appID || app.Version != version || app.ObjectKey != ossclient.ApplicationPackageKey(appID, version, app.InstallerType) {
+		return fmt.Errorf("application manifest does not match the requested package")
+	}
+	open, err := s.dbm.store.ApplicationTasks().HasOpen(r.Context(), appID, version)
+	if err != nil {
+		return err
+	}
+	if open {
+		return fmt.Errorf("application %s@%s still has an active installation task; cancel it first", appID, version)
+	}
+	// Remove the package first. If the second delete fails, the manifest stays
+	// visible so an administrator can retry instead of leaving hidden bytes.
+	if err := s.dbm.objects.Delete(app.ObjectKey); err != nil {
+		return fmt.Errorf("delete application package: %w", err)
+	}
+	if err := s.dbm.objects.Delete(manifestKey); err != nil {
+		return fmt.Errorf("delete application manifest: %w", err)
+	}
+	logAudit(s.clientKey(r), "deleted application %s@%s OSS manifest and package; task history retained", appID, version)
 	return nil
 }

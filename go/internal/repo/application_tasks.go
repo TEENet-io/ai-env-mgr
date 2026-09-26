@@ -30,4 +30,5 @@ type ApplicationTasks interface {
 	Finish(ctx context.Context, id, deviceID, token, state, lastError string) (ApplicationTask, error)
 	ByID(ctx context.Context, id string) (ApplicationTask, error)
 	ListRecent(ctx context.Context, limit int) ([]ApplicationTask, error)
+	HasOpen(ctx context.Context, appID, version string) (bool, error)
 }

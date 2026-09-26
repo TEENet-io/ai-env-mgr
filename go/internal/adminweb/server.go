@@ -422,6 +422,7 @@ func (s *Server) Handler() http.Handler {
 		mux.HandleFunc("/apps/publish", s.requirePost("/releases", s.actionApplicationPublish))
 		mux.HandleFunc("/apps/install", s.requirePost("/releases", s.actionApplicationInstall))
 		mux.HandleFunc("/apps/cancel", s.requirePost("/releases", s.actionApplicationCancel))
+		mux.HandleFunc("/apps/delete", s.requirePost("/releases", s.actionApplicationDelete))
 		mux.HandleFunc("/rollouts", s.requireSession(s.handleRollouts))
 		mux.HandleFunc("/rollouts/new", s.requireSession(s.handleRolloutNew))
 		mux.HandleFunc("/rollouts/detail", s.requireSession(s.handleRolloutDetail))

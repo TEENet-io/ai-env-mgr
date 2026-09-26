@@ -128,3 +128,13 @@ func (r applicationTaskRepo) ListRecent(ctx context.Context, limit int) ([]repo.
 	}
 	return out, rows.Err()
 }
+
+func (r applicationTaskRepo) HasOpen(ctx context.Context, appID, version string) (bool, error) {
+	var exists bool
+	err := r.q.QueryRow(ctx, `select exists(select 1 from application_tasks
+		where app_id=$1 and version=$2 and state in ('pending','running'))`, appID, version).Scan(&exists)
+	if err != nil {
+		return false, mapError(err, "check open application tasks")
+	}
+	return exists, nil
+}

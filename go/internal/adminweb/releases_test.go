@@ -4,11 +4,14 @@ import (
 	"bytes"
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"net/http"
 	"net/url"
 	"strings"
 	"testing"
 
+	"github.com/TEENet-io/ai-env-mgr/internal/model"
+	"github.com/TEENet-io/ai-env-mgr/internal/ossclient"
 	"github.com/TEENet-io/ai-env-mgr/internal/repo"
 )
 
@@ -227,5 +230,53 @@ func TestRetiredReleaseDeleteRemovesOSSBytesAndKeepsHistory(t *testing.T) {
 	got, err := s.dbm.store.Releases().ArtifactByID(t.Context(), a.ID)
 	if err != nil || got.Status != repo.ArtifactRetired {
 		t.Fatalf("artifact history = %+v, err=%v", got, err)
+	}
+}
+
+func TestDeleteLegacyExeApplicationRequiresNoOpenTask(t *testing.T) {
+	s, fs := newDatabaseServer(t)
+	h := s.Handler()
+	cookie := signedIn(t, s)
+	app := model.Application{AppID: "vscodesetup-x64", Version: "1.139.1", InstallerType: "exe", Enabled: true, Approved: true}
+	app.ObjectKey = ossclient.ApplicationPackageKey(app.AppID, app.Version, app.InstallerType)
+	manifestKey := ossclient.ApplicationKey(app.AppID, app.Version)
+	manifest, err := json.Marshal(app)
+	if err != nil {
+		t.Fatal(err)
+	}
+	fs.objects[manifestKey] = manifest
+	fs.objects[app.ObjectKey] = []byte("old EXE")
+	device, err := s.dbm.store.Devices().EnsureByHostname(t.Context(), "PC-DELETE-APP")
+	if err != nil {
+		t.Fatal(err)
+	}
+	task, err := s.dbm.store.ApplicationTasks().Create(t.Context(), device.ID, app.AppID, app.Version, "admin", false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	csrf := csrfFrom(t, s, cookie, "/releases")
+	form := url.Values{"csrf": {csrf}, "appId": {app.AppID}, "version": {app.Version}, "confirm": {app.AppID + "@" + app.Version}}
+	rec := dbPost(t, h, "/apps/delete", form, cookie)
+	if !strings.Contains(rec.Header().Get("Location"), "err=") {
+		t.Fatal("active task should prevent deletion")
+	}
+	if _, ok := fs.objects[manifestKey]; !ok {
+		t.Fatal("active task deletion removed manifest")
+	}
+	if _, err := s.dbm.store.ApplicationTasks().Cancel(t.Context(), task.ID, device.ID); err != nil {
+		t.Fatal(err)
+	}
+	rec = dbPost(t, h, "/apps/delete", form, cookie)
+	if rec.Code != http.StatusSeeOther || strings.Contains(rec.Header().Get("Location"), "err=") {
+		t.Fatalf("delete: %d %s", rec.Code, rec.Header().Get("Location"))
+	}
+	if _, ok := fs.objects[manifestKey]; ok {
+		t.Fatal("manifest remains")
+	}
+	if _, ok := fs.objects[app.ObjectKey]; ok {
+		t.Fatal("package remains")
+	}
+	if _, err := s.dbm.store.ApplicationTasks().ByID(t.Context(), task.ID); err != nil {
+		t.Fatalf("task history was lost: %v", err)
 	}
 }

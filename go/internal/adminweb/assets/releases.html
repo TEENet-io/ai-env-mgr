@@ -42,7 +42,7 @@
             <input type="hidden" name="csrf" value="{{$.CSRF}}"><input type="hidden" name="product" value="{{.Product}}"><input type="hidden" name="version" value="{{.Version}}">
             <button class="link">重新登记</button>
           </form>
-          {{if may $.Role "/releases/delete-unregistered"}}<form method="post" action="/releases/delete-unregistered" class="inline" onsubmit="return confirm('确认删除 {{.Product}} {{.Version}} 的 OSS 文件吗？')"><input type="hidden" name="csrf" value="{{$.CSRF}}"><input type="hidden" name="product" value="{{.Product}}"><input type="hidden" name="version" value="{{.Version}}"><input type="hidden" name="confirm" value="{{.Version}}"><button class="link danger-link" title="删除 OSS 文件" aria-label="删除 OSS 文件">×</button></form>{{end}}
+          {{if may $.Role "/releases/delete-unregistered"}}<form method="post" action="/releases/delete-unregistered" class="inline" data-confirm="确认删除 {{.Product}} {{.Version}} 的 OSS 文件吗？"><input type="hidden" name="csrf" value="{{$.CSRF}}"><input type="hidden" name="product" value="{{.Product}}"><input type="hidden" name="version" value="{{.Version}}"><input type="hidden" name="confirm" value="{{.Version}}"><button class="link danger-link" title="删除 OSS 文件" aria-label="删除 OSS 文件">×</button></form>{{end}}
         </td>
       </tr>{{end}}
     </tbody></table></div>
@@ -76,7 +76,7 @@
           <a href="/rollouts/new?artifact={{.ID}}">指定给机器…</a>
           {{if not .IsGlobal}}<form method="post" action="/releases/status" class="inline"><input type="hidden" name="csrf" value="{{$.CSRF}}"><input type="hidden" name="id" value="{{.ID}}"><input type="hidden" name="status" value="retired"><button class="link">停用</button></form>{{end}}
           {{else}}<form method="post" action="/releases/status" class="inline"><input type="hidden" name="csrf" value="{{$.CSRF}}"><input type="hidden" name="id" value="{{.ID}}"><input type="hidden" name="status" value="candidate"><button class="link">恢复</button></form>{{end}}
-          {{if and (eq (printf "%s" .Status) "retired") (not .IsGlobal) (may $.Role "/releases/delete")}}<form method="post" action="/releases/delete" class="inline" onsubmit="return confirm('确认删除 {{.Product}} {{.Version}} 的 OSS 文件吗？数据库历史会保留。')"><input type="hidden" name="csrf" value="{{$.CSRF}}"><input type="hidden" name="id" value="{{.ID}}"><input type="hidden" name="confirm" value="{{.Version}}"><button class="link danger-link" title="删除 OSS 文件" aria-label="删除 OSS 文件">×</button></form>{{end}}
+          {{if and (eq (printf "%s" .Status) "retired") (not .IsGlobal) (may $.Role "/releases/delete")}}<form method="post" action="/releases/delete" class="inline" data-confirm="确认删除 {{.Product}} {{.Version}} 的 OSS 文件吗？数据库历史会保留。"><input type="hidden" name="csrf" value="{{$.CSRF}}"><input type="hidden" name="id" value="{{.ID}}"><input type="hidden" name="confirm" value="{{.Version}}"><button class="link danger-link" title="删除 OSS 文件" aria-label="删除 OSS 文件">×</button></form>{{end}}
         </td>
       </tr>{{else}}<tr><td colspan="5" class="empty">还没有 {{$product}} 版本。CI 上传到 <span class="mono">{{if eq $product "agent"}}_agent/&lt;版本&gt;/agent.exe{{else}}_codex/codex-setup-&lt;版本&gt;.exe{{end}}</span> 后会自动出现。</td></tr>{{end}}
     </tbody></table></div>
@@ -84,8 +84,8 @@
 
   <h2>其他软件</h2>
   <p class="dim">当前仅允许管理员审核后的 MSI，按机器安装；Agent 会统一静默安装、校验 SHA-256、检测安装结果，并可创建公共桌面快捷方式。</p>
-  <div class="panel scroll"><table><thead><tr><th>应用</th><th>版本</th><th>类型</th><th>状态</th></tr></thead><tbody>
-    {{range .Applications}}<tr><td>{{.DisplayName}} <span class="mono dim">{{.AppID}}</span></td><td class="mono">{{.Version}}</td><td>{{.InstallerType}}</td><td>{{if ne .InstallerType "msi"}}不支持（仅 MSI）{{else if and .Enabled .Approved}}已审核{{else}}已停用{{end}}</td></tr>{{else}}<tr><td colspan="4" class="dim">还没有应用包</td></tr>{{end}}
+  <div class="panel scroll"><table><thead><tr><th>应用</th><th>版本</th><th>类型</th><th>状态</th><th>操作</th></tr></thead><tbody>
+    {{range .Applications}}<tr><td>{{.DisplayName}} <span class="mono dim">{{.AppID}}</span></td><td class="mono">{{.Version}}</td><td>{{.InstallerType}}</td><td>{{if ne .InstallerType "msi"}}不支持（仅 MSI）{{else if and .Enabled .Approved}}已审核{{else}}已停用{{end}}</td><td class="actions">{{if may $.Role "/apps/delete"}}<form method="post" action="/apps/delete" class="inline" data-confirm="确认删除 {{.DisplayName}} {{.Version}} 的 OSS 安装包和应用记录吗？已安装的软件不会从机器卸载，任务历史会保留。"><input type="hidden" name="csrf" value="{{$.CSRF}}"><input type="hidden" name="appId" value="{{.AppID}}"><input type="hidden" name="version" value="{{.Version}}"><input type="hidden" name="confirm" value="{{.AppID}}@{{.Version}}"><button class="link danger-link" title="删除应用安装包和记录" aria-label="删除应用安装包和记录">×</button></form>{{end}}</td></tr>{{else}}<tr><td colspan="5" class="dim">还没有应用包</td></tr>{{end}}
   </tbody></table></div>
   <form method="post" action="/apps/publish" enctype="multipart/form-data" class="form panel"><input type="hidden" name="csrf" value="{{.CSRF}}"><h3>添加其他软件</h3>
     <p class="dim">选择 MSI 安装包或粘贴 MSI 下载 URL。应用名称和版本会从文件名自动识别。</p>

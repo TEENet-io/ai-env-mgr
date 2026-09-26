@@ -14,6 +14,7 @@ func TestRequiredRoleReadsTheTableExactlyThenByPrefix(t *testing.T) {
 		"GET /rollouts/detail":   "viewer",
 		"POST /users/offboard":   "operator",
 		"POST /releases/global":  "admin",
+		"POST /apps/delete":      "admin",
 		"POST /releases/notes":   "operator",
 		"POST /sites/mutate":     "admin",
 		"POST /settings/collect": "admin",
