@@ -180,3 +180,34 @@ func TestAVersionsRemarkCanBeEdited(t *testing.T) {
 		t.Fatal("the page should show the remark in its edit box")
 	}
 }
+
+func TestRetiredReleaseDeleteRemovesOSSBytesAndKeepsHistory(t *testing.T) {
+	s, fs := newDatabaseServer(t)
+	h := s.Handler()
+	cookie := signedIn(t, s)
+	a, err := s.dbm.ops.RegisterArtifact(t.Context(), repo.NewArtifact{
+		Product: repo.ProductAgent, Version: "1.3.0", SHA256: strings.Repeat("f", 64), SizeBytes: 1,
+		ObjectKey: "agent_workdir/_agent/1.3.0/agent.exe", CreatedBy: "t",
+	}, "t", "r")
+	if err != nil {
+		t.Fatal(err)
+	}
+	fs.objects[a.ObjectKey] = []byte("agent")
+	if _, err := s.dbm.ops.SetArtifactStatus(t.Context(), a.ID, repo.ArtifactRetired, "old", "admin", "r2"); err != nil {
+		t.Fatal(err)
+	}
+	csrf := csrfFrom(t, s, cookie, "/releases")
+	rec := dbPost(t, h, "/releases/delete", url.Values{
+		"csrf": {csrf}, "id": {a.ID}, "confirm": {a.Version},
+	}, cookie)
+	if rec.Code != http.StatusSeeOther || strings.Contains(rec.Header().Get("Location"), "err=") {
+		t.Fatalf("delete: %d %s", rec.Code, rec.Header().Get("Location"))
+	}
+	if _, ok := fs.objects[a.ObjectKey]; ok {
+		t.Fatal("retired OSS package was not deleted")
+	}
+	got, err := s.dbm.store.Releases().ArtifactByID(t.Context(), a.ID)
+	if err != nil || got.Status != repo.ArtifactRetired {
+		t.Fatalf("artifact history = %+v, err=%v", got, err)
+	}
+}

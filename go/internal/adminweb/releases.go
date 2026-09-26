@@ -207,6 +207,77 @@ func (s *Server) actionReleaseStatus(sess *session, r *http.Request) error {
 	return err
 }
 
+// artifactInUse protects a retired object that is still part of a machine's
+// effective target. A successful target remains effective until the machine is
+// explicitly returned to the fleet, while a pending target is still waiting
+// to download the object.
+func (s *Server) artifactInUse(ctx context.Context, artifact repo.Artifact) (bool, error) {
+	devices, err := s.dbm.store.Devices().List(ctx, repo.DeviceFilter{IncludeRevoked: true})
+	if err != nil {
+		return false, err
+	}
+	for _, device := range devices {
+		for _, lookup := range []func(context.Context, string, string) (repo.Target, error){
+			s.dbm.store.Releases().OpenTarget,
+			s.dbm.store.Releases().LastSucceededTarget,
+		} {
+			target, err := lookup(ctx, device.ID, artifact.Product)
+			if errors.Is(err, repo.ErrNotFound) {
+				continue
+			}
+			if err != nil {
+				return false, err
+			}
+			if target.ArtifactID == artifact.ID {
+				return true, nil
+			}
+		}
+	}
+	return false, nil
+}
+
+// actionReleaseDelete removes only the immutable package bytes. The database
+// artifact row remains as history, so reports and audit references do not
+// become dangling records.
+func (s *Server) actionReleaseDelete(sess *session, r *http.Request) error {
+	artifact, err := s.dbm.store.Releases().ArtifactByID(r.Context(), formValue(r, "id"))
+	if err != nil {
+		return err
+	}
+	if err := confirmMatches(r, "confirm", artifact.Version); err != nil {
+		return err
+	}
+	if artifact.Status != repo.ArtifactRetired {
+		return fmt.Errorf("only retired versions can be deleted")
+	}
+	policy, _, err := s.dbm.ops.CurrentPolicy(r.Context())
+	if err != nil {
+		return err
+	}
+	global := policy.AgentUpdateVersion
+	if artifact.Product == repo.ProductCodex {
+		global = policy.CodexVersion
+	}
+	if global == artifact.Version {
+		return fmt.Errorf("%s %s is still the global version", artifact.Product, artifact.Version)
+	}
+	used, err := s.artifactInUse(r.Context(), artifact)
+	if err != nil {
+		return err
+	}
+	if used {
+		return fmt.Errorf("%s %s is still assigned to a machine", artifact.Product, artifact.Version)
+	}
+	if want := artifactKey(artifact.Product, artifact.Version); artifact.ObjectKey != want {
+		return fmt.Errorf("refusing to delete an object outside the release namespace")
+	}
+	if err := s.dbm.objects.Delete(artifact.ObjectKey); err != nil {
+		return fmt.Errorf("delete OSS object: %w", err)
+	}
+	logAudit(s.clientKey(r), "deleted OSS package %s %s (%s); database history retained", artifact.Product, artifact.Version, artifact.ObjectKey)
+	return nil
+}
+
 func (s *Server) actionReleaseGlobal(sess *session, r *http.Request) error {
 	product, version := formValue(r, "product"), formValue(r, "version")
 	if err := confirmMatches(r, "confirm", version); err != nil {
