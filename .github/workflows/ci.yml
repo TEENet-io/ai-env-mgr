@@ -1,10 +1,9 @@
 name: CI
 
-# Runs the same gate as `make check`: gofmt, vet (both platforms), tests, and
-# a Windows build -- the only target that actually ships.
+# Pull requests run the development gate. Release tags run the same gate in
+# release.yml immediately before building and publishing the binaries, so a
+# normal push does not run the same checks twice.
 on:
-  push:
-    branches: [main]
   pull_request:
 
 jobs:
