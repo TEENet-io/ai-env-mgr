@@ -225,7 +225,7 @@ func (applicationInstaller) AppLockerAllowed(app model.Application) (bool, error
 		target = app.Detection.Path
 	}
 	path := psQuote(target)
-	cmd := "$p=Get-AppLockerPolicy -Effective; if ($null -eq $p) { 'true'; exit }; $f=Get-AppLockerFileInformation -Path '" + path + "'; $r=Test-AppLockerPolicy -PolicyObject $p -FileInformation $f; if ($r.PolicyRuleMatch -eq 'Allowed') {'true'} else {'false'}"
+	cmd := "$p=Get-AppLockerPolicy -Effective; if ($null -eq $p) { 'true'; exit }; $f=Get-AppLockerFileInformation -Path '" + path + "'; $r=Test-AppLockerPolicy -PolicyObject $p -FileInformation $f; $d=[string]$r.PolicyDecision; if ($d -eq 'Allowed' -or $d -eq 'AllowedByDefault') {'true'} else {'false'}"
 	out, err := exec.Command("powershell.exe", "-NoProfile", "-NonInteractive", "-Command", cmd).Output()
 	if err != nil {
 		// On older Windows images the cmdlet can be unavailable. Returning an
