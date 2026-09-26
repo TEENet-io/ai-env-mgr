@@ -1,6 +1,7 @@
 package adminweb
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -74,6 +75,16 @@ func (s *Server) appManager() *admincore.Manager {
 	return &admincore.Manager{Store: s.dbm.objects, Events: s.events}
 }
 
+// ensureApplicationAppLocker keeps the security policy and the application
+// catalog in step. Only the trusted VS Code template gets an automatic rule;
+// arbitrary MSI packages still require an explicit administrator allow path.
+func ensureApplicationAppLocker(ctx context.Context, be backend, app model.Application) error {
+	if !model.IsVSCodeApplication(app) {
+		return nil
+	}
+	return be.MutateAppLockerAllowPaths(ctx, []string{model.VSCodeAppLockerPath()}, nil)
+}
+
 func (s *Server) actionApplicationPublish(sess *session, r *http.Request) error {
 	app := model.Application{AppID: formValue(r, "appId"), DisplayName: formValue(r, "displayName"), Publisher: formValue(r, "publisher"), Version: formValue(r, "version"), InstallerType: strings.ToLower(formValue(r, "installerType")), SilentArgs: strings.Fields(formValue(r, "silentArgs")), Detection: model.ApplicationDetection{Type: formValue(r, "detectionType"), Path: formValue(r, "detectionPath"), Version: formValue(r, "detectionVersion")}, Shortcut: model.ApplicationShortcut{Enabled: formValue(r, "shortcutEnabled") == "1", PublicDesktop: true, Name: formValue(r, "shortcutName"), Target: formValue(r, "shortcutTarget"), WorkingDirectory: formValue(r, "shortcutWorkingDirectory"), Icon: formValue(r, "shortcutIcon")}}
 	inferApplication(r, &app)
@@ -96,6 +107,9 @@ func (s *Server) actionApplicationPublish(sess *session, r *http.Request) error 
 		if err != nil {
 			return err
 		}
+		if err := ensureApplicationAppLocker(context.Background(), sess.be, app); err != nil {
+			return fmt.Errorf("publish application AppLocker rule: %w", err)
+		}
 		logAudit(client, "published application %s %s (%d bytes, sha256 %s)", app.AppID, app.Version, len(data), sum)
 		return nil
 	})
@@ -116,8 +130,20 @@ func (s *Server) actionApplicationInstall(sess *session, r *http.Request) error 
 	if err != nil {
 		return fmt.Errorf("unknown machine %q", machine)
 	}
-	if _, err := s.appManager().GetApplication(appID, version); err != nil {
+	app, err := s.appManager().GetApplication(appID, version)
+	if err != nil {
 		return err
+	}
+	if err := ensureApplicationAppLocker(r.Context(), sess.be, app); err != nil {
+		return fmt.Errorf("prepare application AppLocker rule: %w", err)
+	}
+	// A policy update normally wakes the Agent, but ask this target to sync
+	// explicitly so the rule is present before the install task reaches its
+	// post-install AppLocker check.
+	if model.IsVSCodeApplication(app) {
+		if err := sess.be.RequestSync(r.Context(), machine); err != nil {
+			return fmt.Errorf("request AppLocker policy sync: %w", err)
+		}
 	}
 	item, err := s.dbm.store.ApplicationTasks().Create(r.Context(), device.ID, appID, version, s.clientKey(r), formValue(r, "allowDowngrade") == "1")
 	if err != nil {

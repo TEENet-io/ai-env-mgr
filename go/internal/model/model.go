@@ -108,6 +108,13 @@ func VSCodeSilentArgs() []string {
 	return []string{"/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART", "/MERGETASKS=!runcode"}
 }
 
+// VSCodeAppLockerPath is the machine-wide install tree used by the trusted
+// system installer. It is intentionally a directory rule: Code.exe starts
+// helpers and extension processes from the same tree.
+func VSCodeAppLockerPath() string {
+	return `C:\Program Files\Microsoft VS Code\*`
+}
+
 type ApplicationShortcut struct {
 	Enabled          bool   `json:"enabled"`
 	PublicDesktop    bool   `json:"publicDesktop"`
