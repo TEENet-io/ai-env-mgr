@@ -278,6 +278,36 @@ func (s *Server) actionReleaseDelete(sess *session, r *http.Request) error {
 	return nil
 }
 
+// actionReleaseDeleteUnregistered handles old versioned objects that CI left
+// in the bucket before the release scanner registered them. Registered
+// history always goes through actionReleaseDelete above.
+func (s *Server) actionReleaseDeleteUnregistered(sess *session, r *http.Request) error {
+	product, version := formValue(r, "product"), strings.TrimSpace(formValue(r, "version"))
+	if product != repo.ProductAgent && product != repo.ProductCodex {
+		return fmt.Errorf("choose agent or codex")
+	}
+	if version == "" {
+		return fmt.Errorf("a version is required")
+	}
+	if err := confirmMatches(r, "confirm", version); err != nil {
+		return err
+	}
+	if _, err := s.dbm.store.Releases().ArtifactByVersion(r.Context(), product, version); err == nil {
+		return fmt.Errorf("%s %s is registered; retire it and delete it from the version row", product, version)
+	} else if !errors.Is(err, repo.ErrNotFound) {
+		return err
+	}
+	key := artifactKey(product, version)
+	if versionFromKey(product, key) != version {
+		return fmt.Errorf("invalid version")
+	}
+	if err := s.dbm.objects.Delete(key); err != nil {
+		return fmt.Errorf("delete OSS object: %w", err)
+	}
+	logAudit(s.clientKey(r), "deleted unregistered OSS package %s %s (%s)", product, version, key)
+	return nil
+}
+
 func (s *Server) actionReleaseGlobal(sess *session, r *http.Request) error {
 	product, version := formValue(r, "product"), formValue(r, "version")
 	if err := confirmMatches(r, "confirm", version); err != nil {

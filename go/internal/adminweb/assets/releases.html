@@ -42,6 +42,7 @@
             <input type="hidden" name="csrf" value="{{$.CSRF}}"><input type="hidden" name="product" value="{{.Product}}"><input type="hidden" name="version" value="{{.Version}}">
             <button class="link">重新登记</button>
           </form>
+          {{if may $.Role "/releases/delete-unregistered"}}<form method="post" action="/releases/delete-unregistered" class="inline" onsubmit="return confirm('确认删除 {{.Product}} {{.Version}} 的 OSS 文件吗？')"><input type="hidden" name="csrf" value="{{$.CSRF}}"><input type="hidden" name="product" value="{{.Product}}"><input type="hidden" name="version" value="{{.Version}}"><input type="hidden" name="confirm" value="{{.Version}}"><button class="link danger-link" title="删除 OSS 文件" aria-label="删除 OSS 文件">×</button></form>{{end}}
         </td>
       </tr>{{end}}
     </tbody></table></div>

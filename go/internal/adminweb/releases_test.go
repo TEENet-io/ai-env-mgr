@@ -138,6 +138,24 @@ func TestThePageListsWhatCIUploadedUntilItIsRegistered(t *testing.T) {
 	}
 }
 
+func TestUnregisteredReleaseDeleteRemovesOnlyVersionedObject(t *testing.T) {
+	s, fs := newDatabaseServer(t)
+	h := s.Handler()
+	cookie := signedIn(t, s)
+	key := "agent_workdir/_agent/1.4.0/agent.exe"
+	fs.objects[key] = []byte("old agent")
+	csrf := csrfFrom(t, s, cookie, "/releases")
+	rec := dbPost(t, h, "/releases/delete-unregistered", url.Values{
+		"csrf": {csrf}, "product": {repo.ProductAgent}, "version": {"1.4.0"}, "confirm": {"1.4.0"},
+	}, cookie)
+	if rec.Code != http.StatusSeeOther || strings.Contains(rec.Header().Get("Location"), "err=") {
+		t.Fatalf("delete unregistered: %d %s", rec.Code, rec.Header().Get("Location"))
+	}
+	if _, ok := fs.objects[key]; ok {
+		t.Fatal("unregistered OSS package was not deleted")
+	}
+}
+
 func TestTheScanButtonQueuesAScan(t *testing.T) {
 	s, _ := newDatabaseServer(t)
 	h := s.Handler()
