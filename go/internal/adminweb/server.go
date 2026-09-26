@@ -20,6 +20,7 @@ import (
 	"github.com/TEENet-io/ai-env-mgr/internal/config"
 	"github.com/TEENet-io/ai-env-mgr/internal/eventlog"
 	"github.com/TEENet-io/ai-env-mgr/internal/litellm"
+	"github.com/TEENet-io/ai-env-mgr/internal/model"
 	"github.com/TEENet-io/ai-env-mgr/internal/ossclient"
 )
 
@@ -209,6 +210,9 @@ func New(opts Options) (*Server, error) {
 		"dur":      humanDuration,
 		"sub":      func(a, b int) int { return a - b },
 		"alabel":   artifactLabel,
+		"appSupported": func(app model.Application) bool {
+			return strings.EqualFold(app.InstallerType, "msi") || (strings.EqualFold(app.InstallerType, "exe") && model.IsVSCodeApplication(app))
+		},
 		"has": func(list []string, v string) bool {
 			for _, x := range list {
 				if x == v {

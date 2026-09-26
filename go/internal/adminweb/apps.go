@@ -60,6 +60,14 @@ func inferApplication(r *http.Request, app *model.Application) {
 	if app.Detection.Path == "" {
 		app.Detection = model.ApplicationDetection{Type: "file_exists", Path: `C:\Program Files\` + app.DisplayName + `\` + app.AppID + `.exe`}
 	}
+	if model.IsVSCodeApplication(*app) {
+		app.InstallerType = "exe"
+		app.Publisher = "Microsoft"
+		app.DisplayName = "Visual Studio Code"
+		app.SilentArgs = model.VSCodeSilentArgs()
+		app.Detection = model.ApplicationDetection{Type: "file_exists", Path: `C:\Program Files\Microsoft VS Code\Code.exe`}
+		app.Shortcut = model.ApplicationShortcut{Enabled: true, PublicDesktop: true, Name: "Visual Studio Code", Target: `C:\Program Files\Microsoft VS Code\Code.exe`}
+	}
 }
 
 func (s *Server) appManager() *admincore.Manager {

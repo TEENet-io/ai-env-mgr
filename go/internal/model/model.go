@@ -93,6 +93,21 @@ type Application struct {
 	Approved       bool                 `json:"approved"`
 	UpdatedAt      string               `json:"updatedAt"`
 }
+
+// IsVSCodeApplication identifies the one trusted EXE template. Generic EXE
+// installers remain unsupported because their silent switches are not
+// standardized and may block a SYSTEM service on an invisible dialog.
+func IsVSCodeApplication(app Application) bool {
+	name := strings.ToLower(strings.TrimSpace(app.AppID + " " + app.DisplayName))
+	return strings.Contains(name, "vscode") || strings.Contains(name, "visual studio code")
+}
+
+// VSCodeSilentArgs are the fixed Inno Setup switches used for non-interactive
+// Windows installation. The Agent applies them itself.
+func VSCodeSilentArgs() []string {
+	return []string{"/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART", "/MERGETASKS=!runcode"}
+}
+
 type ApplicationShortcut struct {
 	Enabled          bool   `json:"enabled"`
 	PublicDesktop    bool   `json:"publicDesktop"`

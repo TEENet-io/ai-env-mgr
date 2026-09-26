@@ -91,15 +91,20 @@ func (applicationInstaller) Install(app model.Application, setupPath string) err
 func (applicationInstaller) InstallContext(parent context.Context, app model.Application, setupPath string) error {
 	ctx, cancel := context.WithTimeout(parent, 30*time.Minute)
 	defer cancel()
-	if !strings.EqualFold(app.InstallerType, "msi") {
-		return fmt.Errorf("only MSI installers are supported")
+	var cmd *exec.Cmd
+	if strings.EqualFold(app.InstallerType, "msi") {
+		// MSI has a standard unattended invocation. Optional manifest arguments
+		// remain available for vendor properties.
+		args := []string{"/i", setupPath, "/qn", "/norestart"}
+		args = append(args, app.SilentArgs...)
+		cmd = exec.CommandContext(ctx, "msiexec.exe", args...)
+	} else if strings.EqualFold(app.InstallerType, "exe") && model.IsVSCodeApplication(app) {
+		// The only trusted EXE template. Do not accept manifest-provided
+		// switches here: VS Code's Inno Setup switches are fixed and silent.
+		cmd = exec.CommandContext(ctx, setupPath, model.VSCodeSilentArgs()...)
+	} else {
+		return fmt.Errorf("only MSI or the trusted VS Code installer is supported")
 	}
-	// MSI has a standard unattended invocation. Optional manifest arguments
-	// remain available for vendor properties, but EXE command execution is
-	// deliberately not supported by the generic application path.
-	args := []string{"/i", setupPath, "/qn", "/norestart"}
-	args = append(args, app.SilentArgs...)
-	cmd := exec.CommandContext(ctx, "msiexec.exe", args...)
 	if err := cmd.Start(); err != nil {
 		return fmt.Errorf("start installer: %w", err)
 	}

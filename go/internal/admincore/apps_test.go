@@ -70,8 +70,24 @@ func TestPublishApplicationRejectsExe(t *testing.T) {
 	m := &Manager{Store: store}
 	app := testApplication()
 	app.InstallerType = "exe"
-	if _, err := m.PublishApplication(app, []byte("installer"), nil); err == nil || !strings.Contains(err.Error(), "only MSI") {
+	if _, err := m.PublishApplication(app, []byte("installer"), nil); err == nil || !strings.Contains(err.Error(), "only MSI or") {
 		t.Fatalf("EXE should be rejected, got %v", err)
+	}
+}
+
+func TestPublishApplicationAcceptsTrustedVSCodeEXE(t *testing.T) {
+	store := newFakeStore()
+	m := &Manager{Store: store}
+	app := testApplication()
+	app.AppID = "vscodesetup-x64"
+	app.DisplayName = "Visual Studio Code"
+	app.InstallerType = "exe"
+	app.ObjectKey = ""
+	if _, err := m.PublishApplication(app, []byte("installer"), nil); err != nil {
+		t.Fatalf("trusted VS Code EXE should be accepted: %v", err)
+	}
+	if _, ok := store.objects[ossclient.ApplicationPackageKey(app.AppID, app.Version, "exe")]; !ok {
+		t.Fatal("VS Code EXE package was not written")
 	}
 }
 

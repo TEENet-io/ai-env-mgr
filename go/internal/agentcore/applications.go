@@ -155,8 +155,8 @@ func (s *Syncer) applyApplicationContext(ctx context.Context, item model.Desired
 	if err := json.Unmarshal(data, &app); err != nil {
 		return appFailure(st, AppBlocked, fmt.Sprintf("parse manifest: %v", err))
 	}
-	if !strings.EqualFold(app.InstallerType, "msi") {
-		return appFailure(st, AppBlocked, "only MSI installers are supported")
+	if !strings.EqualFold(app.InstallerType, "msi") && !(strings.EqualFold(app.InstallerType, "exe") && model.IsVSCodeApplication(app)) {
+		return appFailure(st, AppBlocked, "only MSI or the trusted VS Code installer is supported")
 	}
 	if !app.Enabled || !app.Approved || app.ObjectKey == "" || app.SHA256 == "" {
 		return appFailure(st, AppBlocked, "manifest is not enabled, approved, and complete")
@@ -259,7 +259,11 @@ func installerFilename(installerType, taskID string) string {
 	if suffix == "_invalid" || suffix == "." {
 		suffix = "current"
 	}
-	return "installer-" + suffix + ".msi"
+	ext := ".msi"
+	if strings.EqualFold(installerType, "exe") {
+		ext = ".exe"
+	}
+	return "installer-" + suffix + ext
 }
 
 func (s *Syncer) finishApplication(st model.ApplicationStatus, app model.Application) model.ApplicationStatus {
