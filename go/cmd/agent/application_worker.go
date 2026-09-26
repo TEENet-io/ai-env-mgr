@@ -75,7 +75,7 @@ func runApplicationTask(s *agentcore.Syncer, client *agentapi.Client, task model
 		}
 	}()
 	log.Printf("application task %s claimed: %s@%s attempt=%d", task.ID, task.AppID, task.Version, task.Attempts)
-	st := s.ExecuteApplication(ctx, model.DesiredApplication{AppID: task.AppID, Version: task.Version, Desired: "installed", TaskID: task.ID, AllowDowngrade: task.AllowDowngrade}, func(st model.ApplicationStatus) {
+	st := s.ExecuteApplication(ctx, model.DesiredApplication{AppID: task.AppID, Version: task.Version, Desired: "installed", TaskID: task.ID, LeaseToken: task.LeaseToken, AllowDowngrade: task.AllowDowngrade}, func(st model.ApplicationStatus) {
 		mu.Lock()
 		progress = st.State
 		mu.Unlock()

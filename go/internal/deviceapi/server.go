@@ -152,6 +152,8 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /agent/v1/application-tasks/claim", s.authed(s.handleApplicationTaskClaim))
 	mux.HandleFunc("POST /agent/v1/application-tasks/{id}/renew", s.authed(s.handleApplicationTaskRenew))
 	mux.HandleFunc("POST /agent/v1/application-tasks/{id}/finish", s.authed(s.handleApplicationTaskFinish))
+	mux.HandleFunc("GET /agent/v1/application-tasks/{id}/manifest", s.authed(s.handleApplicationTaskManifest))
+	mux.HandleFunc("GET /agent/v1/application-tasks/{id}/download", s.authed(s.handleApplicationTaskDownload))
 	mux.HandleFunc("POST /agent/v1/log", s.authed(s.handleLog))
 	mux.HandleFunc("GET /agent/v1/artifact/{product}/{version}", s.authed(s.handleArtifact))
 	mux.HandleFunc("GET /agent/v1/application/{appID}/{version}/manifest", s.authed(s.handleApplicationManifest))

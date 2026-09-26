@@ -112,10 +112,13 @@ type MachineApplications struct {
 	Apps      []DesiredApplication `json:"apps"`
 }
 type DesiredApplication struct {
-	AppID          string `json:"appId"`
-	Version        string `json:"version"`
-	Desired        string `json:"desired"`
-	TaskID         string `json:"taskId"`
+	AppID   string `json:"appId"`
+	Version string `json:"version"`
+	Desired string `json:"desired"`
+	TaskID  string `json:"taskId"`
+	// LeaseToken is carried only in memory by an API worker. It is never part
+	// of an OSS machine plan or status document.
+	LeaseToken     string `json:"-"`
 	AllowDowngrade bool   `json:"allowDowngrade,omitempty"`
 }
 type ApplicationStatus struct {

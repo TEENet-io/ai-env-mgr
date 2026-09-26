@@ -3,6 +3,8 @@ package deviceapi
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"net"
@@ -55,6 +57,16 @@ func (f *fakeSigner) SignedURL(key string, ttl time.Duration) (string, error) {
 func (f *fakeSigner) SignedPutURL(key string, ttl time.Duration, ct string) (string, error) {
 	f.signed = append(f.signed, "PUT "+key+" "+ct)
 	return "https://bucket.example/" + key + "?sig=put", nil
+}
+
+type fakeBucketReader map[string][]byte
+
+func (f fakeBucketReader) Get(key string) ([]byte, string, error) {
+	b, ok := f[key]
+	if !ok {
+		return nil, "", repo.ErrNotFound
+	}
+	return b, "etag", nil
 }
 
 // fakeEvents keeps every line so a test can grep it for secrets.
@@ -185,6 +197,48 @@ func TestEnrolThenConfigThenStatus(t *testing.T) {
 	events, _, _ := store.Audit().Search(ctx, repo.AuditFilter{Action: "device.enrol", Limit: 5})
 	if len(events) != 1 || events[0].TargetID != deviceID || events[0].ActorID != "device:PC-1" {
 		t.Fatalf("audit = %+v", events)
+	}
+}
+
+func TestLeasedApplicationEndpointsAuthorizeDatabaseTask(t *testing.T) {
+	s, store, ctx, h, signer, _ := newServer(t)
+	deviceID, token := enrol(t, h, "PC-TASK")
+	task, err := store.ApplicationTasks().Create(ctx, deviceID, "editor", "1.0", "admin", false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	task, err = store.ApplicationTasks().Claim(ctx, deviceID, time.Minute)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if task.ID == "" || task.LeaseToken == "" {
+		t.Fatalf("claimed task = %+v", task)
+	}
+	installer := []byte("installer")
+	sum := sha256.Sum256(installer)
+	manifest, _ := json.Marshal(model.Application{
+		AppID: "editor", Version: "1.0", InstallerType: "msi", Enabled: true, Approved: true,
+		ObjectKey: ossclient.ApplicationPackageKey("editor", "1.0", "msi"), SHA256: hex.EncodeToString(sum[:]), Size: int64(len(installer)),
+	})
+	s.Bucket = fakeBucketReader{ossclient.ApplicationKey("editor", "1.0"): manifest}
+
+	rec := do(h, "GET", "/agent/v1/application-tasks/"+task.ID+"/manifest", token, nil, applicationLeaseHeader, task.LeaseToken)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("task manifest: %d %s", rec.Code, rec.Body.String())
+	}
+	var got model.Application
+	if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil || got.AppID != "editor" {
+		t.Fatalf("manifest = %+v: %v", got, err)
+	}
+	rec = do(h, "GET", "/agent/v1/application-tasks/"+task.ID+"/download", token, nil, applicationLeaseHeader, task.LeaseToken)
+	if rec.Code != http.StatusFound || !strings.Contains(rec.Header().Get("Location"), "editor") {
+		t.Fatalf("task download: %d %s", rec.Code, rec.Header().Get("Location"))
+	}
+	if len(signer.signed) == 0 || signer.signed[len(signer.signed)-1] != "GET "+ossclient.ApplicationPackageKey("editor", "1.0", "msi") {
+		t.Fatalf("signed objects = %v", signer.signed)
+	}
+	if rec := do(h, "GET", "/agent/v1/application-tasks/"+task.ID+"/manifest", token, nil, applicationLeaseHeader, "wrong"); rec.Code != http.StatusNotFound {
+		t.Fatalf("wrong lease: %d %s", rec.Code, rec.Body.String())
 	}
 }
 

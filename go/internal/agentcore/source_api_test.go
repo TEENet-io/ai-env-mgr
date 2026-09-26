@@ -113,6 +113,20 @@ func newFakeConsole(t *testing.T) *fakeConsole {
 	mux.HandleFunc("GET /agent/v1/application/{appID}/{version}", authed(func(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, f.srv.URL+"/blob/application", 302)
 	}))
+	mux.HandleFunc("GET /agent/v1/application-tasks/{id}/manifest", authed(func(w http.ResponseWriter, r *http.Request) {
+		if r.PathValue("id") != "install-1" || r.Header.Get("X-Application-Lease-Token") != "lease-1" {
+			http.Error(w, "lease lost", http.StatusNotFound)
+			return
+		}
+		json.NewEncoder(w).Encode(f.application)
+	}))
+	mux.HandleFunc("GET /agent/v1/application-tasks/{id}/download", authed(func(w http.ResponseWriter, r *http.Request) {
+		if r.PathValue("id") != "install-1" || r.Header.Get("X-Application-Lease-Token") != "lease-1" {
+			http.Error(w, "lease lost", http.StatusNotFound)
+			return
+		}
+		http.Redirect(w, r, f.srv.URL+"/blob/application", 302)
+	}))
 	mux.HandleFunc("GET /blob/{product}", func(w http.ResponseWriter, r *http.Request) {
 		if r.Header.Get("Authorization") != "" {
 			http.Error(w, "the bucket must never see the token", 400)
@@ -159,6 +173,28 @@ func TestAPISourceInstallsApplicationWithoutBucketCredentials(t *testing.T) {
 	}
 	if s.Store != nil {
 		t.Fatal("API-only agent unexpectedly has a bucket store")
+	}
+}
+
+func TestAPISourceInstallsLeasedApplicationThroughTaskEndpoints(t *testing.T) {
+	console := newFakeConsole(t)
+	s, _ := apiSyncer(t, console, &fakeApplier{})
+	packageData := []byte("approved leased installer")
+	sum := sha256.Sum256(packageData)
+	app := model.Application{AppID: "editor", Version: "1.0", InstallerType: "msi", Enabled: true, Approved: true,
+		ObjectKey: ossclient.ApplicationPackageKey("editor", "1.0", "msi"), SHA256: hex.EncodeToString(sum[:]), Size: int64(len(packageData))}
+	console.application = app
+	console.artifact = packageData
+	installer := &fakeApplicationInstaller{}
+	s.Applications = installer
+	st := s.ExecuteApplication(context.Background(), model.DesiredApplication{AppID: app.AppID, Version: app.Version, TaskID: "install-1", LeaseToken: "lease-1", Desired: "installed"}, nil)
+	if st.State != AppSucceeded || installer.installs != 1 {
+		t.Fatalf("leased application status=%+v installs=%d", st, installer.installs)
+	}
+	for _, call := range console.calls {
+		if strings.Contains(call, "/agent/v1/application/editor/1.0") {
+			t.Fatalf("leased install used legacy application endpoint: %s", call)
+		}
 	}
 }
 

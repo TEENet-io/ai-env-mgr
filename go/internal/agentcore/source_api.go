@@ -193,6 +193,20 @@ func (a *APISource) Application(appID, version string) ([]byte, error) {
 	return json.Marshal(app)
 }
 
+// ApplicationTask reads a manifest through the lease-scoped API. The server
+// derives the app/version from the task row and rechecks the lease; the local
+// values are compared as a defensive consistency check.
+func (a *APISource) ApplicationTask(ctx context.Context, appID, version, taskID, leaseToken string) ([]byte, error) {
+	app, err := a.Client.ApplicationTaskManifest(ctx, taskID, leaseToken)
+	if err != nil {
+		return nil, a.note(err)
+	}
+	if app.AppID != appID || app.Version != version {
+		return nil, fmt.Errorf("application task %s returned %s@%s, expected %s@%s", taskID, app.AppID, app.Version, appID, version)
+	}
+	return json.Marshal(app)
+}
+
 func (a *APISource) download() *http.Client {
 	if a.Download != nil {
 		return a.Download
@@ -270,6 +284,14 @@ func (a *APISource) ApplicationToFile(appID, version, dest string) (string, erro
 
 func (a *APISource) ApplicationToFileContext(ctx context.Context, appID, version, dest string) (string, error) {
 	link, _, err := a.Client.ApplicationURL(ctx, appID, version)
+	if err != nil {
+		return "", a.note(err)
+	}
+	return a.downloadToFileContext(ctx, link, dest)
+}
+
+func (a *APISource) ApplicationTaskToFileContext(ctx context.Context, appID, version, taskID, leaseToken, dest string) (string, error) {
+	link, _, err := a.Client.ApplicationTaskURL(ctx, taskID, leaseToken)
 	if err != nil {
 		return "", a.note(err)
 	}

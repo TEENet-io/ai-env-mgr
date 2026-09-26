@@ -74,6 +74,21 @@ func fakeConsole(t *testing.T) (*httptest.Server, *[]string) {
 		w.Header().Set("X-Artifact-SHA256", strings.Repeat("a", 64))
 		http.Redirect(w, r, "https://bucket.example/codex-0.42.0.exe?sig=x", http.StatusFound)
 	}))
+	mux.HandleFunc("GET /agent/v1/application-tasks/{id}/manifest", authed(func(w http.ResponseWriter, r *http.Request) {
+		if r.PathValue("id") != "install-1" || r.Header.Get("X-Application-Lease-Token") != "lease-1" {
+			http.Error(w, "bad lease", http.StatusNotFound)
+			return
+		}
+		json.NewEncoder(w).Encode(model.Application{AppID: "editor", Version: "1.0", InstallerType: "msi", Enabled: true, Approved: true})
+	}))
+	mux.HandleFunc("GET /agent/v1/application-tasks/{id}/download", authed(func(w http.ResponseWriter, r *http.Request) {
+		if r.PathValue("id") != "install-1" || r.Header.Get("X-Application-Lease-Token") != "lease-1" {
+			http.Error(w, "bad lease", http.StatusNotFound)
+			return
+		}
+		w.Header().Set("X-Artifact-SHA256", strings.Repeat("b", 64))
+		http.Redirect(w, r, "https://bucket.example/editor-1.0.msi?sig=task", http.StatusFound)
+	}))
 	mux.HandleFunc("POST /agent/v1/collect/upload-url", authed(func(w http.ResponseWriter, r *http.Request) {
 		json.NewEncoder(w).Encode(map[string]string{"url": "https://bucket.example/put?sig=y", "contentType": "application/octet-stream"})
 	}))
@@ -129,6 +144,17 @@ func TestClientSpeaksTheDeviceAPI(t *testing.T) {
 	}
 	if _, _, err := c.ArtifactURL(ctx, "codex", "0.43.0"); err == nil || errors.Is(err, ErrUnauthorized) {
 		t.Fatalf("a refused artifact is a plain error: %v", err)
+	}
+	manifest, err := c.ApplicationTaskManifest(ctx, "install-1", "lease-1")
+	if err != nil || manifest.AppID != "editor" || manifest.Version != "1.0" {
+		t.Fatalf("task manifest: %+v %v", manifest, err)
+	}
+	taskLink, taskSHA, err := c.ApplicationTaskURL(ctx, "install-1", "lease-1")
+	if err != nil || !strings.Contains(taskLink, "sig=task") || taskSHA != strings.Repeat("b", 64) {
+		t.Fatalf("task download: %s %s %v", taskLink, taskSHA, err)
+	}
+	if _, err := c.ApplicationTaskManifest(ctx, "install-1", ""); err == nil {
+		t.Fatal("empty task lease must be rejected before making a request")
 	}
 	put, ct, err := c.CollectUploadURL(ctx, "work1", "2026/09/a.jsonl")
 	if err != nil || !strings.Contains(put, "sig=y") || ct != "application/octet-stream" {

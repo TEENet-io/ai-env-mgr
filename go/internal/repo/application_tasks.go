@@ -22,6 +22,10 @@ type ApplicationTasks interface {
 	Create(ctx context.Context, deviceID, appID, version, actor string, allowDowngrade bool) (ApplicationTask, error)
 	Cancel(ctx context.Context, id, deviceID string) (ApplicationTask, error)
 	Claim(ctx context.Context, deviceID string, lease time.Duration) (ApplicationTask, error)
+	// Authorize returns the task only while this device still owns a live lease.
+	// It is used for task-scoped manifest/package reads; a stale task must not
+	// be able to fetch an application after Admin cancelled or reassigned it.
+	Authorize(ctx context.Context, id, deviceID, token string) (ApplicationTask, error)
 	Renew(ctx context.Context, id, deviceID, token, progress string, lease time.Duration) (ApplicationTask, error)
 	Finish(ctx context.Context, id, deviceID, token, state, lastError string) (ApplicationTask, error)
 	ByID(ctx context.Context, id string) (ApplicationTask, error)

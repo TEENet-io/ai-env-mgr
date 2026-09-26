@@ -132,7 +132,22 @@ func (s *Syncer) applyApplicationContext(ctx context.Context, item model.Desired
 	if err := ctx.Err(); err != nil {
 		return appFailure(st, AppCancelled, err.Error())
 	}
-	data, err := s.source().Application(item.AppID, item.Version)
+	var data []byte
+	var err error
+	if item.TaskID != "" && item.LeaseToken != "" {
+		if src, ok := s.source().(interface {
+			ApplicationTask(context.Context, string, string, string, string) ([]byte, error)
+		}); ok {
+			data, err = src.ApplicationTask(ctx, item.AppID, item.Version, item.TaskID, item.LeaseToken)
+		} else {
+			return appFailure(st, AppFailed, "task-scoped application reads are not supported by this source")
+		}
+	} else {
+		// Legacy OSS plans carry no lease token and continue through the
+		// compatibility path. PostgreSQL-backed tasks must use the scoped path
+		// above so a cancelled task cannot fetch a package.
+		data, err = s.source().Application(item.AppID, item.Version)
+	}
 	if err != nil {
 		return appFailure(st, AppFailed, fmt.Sprintf("read manifest: %v", err))
 	}
@@ -181,7 +196,15 @@ func (s *Syncer) applyApplicationContext(ctx context.Context, item model.Desired
 	// make the local files traceable to the Admin task that created them.
 	dest := filepath.Join(destDir, installerFilename(app.InstallerType, item.TaskID))
 	var sum string
-	if src, ok := s.source().(interface {
+	if item.TaskID != "" && item.LeaseToken != "" {
+		if src, ok := s.source().(interface {
+			ApplicationTaskToFileContext(context.Context, string, string, string, string, string) (string, error)
+		}); ok {
+			sum, err = src.ApplicationTaskToFileContext(ctx, app.AppID, app.Version, item.TaskID, item.LeaseToken, dest)
+		} else {
+			return appFailure(st, AppFailed, "task-scoped application downloads are not supported by this source")
+		}
+	} else if src, ok := s.source().(interface {
 		ApplicationToFileContext(context.Context, string, string, string) (string, error)
 	}); ok {
 		sum, err = src.ApplicationToFileContext(ctx, app.AppID, app.Version, dest)

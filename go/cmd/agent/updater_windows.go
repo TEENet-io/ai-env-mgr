@@ -129,9 +129,30 @@ func runUpdateHelper(args []string) error {
 		return updateHelperFailure(fmt.Errorf("put new exe in place: %w", err))
 	}
 	if err := winsvc.Start(svc); err != nil {
+		// Keep the old image until the replacement has at least been handed
+		// back to the service manager. This leaves a recovery copy when the
+		// new service cannot be started; a successful startup removes it.
 		return updateHelperFailure(fmt.Errorf("start service after update: %w", err))
 	}
+	// The backup exists only long enough to make the swap reversible. We do
+	// not retain old Agent binaries on the machine after the new image is in
+	// place; cleanup is retried below in case antivirus briefly holds the file.
+	backupErr := removeUpdateBackup(backup)
+	if backupErr != nil {
+		return writeUpdateHelperResult("updated; old backup cleanup pending: " + backupErr.Error())
+	}
 	return writeUpdateHelperResult("updated")
+}
+
+func removeUpdateBackup(path string) error {
+	var err error
+	for i := 0; i < 20; i++ {
+		if err = os.Remove(path); err == nil || os.IsNotExist(err) {
+			return nil
+		}
+		time.Sleep(500 * time.Millisecond)
+	}
+	return err
 }
 
 func updateHelperFailure(err error) error {
@@ -160,9 +181,10 @@ func consumeUpdateHelperResult() string {
 	return strings.TrimSpace(string(b))
 }
 
-// cleanupUpdateHelpers removes copied updater images after the new service has
-// started. The first attempt may race the helper's final exit, so retry for a
-// short period; failed removes are harmless and never affect the service.
+// cleanupUpdateHelpers removes copied updater images and legacy rollback files
+// after the new service has started. The first attempt may race the helper's
+// final exit or an antivirus scan, so retry for a short period; failed removes
+// are harmless and never affect the service.
 func cleanupUpdateHelpers() {
 	exe, err := os.Executable()
 	if err != nil {
@@ -174,9 +196,11 @@ func cleanupUpdateHelpers() {
 		if err == nil {
 			left := false
 			for _, entry := range entries {
-				if strings.HasPrefix(entry.Name(), "agent-updater-") && strings.HasSuffix(entry.Name(), ".exe") {
+				name := entry.Name()
+				if (strings.HasPrefix(name, "agent-updater-") && strings.HasSuffix(name, ".exe")) ||
+					strings.HasPrefix(name, "agent.exe.old-") || name == "agent.exe.old" {
 					left = true
-					_ = os.Remove(filepath.Join(dir, entry.Name()))
+					_ = os.Remove(filepath.Join(dir, name))
 				}
 			}
 			if !left {

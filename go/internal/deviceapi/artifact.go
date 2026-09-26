@@ -109,6 +109,11 @@ func (s *Server) applicationManifest(ctx context.Context, device repo.Device, ap
 	if !found {
 		return app, errors.New("application is not assigned to this machine")
 	}
+	return s.readApprovedApplication(ctx, appID, version)
+}
+
+func (s *Server) readApprovedApplication(ctx context.Context, appID, version string) (model.Application, error) {
+	var app model.Application
 	if s.Bucket == nil {
 		return app, errors.New("application manifest store is unavailable")
 	}
@@ -128,6 +133,27 @@ func (s *Server) applicationManifest(ctx context.Context, device repo.Device, ap
 	return app, nil
 }
 
+const applicationLeaseHeader = "X-Application-Lease-Token"
+
+// leasedApplication authorizes a task-scoped read using the same live lease
+// that owns the install. The lease token is never accepted from a URL, and an
+// expired/cancelled/reassigned task is indistinguishable from a missing one.
+func (s *Server) leasedApplication(ctx context.Context, r *http.Request, device repo.Device) (repo.ApplicationTask, error) {
+	token := strings.TrimSpace(r.Header.Get(applicationLeaseHeader))
+	if token == "" {
+		return repo.ApplicationTask{}, repo.ErrNotFound
+	}
+	return s.Store.ApplicationTasks().Authorize(ctx, r.PathValue("id"), device.ID, token)
+}
+
+func (s *Server) taskApplication(ctx context.Context, r *http.Request, device repo.Device) (model.Application, error) {
+	task, err := s.leasedApplication(ctx, r, device)
+	if err != nil {
+		return model.Application{}, err
+	}
+	return s.readApprovedApplication(ctx, task.AppID, task.Version)
+}
+
 func (s *Server) handleApplicationManifest(w http.ResponseWriter, r *http.Request, device repo.Device) {
 	app, err := s.applicationManifest(r.Context(), device, r.PathValue("appID"), r.PathValue("version"))
 	if err != nil {
@@ -140,6 +166,15 @@ func (s *Server) handleApplicationManifest(w http.ResponseWriter, r *http.Reques
 			return
 		}
 		s.fail(w, r, "read application manifest", err)
+		return
+	}
+	writeJSON(w, http.StatusOK, app)
+}
+
+func (s *Server) handleApplicationTaskManifest(w http.ResponseWriter, r *http.Request, device repo.Device) {
+	app, err := s.taskApplication(r.Context(), r, device)
+	if err != nil {
+		s.writeApplicationError(w, r, "read application task manifest", err)
 		return
 	}
 	writeJSON(w, http.StatusOK, app)
@@ -171,6 +206,38 @@ func (s *Server) handleApplication(w http.ResponseWriter, r *http.Request, devic
 	w.Header().Set("X-Artifact-SHA256", app.SHA256)
 	w.Header().Set("Cache-Control", "no-store")
 	http.Redirect(w, r, link, http.StatusFound)
+}
+
+func (s *Server) handleApplicationTaskDownload(w http.ResponseWriter, r *http.Request, device repo.Device) {
+	if s.Objects == nil {
+		http.Error(w, "downloads are not available", http.StatusServiceUnavailable)
+		return
+	}
+	app, err := s.taskApplication(r.Context(), r, device)
+	if err != nil {
+		s.writeApplicationError(w, r, "read application task", err)
+		return
+	}
+	link, err := s.signedDownload(app.ObjectKey)
+	if err != nil {
+		s.fail(w, r, "sign application task download", err)
+		return
+	}
+	w.Header().Set("X-Artifact-SHA256", app.SHA256)
+	w.Header().Set("Cache-Control", "no-store")
+	http.Redirect(w, r, link, http.StatusFound)
+}
+
+func (s *Server) writeApplicationError(w http.ResponseWriter, r *http.Request, what string, err error) {
+	if errors.Is(err, repo.ErrNotFound) || strings.Contains(err.Error(), "not assigned") {
+		http.Error(w, "application task not found or lease lost", http.StatusNotFound)
+		return
+	}
+	if strings.Contains(err.Error(), "not approved") {
+		http.Error(w, "application not approved", http.StatusForbidden)
+		return
+	}
+	s.fail(w, r, what, err)
 }
 
 type uploadRequest struct {

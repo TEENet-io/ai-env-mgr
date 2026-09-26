@@ -77,6 +77,12 @@ func (r applicationTaskRepo) Claim(ctx context.Context, deviceID string, lease t
 	return t, mapError(err, "claim application task")
 }
 
+func (r applicationTaskRepo) Authorize(ctx context.Context, id, deviceID, token string) (repo.ApplicationTask, error) {
+	t, err := scanApplicationTask(r.q.QueryRow(ctx, `select `+applicationTaskColumns+` from application_tasks
+		where id=$1 and device_id=$2 and lease_token=$3 and state='running' and lease_until > now()`, id, deviceID, token))
+	return t, mapError(err, "authorize application task")
+}
+
 func (r applicationTaskRepo) Renew(ctx context.Context, id, deviceID, token, progress string, lease time.Duration) (repo.ApplicationTask, error) {
 	seconds := int(lease.Seconds())
 	if seconds < 30 {
