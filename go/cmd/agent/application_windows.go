@@ -225,7 +225,13 @@ func (applicationInstaller) AppLockerAllowed(app model.Application) (bool, error
 		target = app.Detection.Path
 	}
 	path := psQuote(target)
-	cmd := "$p=Get-AppLockerPolicy -Effective; if ($null -eq $p) { 'true'; exit }; $f=Get-AppLockerFileInformation -Path '" + path + "'; $r=Test-AppLockerPolicy -PolicyObject $p -FileInformation $f; $d=[string]$r.PolicyDecision; if ($d -eq 'Allowed' -or $d -eq 'AllowedByDefault') {'true'} else {'false'}"
+	// Test-AppLockerPolicy accepts paths, not Get-AppLockerFileInformation
+	// objects.  Passing -FileInformation is not a valid parameter on current
+	// Windows builds; PowerShell reports a binding error and emits no result,
+	// which the old code misread as "false" (AppLocker would block).  Test the
+	// effective policy for Everyone, which is the identity used by the managed
+	// allow rules and is a conservative check for the employee session.
+	cmd := "$p=Get-AppLockerPolicy -Effective -ErrorAction Stop; if ($null -eq $p) { 'true'; exit }; $r=Test-AppLockerPolicy -PolicyObject $p -Path @('" + path + "') -User Everyone -ErrorAction Stop; $d=[string]$r.PolicyDecision; if ($d -eq 'Allowed' -or $d -eq 'AllowedByDefault') {'true'} else {'false'}"
 	out, err := exec.Command("powershell.exe", "-NoProfile", "-NonInteractive", "-Command", cmd).Output()
 	if err != nil {
 		// On older Windows images the cmdlet can be unavailable. Returning an
