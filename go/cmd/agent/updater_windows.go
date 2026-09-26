@@ -103,12 +103,12 @@ func runUpdateHelper(args []string) error {
 		return fmt.Errorf("update helper: files must be in one directory")
 	}
 
-	if err := winsvc.Stop(svc); err != nil {
+	if err := winsvc.StopAndWait(svc, 2*time.Minute); err != nil {
 		return updateHelperFailure(err)
 	}
 	// SERVICE_STOPPED can be reported before the process has released its
-	// image section. Retry the rename itself; checking only the SCM state races
-	// the last few milliseconds of process teardown.
+	// image section. Retry the rename itself as well; checking the SCM state
+	// still races the last few milliseconds of process teardown.
 	var moveErr error
 	for i := 0; i < 120; i++ {
 		if err := os.Rename(current, backup); err == nil {
@@ -120,15 +120,15 @@ func runUpdateHelper(args []string) error {
 		time.Sleep(500 * time.Millisecond)
 	}
 	if moveErr != nil {
-		_ = winsvc.Start(svc)
+		_ = winsvc.StartAndWait(svc, 2*time.Minute)
 		return updateHelperFailure(fmt.Errorf("move current exe aside: %w", moveErr))
 	}
 	if err := os.Rename(staged, current); err != nil {
 		_ = os.Rename(backup, current)
-		_ = winsvc.Start(svc)
+		_ = winsvc.StartAndWait(svc, 2*time.Minute)
 		return updateHelperFailure(fmt.Errorf("put new exe in place: %w", err))
 	}
-	if err := winsvc.Start(svc); err != nil {
+	if err := winsvc.StartAndWait(svc, 2*time.Minute); err != nil {
 		// Keep the old image until the replacement has at least been handed
 		// back to the service manager. This leaves a recovery copy when the
 		// new service cannot be started; a successful startup removes it.

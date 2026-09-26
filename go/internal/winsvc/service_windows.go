@@ -90,6 +90,34 @@ func Start(name string) error {
 	return nil
 }
 
+// StartAndWait starts the service and waits until the SCM reports RUNNING.
+// Start itself only queues the request; callers replacing the service image
+// must not delete their rollback copy before the new process is actually up.
+func StartAndWait(name string, timeout time.Duration) error {
+	m, err := mgr.Connect()
+	if err != nil {
+		return fmt.Errorf("connect service manager: %w", err)
+	}
+	defer m.Disconnect()
+
+	s, err := m.OpenService(name)
+	if err != nil {
+		return fmt.Errorf("open service %q: %w", name, err)
+	}
+	defer s.Close()
+
+	st, err := s.Query()
+	if err != nil {
+		return fmt.Errorf("query service before start: %w", err)
+	}
+	if st.State != svc.Running {
+		if err := s.Start(); err != nil {
+			return fmt.Errorf("start service: %w", err)
+		}
+	}
+	return waitForState(s, svc.Running, timeout)
+}
+
 // Stop stops an installed service.
 func Stop(name string) error {
 	m, err := mgr.Connect()
@@ -107,6 +135,55 @@ func Stop(name string) error {
 		return fmt.Errorf("stop service: %w", err)
 	}
 	return nil
+}
+
+// StopAndWait sends a stop control and waits until the service process has
+// exited. Windows permits renaming a running image, so observing STOPPED is
+// required before an updater swaps the executable.
+func StopAndWait(name string, timeout time.Duration) error {
+	m, err := mgr.Connect()
+	if err != nil {
+		return fmt.Errorf("connect service manager: %w", err)
+	}
+	defer m.Disconnect()
+
+	s, err := m.OpenService(name)
+	if err != nil {
+		return fmt.Errorf("open service %q: %w", name, err)
+	}
+	defer s.Close()
+
+	st, err := s.Query()
+	if err != nil {
+		return fmt.Errorf("query service before stop: %w", err)
+	}
+	if st.State == svc.Stopped {
+		return nil
+	}
+	if _, err := s.Control(svc.Stop); err != nil {
+		return fmt.Errorf("stop service: %w", err)
+	}
+	return waitForState(s, svc.Stopped, timeout)
+}
+
+func waitForState(s *mgr.Service, want svc.State, timeout time.Duration) error {
+	if timeout <= 0 {
+		timeout = time.Minute
+	}
+	deadline := time.Now().Add(timeout)
+	for {
+		st, err := s.Query()
+		if err != nil {
+			return fmt.Errorf("query service state: %w", err)
+		}
+		if st.State == want {
+			return nil
+		}
+		if time.Now().After(deadline) {
+			return fmt.Errorf("service did not reach %v (current state %v)", want, st.State)
+		}
+		time.Sleep(250 * time.Millisecond)
+	}
 }
 
 // Hooks carries the callbacks the service body needs.
