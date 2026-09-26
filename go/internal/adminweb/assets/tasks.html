@@ -3,34 +3,53 @@
 <div class="app">
 {{template "nav" .}}
 <main class="sheet task-sheet">
-  <header class="pagehead"><h1>后台任务中心</h1><p class="lede">每张卡片对应一个任务，按实际状态归类。</p></header>
+  <header class="pagehead task-pagehead">
+    <div>
+      <p class="eyebrow">OPERATIONS / TASK CENTER</p>
+      <h1>后台任务中心</h1>
+      <p class="lede">把需要关注的后台工作集中在一个看板里。安装任务、网关同步和周期作业按状态排列。</p>
+    </div>
+    <div class="task-head-mark" aria-hidden="true"><span></span><span></span><span></span></div>
+  </header>
   {{template "notices" .}}
-  <div class="task-toolbar">
-    <p class="hint">显示最近的后台任务及软件安装请求。已下发不代表安装成功；需等待 Agent 回报。内部高频任务已隐藏。</p>
-    <a href="/tasks">刷新状态</a>
-    <form method="post" action="/tasks/reconcile" class="inline">
+  <div class="task-toolbar panel">
+    <div class="task-toolbar-copy">
+      <span class="task-live-dot"></span>
+      <div><strong>运行概览</strong><p>显示最近任务；高频导入和通知任务已隐藏。</p></div>
+    </div>
+    <div class="task-toolbar-actions">
+      <a class="button-link" href="/tasks">刷新状态</a>
+      <form method="post" action="/tasks/reconcile" class="inline">
       <input type="hidden" name="csrf" value="{{.CSRF}}">
-      <button type="submit">核对网关状态</button>
-    </form>
+        <button type="submit">核对网关状态</button>
+      </form>
+    </div>
+  </div>
+  <div class="task-summary" aria-label="任务状态汇总">
+    {{range .TaskColumns}}
+    <div class="task-summary-item task-summary-{{.Tone}}"><span class="task-summary-label">{{.Title}}</span><strong>{{len .Cards}}</strong></div>
+    {{end}}
   </div>
   <div class="task-board">
     {{range .TaskColumns}}
     <section class="task-column task-{{.Tone}}" aria-label="{{.Title}}">
-      <header class="task-column-head"><h2>{{.Title}}</h2><span class="task-count">{{len .Cards}}</span></header>
+      <header class="task-column-head"><div><span class="task-column-kicker">{{if eq .Tone "waiting"}}QUEUE{{else if eq .Tone "running"}}ACTIVE{{else if eq .Tone "done"}}HISTORY{{else}}ACTION REQUIRED{{end}}</span><h2>{{.Title}}</h2></div><span class="task-count">{{len .Cards}}</span></header>
       <div class="task-cards">
       {{range .Cards}}
         <article class="task-card">
-          <div class="task-card-top"><h3>{{.Title}}</h3><span class="task-state">{{.Status}}</span></div>
-          <p class="task-subject">{{.Subject}}</p>
+          <div class="task-card-top"><span class="task-type">{{.Title}}</span><span class="task-state">{{.Status}}</span></div>
+          <h3 class="task-subject">{{.Subject}}</h3>
           <p class="task-detail">{{.Detail}}</p>
-          {{if .Error}}<p class="task-error">{{.Error}}</p>{{end}}
-		  {{if .Cancelable}}<form method="post" action="/apps/cancel" class="inline"><input type="hidden" name="csrf" value="{{$.CSRF}}"><input type="hidden" name="taskId" value="{{.ID}}"><button class="link danger-link">取消安装</button></form>{{end}}
+          {{if .Error}}<div class="task-error"><span>!</span><p>{{.Error}}</p></div>{{end}}
           <div class="task-meta">
-            {{if .Updated}}<span>更新于 {{.Updated}}</span>{{end}}
-            {{if .Attempts}}<span>执行 {{.Attempts}} 次</span>{{end}}
-            {{if .NextRun}}<span>计划执行 {{.NextRun}}</span>{{end}}
+            {{if .Updated}}<span><b>最近更新</b>{{.Updated}}</span>{{end}}
+            {{if .Attempts}}<span><b>执行次数</b>{{.Attempts}}</span>{{end}}
+            {{if .NextRun}}<span><b>下次执行</b>{{.NextRun}}</span>{{end}}
           </div>
-          <details class="task-id"><summary>任务编号</summary><code>{{.ID}}</code></details>
+          <div class="task-card-foot">
+            <details class="task-id"><summary>查看任务编号</summary><code>{{.ID}}</code></details>
+            {{if .Cancelable}}<form method="post" action="/apps/cancel" class="inline"><input type="hidden" name="csrf" value="{{$.CSRF}}"><input type="hidden" name="taskId" value="{{.ID}}"><button class="link danger-link">取消安装</button></form>{{end}}
+          </div>
         </article>
       {{else}}
         <p class="task-empty">暂无{{.Title}}的任务</p>
