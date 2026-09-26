@@ -171,7 +171,7 @@ func (s *Syncer) applyApplicationContext(ctx context.Context, item model.Desired
 	}
 	st.InstalledVersion = installed
 	if installed == app.Version {
-		return s.finishApplication(st, app)
+		return s.finishApplicationContext(ctx, st, app)
 	}
 	if installed != "" && !item.AllowDowngrade && installed != app.Version {
 		// The platform adapter may return a version it can compare; the safe
@@ -251,7 +251,7 @@ func (s *Syncer) applyApplicationContext(ctx context.Context, item model.Desired
 		return appFailure(st, AppCancelled, err.Error())
 	}
 	st.State = AppVerifyingInstall
-	return s.finishApplication(st, app)
+	return s.finishApplicationContext(ctx, st, app)
 }
 
 func installerFilename(installerType, taskID string) string {
@@ -266,7 +266,7 @@ func installerFilename(installerType, taskID string) string {
 	return "installer-" + suffix + ext
 }
 
-func (s *Syncer) finishApplication(st model.ApplicationStatus, app model.Application) model.ApplicationStatus {
+func (s *Syncer) finishApplicationContext(ctx context.Context, st model.ApplicationStatus, app model.Application) model.ApplicationStatus {
 	shortcut, err := s.Applications.EnsureShortcut(app)
 	if err != nil {
 		return appFailure(st, AppFailed, fmt.Sprintf("desktop shortcut: %v", err))
@@ -277,7 +277,7 @@ func (s *Syncer) finishApplication(st model.ApplicationStatus, app model.Applica
 		return appFailure(st, AppFailed, fmt.Sprintf("standard-user launch check: %v", err))
 	}
 	st.LaunchAsStandardUser = launch
-	allowed, err := s.Applications.AppLockerAllowed(app)
+	allowed, err := s.waitForAppLocker(ctx, app)
 	if err != nil {
 		return appFailure(st, AppBlocked, fmt.Sprintf("AppLocker check: %v", err))
 	}
@@ -298,6 +298,34 @@ func (s *Syncer) finishApplication(st model.ApplicationStatus, app model.Applica
 	st.LastError = ""
 	st.UpdatedAt = time.Now().UTC().Format(time.RFC3339)
 	return st
+}
+
+// waitForAppLocker absorbs the small race between an Admin policy change and
+// the Agent's application worker. The worker can claim an install task before
+// the policy long-poll wakes the sync loop; a denied result during that window
+// is not yet evidence that the approved application is actually blocked.
+func (s *Syncer) waitForAppLocker(ctx context.Context, app model.Application) (bool, error) {
+	const retryWindow = 45 * time.Second
+	const retryEvery = 5 * time.Second
+	deadline := time.Now().Add(retryWindow)
+	for {
+		allowed, err := s.Applications.AppLockerAllowed(app)
+		if err != nil || allowed {
+			return allowed, err
+		}
+		if time.Now().After(deadline) {
+			return false, nil
+		}
+		timer := time.NewTimer(retryEvery)
+		select {
+		case <-ctx.Done():
+			if !timer.Stop() {
+				<-timer.C
+			}
+			return false, ctx.Err()
+		case <-timer.C:
+		}
+	}
 }
 
 func appFailure(st model.ApplicationStatus, state, message string) model.ApplicationStatus {
