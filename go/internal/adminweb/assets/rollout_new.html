@@ -7,7 +7,7 @@
   {{template "notices" .}}
   {{if .Artifact.MinAgentVersion}}<p class="dim">最低 agent {{.Artifact.MinAgentVersion}}</p>{{end}}
   <div class="caution">勾选的机器改为单独使用这个版本，不再跟随全局；已在线的 1.3.0 及以上机器几秒内开始更新。以后要改回，在机器页选「跟随全局」。</div>
-  <form method="post" action="/rollouts/create" class="form">
+  <form method="post" action="/rollouts/create" class="form" data-rollout-selection>
     <input type="hidden" name="csrf" value="{{.CSRF}}">
     <input type="hidden" name="product" value="{{.Artifact.Product}}">
     <input type="hidden" name="artifact" value="{{.Artifact.ID}}">
@@ -23,7 +23,7 @@
           <td class="dim">{{if .Compatible}}{{if .HasOpen}}<span class="tag tag-warn">已单独指定过，会被替换</span>{{else}}可以{{end}}{{else}}<span class="tag tag-bad">不能</span> {{.Why}}{{end}}</td>
         </tr>{{else}}<tr><td colspan="6" class="dim">没有机器</td></tr>{{end}}
       </tbody></table></div>
-    <button type="submit" class="danger">对选中的机器指定</button>
+    <p class="task-filter-note" data-rollout-summary>尚未选择机器</p><button type="submit" class="danger" data-confirm="确认将选中的机器切换到这个版本吗？">对选中的机器指定</button>
   </form>
 </main>
 </div>

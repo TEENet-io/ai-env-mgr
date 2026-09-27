@@ -141,12 +141,12 @@
           </form>
           {{end}}
           {{if .Bound}}
-          <form method="post" action="/machines/unbind" class="inline">
+          <form method="post" action="/machines/unbind" class="inline" data-confirm="确认解绑 {{.Machine}}？解绑后该机器将停止接收当前员工的凭据配置。">
             <input type="hidden" name="csrf" value="{{$.CSRF}}">
             <input type="hidden" name="machine" value="{{.Machine}}">
             <button class="link">解绑</button>
           </form>
-          <form method="post" action="/machines/restart-codex" class="inline">
+          <form method="post" action="/machines/restart-codex" class="inline" data-confirm="确认关闭 {{.Machine}} 上正在运行的 Codex？请先确认员工已保存工作。">
             <input type="hidden" name="csrf" value="{{$.CSRF}}">
             <input type="hidden" name="machine" value="{{.Machine}}">
             <button class="link">关闭 Codex</button>

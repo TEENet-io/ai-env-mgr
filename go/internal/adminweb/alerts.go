@@ -38,6 +38,11 @@ type alertSettingsView struct {
 	Version int
 }
 
+type dataRetentionView struct {
+	repo.DataRetentionSettings
+	Version int
+}
+
 // channelSettingsView is the device channel tab.
 type channelSettingsView struct {
 	repo.DeviceChannelSettings

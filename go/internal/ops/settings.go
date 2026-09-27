@@ -94,6 +94,7 @@ func nonEmpty(b []byte) []byte {
 // Audit actions for the alert settings.
 const (
 	ActionAlertSettings    = "settings.alerts"
+	ActionDataRetention    = "settings.data_retention"
 	ActionAlertChannels    = "settings.alert_channels"
 	ActionRotationSettings = "settings.rotation"
 	ActionDeviceChannel    = "settings.device_channel"

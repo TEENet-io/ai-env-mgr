@@ -71,6 +71,20 @@ type pageData struct {
 	Tasks            []taskRow
 	ApplicationTasks []applicationTaskRow
 	TaskColumns      []taskColumn
+	TaskStatusFilter string
+	TaskKindFilter   string
+	TaskShowSystem   bool
+	TaskHidden       int
+	TaskTotal        int
+	TaskPage         int
+	TaskPageSize     int
+	TaskHasPrev      bool
+	TaskHasNext      bool
+	TaskLive         bool
+	TaskQuery        string
+	TaskRefreshed    string
+	TaskKinds        []taskKindOption
+	TaskDetail       *taskDetailView
 	Error            string
 	OK               bool
 	// Notice replaces the standard "已保存" for an action whose outcome needs
@@ -99,19 +113,21 @@ type pageData struct {
 	Show     string // the list filter: "", "active", "offboarded", "deleted"
 
 	// Version library (database mode).
-	Artifacts     map[string][]artifactRow // by product
-	Applications  []model.Application
-	Unregistered  []packageRow      // in the bucket, not yet in the library
-	GlobalTargets map[string]string // product -> the fleet policy's version
-	Rollouts      []rolloutView
-	AuditPage     *auditPage
-	UsagePage     *usagePage
-	AlertsPage    *alertsPage
-	AlertSettings *alertSettingsView
-	Channels      *channelView
-	Rotation      *rotationView
-	DeviceChannel *channelSettingsView
-	OpenAlerts    int // drawn in the nav on every page
+	Artifacts      map[string][]artifactRow // by product
+	Applications   []model.Application
+	Unregistered   []packageRow      // in the bucket, not yet in the library
+	GlobalTargets  map[string]string // product -> the fleet policy's version
+	Rollouts       []rolloutView
+	AuditPage      *auditPage
+	UsagePage      *usagePage
+	KeyBillingPage *keyBillingPage
+	AlertsPage     *alertsPage
+	AlertSettings  *alertSettingsView
+	DataRetention  *dataRetentionView
+	Channels       *channelView
+	Rotation       *rotationView
+	DeviceChannel  *channelSettingsView
+	OpenAlerts     int // drawn in the nav on every page
 	// Tab is the entry inside the nav group this page is (see the tabs-*
 	// templates); empty for a group with no second level.
 	Tab           string
@@ -460,6 +476,11 @@ func (s *Server) renderSettings(w http.ResponseWriter, r *http.Request, sess *se
 		log.Printf("adminweb: LoadQuotaDefaults: %v", err)
 	}
 	s.settingsExtras(r, &data)
+	if s.dbm != nil {
+		if cfg, version, err := repo.LoadDataRetentionSettings(r.Context(), s.dbm.store.Settings()); err == nil {
+			data.DataRetention = &dataRetentionView{DataRetentionSettings: cfg, Version: version}
+		}
+	}
 	s.render(w, "settings.html", http.StatusOK, data)
 }
 

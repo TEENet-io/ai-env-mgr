@@ -138,3 +138,12 @@ func (r applicationTaskRepo) HasOpen(ctx context.Context, appID, version string)
 	}
 	return exists, nil
 }
+
+func (r applicationTaskRepo) HasOpenForDevice(ctx context.Context, deviceID, appID string) (bool, error) {
+	var exists bool
+	err := r.q.QueryRow(ctx, `select exists(select 1 from application_tasks where device_id=$1 and app_id=$2 and state in ('pending','running'))`, deviceID, appID).Scan(&exists)
+	if err != nil {
+		return false, mapError(err, "check device application task")
+	}
+	return exists, nil
+}

@@ -12,7 +12,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
+	urlpkg "net/url"
 	"os"
 	"regexp"
 	"strings"
@@ -52,6 +54,12 @@ func Fetch(url, token string, timeout time.Duration) ([]byte, error) {
 // few megabytes) read them back. onProgress is called with what has been
 // read and the total the server declared, -1 when it declared none.
 func FetchProgress(url, token string, timeout time.Duration, onProgress func(done, total int64)) ([]byte, error) {
+	return FetchProgressLimited(url, token, timeout, 0, onProgress)
+}
+
+// FetchProgressLimited is FetchProgress with a hard response-size ceiling.
+// maxBytes == 0 preserves the historical unlimited behaviour for CLI callers.
+func FetchProgressLimited(url, token string, timeout time.Duration, maxBytes int64, onProgress func(done, total int64)) ([]byte, error) {
 	tmp, err := os.CreateTemp("", "ghrelease-*")
 	if err != nil {
 		return nil, err
@@ -59,7 +67,7 @@ func FetchProgress(url, token string, timeout time.Duration, onProgress func(don
 	name := tmp.Name()
 	tmp.Close()
 	defer os.Remove(name)
-	if _, err := FetchToFile(url, token, timeout, name, 0, onProgress); err != nil {
+	if _, err := FetchToFile(url, token, timeout, name, maxBytes, onProgress); err != nil {
 		return nil, err
 	}
 	return os.ReadFile(name)
@@ -80,7 +88,12 @@ type Fetched struct {
 // and a truncated installer with a checksum computed over the truncation
 // would pass every check on the way to a desktop.
 func FetchToFile(url, token string, timeout time.Duration, dest string, maxBytes int64, onProgress func(done, total int64)) (Fetched, error) {
-	client := &http.Client{Timeout: timeout}
+	client := &http.Client{Timeout: timeout, CheckRedirect: func(req *http.Request, _ []*http.Request) error {
+		if err := safeRemoteURL(req.URL); err != nil {
+			return err
+		}
+		return nil
+	}}
 	resolved, err := resolveAssetURL(client, url, token)
 	if err != nil {
 		return Fetched{}, err
@@ -167,8 +180,12 @@ func assetAPIURL(client *http.Client, owner, repo, tag, name, token string) (str
 }
 
 func get(client *http.Client, url, token string, maxBytes int64, w io.Writer, onProgress func(done, total int64)) (int64, error) {
-	if !strings.HasPrefix(url, "https://") && !strings.HasPrefix(url, "http://") {
-		return 0, fmt.Errorf("the URL must start with http:// or https://")
+	u, err := urlpkg.Parse(url)
+	if err != nil {
+		return 0, err
+	}
+	if err := safeRemoteURL(u); err != nil {
+		return 0, err
 	}
 	req, err := http.NewRequest(http.MethodGet, url, nil)
 	if err != nil {
@@ -215,6 +232,26 @@ func get(client *http.Client, url, token string, maxBytes int64, w io.Writer, on
 		return n, fmt.Errorf("the download is larger than the %d MB limit", maxBytes>>20)
 	}
 	return n, nil
+}
+
+// safeRemoteURL blocks direct private/link-local IP targets and non-HTTPS
+// public downloads. Loopback HTTP remains available for local integration
+// tests and a developer's local mirror.
+func safeRemoteURL(u *urlpkg.URL) error {
+	if u == nil || u.Hostname() == "" {
+		return fmt.Errorf("download URL must include a host")
+	}
+	if u.Scheme != "https" && u.Scheme != "http" {
+		return fmt.Errorf("the URL must use https")
+	}
+	ip := net.ParseIP(u.Hostname())
+	if u.Scheme == "http" && (ip == nil || !ip.IsLoopback()) {
+		return fmt.Errorf("public downloads must use https")
+	}
+	if ip != nil && !ip.IsLoopback() && (ip.IsPrivate() || ip.IsLinkLocalUnicast() || ip.IsUnspecified()) {
+		return fmt.Errorf("download URL points to a private or local address")
+	}
+	return nil
 }
 
 // countingReader reports progress as it is read through.

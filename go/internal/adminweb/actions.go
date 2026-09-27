@@ -2,14 +2,20 @@ package adminweb
 
 import (
 	"crypto/subtle"
+	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
 	"net/http"
 	"net/url"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/TEENet-io/ai-env-mgr/internal/model"
+	"github.com/TEENet-io/ai-env-mgr/internal/ops"
+	"github.com/TEENet-io/ai-env-mgr/internal/ossclient"
+	"github.com/TEENet-io/ai-env-mgr/internal/repo"
 )
 
 // requirePost gates a state-changing handler on POST plus a matching CSRF
@@ -259,4 +265,62 @@ func (s *Server) actionCollect(sess *session, r *http.Request) error {
 		quiet = &n
 	}
 	return sess.be.SetCollect(r.Context(), enabled, since, quiet)
+}
+
+// actionCollectCleanup removes only collected session objects older than the
+// explicitly confirmed cutoff. Policy, status, credentials and installers
+// are different prefixes and can never be touched by this operation.
+func (s *Server) actionCollectCleanup(sess *session, r *http.Request) error {
+	if s.dbm == nil {
+		return fmt.Errorf("采集数据清理需要数据库模式")
+	}
+	days, err := strconv.Atoi(formValue(r, "days"))
+	if err != nil || days < 1 || days > 3650 {
+		return fmt.Errorf("保留天数必须在 1 到 3650 天之间")
+	}
+	if err := confirmMatches(r, "confirm", fmt.Sprintf("DELETE %d", days)); err != nil {
+		return err
+	}
+	cutoff := time.Now().UTC().Add(-time.Duration(days) * 24 * time.Hour)
+	return s.jobs.start("data_cleanup", fmt.Sprintf("%dd", days), func(setStep func(string), setProgress func(done, total int64)) error {
+		infos, err := s.dbm.objects.ListInfo(ossclient.Root)
+		if err != nil {
+			return err
+		}
+		var candidates []ossclient.ObjectInfo
+		for _, info := range infos {
+			if _, _, ok := ossclient.DataCollectUser(info.Key); ok && info.LastModified.Before(cutoff) {
+				candidates = append(candidates, info)
+			}
+		}
+		setStep(fmt.Sprintf("删除 %d 个过期采集文件", len(candidates)))
+		setProgress(0, int64(len(candidates)))
+		for i, info := range candidates {
+			if err := s.dbm.objects.Delete(info.Key); err != nil {
+				return fmt.Errorf("delete %s: %w", info.Key, err)
+			}
+			setProgress(int64(i+1), int64(len(candidates)))
+		}
+		logAudit(s.clientKey(r), "deleted %d collected objects older than %d days", len(candidates), days)
+		return nil
+	})
+}
+
+func (s *Server) actionDataRetention(sess *session, r *http.Request) error {
+	if s.dbm == nil {
+		return fmt.Errorf("数据保留策略需要数据库模式")
+	}
+	before, version, err := repo.LoadDataRetentionSettings(r.Context(), s.dbm.store.Settings())
+	if err != nil {
+		return err
+	}
+	after := repo.DataRetentionSettings{Enabled: formValue(r, "enabled") == "1", Days: formInt(r, "days")}
+	if err := after.Validate(); err != nil {
+		return err
+	}
+	if formInt(r, "version") != version {
+		return errors.New("这页的设置已被别人修改，请刷新后重试")
+	}
+	value, _ := json.Marshal(after)
+	return s.dbm.ops.SaveSetting(r.Context(), repo.SettingDataRetention, value, version, ops.ActionDataRetention, before, after, sess.actor, s.clientKey(r))
 }

@@ -55,8 +55,45 @@ func validateApplication(app model.Application, installer []byte) error {
 	if app.Detection.Path == "" || (app.Detection.Type != "file_exists" && app.Detection.Type != "file_version") {
 		return fmt.Errorf("a file_exists or file_version detection rule is required")
 	}
+	if err := validateWindowsPath(app.Detection.Path, "detection path"); err != nil {
+		return err
+	}
 	if app.Shortcut.Enabled && (app.Shortcut.Name == "" || app.Shortcut.Target == "") {
 		return fmt.Errorf("shortcut name and target are required when shortcuts are enabled")
+	}
+	if app.Shortcut.Enabled {
+		if strings.ContainsAny(app.Shortcut.Name, `/\\`) || strings.ContainsRune(app.Shortcut.Name, 0) {
+			return fmt.Errorf("shortcut name must be a file name, not a path")
+		}
+		if err := validateWindowsPath(app.Shortcut.Target, "shortcut target"); err != nil {
+			return err
+		}
+		if app.Shortcut.WorkingDirectory != "" {
+			if err := validateWindowsPath(app.Shortcut.WorkingDirectory, "shortcut working directory"); err != nil {
+				return err
+			}
+		}
+		if app.Shortcut.Icon != "" {
+			if err := validateWindowsPath(app.Shortcut.Icon, "shortcut icon"); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
+func validateWindowsPath(raw, label string) error {
+	p := strings.TrimSpace(raw)
+	if p == "" || strings.ContainsRune(p, 0) || strings.Contains(p, "..") {
+		return fmt.Errorf("%s must be an absolute Windows path", label)
+	}
+	// Permit drive paths and the small set of Windows environment roots used
+	// by managed installers, but never a relative or UNC path supplied by a
+	// form. This keeps detection and shortcut creation inside predictable
+	// machine-wide locations.
+	upper := strings.ToUpper(p)
+	if !(len(p) >= 3 && ((p[1] == ':' && (p[2] == '\\' || p[2] == '/')) || strings.HasPrefix(upper, `%PROGRAMFILES%\\`) || strings.HasPrefix(upper, `%WINDIR%\\`))) {
+		return fmt.Errorf("%s must be an absolute Windows path", label)
 	}
 	return nil
 }

@@ -3,7 +3,7 @@
 <div class="app">
 {{template "nav" .}}
 <main class="sheet">
-  <header class="pagehead"><h1>员工账号</h1></header>
+  <header class="pagehead"><h1>模型与渠道</h1></header>
   {{template "tabs-users" .}}
   {{template "notices" .}}
 
@@ -89,7 +89,7 @@
       <span class="muted">或</span>
       <form method="post" action="/models/deliver">
         <input type="hidden" name="csrf" value="{{$.CSRF}}"><input type="hidden" name="version" value="{{.Version}}"><input type="hidden" name="scope" value="all">
-        <button{{if not .Changed}} class="link"{{end}}>全部下发</button>
+        <button data-confirm="确认向全部员工和机器下发当前模型清单？这可能创建大量同步任务，请确认现在执行。"{{if not .Changed}} class="link"{{end}}>全部下发</button>
       </form>
     </div>
     {{end}}

@@ -110,8 +110,8 @@ func (s *Service) SetGlobalTarget(ctx context.Context, product, version, actor, 
 	if err != nil {
 		return model.Policy{}, fmt.Errorf("set global %s target: %w", product, err)
 	}
-	if artifact.Status == repo.ArtifactRetired {
-		return model.Policy{}, fmt.Errorf("set global %s target: %s is retired", product, version)
+	if artifact.Status != repo.ArtifactStable {
+		return model.Policy{}, fmt.Errorf("set global %s target: %s is %s; mark it stable after acceptance", product, version, artifact.Status)
 	}
 	pol, err := s.mutatePolicy(ctx, "set global "+product+" target", actor, requestID, func(p *model.Policy) error {
 		switch product {

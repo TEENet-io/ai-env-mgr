@@ -154,6 +154,12 @@ func (s *Server) openDatabaseMode(ctx context.Context, opts DatabaseOptions) err
 		}
 	}
 	s.dbm = st
+	s.jobs.persistent = st.store.AdminJobs()
+	if recovered, err := s.jobs.persistent.RecoverRunning(ctx, "Admin restarted before this job finished"); err != nil {
+		return fmt.Errorf("recover admin jobs: %w", err)
+	} else if recovered > 0 {
+		log.Printf("adminweb: marked %d interrupted admin job(s) failed", recovered)
+	}
 
 	// The chicken and egg: nobody can sign in to create the first account.
 	admin, password, created, err := st.auth.EnsureFirstAccount(ctx, "", opts.FirstAdminEmail)
@@ -257,6 +263,7 @@ func (s *Server) buildWorker(st *dbState) *worker.Worker {
 	w.Register(worker.TaskAlertNotify, worker.AlertNotify{Store: st.store, Channels: s.alertChannels, BaseURL: s.consoleURL()})
 	w.Register(worker.TaskCredentialRotation, worker.CredentialRotation{Store: st.store, Ops: st.ops})
 	w.Register(worker.TaskDevicePrune, worker.DevicePrune{Store: st.store})
+	w.Register(worker.TaskDataCleanup, worker.DataCleanup{Store: st.store, Objects: st.objects})
 	if src, ok := st.objects.(worker.PackageSource); ok {
 		w.Register(worker.TaskReleaseScan, &worker.ReleaseScan{Store: st.store, Objects: src, Ops: st.ops})
 	}
@@ -653,6 +660,7 @@ func (s *Server) actionAdminSetDisabled(disabled bool) func(*session, *http.Requ
 type taskRow struct {
 	ID        string
 	Kind      string
+	Detail    string
 	Status    string
 	Attempts  int
 	NextRun   string
@@ -666,6 +674,7 @@ var hiddenTaskKinds = map[string]bool{
 	"audit_publish": true,
 	"alert_notify":  true,
 	"status_import": true,
+	"data_cleanup":  true,
 }
 
 type applicationTaskRow struct {
@@ -675,6 +684,18 @@ type applicationTaskRow struct {
 func (s *Server) handleTasks(w http.ResponseWriter, r *http.Request, sess *session) {
 	data := newPage(sess, r, "tasks")
 	data.TaskColumns = buildTaskBoard(nil, nil)
+	data.TaskKinds = taskKindOptions
+	data.TaskStatusFilter = strings.TrimSpace(r.URL.Query().Get("status"))
+	data.TaskKindFilter = strings.TrimSpace(r.URL.Query().Get("kind"))
+	data.TaskShowSystem = r.URL.Query().Get("system") == "1"
+	data.TaskPage, _ = strconv.Atoi(r.URL.Query().Get("page"))
+	if data.TaskPage < 1 {
+		data.TaskPage = 1
+	}
+	data.TaskPageSize = 50
+	pageStart, pageEnd := (data.TaskPage-1)*data.TaskPageSize, data.TaskPage*data.TaskPageSize
+	data.TaskQuery = r.URL.RawQuery
+	data.TaskRefreshed = time.Now().In(shanghai()).Format("01-02 15:04:05")
 	data.Tab = "tasks"
 	tasks, err := s.dbm.store.Tasks().ListRecent(r.Context(), 200)
 	if err != nil {
@@ -683,8 +704,26 @@ func (s *Server) handleTasks(w http.ResponseWriter, r *http.Request, sess *sessi
 		return
 	}
 	names := map[string]string{}
+	deviceNames := map[string]string{}
+	if devices, derr := s.dbm.store.Devices().List(r.Context(), repo.DeviceFilter{IncludeRevoked: true}); derr == nil {
+		for _, d := range devices {
+			deviceNames[d.ID] = d.Hostname
+		}
+	}
 	for _, t := range tasks {
-		if hiddenTaskKinds[t.Kind] {
+		if t.Open() {
+			data.TaskLive = true
+		}
+		// Choosing a specific maintenance kind is an explicit request to see
+		// it; the checkbox is only needed when browsing all task types.
+		if hiddenTaskKinds[t.Kind] && !data.TaskShowSystem && data.TaskKindFilter == "" {
+			data.TaskHidden++
+			continue
+		}
+		if data.TaskKindFilter != "" && data.TaskKindFilter != t.Kind {
+			continue
+		}
+		if !taskStatusMatches(string(t.Status), data.TaskStatusFilter) {
 			continue
 		}
 		row := taskRow{
@@ -705,24 +744,179 @@ func (s *Server) handleTasks(w http.ResponseWriter, r *http.Request, sess *sessi
 			}
 			row.Employee = name
 		}
-		data.Tasks = append(data.Tasks, row)
+		if data.TaskTotal >= pageStart && data.TaskTotal < pageEnd {
+			data.Tasks = append(data.Tasks, row)
+		}
+		data.TaskTotal++
+	}
+	if jobs, err := s.dbm.store.AdminJobs().ListRecent(r.Context(), 200); err == nil {
+		for _, job := range jobs {
+			if job.State == "running" {
+				data.TaskLive = true
+			}
+			if data.TaskKindFilter != "" && data.TaskKindFilter != "admin_job" {
+				continue
+			}
+			if !taskStatusMatches(job.State, data.TaskStatusFilter) {
+				continue
+			}
+			row := taskRow{
+				ID: job.ID, Kind: "admin_job", Detail: job.Kind + " · " + job.Version, Status: job.State,
+				Updated:   job.UpdatedAt.In(shanghai()).Format("01-02 15:04:05"),
+				LastError: job.LastError, Employee: "管理员操作",
+			}
+			if job.Step != "" {
+				row.Detail += " · " + job.Step
+			}
+			if data.TaskTotal >= pageStart && data.TaskTotal < pageEnd {
+				data.Tasks = append(data.Tasks, row)
+			}
+			data.TaskTotal++
+		}
 	}
 	// PostgreSQL owns the install lifecycle. OSS contains only immutable
 	// manifests/packages; a stale machine plan must never resurrect a task.
 	if appTasks, err := s.dbm.store.ApplicationTasks().ListRecent(r.Context(), 200); err == nil {
 		for _, task := range appTasks {
-			machine := task.DeviceID
-			if d, err := s.dbm.store.Devices().ByID(r.Context(), task.DeviceID); err == nil {
-				machine = d.Hostname
+			if task.State == "pending" || task.State == "running" {
+				data.TaskLive = true
 			}
-			data.ApplicationTasks = append(data.ApplicationTasks, applicationTaskRow{
+			if data.TaskKindFilter != "" && data.TaskKindFilter != "application" {
+				continue
+			}
+			if !taskStatusMatches(task.State, data.TaskStatusFilter) {
+				continue
+			}
+			machine := task.DeviceID
+			if name := deviceNames[task.DeviceID]; name != "" {
+				machine = name
+			}
+			appRow := applicationTaskRow{
 				Machine: machine, AppID: task.AppID, Version: task.Version, TaskID: task.ID,
 				Desired: "installed", State: task.State, Updated: task.UpdatedAt.In(shanghai()).Format("01-02 15:04:05"), LastError: task.LastError,
-			})
+			}
+			if data.TaskTotal >= pageStart && data.TaskTotal < pageEnd {
+				data.ApplicationTasks = append(data.ApplicationTasks, appRow)
+			}
+			data.TaskTotal++
 		}
 	}
+	data.TaskHasPrev = data.TaskPage > 1
+	data.TaskHasNext = data.TaskTotal > pageEnd
 	data.TaskColumns = buildTaskBoard(data.Tasks, data.ApplicationTasks)
 	s.render(w, "tasks.html", http.StatusOK, data)
+}
+
+func (s *Server) handleTaskDetail(w http.ResponseWriter, r *http.Request, sess *session) {
+	id := strings.TrimSpace(r.URL.Query().Get("id"))
+	if id == "" {
+		data := newPage(sess, r, "tasks")
+		data.Error = "缺少任务编号"
+		s.render(w, "task_detail.html", http.StatusBadRequest, data)
+		return
+	}
+	data := newPage(sess, r, "tasks")
+	data.Tab = "tasks"
+	view := &taskDetailView{ID: id}
+	if task, err := s.dbm.store.Tasks().ByID(r.Context(), id); err == nil {
+		view.Kind, view.Status = task.Kind, string(task.Status)
+		view.Detail = task.IdempotencyKey
+		view.Created = task.CreatedAt.In(shanghai()).Format("2006-01-02 15:04:05")
+		view.Updated = task.UpdatedAt.In(shanghai()).Format("2006-01-02 15:04:05")
+		if task.FinishedAt != nil {
+			view.Finished = task.FinishedAt.In(shanghai()).Format("2006-01-02 15:04:05")
+		}
+		view.Error = task.LastError
+		view.CanRetry = task.Status == repo.TaskFailed
+		view.CanCancel = task.Open()
+		if task.EmployeeID != "" {
+			if e, eerr := s.dbm.store.Employees().ByID(r.Context(), task.EmployeeID); eerr == nil {
+				view.Subject = e.WindowsUser
+			}
+		}
+		if view.Subject == "" {
+			view.Subject = "系统任务"
+		}
+		if attempts, aerr := s.dbm.store.Tasks().Attempts(r.Context(), id); aerr == nil {
+			for _, a := range attempts {
+				av := taskAttemptView{Attempt: a.Attempt, Owner: a.Owner, Outcome: a.Outcome, Error: a.ErrorDetail, Started: a.StartedAt.In(shanghai()).Format("01-02 15:04:05")}
+				if a.EndedAt != nil {
+					av.Ended = a.EndedAt.In(shanghai()).Format("01-02 15:04:05")
+				}
+				view.Attempts = append(view.Attempts, av)
+			}
+		}
+		data.TaskDetail = view
+		s.render(w, "task_detail.html", http.StatusOK, data)
+		return
+	}
+	if task, err := s.dbm.store.ApplicationTasks().ByID(r.Context(), id); err == nil {
+		view.Kind, view.Status, view.Detail, view.Error = "application", task.State, task.AppID+" · "+task.Version, task.LastError
+		view.Created = task.CreatedAt.In(shanghai()).Format("2006-01-02 15:04:05")
+		view.Updated = task.UpdatedAt.In(shanghai()).Format("2006-01-02 15:04:05")
+		if task.FinishedAt != nil {
+			view.Finished = task.FinishedAt.In(shanghai()).Format("2006-01-02 15:04:05")
+		}
+		view.CanRetry = task.State == "failed"
+		view.CanCancel = task.State == "pending" || task.State == "running"
+		if d, derr := s.dbm.store.Devices().ByID(r.Context(), task.DeviceID); derr == nil {
+			view.Subject = d.Hostname
+		}
+		data.TaskDetail = view
+		s.render(w, "task_detail.html", http.StatusOK, data)
+		return
+	}
+	if jobs, err := s.dbm.store.AdminJobs().ListRecent(r.Context(), 500); err == nil {
+		for _, job := range jobs {
+			if job.ID != id {
+				continue
+			}
+			view.Kind, view.Status, view.Subject = job.Kind, job.State, "管理员操作"
+			view.Detail = job.Version + " · " + job.Step
+			view.Error = job.LastError
+			view.Created = job.StartedAt.In(shanghai()).Format("2006-01-02 15:04:05")
+			view.Updated = job.UpdatedAt.In(shanghai()).Format("2006-01-02 15:04:05")
+			if job.EndedAt != nil {
+				view.Finished = job.EndedAt.In(shanghai()).Format("2006-01-02 15:04:05")
+			}
+			data.TaskDetail = view
+			s.render(w, "task_detail.html", http.StatusOK, data)
+			return
+		}
+	}
+	data.Error = "找不到这个任务，可能已被清理"
+	s.render(w, "task_detail.html", http.StatusNotFound, data)
+}
+
+func (s *Server) actionTaskRetry(_ *session, r *http.Request) error {
+	id := strings.TrimSpace(formValue(r, "id"))
+	t, err := s.dbm.store.Tasks().ByID(r.Context(), id)
+	if err != nil {
+		return err
+	}
+	if t.Status != repo.TaskFailed {
+		return fmt.Errorf("只有失败任务可以重试")
+	}
+	_, _, err = s.dbm.store.Tasks().Enqueue(r.Context(), repo.NewTask{Kind: t.Kind, IdempotencyKey: t.IdempotencyKey, Payload: t.Payload, TargetEpoch: t.TargetEpoch, EmployeeID: t.EmployeeID, DeviceID: t.DeviceID, MaxAttempts: t.MaxAttempts})
+	return err
+}
+
+func (s *Server) actionTaskCancel(_ *session, r *http.Request) error {
+	id := strings.TrimSpace(formValue(r, "id"))
+	if task, err := s.dbm.store.ApplicationTasks().ByID(r.Context(), id); err == nil {
+		if task.State != "pending" && task.State != "running" {
+			return fmt.Errorf("这个安装任务已经结束")
+		}
+		_, err = s.dbm.store.ApplicationTasks().Cancel(r.Context(), id, task.DeviceID)
+		return err
+	}
+	if task, err := s.dbm.store.Tasks().ByID(r.Context(), id); err == nil {
+		if !task.Open() {
+			return fmt.Errorf("这个任务已经结束")
+		}
+		return s.dbm.store.Tasks().Supersede(r.Context(), id, "cancelled by administrator")
+	}
+	return repo.ErrNotFound
 }
 
 func (s *Server) actionReconcileNow(_ *session, r *http.Request) (string, error) {

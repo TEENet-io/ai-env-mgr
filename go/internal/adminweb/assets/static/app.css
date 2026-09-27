@@ -420,6 +420,7 @@ form.aside { margin: 10px 0 4px; }
 }
 .note-err { background: var(--bad-bg); border-color: var(--bad); color: var(--bad); }
 .note-ok { background: var(--ok-bg); border-color: var(--ok); color: var(--ok); }
+.note-warn { background: var(--warn-bg); border-color: var(--warn); color: var(--warn); }
 .note-info { background: var(--panel-sunk); border-color: var(--rule-strong); color: var(--ink-soft); }
 
 /* Where an action reaches every machine, or cannot be undone. */
@@ -798,6 +799,17 @@ button.danger-link { color: var(--bad); }
 .summary-row details[open] summary { margin-bottom: 8px; }
 .summary-row details .scroll { max-height: 360px; }
 
+/* Long historical sections stay available without pushing the current state
+   below the fold. */
+.history-section { margin: 32px 0 10px; }
+.history-section > summary { cursor: pointer; list-style: none; color: var(--ink); font-size: 15px; font-weight: 650; }
+.history-section > summary::-webkit-details-marker { display: none; }
+.history-section > summary::before { content: "▸"; display: inline-block; width: 18px; color: var(--ink-faint); transition: transform .15s ease; }
+.history-section[open] > summary::before { transform: rotate(90deg); }
+.history-section[open] > summary { margin-bottom: 10px; }
+.history-section > summary:hover { color: var(--accent); }
+.history-section .panel { margin-top: 0; }
+
 /* Click-to-edit popover: a pencil beside the text, a small form under it.
  * <details> keeps it script-free under the console's CSP. */
 details.pop-edit { display: inline; vertical-align: middle; margin-left: 4px; }
@@ -965,7 +977,7 @@ body {
 .pagehead h1 {
   font-size: clamp(25px, 2.2vw, 32px);
   letter-spacing: -.035em;
-  color: #14243c;
+  color: var(--ink);
 }
 
 .pagehead p { margin-top: 8px; color: var(--ink-soft); font-size: 14px; }
@@ -1026,8 +1038,8 @@ pre.log {
 thead th {
   padding-top: 12px;
   padding-bottom: 12px;
-  color: #64748a;
-  background: #f6f8fb;
+  color: var(--ink-soft);
+  background: var(--panel-sunk);
   border-bottom-color: var(--rule-strong);
   font-size: 11px;
   letter-spacing: .045em;
@@ -1036,7 +1048,7 @@ thead th {
 
 th, td { padding: 12px 16px; }
 tbody tr { transition: background .15s ease; }
-tbody tr:hover td { background: #f5f8fd; }
+tbody tr:hover td { background: var(--panel-sunk); }
 
 .tag {
   padding: 3px 9px;
@@ -1055,11 +1067,11 @@ input, select, textarea {
   padding: 10px 11px;
   border-radius: 8px;
   border-color: var(--rule-strong);
-  background: #fcfdff;
+  background: var(--panel);
   transition: border-color .15s ease, box-shadow .15s ease, background .15s ease;
 }
 
-input:hover, select:hover, textarea:hover { border-color: #aab9cd; }
+input:hover, select:hover, textarea:hover { border-color: var(--ink-faint); }
 input:focus, select:focus, textarea:focus {
   border-color: var(--accent);
   background: var(--panel);
@@ -1077,6 +1089,9 @@ button {
 }
 
 button:hover { filter: brightness(1.05); transform: translateY(-1px); box-shadow: 0 7px 15px rgba(53, 106, 230, .24); }
+button:disabled, input:disabled, select:disabled, textarea:disabled { cursor: not-allowed; }
+button:disabled { opacity: .55; filter: saturate(.45); box-shadow: none; }
+button:disabled:hover { transform: none; filter: saturate(.45); box-shadow: none; }
 button.link, a.button-link, td.actions > a {
   min-height: 32px;
   padding: 6px 11px;
@@ -1202,6 +1217,13 @@ button.danger { background: linear-gradient(135deg, #dc5967, #bf3545); }
 .task-toolbar-actions { flex-wrap: wrap; justify-content: flex-end; }
 .task-toolbar-actions form { margin: 0; }
 .task-toolbar-actions button { min-height: 34px; padding: 7px 12px; font-size: 12px; }
+.task-filters { display: flex; flex-wrap: wrap; align-items: end; gap: 10px 14px; margin: 0 0 8px; padding: 12px 14px; }
+.task-filters label { display: grid; gap: 5px; color: var(--ink-soft); font-size: 11px; font-weight: 650; }
+.task-filters select { min-width: 150px; }
+.task-filters .task-system-toggle { display: flex; align-items: center; gap: 7px; min-height: 38px; }
+.task-filters .task-system-toggle input { width: auto; }
+.task-filters button, .task-filters .button-link { min-height: 36px; padding: 8px 12px; font-size: 12px; }
+.task-filter-note { margin: 0 0 14px; color: var(--ink-soft); font-size: 12px; }
 .task-summary { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; margin-bottom: 16px; }
 .task-summary-item { display: flex; align-items: center; justify-content: space-between; min-height: 61px; padding: 12px 15px; border: 1px solid var(--rule); border-left: 3px solid var(--task-accent); border-radius: 10px; background: var(--panel); }
 .task-summary-label { color: var(--ink-soft); font-size: 12px; }
@@ -1221,6 +1243,9 @@ button.danger { background: linear-gradient(135deg, #dc5967, #bf3545); }
 .task-column-kicker { color: var(--task-accent); font: 700 9px/1 var(--mono); letter-spacing: .13em; }
 .task-count { min-width: 28px; border-radius: 8px; background: var(--panel); color: var(--task-accent); padding: 5px 7px; font: 700 12px/1 var(--mono); text-align: center; }
 .task-cards { display: grid; gap: 10px; padding-top: 10px; }
+.task-collapsed-list:not(.is-expanded) .task-card:nth-child(n+2) { display: none; }
+.task-history-toggle { width: 100%; margin-top: 10px; padding: 7px 10px; border: 1px dashed var(--rule-strong); border-radius: 8px; background: transparent; color: var(--ink-soft); font-size: 11px; cursor: pointer; }
+.task-history-toggle:hover { border-color: var(--task-accent); color: var(--task-accent); background: var(--panel); }
 .task-card { min-width: 0; background: var(--panel); border: 1px solid var(--rule); border-radius: 10px; padding: 13px; box-shadow: 0 2px 5px rgba(0,0,0,.035); overflow-wrap: anywhere; transition: border-color .15s ease, transform .15s ease, box-shadow .15s ease; }
 .task-card:hover { border-color: var(--rule-strong); box-shadow: var(--shadow); transform: translateY(-1px); }
 .task-card-top { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; }
@@ -1242,6 +1267,7 @@ button.danger { background: linear-gradient(135deg, #dc5967, #bf3545); }
 .task-empty { margin: 0; text-align: center; color: var(--ink-soft); padding: 34px 5px; font-size: 12px; }
 @media (max-width: 1200px) { .task-board { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 @media (max-width: 760px) { .task-pagehead { align-items: flex-start; } .task-head-mark { display: none; } .task-summary { grid-template-columns: repeat(2, minmax(0, 1fr)); } .task-toolbar { align-items: flex-start; flex-direction: column; } .task-toolbar-actions { width: 100%; justify-content: flex-start; } }
+@media (max-width: 760px) { .task-filters { align-items: stretch; flex-direction: column; } .task-filters label, .task-filters select, .task-filters button, .task-filters .button-link { width: 100%; } .task-filters .task-system-toggle { display: flex; } }
 @media (max-width: 650px) { .task-board { grid-template-columns: minmax(0, 1fr); } }
 @media (max-width: 1200px) { .task-board { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 @media (max-width: 650px) { .task-board { grid-template-columns: minmax(0, 1fr); } }

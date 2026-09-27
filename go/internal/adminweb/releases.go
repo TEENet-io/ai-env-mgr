@@ -189,11 +189,27 @@ func (s *Server) handleReleases(w http.ResponseWriter, r *http.Request, sess *se
 			IsGlobal: data.GlobalTargets[a.Product] == a.Version,
 		})
 	}
+	s.render(w, "releases.html", http.StatusOK, data)
+}
+
+// handleApplications is deliberately separate from the release library. A
+// release changes the agent/Codex channel; an application changes one
+// machine's software state. Keeping the two pages separate prevents an
+// operator from confusing a fleet rollout with an install task.
+func (s *Server) handleApplications(w http.ResponseWriter, r *http.Request, sess *session) {
+	data := newPage(sess, r, "releases")
+	data.Tab = "applications"
+	data.Job = s.jobs.snapshot()
+	if machines, err := sess.be.Machines(r.Context()); err == nil {
+		data.Machines = machines
+		data.Fleet = summariseFleet(machines)
+	}
 	appMgr := &admincore.Manager{Store: s.dbm.objects, Events: s.events}
+	var err error
 	if data.Applications, err = appMgr.ListApplications(); err != nil {
 		data.Error = "could not list application catalog: " + err.Error()
 	}
-	s.render(w, "releases.html", http.StatusOK, data)
+	s.render(w, "applications.html", http.StatusOK, data)
 }
 
 func (s *Server) actionReleaseStatus(sess *session, r *http.Request) error {

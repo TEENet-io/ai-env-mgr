@@ -28,7 +28,8 @@
       </tr>{{else}}<tr><td colspan="6" class="empty">没有未关闭的告警。</td></tr>{{end}}
     </tbody></table></div>
 
-  <h2>最近关闭</h2>
+  <details class="history-section">
+  <summary>最近关闭 <span class="dim">{{len .History}}</span></summary>
   <div class="panel scroll"><table>
     <thead><tr><th>级别</th><th>告警</th><th>对象</th><th>开始</th><th>关闭</th></tr></thead>
     <tbody>{{range .History}}
@@ -39,7 +40,8 @@
         <td class="dim">{{.OpenedAt.Local.Format "01-02 15:04"}}</td>
         <td class="dim">{{.ResolvedAt.Local.Format "01-02 15:04"}} · {{if eq .ResolvedBy "rule"}}自动{{else}}{{.ResolvedBy}}{{end}}</td>
       </tr>{{else}}<tr><td colspan="5" class="empty">还没有关闭过的告警。</td></tr>{{end}}
-    </tbody></table></div>
+  </tbody></table></div>
+  </details>
   {{end}}
 </main>
 </div>

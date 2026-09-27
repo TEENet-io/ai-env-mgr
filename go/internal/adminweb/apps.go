@@ -137,6 +137,11 @@ func (s *Server) actionApplicationInstall(sess *session, r *http.Request) error 
 	if err := ensureApplicationAppLocker(r.Context(), sess.be, app); err != nil {
 		return fmt.Errorf("prepare application AppLocker rule: %w", err)
 	}
+	if open, err := s.dbm.store.ApplicationTasks().HasOpenForDevice(r.Context(), device.ID, appID); err != nil {
+		return err
+	} else if open && formValue(r, "replace") != "1" {
+		return fmt.Errorf("这台机器已有同一应用的未完成任务；如需替换，请重新确认 replace=1")
+	}
 	// A policy update normally wakes the Agent, but ask this target to sync
 	// explicitly so the rule is present before the install task reaches its
 	// post-install AppLocker check.

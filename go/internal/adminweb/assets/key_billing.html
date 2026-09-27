@@ -1,0 +1,40 @@
+{{define "key_billing.html"}}{{template "head" "API Key 账单"}}
+<body>
+<div class="app">
+{{template "nav" .}}
+<main class="sheet">
+  <header class="pagehead"><h1>API Key 账单</h1></header>
+  {{template "tabs-usage" .}}
+  <p class="lede">按 API Key 查看本地账期快照；网关 spend 是 LiteLLM 当前累计值，统计周期可能不同。明文 Key 永不在这里显示。</p>
+  {{template "notices" .}}
+  {{with .KeyBillingPage}}
+  <form method="get" action="/usage/keys" class="form filter">
+    <label>账期<select name="month">{{range .Months}}<option value="{{.}}"{{if eq . $.KeyBillingPage.Month}} selected{{end}}>{{.}}</option>{{end}}</select></label>
+    <button type="submit">查看</button>
+    <a class="button-link" href="/usage/keys.csv?{{.Query}}">导出 CSV</a>
+  </form>
+  {{if .GatewayError}}
+  <p class="note note-warn">LiteLLM 当前 Key 清单暂不可用：{{.GatewayError}}。本地账期快照仍可查看；“网关当前 spend”暂为空。</p>
+  {{end}}
+  <div class="sechead">
+    <p class="dim">{{.Month}} · API Key <b class="mono">{{.Total.Keys}}</b> · 调用 <b class="mono">{{.Total.Calls}}</b> · 失败 <b class="mono">{{.Total.Failures}}</b> · 本地账期费用 <b class="mono">${{.Total.LocalCost}}</b>{{if .Total.Unpriced}} · 未计价 <b class="mono">{{.Total.Unpriced}}</b>{{end}}</p>
+  </div>
+  <div class="panel scroll"><table>
+    <thead><tr><th>API Key / 员工</th><th>脱敏指纹</th><th>本地账期费用</th><th>网关当前 spend</th><th>调用</th><th>失败</th><th>token</th><th>模型</th><th>状态</th></tr></thead>
+    <tbody>{{range .Rows}}
+      <tr>
+        <td class="id"><span class="mono">{{.Alias}}</span>{{if .Employee}}<div class="rowsub">{{.Employee}}{{if .Department}} · {{.Department}}{{end}}</div>{{else}}<div class="rowsub">未关联到员工</div>{{end}}</td>
+        <td class="mono dim">{{.Fingerprint}}</td>
+        <td class="num">${{.LocalCost}}{{if .Unpriced}}<div class="rowsub">{{.Unpriced}} 次未计价</div>{{end}}</td>
+        <td class="num">{{if .GatewaySpend}}${{.GatewaySpend}}{{else}}<span class="dim">—</span>{{end}}</td>
+        <td class="num">{{.Calls}}</td><td class="num">{{.Failures}}</td><td class="num dim">{{.Tokens}}</td>
+        <td class="rowsub key-models">{{.Models}}</td><td><span class="tag {{if .Live}}tag-ok{{else}}tag-muted{{end}}">{{.Status}}</span></td>
+      </tr>{{else}}<tr><td colspan="9" class="empty">这个账期还没有 API Key 用量数据，也没有读取到当前 Key。</td></tr>{{end}}
+    </tbody>
+  </table></div>
+  <p class="dim small">本地账期来自每日 usage 快照，适合对账留痕；LiteLLM 当前 spend 用于核对网关侧累计值。若 Key 已吊销，只要历史快照仍在，账单仍会保留。</p>
+  {{end}}
+</main>
+</div>
+</body>
+</html>{{end}}

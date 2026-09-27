@@ -42,6 +42,16 @@
   <p class="hint">只影响之后新开的账号；已开账号在各自详情页调整。员工只受月预算限制，请求数、token 数和并发都不限。</p>
   {{end}}
 
+  {{if and (eq .Tab "general") .DB .DataRetention}}
+  <h2>采集数据自动保留</h2>
+  <form method="post" action="/settings/data-retention" class="form panel">
+    <input type="hidden" name="csrf" value="{{$.CSRF}}"><input type="hidden" name="version" value="{{.DataRetention.Version}}">
+    <label>自动清理<select name="enabled"><option value="0"{{if not .DataRetention.Enabled}} selected{{end}}>关闭（推荐先确认）</option><option value="1"{{if .DataRetention.Enabled}} selected{{end}}>开启</option></select></label>
+    <label>保留天数<input name="days" type="number" min="1" max="3650" value="{{.DataRetention.Days}}" required></label><button type="submit" data-confirm="开启后，系统每天会删除超过保留期的采集文件，且无法恢复。确认保存吗？">保存自动清理策略</button>
+  </form>
+  <p class="hint">自动任务只删除 <span class="mono">data_collect/</span>，不影响策略、状态、凭据和安装包；每次执行可在任务中心查看。</p>
+  {{end}}
+
   {{if eq .Tab "alerting"}}
   {{with .AlertSettings}}
   <h2>告警</h2>
@@ -128,6 +138,14 @@
     </tbody>
   </table>
   </div>
+  <form method="post" action="/settings/collect-cleanup" class="form panel" data-confirm="这会永久删除超过保留期的采集文件，且无法恢复。确认继续吗？">
+    <input type="hidden" name="csrf" value="{{$.CSRF}}">
+    <h3>清理过期采集数据</h3>
+    <p class="hint">只匹配 <span class="mono">data_collect/</span>，不会删除策略、状态、凭据或安装包。执行记录会出现在任务中心。</p>
+    <label>保留最近多少天<input name="days" type="number" min="1" max="3650" value="30" required></label>
+    <label>确认输入<input name="confirm" placeholder="DELETE 30" required></label>
+    <button class="danger">删除过期采集文件</button>
+  </form>
   {{end}}
   </fieldset>
 </main>

@@ -1,4 +1,5 @@
 {{define "tasks.html"}}{{template "head" "后台任务中心"}}
+{{if .TaskLive}}<meta http-equiv="refresh" content="10">{{end}}
 <body>
 <div class="app">
 {{template "nav" .}}
@@ -15,16 +16,29 @@
   <div class="task-toolbar panel">
     <div class="task-toolbar-copy">
       <span class="task-live-dot"></span>
-      <div><strong>运行概览</strong><p>显示最近任务；高频导入和通知任务已隐藏。</p></div>
+      <div><strong>运行概览</strong><p>最近刷新 {{.TaskRefreshed}}{{if .TaskLive}} · 有任务正在运行，10 秒自动刷新{{end}}</p></div>
     </div>
     <div class="task-toolbar-actions">
-      <a class="button-link" href="/tasks">刷新状态</a>
+      <a class="button-link" href="/tasks{{if .TaskQuery}}?{{.TaskQuery}}{{end}}">刷新状态</a>
       <form method="post" action="/tasks/reconcile" class="inline">
       <input type="hidden" name="csrf" value="{{.CSRF}}">
         <button type="submit">核对网关状态</button>
       </form>
     </div>
   </div>
+  <form method="get" action="/tasks" class="task-filters panel">
+    <label>状态<select name="status">
+      <option value=""{{if eq .TaskStatusFilter ""}} selected{{end}}>全部</option>
+      <option value="open"{{if eq .TaskStatusFilter "open"}} selected{{end}}>未完成</option>
+      <option value="failed"{{if eq .TaskStatusFilter "failed"}} selected{{end}}>失败 / 被阻止</option>
+      <option value="done"{{if eq .TaskStatusFilter "done"}} selected{{end}}>已完成 / 已取消</option>
+    </select></label>
+    <label>类型<select name="kind"><option value=""{{if eq .TaskKindFilter ""}} selected{{end}}>全部类型</option>{{range .TaskKinds}}<option value="{{.Value}}"{{if eq .Value $.TaskKindFilter}} selected{{end}}>{{.Label}}</option>{{end}}</select></label>
+    <label class="task-system-toggle"><input type="checkbox" name="system" value="1"{{if .TaskShowSystem}} checked{{end}}> 显示系统维护任务</label>
+    <button type="submit">应用筛选</button>
+    {{if or .TaskStatusFilter .TaskKindFilter .TaskShowSystem}}<a class="button-link" href="/tasks">清除筛选</a>{{end}}
+  </form>
+  <p class="task-filter-note">当前显示 {{.TaskTotal}} 条{{if .TaskHidden}} · 已折叠 {{.TaskHidden}} 条系统维护任务{{end}}。历史任务按最近更新时间排序。</p>
   <div class="task-summary" aria-label="任务状态汇总">
     {{range .TaskColumns}}
     <div class="task-summary-item task-summary-{{.Tone}}"><span class="task-summary-label">{{.Title}}</span><strong>{{len .Cards}}</strong></div>
@@ -33,12 +47,12 @@
   <div class="task-board">
     {{range .TaskColumns}}
     <section class="task-column task-{{.Tone}}" aria-label="{{.Title}}">
-      <header class="task-column-head"><div><span class="task-column-kicker">{{if eq .Tone "waiting"}}QUEUE{{else if eq .Tone "running"}}ACTIVE{{else if eq .Tone "done"}}HISTORY{{else}}ACTION REQUIRED{{end}}</span><h2>{{.Title}}</h2></div><span class="task-count">{{len .Cards}}</span></header>
-      <div class="task-cards">
+      <header class="task-column-head"><div><span class="task-column-kicker">{{if eq .Tone "waiting"}}待处理{{else if eq .Tone "running"}}执行中{{else if eq .Tone "done"}}历史{{else}}需要处理{{end}}</span><h2>{{.Title}}</h2></div><span class="task-count">{{len .Cards}}</span></header>
+      <div class="task-cards task-collapsed-list" id="task-list-{{.Tone}}">
       {{range .Cards}}
         <article class="task-card">
           <div class="task-card-top"><span class="task-type">{{.Title}}</span><span class="task-state">{{.Status}}</span></div>
-          <h3 class="task-subject">{{.Subject}}</h3>
+          <h3 class="task-subject"><a href="/tasks/detail?id={{.ID}}">{{.Subject}}</a></h3>
           <p class="task-detail">{{.Detail}}</p>
           {{if .Error}}<div class="task-error"><span>!</span><p>{{.Error}}</p></div>{{end}}
           <div class="task-meta">
@@ -48,16 +62,24 @@
           </div>
           <div class="task-card-foot">
             <details class="task-id"><summary>查看任务编号</summary><code>{{.ID}}</code></details>
-            {{if .Cancelable}}<form method="post" action="/apps/cancel" class="inline"><input type="hidden" name="csrf" value="{{$.CSRF}}"><input type="hidden" name="taskId" value="{{.ID}}"><button class="link danger-link">取消安装</button></form>{{end}}
+            {{if .Cancelable}}<form method="post" action="{{if eq .Title "软件安装"}}/apps/cancel{{else}}/tasks/cancel{{end}}" class="inline" data-confirm="确认取消这个任务吗？"><input type="hidden" name="csrf" value="{{$.CSRF}}"><input type="hidden" name="{{if eq .Title "软件安装"}}taskId{{else}}id{{end}}" value="{{.ID}}"><button class="link danger-link">取消任务</button></form>{{end}}
           </div>
         </article>
       {{else}}
         <p class="task-empty">暂无{{.Title}}的任务</p>
       {{end}}
       </div>
+      {{if gt (len .Cards) 1}}
+      <button type="button" class="task-history-toggle" data-history-toggle aria-controls="task-list-{{.Tone}}" aria-expanded="false">{{if eq .Tone "done"}}展开其余历史{{else}}展开其余任务{{end}}</button>
+      {{end}}
     </section>
     {{end}}
   </div>
+  {{if or .TaskHasPrev .TaskHasNext}}<nav class="pager" aria-label="任务分页">
+    {{if .TaskHasPrev}}<a class="button-link" href="/tasks?page={{sub .TaskPage 1}}&status={{.TaskStatusFilter}}&kind={{.TaskKindFilter}}{{if .TaskShowSystem}}&system=1{{end}}">上一页</a>{{end}}
+    <span class="dim">第 {{.TaskPage}} 页 · 共 {{.TaskTotal}} 条</span>
+    {{if .TaskHasNext}}<a class="button-link" href="/tasks?page={{add .TaskPage 1}}&status={{.TaskStatusFilter}}&kind={{.TaskKindFilter}}{{if .TaskShowSystem}}&system=1{{end}}">下一页</a>{{end}}
+  </nav>{{end}}
 </main>
 </div>
 </body>
