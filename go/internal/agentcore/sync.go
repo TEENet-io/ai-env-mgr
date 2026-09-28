@@ -395,7 +395,24 @@ func (s *Syncer) RunOnce() (model.Status, error) {
 	if !bound {
 		// The policy above is already in force. Only credentials need an
 		// employee to deliver to, so the machine reports itself and waits.
+		// Unbinding is also a revocation: no employee is allowed to keep the
+		// last employee's managed Codex files or a running session on this box.
+		// Remove only the whitelisted files; the employee's other .codex data
+		// (sessions, history and personal settings) is not ours to delete.
 		warns = append(warns, "no binding: this machine has not been assigned to a user yet")
+		for _, user := range localUsers {
+			n, rmErr := s.Applier.RemoveCreds(s.Machine.ProfileDir(user))
+			switch {
+			case rmErr != nil:
+				errs = append(errs, fmt.Sprintf("credentials revoke for %q: %v", user, rmErr))
+			case n > 0:
+				warns = append(warns, fmt.Sprintf("credentials revoked: removed %d file(s) for %q after unbind", n, user))
+				warns = append(warns, s.stopCodex(user, "a credential revocation after unbind", &sweep))
+			}
+		}
+		// Do not let a stale ETag prevent a later binding from delivering a
+		// fresh bundle after the old files have been removed.
+		s.writeMarker(credsMarkerFile, "")
 	} else {
 		boundUserExists = containsFold(localUsers, binding.User)
 		if !boundUserExists {
