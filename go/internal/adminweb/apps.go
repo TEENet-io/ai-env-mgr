@@ -77,7 +77,7 @@ func inferApplication(r *http.Request, app *model.Application) {
 			app.Detection = model.ApplicationDetection{Type: "file_exists", Path: `C:\Program Files\Microsoft VS Code\Code.exe`}
 		}
 		if app.Shortcut.Target == "" {
-			app.Shortcut = model.ApplicationShortcut{Enabled: true, PublicDesktop: true, Name: "Visual Studio Code", Target: `C:\Program Files\Microsoft VS Code\Code.exe`}
+			app.Shortcut = model.ApplicationShortcut{Enabled: true, PublicDesktop: true, Name: "Visual Studio Code", Target: app.Detection.Path}
 		}
 	} else if model.IsWeChatApplication(*app) {
 		app.InstallerType = "exe"
@@ -97,7 +97,7 @@ func inferApplication(r *http.Request, app *model.Application) {
 			app.Detection = model.ApplicationDetection{Type: "file_exists", Path: `C:\Program Files\Tencent\WeChat\WeChat.exe`}
 		}
 		if app.Shortcut.Target == "" {
-			app.Shortcut = model.ApplicationShortcut{Enabled: true, PublicDesktop: true, Name: "WeChat", Target: `C:\Program Files\Tencent\WeChat\WeChat.exe`}
+			app.Shortcut = model.ApplicationShortcut{Enabled: true, PublicDesktop: true, Name: "WeChat", Target: app.Detection.Path}
 		}
 	} else if !detectionPathProvided {
 		app.Detection = model.ApplicationDetection{Type: "file_exists", Path: `C:\Program Files\` + app.DisplayName + `\` + app.AppID + `.exe`}
