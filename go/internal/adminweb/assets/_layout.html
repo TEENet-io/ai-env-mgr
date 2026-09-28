@@ -17,22 +17,34 @@ file stays out of it. */}}
 
 {{define "nav"}}
 <nav class="rail">
-  <div class="wordmark">AI 环境管理</div>
+  <div class="wordmark"><span class="wordmark-mark">AI</span><span class="wordmark-copy"><strong>AI 环境管理</strong><small>设备与策略控制台</small></span></div>
   {{/* Seven groups. The numbers are stable ordinals an operator learns;
   pages that used to be top-level entries (日志、任务、封禁策略、管理员) live
   as tabs inside their group and keep their old addresses. */}}
-  <a href="/overview"{{if eq .Nav "overview"}} class="active"{{end}}><span class="n">1</span>总览</a>
-  <a href="/users"{{if eq .Nav "users"}} class="active"{{end}}><span class="n">2</span>员工账号</a>
-  <a href="{{if .DB}}/releases{{else}}/rollout{{end}}"{{if or (eq .Nav "rollout") (eq .Nav "releases")}} class="active"{{end}}><span class="n">3</span>软件安装</a>
+  <div class="rail-section">
+    <div class="rail-section-label">工作台</div>
+    <a href="/overview"{{if eq .Nav "overview"}} class="active"{{end}}><span class="n">1</span>总览</a>
+    <a href="/users"{{if eq .Nav "users"}} class="active"{{end}}><span class="n">2</span>员工账号</a>
+    <a href="{{if .DB}}/releases{{else}}/rollout{{end}}"{{if or (eq .Nav "rollout") (eq .Nav "releases")}} class="active"{{end}}><span class="n">3</span>软件安装</a>
+  </div>
   {{if .DB}}
-  <a href="/usage"{{if eq .Nav "usage"}} class="active"{{end}}><span class="n">4</span>用量</a>
-  <a href="/alerts"{{if eq .Nav "alerts"}} class="active"{{end}}><span class="n">5</span>告警{{if .OpenAlerts}} <span class="tag tag-bad">{{.OpenAlerts}}</span>{{end}}</a>
-  <a href="/tasks"{{if eq .Nav "tasks"}} class="active"{{end}}><span class="n">6</span>任务中心</a>
-  <a href="/audit"{{if eq .Nav "audit"}} class="active"{{end}}><span class="n">7</span>审计</a>
-  <a href="/settings"{{if eq .Nav "settings"}} class="active"{{end}}><span class="n">8</span>设置</a>
+  <div class="rail-section">
+    <div class="rail-section-label">运营</div>
+    <a href="/usage"{{if eq .Nav "usage"}} class="active"{{end}}><span class="n">4</span>用量</a>
+    <a href="/alerts"{{if eq .Nav "alerts"}} class="active"{{end}}><span class="n">5</span>告警{{if .OpenAlerts}} <span class="tag tag-bad">{{.OpenAlerts}}</span>{{end}}</a>
+    <a href="/tasks"{{if eq .Nav "tasks"}} class="active"{{end}}><span class="n">6</span>任务中心</a>
+  </div>
+  <div class="rail-section">
+    <div class="rail-section-label">治理</div>
+    <a href="/audit"{{if eq .Nav "audit"}} class="active"{{end}}><span class="n">7</span>审计</a>
+    <a href="/settings"{{if eq .Nav "settings"}} class="active"{{end}}><span class="n">8</span>设置</a>
+  </div>
   {{else}}
-  {{if .SLS}}<a href="/logs"{{if eq .Nav "usage"}} class="active"{{end}}><span class="n">4</span>日志</a>{{end}}
-  <a href="/settings"{{if eq .Nav "settings"}} class="active"{{end}}><span class="n">5</span>设置</a>
+  <div class="rail-section">
+    <div class="rail-section-label">运营</div>
+    {{if .SLS}}<a href="/logs"{{if eq .Nav "usage"}} class="active"{{end}}><span class="n">4</span>日志</a>{{end}}
+    <a href="/settings"{{if eq .Nav "settings"}} class="active"{{end}}><span class="n">5</span>设置</a>
+  </div>
   {{end}}
   <div class="foot">
     {{if .DB}}<a href="/account"{{if eq .Nav "account"}} class="active"{{end}}>{{.Admin}}</a>{{else}}{{.Bucket}}{{end}}
