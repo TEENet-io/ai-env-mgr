@@ -151,6 +151,9 @@ func cmdPrepareImage() error {
 		"update-target",
 		"agent-update-result.txt",
 		"codex-restart-nonce",
+		"codex-target",
+		"codex-setup.exe",
+		"codex-install.log",
 	} {
 		if err := os.Remove(filepath.Join(stateDir(), name)); err != nil && !os.IsNotExist(err) {
 			return fmt.Errorf("remove image marker %s: %w", name, err)
