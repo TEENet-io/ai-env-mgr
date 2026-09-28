@@ -100,17 +100,20 @@ func (applicationInstaller) InstallContext(parent context.Context, app model.App
 		args := []string{"/i", setupPath, "/qn", "/norestart"}
 		args = append(args, app.SilentArgs...)
 		cmd = exec.CommandContext(ctx, "msiexec.exe", args...)
-	} else if strings.EqualFold(app.InstallerType, "exe") && model.IsTrustedExeApplication(app) {
-		// Do not accept manifest-provided switches here: trusted EXE recipes
-		// are fixed and reviewed per vendor.
-		args := append([]string{}, model.TrustedExeSilentArgs(app)...)
-		// Keep the vendor's diagnostic log beside the task-scoped installer so
-		// an exit code such as 1 is actionable instead of opaque. The log is
-		// removed after a successful install and retained on failure.
-		args = append(args, "/LOG="+setupPath+".log")
+	} else if strings.EqualFold(app.InstallerType, "exe") {
+		// Admin supplies the vendor-specific silent switches in the approved
+		// manifest. exec.CommandContext passes them as argv directly and never
+		// invokes cmd.exe, so shell metacharacters cannot become a second
+		// command. An empty list is rejected by the shared Agent validation;
+		// keeping this guard here protects callers that invoke the installer
+		// adapter directly.
+		args := append([]string{}, app.SilentArgs...)
+		if len(args) == 0 {
+			return fmt.Errorf("EXE installer requires approved silentArgs")
+		}
 		cmd = exec.CommandContext(ctx, setupPath, args...)
 	} else {
-		return fmt.Errorf("only MSI or a trusted VS Code/WeChat installer is supported")
+		return fmt.Errorf("only MSI or EXE installers are supported")
 	}
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout

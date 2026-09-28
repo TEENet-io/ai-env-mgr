@@ -211,7 +211,7 @@ func New(opts Options) (*Server, error) {
 		"sub":      func(a, b int) int { return a - b },
 		"alabel":   artifactLabel,
 		"appSupported": func(app model.Application) bool {
-			return strings.EqualFold(app.InstallerType, "msi") || (strings.EqualFold(app.InstallerType, "exe") && model.IsTrustedExeApplication(app))
+			return model.IsSupportedApplicationInstaller(app)
 		},
 		"has": func(list []string, v string) bool {
 			for _, x := range list {

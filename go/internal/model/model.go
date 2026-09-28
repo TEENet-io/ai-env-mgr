@@ -77,39 +77,59 @@ type Policy struct {
 }
 
 type Application struct {
-	AppID          string               `json:"appId"`
-	DisplayName    string               `json:"displayName"`
-	Publisher      string               `json:"publisher"`
-	Version        string               `json:"version"`
-	InstallerType  string               `json:"installerType"`
-	ObjectKey      string               `json:"objectKey"`
-	SHA256         string               `json:"sha256"`
-	Size           int64                `json:"size"`
-	SilentArgs     []string             `json:"silentArgs,omitempty"`
-	Shortcut       ApplicationShortcut  `json:"shortcut,omitempty"`
-	Detection      ApplicationDetection `json:"detection"`
-	RequiresReboot bool                 `json:"requiresReboot"`
-	Enabled        bool                 `json:"enabled"`
-	Approved       bool                 `json:"approved"`
-	UpdatedAt      string               `json:"updatedAt"`
+	AppID         string   `json:"appId"`
+	DisplayName   string   `json:"displayName"`
+	Publisher     string   `json:"publisher"`
+	Version       string   `json:"version"`
+	InstallerType string   `json:"installerType"`
+	ObjectKey     string   `json:"objectKey"`
+	SHA256        string   `json:"sha256"`
+	Size          int64    `json:"size"`
+	SilentArgs    []string `json:"silentArgs,omitempty"`
+	// AppLockerAllowPath is an Admin-reviewed machine-wide executable tree.
+	// It is applied to the policy before a task starts, not by the installer.
+	AppLockerAllowPath string               `json:"appLockerAllowPath,omitempty"`
+	Shortcut           ApplicationShortcut  `json:"shortcut,omitempty"`
+	Detection          ApplicationDetection `json:"detection"`
+	RequiresReboot     bool                 `json:"requiresReboot"`
+	Enabled            bool                 `json:"enabled"`
+	Approved           bool                 `json:"approved"`
+	UpdatedAt          string               `json:"updatedAt"`
 }
 
-// IsVSCodeApplication identifies the trusted VS Code EXE template.
+// IsSupportedApplicationInstaller reports whether the manifest contains an
+// installer shape the Agent can execute safely. MSI has a standard quiet
+// invocation. EXE packages are also supported, but only when Admin has
+// supplied at least one reviewed silent-install argument; an EXE with no
+// arguments could open an interactive dialog on the invisible SYSTEM desktop.
+func IsSupportedApplicationInstaller(app Application) bool {
+	switch strings.ToLower(strings.TrimSpace(app.InstallerType)) {
+	case "msi":
+		return true
+	case "exe":
+		return len(app.SilentArgs) > 0
+	default:
+		return false
+	}
+}
+
+// IsVSCodeApplication identifies the VS Code EXE template so Admin can fill
+// its well-known defaults. It is not an Agent execution allowlist.
 func IsVSCodeApplication(app Application) bool {
 	name := strings.ToLower(strings.TrimSpace(app.AppID + " " + app.DisplayName))
 	return strings.Contains(name, "vscode") || strings.Contains(name, "visual studio code")
 }
 
-// IsWeChatApplication identifies the trusted Tencent WeChat EXE template.
-// Generic EXE installers remain unsupported because their silent switches are
-// not standardized and may block a SYSTEM service on an invisible dialog.
+// IsWeChatApplication identifies the Tencent WeChat EXE template so Admin can
+// fill its well-known defaults. Other EXE installers are supported when an
+// administrator supplies reviewed silent arguments.
 func IsWeChatApplication(app Application) bool {
 	name := strings.ToLower(strings.TrimSpace(app.AppID + " " + app.DisplayName))
 	return strings.Contains(name, "wechat") || strings.Contains(name, "微信")
 }
 
-// IsTrustedExeApplication reports whether the Agent has a fixed, reviewed
-// silent-install recipe for this EXE package.
+// IsTrustedExeApplication reports whether Admin has a built-in template for
+// this EXE package and can fill safe defaults automatically.
 func IsTrustedExeApplication(app Application) bool {
 	return IsVSCodeApplication(app) || IsWeChatApplication(app)
 }
@@ -120,9 +140,8 @@ func VSCodeSilentArgs() []string {
 	return []string{"/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART", "/MERGETASKS=!runcode"}
 }
 
-// WeChatSilentArgs is the NSIS silent-install switch used by the official
-// WeChat Windows installer. Keep it fixed instead of accepting arbitrary
-// command-line switches from an uploaded manifest.
+// WeChatSilentArgs is the default NSIS silent-install switch used by the
+// official WeChat Windows installer.
 func WeChatSilentArgs() []string { return []string{"/S"} }
 
 // VSCodeAppLockerPath is the machine-wide install tree used by the trusted
@@ -136,7 +155,8 @@ func VSCodeAppLockerPath() string {
 // current x64 WeChat installer.
 func WeChatAppLockerPath() string { return `C:\Program Files\Tencent\WeChat\*` }
 
-// TrustedExeSilentArgs returns the reviewed command line for a trusted EXE.
+// TrustedExeSilentArgs returns the default command line for a built-in EXE
+// template. Generic EXE manifests carry their own Admin-reviewed arguments.
 func TrustedExeSilentArgs(app Application) []string {
 	if IsWeChatApplication(app) {
 		return WeChatSilentArgs()
@@ -144,8 +164,8 @@ func TrustedExeSilentArgs(app Application) []string {
 	return VSCodeSilentArgs()
 }
 
-// TrustedExeAppLockerPath returns the directory that must be allowed before a
-// trusted EXE can be launched under an enforcing AppLocker policy.
+// TrustedExeAppLockerPath returns the default directory that must be allowed
+// before a built-in EXE template can be launched under enforcing AppLocker.
 func TrustedExeAppLockerPath(app Application) string {
 	if IsWeChatApplication(app) {
 		return WeChatAppLockerPath()

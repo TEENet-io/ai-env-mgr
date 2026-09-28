@@ -82,12 +82,26 @@ func TestPublishApplicationAcceptsTrustedVSCodeEXE(t *testing.T) {
 	app.AppID = "vscodesetup-x64"
 	app.DisplayName = "Visual Studio Code"
 	app.InstallerType = "exe"
+	app.SilentArgs = []string{"/VERYSILENT"}
 	app.ObjectKey = ""
 	if _, err := m.PublishApplication(app, []byte("installer"), nil); err != nil {
 		t.Fatalf("trusted VS Code EXE should be accepted: %v", err)
 	}
 	if _, ok := store.objects[ossclient.ApplicationPackageKey(app.AppID, app.Version, "exe")]; !ok {
 		t.Fatal("VS Code EXE package was not written")
+	}
+}
+
+func TestPublishApplicationAcceptsGenericEXEWithSilentArgs(t *testing.T) {
+	store := newFakeStore()
+	m := &Manager{Store: store}
+	app := testApplication()
+	app.AppID = "chat-client"
+	app.DisplayName = "Chat Client"
+	app.InstallerType = "exe"
+	app.SilentArgs = []string{"/quiet", "/norestart"}
+	if _, err := m.PublishApplication(app, []byte("installer"), nil); err != nil {
+		t.Fatalf("generic EXE with silent args should be accepted: %v", err)
 	}
 }
 

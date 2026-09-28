@@ -64,6 +64,38 @@ func TestRunOnceInstallsApprovedApplication(t *testing.T) {
 	}
 }
 
+func TestRunOnceInstallsApprovedGenericExe(t *testing.T) {
+	store := newFakeStore()
+	s := newSyncer(t, store, &fakeApplier{})
+	packageData := []byte("generic exe installer")
+	sum := sha256.Sum256(packageData)
+	app := model.Application{
+		AppID: "chat-client", Version: "2.0.0", InstallerType: "exe", Enabled: true, Approved: true,
+		SilentArgs: []string{"/quiet", "/norestart"},
+		ObjectKey:  ossclient.ApplicationPackageKey("chat-client", "2.0.0", "exe"), SHA256: hex.EncodeToString(sum[:]), Size: int64(len(packageData)),
+		Detection: model.ApplicationDetection{Type: "file_exists", Path: `C:\Program Files\Chat Client\chat.exe`},
+	}
+	manifest, _ := json.Marshal(app)
+	store.set(ossclient.ApplicationKey(app.AppID, app.Version), manifest, "manifest")
+	store.set(app.ObjectKey, packageData, "package")
+	desiredBytes, _ := json.Marshal(model.MachineApplications{Machine: "DESKTOP-A", Apps: []model.DesiredApplication{{AppID: app.AppID, Version: app.Version, Desired: "installed", TaskID: "task-exe"}}})
+	store.set(ossclient.MachineApplicationsKey("DESKTOP-A"), desiredBytes, "desired")
+	bind(t, store, "DESKTOP-A", "work1")
+	fake := &fakeApplicationInstaller{}
+	s.Applications = fake
+
+	st, err := s.RunOnce()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(st.Apps) != 1 || st.Apps[0].State != AppSucceeded {
+		t.Fatalf("application status = %+v, errors=%v", st.Apps, st.Errors)
+	}
+	if fake.installs != 1 {
+		t.Fatalf("install calls = %d, want 1", fake.installs)
+	}
+}
+
 func TestRunOnceBlocksApplicationChecksumMismatch(t *testing.T) {
 	store := newFakeStore()
 	s := newSyncer(t, store, &fakeApplier{})

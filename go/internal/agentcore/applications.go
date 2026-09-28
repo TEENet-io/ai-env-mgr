@@ -28,8 +28,9 @@ const (
 )
 
 // ApplicationInstaller contains the platform-specific machine-wide actions.
-// It never accepts a free-form command: all arguments come from the approved
-// application manifest passed to these methods.
+// It never invokes a shell: the executable is the downloaded, hash-verified
+// package and all installer arguments come from the approved application
+// manifest passed to these methods.
 type ApplicationInstaller interface {
 	InstalledVersion(app model.Application) (string, error)
 	Running(app model.Application) (bool, error)
@@ -155,8 +156,8 @@ func (s *Syncer) applyApplicationContext(ctx context.Context, item model.Desired
 	if err := json.Unmarshal(data, &app); err != nil {
 		return appFailure(st, AppBlocked, fmt.Sprintf("parse manifest: %v", err))
 	}
-	if !strings.EqualFold(app.InstallerType, "msi") && !(strings.EqualFold(app.InstallerType, "exe") && model.IsTrustedExeApplication(app)) {
-		return appFailure(st, AppBlocked, "only MSI or a trusted VS Code/WeChat installer is supported")
+	if !model.IsSupportedApplicationInstaller(app) {
+		return appFailure(st, AppBlocked, "only MSI or EXE installers with approved silentArgs are supported")
 	}
 	if !app.Enabled || !app.Approved || app.ObjectKey == "" || app.SHA256 == "" {
 		return appFailure(st, AppBlocked, "manifest is not enabled, approved, and complete")
