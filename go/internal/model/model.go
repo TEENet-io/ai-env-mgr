@@ -152,8 +152,8 @@ func VSCodeAppLockerPath() string {
 }
 
 // WeChatAppLockerPath is the default machine-wide install tree used by the
-// current x64 WeChat installer.
-func WeChatAppLockerPath() string { return `C:\Program Files\Tencent\WeChat\*` }
+// current Windows Weixin installer.
+func WeChatAppLockerPath() string { return `C:\Program Files\Tencent\Weixin\*` }
 
 // TrustedExeSilentArgs returns the default command line for a built-in EXE
 // template. Generic EXE manifests carry their own Admin-reviewed arguments.

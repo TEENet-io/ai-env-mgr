@@ -94,7 +94,7 @@ func inferApplication(r *http.Request, app *model.Application) {
 			app.AppLockerAllowPath = model.WeChatAppLockerPath()
 		}
 		if !detectionPathProvided {
-			app.Detection = model.ApplicationDetection{Type: "file_exists", Path: `C:\Program Files\Tencent\WeChat\WeChat.exe`}
+			app.Detection = model.ApplicationDetection{Type: "file_exists", Path: `C:\Program Files\Tencent\Weixin\Weixin.exe`}
 		}
 		if app.Shortcut.Target == "" {
 			app.Shortcut = model.ApplicationShortcut{Enabled: true, PublicDesktop: true, Name: "WeChat", Target: app.Detection.Path}
