@@ -68,6 +68,13 @@ func inferApplication(r *http.Request, app *model.Application) {
 		app.SilentArgs = model.VSCodeSilentArgs()
 		app.Detection = model.ApplicationDetection{Type: "file_exists", Path: `C:\Program Files\Microsoft VS Code\Code.exe`}
 		app.Shortcut = model.ApplicationShortcut{Enabled: true, PublicDesktop: true, Name: "Visual Studio Code", Target: `C:\Program Files\Microsoft VS Code\Code.exe`}
+	} else if model.IsWeChatApplication(*app) {
+		app.InstallerType = "exe"
+		app.Publisher = "Tencent"
+		app.DisplayName = "WeChat"
+		app.SilentArgs = model.WeChatSilentArgs()
+		app.Detection = model.ApplicationDetection{Type: "file_exists", Path: `C:\Program Files\Tencent\WeChat\WeChat.exe`}
+		app.Shortcut = model.ApplicationShortcut{Enabled: true, PublicDesktop: true, Name: "WeChat", Target: `C:\Program Files\Tencent\WeChat\WeChat.exe`}
 	}
 }
 
@@ -76,13 +83,13 @@ func (s *Server) appManager() *admincore.Manager {
 }
 
 // ensureApplicationAppLocker keeps the security policy and the application
-// catalog in step. Only the trusted VS Code template gets an automatic rule;
+// catalog in step. Only trusted EXE templates get an automatic rule;
 // arbitrary MSI packages still require an explicit administrator allow path.
 func ensureApplicationAppLocker(ctx context.Context, be backend, app model.Application) error {
-	if !model.IsVSCodeApplication(app) {
+	if !model.IsTrustedExeApplication(app) {
 		return nil
 	}
-	return be.MutateAppLockerAllowPaths(ctx, []string{model.VSCodeAppLockerPath()}, nil)
+	return be.MutateAppLockerAllowPaths(ctx, []string{model.TrustedExeAppLockerPath(app)}, nil)
 }
 
 func (s *Server) actionApplicationPublish(sess *session, r *http.Request) error {
@@ -145,7 +152,7 @@ func (s *Server) actionApplicationInstall(sess *session, r *http.Request) error 
 	// A policy update normally wakes the Agent, but ask this target to sync
 	// explicitly so the rule is present before the install task reaches its
 	// post-install AppLocker check.
-	if model.IsVSCodeApplication(app) {
+	if model.IsTrustedExeApplication(app) {
 		if err := sess.be.RequestSync(r.Context(), machine); err != nil {
 			return fmt.Errorf("request AppLocker policy sync: %w", err)
 		}

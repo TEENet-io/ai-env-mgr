@@ -7,6 +7,7 @@
   {{template "tabs-releases" .}}
   {{template "notices" .}}
   <p class="lede">这里管理经过审核的软件包，并按机器创建安装任务。软件安装与 Agent/Codex 发布分开；安装任务会在后台执行，不会阻塞 Agent 的同步与控制。</p>
+  <p class="hint">安装包支持 MSI；受信 EXE 目前支持 VS Code 和 WeChat，Agent 会使用固定的静默参数并校验安装结果。</p>
   {{with .Job}}<section class="panel job">
     {{if .Running}}<h3>正在处理 {{.Kind}} <span class="mono">{{.Version}}</span></h3><progress></progress><p>{{.Step}}——已用时 {{.Elapsed}}。可以离开本页。</p>
     {{else if eq (printf "%s" .State) "failed"}}<h3 class="bad">处理失败：{{.Kind}} <span class="mono">{{.Version}}</span></h3><p class="bad">{{.Err}}</p>

@@ -94,12 +94,24 @@ type Application struct {
 	UpdatedAt      string               `json:"updatedAt"`
 }
 
-// IsVSCodeApplication identifies the one trusted EXE template. Generic EXE
-// installers remain unsupported because their silent switches are not
-// standardized and may block a SYSTEM service on an invisible dialog.
+// IsVSCodeApplication identifies the trusted VS Code EXE template.
 func IsVSCodeApplication(app Application) bool {
 	name := strings.ToLower(strings.TrimSpace(app.AppID + " " + app.DisplayName))
 	return strings.Contains(name, "vscode") || strings.Contains(name, "visual studio code")
+}
+
+// IsWeChatApplication identifies the trusted Tencent WeChat EXE template.
+// Generic EXE installers remain unsupported because their silent switches are
+// not standardized and may block a SYSTEM service on an invisible dialog.
+func IsWeChatApplication(app Application) bool {
+	name := strings.ToLower(strings.TrimSpace(app.AppID + " " + app.DisplayName))
+	return strings.Contains(name, "wechat") || strings.Contains(name, "微信")
+}
+
+// IsTrustedExeApplication reports whether the Agent has a fixed, reviewed
+// silent-install recipe for this EXE package.
+func IsTrustedExeApplication(app Application) bool {
+	return IsVSCodeApplication(app) || IsWeChatApplication(app)
 }
 
 // VSCodeSilentArgs are the fixed Inno Setup switches used for non-interactive
@@ -108,11 +120,37 @@ func VSCodeSilentArgs() []string {
 	return []string{"/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART", "/MERGETASKS=!runcode"}
 }
 
+// WeChatSilentArgs is the NSIS silent-install switch used by the official
+// WeChat Windows installer. Keep it fixed instead of accepting arbitrary
+// command-line switches from an uploaded manifest.
+func WeChatSilentArgs() []string { return []string{"/S"} }
+
 // VSCodeAppLockerPath is the machine-wide install tree used by the trusted
 // system installer. It is intentionally a directory rule: Code.exe starts
 // helpers and extension processes from the same tree.
 func VSCodeAppLockerPath() string {
 	return `C:\Program Files\Microsoft VS Code\*`
+}
+
+// WeChatAppLockerPath is the default machine-wide install tree used by the
+// current x64 WeChat installer.
+func WeChatAppLockerPath() string { return `C:\Program Files\Tencent\WeChat\*` }
+
+// TrustedExeSilentArgs returns the reviewed command line for a trusted EXE.
+func TrustedExeSilentArgs(app Application) []string {
+	if IsWeChatApplication(app) {
+		return WeChatSilentArgs()
+	}
+	return VSCodeSilentArgs()
+}
+
+// TrustedExeAppLockerPath returns the directory that must be allowed before a
+// trusted EXE can be launched under an enforcing AppLocker policy.
+func TrustedExeAppLockerPath(app Application) string {
+	if IsWeChatApplication(app) {
+		return WeChatAppLockerPath()
+	}
+	return VSCodeAppLockerPath()
 }
 
 type ApplicationShortcut struct {
