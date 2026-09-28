@@ -58,25 +58,49 @@ func inferApplication(r *http.Request, app *model.Application) {
 	if app.DisplayName == "" {
 		app.DisplayName = strings.TrimSpace(strings.ReplaceAll(base, "_", " "))
 	}
-	if app.Detection.Path == "" {
-		app.Detection = model.ApplicationDetection{Type: "file_exists", Path: `C:\Program Files\` + app.DisplayName + `\` + app.AppID + `.exe`}
-	}
+	detectionPathProvided := app.Detection.Path != ""
 	if model.IsVSCodeApplication(*app) {
 		app.InstallerType = "exe"
-		app.Publisher = "Microsoft"
-		app.DisplayName = "Visual Studio Code"
-		app.SilentArgs = model.VSCodeSilentArgs()
-		app.AppLockerAllowPath = model.VSCodeAppLockerPath()
-		app.Detection = model.ApplicationDetection{Type: "file_exists", Path: `C:\Program Files\Microsoft VS Code\Code.exe`}
-		app.Shortcut = model.ApplicationShortcut{Enabled: true, PublicDesktop: true, Name: "Visual Studio Code", Target: `C:\Program Files\Microsoft VS Code\Code.exe`}
+		if app.Publisher == "" {
+			app.Publisher = "Microsoft"
+		}
+		if app.DisplayName == "" {
+			app.DisplayName = "Visual Studio Code"
+		}
+		if len(app.SilentArgs) == 0 {
+			app.SilentArgs = model.VSCodeSilentArgs()
+		}
+		if app.AppLockerAllowPath == "" {
+			app.AppLockerAllowPath = model.VSCodeAppLockerPath()
+		}
+		if !detectionPathProvided {
+			app.Detection = model.ApplicationDetection{Type: "file_exists", Path: `C:\Program Files\Microsoft VS Code\Code.exe`}
+		}
+		if app.Shortcut.Target == "" {
+			app.Shortcut = model.ApplicationShortcut{Enabled: true, PublicDesktop: true, Name: "Visual Studio Code", Target: `C:\Program Files\Microsoft VS Code\Code.exe`}
+		}
 	} else if model.IsWeChatApplication(*app) {
 		app.InstallerType = "exe"
-		app.Publisher = "Tencent"
-		app.DisplayName = "WeChat"
-		app.SilentArgs = model.WeChatSilentArgs()
-		app.AppLockerAllowPath = model.WeChatAppLockerPath()
-		app.Detection = model.ApplicationDetection{Type: "file_exists", Path: `C:\Program Files\Tencent\WeChat\WeChat.exe`}
-		app.Shortcut = model.ApplicationShortcut{Enabled: true, PublicDesktop: true, Name: "WeChat", Target: `C:\Program Files\Tencent\WeChat\WeChat.exe`}
+		if app.Publisher == "" {
+			app.Publisher = "Tencent"
+		}
+		if app.DisplayName == "" {
+			app.DisplayName = "WeChat"
+		}
+		if len(app.SilentArgs) == 0 {
+			app.SilentArgs = model.WeChatSilentArgs()
+		}
+		if app.AppLockerAllowPath == "" {
+			app.AppLockerAllowPath = model.WeChatAppLockerPath()
+		}
+		if !detectionPathProvided {
+			app.Detection = model.ApplicationDetection{Type: "file_exists", Path: `C:\Program Files\Tencent\WeChat\WeChat.exe`}
+		}
+		if app.Shortcut.Target == "" {
+			app.Shortcut = model.ApplicationShortcut{Enabled: true, PublicDesktop: true, Name: "WeChat", Target: `C:\Program Files\Tencent\WeChat\WeChat.exe`}
+		}
+	} else if !detectionPathProvided {
+		app.Detection = model.ApplicationDetection{Type: "file_exists", Path: `C:\Program Files\` + app.DisplayName + `\` + app.AppID + `.exe`}
 	}
 }
 
