@@ -429,6 +429,11 @@ func loop(s *agentcore.Syncer, stop <-chan struct{}, wake <-chan struct{}) {
 		for _, w := range st.Warnings {
 			log.Printf("  - %s", w)
 		}
+		if st.CodexTarget != "" || st.CodexVersion != "" || st.CodexState != "" {
+			log.Printf("  codex: target=%s generation=%d installed=%s state=%s reason=%s",
+				orDash(st.CodexTarget), st.CodexTargetGeneration, orDash(st.CodexVersion),
+				orDash(st.CodexState), orDash(st.CodexDeferReason))
+		}
 		for _, app := range st.Apps {
 			log.Printf("  application %s@%s task=%s state=%s error=%s",
 				app.AppID, app.DesiredVersion, app.TaskID, app.State, orDash(app.LastError))

@@ -56,6 +56,29 @@ type codexOutcome struct {
 // the target, or publishing a different version, makes it try again.
 const codexMarkerFile = "codex-target"
 
+const codexInstallerLogTailBytes = 16 * 1024
+
+// logCodexInstallerTail copies the useful tail of the platform installer's
+// own log into agent.log. The installer writes its detailed diagnostics to a
+// separate file, while the console only receives agent.log; without this
+// bridge an administrator sees only "安装失败" and has to RDP into the box.
+func logCodexInstallerTail(path string) {
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		log.Printf("codex: installer log unavailable (%s): %v", path, err)
+		return
+	}
+	if len(raw) > codexInstallerLogTailBytes {
+		raw = raw[len(raw)-codexInstallerLogTailBytes:]
+	}
+	text := strings.TrimSpace(string(raw))
+	if text == "" {
+		log.Printf("codex: installer log is empty (%s)", path)
+		return
+	}
+	log.Printf("codex: installer log tail (%s):\n%s", path, text)
+}
+
 // installHeadroom is what must be free before downloading: the installer
 // itself plus room for what it unpacks. A cloud desktop that fills its disk
 // mid-install is a worse outcome than an update that waits.
@@ -107,6 +130,7 @@ func (s *Syncer) updateCodex(target model.ReleaseTarget, errs *[]string) codexOu
 	// bandwidth on every machine; the console retries by moving the
 	// generation, which is a decision somebody made.
 	if markerMatches(s.readMarker(codexMarkerFile), target) {
+		log.Printf("codex: target %s generation=%d was already attempted and failed; waiting for a new target generation", target.Version, target.Generation)
 		return codexOutcome{Version: installed, State: CodexFailed}
 	}
 
@@ -148,6 +172,7 @@ func (s *Syncer) updateCodex(target model.ReleaseTarget, errs *[]string) codexOu
 	log.Printf("codex: installing %s", target.Version)
 	if err := s.Codex.Install(dest, target.Version); err != nil {
 		*errs = append(*errs, fmt.Sprintf("codex: install: %v", err))
+		logCodexInstallerTail(filepath.Join(filepath.Dir(dest), "codex-install.log"))
 		return codexOutcome{Version: installed, State: CodexFailed}
 	}
 	os.Remove(dest) // ~700 MB; the marker records what was done
