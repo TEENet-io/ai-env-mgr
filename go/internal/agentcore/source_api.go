@@ -50,9 +50,12 @@ func (a *APISource) ctx() (context.Context, context.CancelFunc) {
 	return context.WithTimeout(context.Background(), timeout)
 }
 
-// note remembers a refused token so the agent can enrol again.
+// note remembers a token that cannot be used by this host so the agent can
+// enrol again. IdentityMismatch is deliberately treated like Unauthorized:
+// it is what a cloned image with a copied device.token reports on its first
+// boot.
 func (a *APISource) note(err error) error {
-	if errors.Is(err, agentapi.ErrUnauthorized) {
+	if errors.Is(err, agentapi.ErrUnauthorized) || errors.Is(err, agentapi.ErrIdentityMismatch) {
 		a.mu.Lock()
 		a.unauthorized = true
 		a.mu.Unlock()

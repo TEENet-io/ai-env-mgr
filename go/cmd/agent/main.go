@@ -59,6 +59,8 @@ func main() {
 	switch os.Args[1] {
 	case "setup":
 		must(cmdSetup())
+	case "prepare-image":
+		must(cmdPrepareImage())
 	case "install":
 		must(winsvc.Install(serviceName, serviceDisp, serviceDesc))
 		fmt.Println("service installed")
@@ -94,6 +96,10 @@ func usage() {
   setup       do everything at once: copy into place, lock down permissions,
               register and start the service, then verify. Run this once on
               the template machine, as Administrator.
+
+  prepare-image
+              stop the service and remove this machine's enrollment token and
+              transient sync markers before capturing a reusable image.
 
   install     register as an auto-start Windows service
   uninstall   remove the service

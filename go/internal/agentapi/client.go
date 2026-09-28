@@ -22,6 +22,11 @@ var (
 	// ErrUnauthorized means the device token is not accepted any more:
 	// revoked, or the machine was forgotten. The agent enrols again.
 	ErrUnauthorized = errors.New("the console does not accept this machine's token")
+	// ErrIdentityMismatch means the token is valid, but the report's local
+	// hostname is different from the hostname that was registered with it.
+	// This is the normal failure mode when a token was accidentally captured
+	// in a machine image; the agent must enrol again with the clone's name.
+	ErrIdentityMismatch = errors.New("the device token belongs to another machine")
 	// ErrAlreadyEnrolled means the console holds a live token for this
 	// hostname and an administrator has not allowed re-enrolment.
 	ErrAlreadyEnrolled = errors.New("the console already holds a token for this machine")
@@ -94,6 +99,9 @@ func (c *Client) do(req *http.Request) (*http.Response, error) {
 	if res.StatusCode >= 400 {
 		msg, _ := io.ReadAll(io.LimitReader(res.Body, 512))
 		res.Body.Close()
+		if res.StatusCode == http.StatusBadRequest && strings.TrimSpace(string(msg)) == "the report names another machine" {
+			return nil, ErrIdentityMismatch
+		}
 		return nil, fmt.Errorf("%s %s: %s: %s", req.Method, req.URL.Path, res.Status, strings.TrimSpace(string(msg)))
 	}
 	return res, nil

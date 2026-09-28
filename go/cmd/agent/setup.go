@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/TEENet-io/ai-env-mgr/internal/agentapi"
 	"github.com/TEENet-io/ai-env-mgr/internal/winsvc"
 )
 
@@ -103,6 +104,61 @@ func cmdSetup() error {
 
 	fmt.Println()
 	summarise(st.BlockEnabled, st.BlockedDomains, st.AppLockerMode)
+	return nil
+}
+
+// cmdPrepareImage removes per-machine identity and transient sync state from
+// a template before it is captured. A device token is intentionally never
+// shared by clones: the console binds it to the hostname that enrolled it.
+func cmdPrepareImage() error {
+	if runtime.GOOS != "windows" {
+		return fmt.Errorf("prepare-image is only meaningful on Windows")
+	}
+
+	if running, _ := winsvc.IsRunning(serviceName); running {
+		fmt.Println("stopping the agent service")
+		if err := winsvc.Stop(serviceName); err != nil {
+			return fmt.Errorf("stop the existing service: %w", err)
+		}
+		waitForStop()
+	}
+
+	if err := agentapi.ForgetToken(stateDir()); err != nil {
+		return fmt.Errorf("remove device enrollment: %w", err)
+	}
+	// A template may have been enrolled and bound while it was being tested.
+	// Do not let an employee's AI tokens travel inside the captured image.
+	machine, err := newLocalMachine()
+	if err != nil {
+		return fmt.Errorf("read machine profiles: %w", err)
+	}
+	removedCreds := 0
+	for _, user := range machine.LocalUsers() {
+		n, err := (localApplier{}).RemoveCreds(machine.ProfileDir(user))
+		if err != nil {
+			return fmt.Errorf("remove credentials for %s: %w", user, err)
+		}
+		removedCreds += n
+	}
+	for _, name := range []string{
+		"device.token.tmp",
+		"collect-state.json",
+		"policy.etag",
+		"policy-seen.etag",
+		"binding-seen.etag",
+		"credentials.etag",
+		"last-sync",
+		"update-target",
+		"agent-update-result.txt",
+		"codex-restart-nonce",
+	} {
+		if err := os.Remove(filepath.Join(stateDir(), name)); err != nil && !os.IsNotExist(err) {
+			return fmt.Errorf("remove image marker %s: %w", name, err)
+		}
+	}
+	fmt.Println("image preparation complete: the next boot will enroll as a new machine")
+	fmt.Printf("removed %d managed credential file(s) from local profiles\n", removedCreds)
+	fmt.Println("keep the service registered; it will start automatically when the cloned image boots")
 	return nil
 }
 
