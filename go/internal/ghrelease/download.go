@@ -251,6 +251,17 @@ func safeRemoteURL(u *urlpkg.URL) error {
 	if ip != nil && !ip.IsLoopback() && (ip.IsPrivate() || ip.IsLinkLocalUnicast() || ip.IsUnspecified()) {
 		return fmt.Errorf("download URL points to a private or local address")
 	}
+	if ip == nil {
+		ips, err := net.LookupIP(u.Hostname())
+		if err != nil {
+			return fmt.Errorf("resolve download host: %w", err)
+		}
+		for _, resolved := range ips {
+			if !resolved.IsLoopback() && (resolved.IsPrivate() || resolved.IsLinkLocalUnicast() || resolved.IsUnspecified()) {
+				return fmt.Errorf("download host resolves to a private or local address")
+			}
+		}
+	}
 	return nil
 }
 

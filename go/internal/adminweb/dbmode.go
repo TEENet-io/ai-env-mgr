@@ -208,6 +208,9 @@ func (s *Server) buildWorker(st *dbState) *worker.Worker {
 			if ev.ExternalRef != "" {
 				fields["external_ref"] = ev.ExternalRef
 			}
+			if ev.Note != "" {
+				fields["note"] = ev.Note
+			}
 			level := "info"
 			if ev.Outcome == "failed" || ev.Outcome == "lost" {
 				level = "error"
@@ -694,10 +697,20 @@ func (s *Server) handleTasks(w http.ResponseWriter, r *http.Request, sess *sessi
 	}
 	data.TaskPageSize = 50
 	pageStart, pageEnd := (data.TaskPage-1)*data.TaskPageSize, data.TaskPage*data.TaskPageSize
+	// Read enough of each source to fill the requested page. The repository
+	// APIs predate cursor pagination, so keep a bounded ceiling rather than
+	// silently making page 5 empty after the old 200-row window.
+	fetchLimit := pageEnd
+	if fetchLimit < data.TaskPageSize {
+		fetchLimit = data.TaskPageSize
+	}
+	if fetchLimit > 5000 {
+		fetchLimit = 5000
+	}
 	data.TaskQuery = r.URL.RawQuery
 	data.TaskRefreshed = time.Now().In(shanghai()).Format("01-02 15:04:05")
 	data.Tab = "tasks"
-	tasks, err := s.dbm.store.Tasks().ListRecent(r.Context(), 200)
+	tasks, err := s.dbm.store.Tasks().ListRecent(r.Context(), fetchLimit)
 	if err != nil {
 		data.Error = "could not list tasks"
 		s.render(w, "tasks.html", http.StatusOK, data)
@@ -749,7 +762,7 @@ func (s *Server) handleTasks(w http.ResponseWriter, r *http.Request, sess *sessi
 		}
 		data.TaskTotal++
 	}
-	if jobs, err := s.dbm.store.AdminJobs().ListRecent(r.Context(), 200); err == nil {
+	if jobs, err := s.dbm.store.AdminJobs().ListRecent(r.Context(), fetchLimit); err == nil {
 		for _, job := range jobs {
 			if job.State == "running" {
 				data.TaskLive = true
@@ -776,7 +789,7 @@ func (s *Server) handleTasks(w http.ResponseWriter, r *http.Request, sess *sessi
 	}
 	// PostgreSQL owns the install lifecycle. OSS contains only immutable
 	// manifests/packages; a stale machine plan must never resurrect a task.
-	if appTasks, err := s.dbm.store.ApplicationTasks().ListRecent(r.Context(), 200); err == nil {
+	if appTasks, err := s.dbm.store.ApplicationTasks().ListRecent(r.Context(), fetchLimit); err == nil {
 		for _, task := range appTasks {
 			if task.State == "pending" || task.State == "running" {
 				data.TaskLive = true
@@ -834,6 +847,14 @@ func (s *Server) handleTaskDetail(w http.ResponseWriter, r *http.Request, sess *
 				view.Subject = e.WindowsUser
 			}
 		}
+		if task.DeviceID != "" {
+			if d, derr := s.dbm.store.Devices().ByID(r.Context(), task.DeviceID); derr == nil {
+				view.Machine = d.Hostname
+				if view.Subject == "系统任务" {
+					view.Subject = d.Hostname
+				}
+			}
+		}
 		if view.Subject == "" {
 			view.Subject = "系统任务"
 		}
@@ -861,6 +882,7 @@ func (s *Server) handleTaskDetail(w http.ResponseWriter, r *http.Request, sess *
 		view.CanCancel = task.State == "pending" || task.State == "running"
 		if d, derr := s.dbm.store.Devices().ByID(r.Context(), task.DeviceID); derr == nil {
 			view.Subject = d.Hostname
+			view.Machine = d.Hostname
 		}
 		data.TaskDetail = view
 		s.render(w, "task_detail.html", http.StatusOK, data)
@@ -890,6 +912,16 @@ func (s *Server) handleTaskDetail(w http.ResponseWriter, r *http.Request, sess *
 
 func (s *Server) actionTaskRetry(_ *session, r *http.Request) error {
 	id := strings.TrimSpace(formValue(r, "id"))
+	// Application tasks have their own lease/state table; retrying one must
+	// create a new durable install task rather than looking in the generic
+	// worker queue.
+	if app, err := s.dbm.store.ApplicationTasks().ByID(r.Context(), id); err == nil {
+		if app.State != "failed" {
+			return fmt.Errorf("只有失败任务可以重试")
+		}
+		_, err := s.dbm.store.ApplicationTasks().Create(r.Context(), app.DeviceID, app.AppID, app.Version, "admin-retry", app.AllowDowngrade)
+		return err
+	}
 	t, err := s.dbm.store.Tasks().ByID(r.Context(), id)
 	if err != nil {
 		return err

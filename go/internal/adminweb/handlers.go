@@ -130,18 +130,19 @@ type pageData struct {
 	OpenAlerts     int // drawn in the nav on every page
 	// Tab is the entry inside the nav group this page is (see the tabs-*
 	// templates); empty for a group with no second level.
-	Tab           string
-	MachinePage   *machinePage
-	History       *employeeHistory // the detail page's history (database mode)
-	Report        []versionReport  // the rollouts page's report by version
-	Deferred      []deferredRow    // machines that keep putting an update off
-	Dists         []distribution   // the overview's fleet distributions
-	Rollout       *rolloutView
-	Artifact      *repo.Artifact         // the "new rollout" page's subject
-	Candidates    []deviceCandidate      // machines to choose from
-	Account       *accountRow            // the detail page's subject
-	Audit         []admincore.AuditEntry // that account's history, newest first
-	QuotaDefaults litellm.Quota          // pre-fills the onboarding form
+	Tab                                                                                     string
+	MachinePage                                                                             *machinePage
+	History                                                                                 *employeeHistory // the detail page's history (database mode)
+	Report                                                                                  []versionReport  // the rollouts page's report by version
+	Deferred                                                                                []deferredRow    // machines that keep putting an update off
+	Dists                                                                                   []distribution   // the overview's fleet distributions
+	Rollout                                                                                 *rolloutView
+	Artifact                                                                                *repo.Artifact    // the "new rollout" page's subject
+	Candidates                                                                              []deviceCandidate // machines to choose from
+	CandidateTotal, CandidateOnline, CandidateOffline, CandidateIncompatible, CandidateOpen int
+	Account                                                                                 *accountRow            // the detail page's subject
+	Audit                                                                                   []admincore.AuditEntry // that account's history, newest first
+	QuotaDefaults                                                                           litellm.Quota          // pre-fills the onboarding form
 
 	// SLS says the deployment has a log project, which is what decides
 	// whether the nav offers the log page. Set centrally in render.

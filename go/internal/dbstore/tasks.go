@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strconv"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -399,6 +400,54 @@ func (r taskRepo) ListRecent(ctx context.Context, limit int) ([]repo.Task, error
 		return nil, mapError(err, "list recent tasks")
 	}
 	return out, nil
+}
+
+func (r taskRepo) ListRecentPage(ctx context.Context, limit, offset int, status, kind string) ([]repo.Task, error) {
+	if limit <= 0 {
+		limit = 50
+	}
+	if offset < 0 {
+		offset = 0
+	}
+	where, args := taskListWhere(status, kind)
+	args = append(args, limit, offset)
+	rows, err := r.q.Query(ctx, `select `+taskColumns+` from tasks where `+where+` order by updated_at desc limit $`+strconv.Itoa(len(args)-1)+` offset $`+strconv.Itoa(len(args)), args...)
+	if err != nil {
+		return nil, mapError(err, "list task page")
+	}
+	defer rows.Close()
+	out := []repo.Task{}
+	for rows.Next() {
+		t, err := scanTask(rows)
+		if err != nil {
+			return nil, mapError(err, "scan task page")
+		}
+		out = append(out, t)
+	}
+	return out, rows.Err()
+}
+
+func (r taskRepo) CountRecent(ctx context.Context, status, kind string) (int, error) {
+	where, args := taskListWhere(status, kind)
+	var n int
+	if err := r.q.QueryRow(ctx, `select count(*) from tasks where `+where, args...).Scan(&n); err != nil {
+		return 0, mapError(err, "count tasks")
+	}
+	return n, nil
+}
+
+func taskListWhere(status, kind string) (string, []any) {
+	where := `($1 = '' or kind = $1)`
+	args := []any{kind}
+	switch status {
+	case "open":
+		where += ` and status in ('pending','running','retry_wait')`
+	case "failed":
+		where += ` and status in ('failed','blocked')`
+	case "done":
+		where += ` and status in ('succeeded','cancelled','superseded')`
+	}
+	return where, args
 }
 
 func (r taskRepo) Attempts(ctx context.Context, taskID string) ([]repo.TaskAttempt, error) {

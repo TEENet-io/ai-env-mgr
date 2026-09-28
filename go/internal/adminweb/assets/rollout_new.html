@@ -7,6 +7,7 @@
   {{template "notices" .}}
   {{if .Artifact.MinAgentVersion}}<p class="dim">最低 agent {{.Artifact.MinAgentVersion}}</p>{{end}}
   <div class="caution">勾选的机器改为单独使用这个版本，不再跟随全局；已在线的 1.3.0 及以上机器几秒内开始更新。以后要改回，在机器页选「跟随全局」。</div>
+  <div class="panel rollout-preview"><strong>影响范围预览</strong><p>候选机器 {{.CandidateTotal}} 台 · 在线 {{.CandidateOnline}} · 离线 {{.CandidateOffline}} · 不兼容 {{.CandidateIncompatible}} · 已有目标 {{.CandidateOpen}}</p><p class="dim">最终影响范围以勾选结果为准；不兼容机器不会出现在可选项中。</p></div>
   <form method="post" action="/rollouts/create" class="form" data-rollout-selection>
     <input type="hidden" name="csrf" value="{{.CSRF}}">
     <input type="hidden" name="product" value="{{.Artifact.Product}}">

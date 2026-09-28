@@ -18,9 +18,9 @@ type taskAttemptView struct {
 }
 
 type taskDetailView struct {
-	ID, Kind, Status, Subject, Detail, Error, Created, Updated, Finished string
-	Attempts                                                             []taskAttemptView
-	CanRetry, CanCancel                                                  bool
+	ID, Kind, Status, Subject, Detail, Error, Machine, Created, Updated, Finished string
+	Attempts                                                                      []taskAttemptView
+	CanRetry, CanCancel                                                           bool
 }
 
 type taskKindOption struct {
