@@ -78,17 +78,19 @@ func TestLocalUsersIsSorted(t *testing.T) {
 	}
 }
 
-func TestCodexSandboxAllowPathsEnumeratesOnlyHumanProfiles(t *testing.T) {
+func TestCodexLocalAllowPathsEnumeratesOnlyHumanProfiles(t *testing.T) {
 	fakeUsersRoot(t, "peter", "weipeng", "Public", "CodexSandboxOffline", ".hidden")
 
-	got := codexSandboxAllowPaths()
+	got := codexLocalAllowPaths()
 	root := strings.TrimRight(os.Getenv("AIENVMGR_USERS_ROOT"), `\\/`)
 	want := []string{
+		root + `\peter\.cache\codex-runtimes\*`,
 		root + `\peter\.codex\.sandbox-bin\*`,
+		root + `\weipeng\.cache\codex-runtimes\*`,
 		root + `\weipeng\.codex\.sandbox-bin\*`,
 	}
 	if !reflect.DeepEqual(got, want) {
-		t.Errorf("codexSandboxAllowPaths() = %v, want %v", got, want)
+		t.Errorf("codexLocalAllowPaths() = %v, want %v", got, want)
 	}
 }
 

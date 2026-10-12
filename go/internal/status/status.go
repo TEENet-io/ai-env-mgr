@@ -35,6 +35,7 @@ type Report struct {
 	CollectUploaded           int
 	AppLockerManagedPathCount int
 	CodexSandboxProfileCount  int
+	CodexRuntimeProfileCount  int
 	CodexSandboxState         string
 	CodexVersion              string
 	CodexState                string
@@ -88,6 +89,7 @@ func Build(r Report) model.Status {
 		AppLockerMode:             AppLockerMode(),
 		AppLockerManagedPathCount: r.AppLockerManagedPathCount,
 		CodexSandboxProfileCount:  r.CodexSandboxProfileCount,
+		CodexRuntimeProfileCount:  r.CodexRuntimeProfileCount,
 		CodexSandboxState:         r.CodexSandboxState,
 		CollectEnabled:            r.CollectEnabled,
 		CollectUploaded:           r.CollectUploaded,

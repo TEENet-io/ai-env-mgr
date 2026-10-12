@@ -333,7 +333,9 @@ type Status struct {
 	AppLockerManagedPathCount int `json:"appLockerManagedPathCount,omitempty"`
 	// CodexSandboxProfileCount counts explicit user-profile rules for the
 	// .codex\\.sandbox-bin tree, not arbitrary AppLocker rules.
-	CodexSandboxProfileCount int    `json:"codexSandboxProfileCount,omitempty"`
+	CodexSandboxProfileCount int `json:"codexSandboxProfileCount,omitempty"`
+	// CodexRuntimeProfileCount counts the locally generated Codex runtime rules.
+	CodexRuntimeProfileCount int    `json:"codexRuntimeProfileCount,omitempty"`
 	CodexSandboxState        string `json:"codexSandboxState,omitempty"`
 	CollectEnabled           bool   `json:"collectEnabled"`
 	CollectUploaded          int    `json:"collectUploaded"`

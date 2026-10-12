@@ -115,24 +115,24 @@ func ApplyAppLocker(paths []string, mode string) error {
 	return applyAppLocker(paths, nil, mode)
 }
 
-// ApplyAppLockerWithCodexSandbox is the Agent-only variant of ApplyAppLocker.
+// ApplyAppLockerWithCodexLocalPaths is the Agent-only variant of ApplyAppLocker.
 // The second list is generated locally from existing user profiles; it never
 // comes from policy.json or the console.  Keeping this separate from the
 // public machine-level allow-path list prevents a remotely supplied user path
 // from becoming an AppLocker rule.
-func ApplyAppLockerWithCodexSandbox(paths, codexSandboxPaths []string, mode string) error {
-	return applyAppLocker(paths, codexSandboxPaths, mode)
+func ApplyAppLockerWithCodexLocalPaths(paths, codexLocalPaths []string, mode string) error {
+	return applyAppLocker(paths, codexLocalPaths, mode)
 }
 
-func applyAppLocker(paths, codexSandboxPaths []string, mode string) error {
+func applyAppLocker(paths, codexLocalPaths []string, mode string) error {
 	// policy.json is written on the publishing side, not here, and this
 	// agent runs as SYSTEM: re-validate before anything reaches the
 	// rewriter rather than trusting whatever OSS happened to hand back. See
 	// FilterAllowPaths.
 	paths, rejected := FilterAllowPaths(paths)
-	sandbox, sandboxErr := filterCodexSandboxPaths(codexSandboxPaths)
+	sandbox, sandboxErr := filterCodexLocalPaths(codexLocalPaths)
 	if sandboxErr != nil {
-		return fmt.Errorf("validate Codex sandbox paths: %w", sandboxErr)
+		return fmt.Errorf("validate Codex local paths: %w", sandboxErr)
 	}
 	if len(paths)+len(sandbox) > model.AppLockerMaxAllowPaths {
 		return fmt.Errorf("AppLocker allow paths exceed %d including Codex sandbox profiles", model.AppLockerMaxAllowPaths)

@@ -16,9 +16,9 @@ var ErrAppLockerNotDeployed = errors.New("AppLocker is not deployed on this mach
 // status full of noise for a machine that has no AppLocker to manage.
 func ApplyAppLocker(paths []string, mode string) error { return nil }
 
-// ApplyAppLockerWithCodexSandbox is a no-op off Windows, just like
+// ApplyAppLockerWithCodexLocalPaths is a no-op off Windows, just like
 // ApplyAppLocker. The extra paths are discovered only by the Windows agent.
-func ApplyAppLockerWithCodexSandbox(paths, codexSandboxPaths []string, mode string) error {
+func ApplyAppLockerWithCodexLocalPaths(paths, codexLocalPaths []string, mode string) error {
 	return nil
 }
 

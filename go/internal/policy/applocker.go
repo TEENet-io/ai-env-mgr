@@ -337,11 +337,11 @@ func FilterAllowPaths(paths []string) (keep []string, rejected []string) {
 	return keep, rejected
 }
 
-// filterCodexSandboxPaths validates paths discovered from local user profiles.
+// filterCodexLocalPaths validates paths discovered from local user profiles.
 // They are intentionally kept out of FilterAllowPaths: policy.json may only
 // contribute protected machine-level trees, while these paths are generated
 // by the SYSTEM agent from directories that actually exist on this host.
-func filterCodexSandboxPaths(paths []string) ([]string, error) {
+func filterCodexLocalPaths(paths []string) ([]string, error) {
 	keep := make([]string, 0, len(paths))
 	seen := make(map[string]struct{}, len(paths))
 	for _, p := range paths {
@@ -350,12 +350,20 @@ func filterCodexSandboxPaths(paths []string) ([]string, error) {
 			continue
 		}
 		lower := strings.ToLower(p)
-		driveUsersPath := len(lower) >= 9 && lower[1] == ':' && lower[2] == '\\' && strings.HasPrefix(lower[3:], `users\`)
-		if !strings.HasSuffix(lower, `\.codex\.sandbox-bin\*`) ||
-			(!strings.HasPrefix(lower, `%osdrive%\users\`) && !driveUsersPath) {
+		var relative string
+		switch {
+		case strings.HasPrefix(lower, `%osdrive%\users\`):
+			relative = lower[len(`%osdrive%\users\`):]
+		case len(lower) >= 9 && lower[0] >= 'a' && lower[0] <= 'z' && lower[1] == ':' && strings.HasPrefix(lower[2:], `\users\`):
+			relative = lower[len(`c:\users\`):]
+		default:
 			return nil, fmt.Errorf("invalid Codex sandbox path %q", p)
 		}
-		if strings.Contains(strings.TrimSuffix(lower, `\.codex\.sandbox-bin\*`), "*") ||
+		parts := strings.Split(relative, `\`)
+		if len(parts) != 4 || parts[0] == "" ||
+			(strings.Join(parts[1:], `\`) != `.codex\.sandbox-bin\*` &&
+				strings.Join(parts[1:], `\`) != `.cache\codex-runtimes\*`) ||
+			strings.ContainsAny(parts[0], `:*?<>|"/`) ||
 			strings.ContainsAny(p, "\r\n\x00?<>|\"") || strings.Contains(p, `..`) {
 			return nil, fmt.Errorf("invalid Codex sandbox path %q", p)
 		}

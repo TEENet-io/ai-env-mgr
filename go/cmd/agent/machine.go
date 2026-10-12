@@ -134,7 +134,7 @@ func (localApplier) ApplyAppLocker(paths []string, mode string) error {
 	// policy.json allow-path input (which must remain machine-level only).
 	// Build the small, explicit set of existing employee profile trees locally
 	// and let the policy package mark them as agent-managed rules.
-	return policy.ApplyAppLockerWithCodexSandbox(paths, codexSandboxAllowPaths(), mode)
+	return policy.ApplyAppLockerWithCodexLocalPaths(paths, codexLocalAllowPaths(), mode)
 }
 
 // AppLockerState reads back the local rules after the apply pass so the
@@ -153,26 +153,34 @@ func (localApplier) AppLockerState() agentcore.AppLockerState {
 		state = "unknown"
 	}
 	const sandboxSuffix = `\.codex\.sandbox-bin\*`
-	profiles := 0
+	const runtimeSuffix = `\.cache\codex-runtimes\*`
+	profiles, runtimes := 0, 0
 	for _, path := range paths {
-		if strings.HasSuffix(strings.ToLower(path), sandboxSuffix) {
+		switch {
+		case strings.HasSuffix(strings.ToLower(path), sandboxSuffix):
 			profiles++
+		case strings.HasSuffix(strings.ToLower(path), runtimeSuffix):
+			runtimes++
 		}
 	}
 	return agentcore.AppLockerState{
 		ManagedPathCount:     len(paths),
 		CodexSandboxProfiles: profiles,
+		CodexRuntimeProfiles: runtimes,
 		CodexSandboxState:    state,
 	}
 }
 
-// codexSandboxAllowPaths returns one explicit AppLocker tree per local human
-// profile.  We do not publish a %OSDRIVE%\\Users\\* rule: an interior wildcard
+// codexLocalAllowPaths returns two explicit AppLocker trees per local human
+// profile: the command runner and Codex's downloaded runtimes (including
+// native PowerShell). These are user-writable compatibility exceptions, not
+// general-purpose allow paths from policy.json. We do not publish a
+// %OSDRIVE%\\Users\\* rule: an interior wildcard
 // would make the user-writable profile root a permanent allow-list escape, and
 // it would not let the agent remove a profile's rule precisely when that
 // profile disappears.  The service runs as SYSTEM, so enumerating profiles is
 // trusted local input rather than remotely supplied policy.
-func codexSandboxAllowPaths() []string {
+func codexLocalAllowPaths() []string {
 	entries, err := os.ReadDir(usersRoot())
 	if err != nil {
 		return nil
@@ -188,7 +196,11 @@ func codexSandboxAllowPaths() []string {
 		if strings.ContainsAny(entry.Name(), `\/`) || entry.Name() == ".." {
 			continue
 		}
-		paths = append(paths, root+`\`+entry.Name()+`\.codex\.sandbox-bin\*`)
+		profile := root + `\` + entry.Name()
+		paths = append(paths,
+			profile+`\.codex\.sandbox-bin\*`,
+			profile+`\.cache\codex-runtimes\*`,
+		)
 	}
 	sort.Slice(paths, func(i, j int) bool { return strings.ToLower(paths[i]) < strings.ToLower(paths[j]) })
 	return paths

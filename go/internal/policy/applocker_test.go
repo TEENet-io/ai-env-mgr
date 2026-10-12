@@ -390,16 +390,18 @@ func TestFilterAllowPathsAllValidKeepsEverything(t *testing.T) {
 	}
 }
 
-func TestFilterCodexSandboxPathsAcceptsExplicitUserTrees(t *testing.T) {
-	got, err := filterCodexSandboxPaths([]string{
+func TestFilterCodexLocalPathsAcceptsExplicitUserTrees(t *testing.T) {
+	got, err := filterCodexLocalPaths([]string{
 		`C:\Users\peter\.codex\.sandbox-bin\*`,
+		`C:\Users\peter\.cache\codex-runtimes\*`,
 		`C:\Users\weipeng\.codex\.sandbox-bin\*`,
 		`C:\Users\peter\.codex\.sandbox-bin\*`,
 	})
 	if err != nil {
-		t.Fatalf("filterCodexSandboxPaths: %v", err)
+		t.Fatalf("filterCodexLocalPaths: %v", err)
 	}
 	want := []string{
+		`C:\Users\peter\.cache\codex-runtimes\*`,
 		`C:\Users\peter\.codex\.sandbox-bin\*`,
 		`C:\Users\weipeng\.codex\.sandbox-bin\*`,
 	}
@@ -408,15 +410,18 @@ func TestFilterCodexSandboxPathsAcceptsExplicitUserTrees(t *testing.T) {
 	}
 }
 
-func TestFilterCodexSandboxPathsRejectsRemoteOrBroadTrees(t *testing.T) {
+func TestFilterCodexLocalPathsRejectsRemoteOrBroadTrees(t *testing.T) {
 	for _, path := range []string{
 		`C:\Users\*\.codex\.sandbox-bin\*`,
+		`C:\Users\*\.cache\codex-runtimes\*`,
+		`C:\Users\peter\.cache\*`,
+		`C:\Users\peter\other\.cache\codex-runtimes\*`,
 		`C:\Users\peter\AppData\*.exe`,
 		`C:\Tools\Codex\*`,
 		`%TEMP%\.codex\.sandbox-bin\*`,
 	} {
-		if _, err := filterCodexSandboxPaths([]string{path}); err == nil {
-			t.Errorf("filterCodexSandboxPaths(%q) unexpectedly accepted", path)
+		if _, err := filterCodexLocalPaths([]string{path}); err == nil {
+			t.Errorf("filterCodexLocalPaths(%q) unexpectedly accepted", path)
 		}
 	}
 }

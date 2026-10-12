@@ -80,6 +80,7 @@ type Applier interface {
 type AppLockerState struct {
 	ManagedPathCount     int
 	CodexSandboxProfiles int
+	CodexRuntimeProfiles int
 	CodexSandboxState    string
 	Error                error
 }
@@ -598,6 +599,7 @@ func (s *Syncer) RunOnce() (model.Status, error) {
 		CollectUploaded:           collectUploaded,
 		AppLockerManagedPathCount: appLockerState.ManagedPathCount,
 		CodexSandboxProfileCount:  appLockerState.CodexSandboxProfiles,
+		CodexRuntimeProfileCount:  appLockerState.CodexRuntimeProfiles,
 		CodexSandboxState:         appLockerState.CodexSandboxState,
 		CodexVersion:              codex.Version,
 		CodexState:                codex.State,

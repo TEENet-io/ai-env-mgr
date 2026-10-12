@@ -16,7 +16,7 @@ func TestBuildPopulatesFields(t *testing.T) {
 		Version: "1.2.3", Policy: p,
 		PolicyETag: "petag", CredsETag: "cetag",
 		Interval: 15, CredsApplied: true,
-		AppLockerManagedPathCount: 3, CodexSandboxProfileCount: 2, CodexSandboxState: "applied",
+		AppLockerManagedPathCount: 4, CodexSandboxProfileCount: 2, CodexRuntimeProfileCount: 2, CodexSandboxState: "applied",
 	})
 
 	if s.Machine != "DESKTOP-A" || s.BoundUser != "work1" || s.AgentVersion != "1.2.3" {
@@ -37,7 +37,7 @@ func TestBuildPopulatesFields(t *testing.T) {
 	if !s.CredsApplied {
 		t.Error("CredsApplied should be true")
 	}
-	if s.AppLockerManagedPathCount != 3 || s.CodexSandboxProfileCount != 2 || s.CodexSandboxState != "applied" {
+	if s.AppLockerManagedPathCount != 4 || s.CodexSandboxProfileCount != 2 || s.CodexRuntimeProfileCount != 2 || s.CodexSandboxState != "applied" {
 		t.Errorf("AppLocker/Codex sandbox state wrong: %+v", s)
 	}
 	if s.AppLockerMode == "" {
