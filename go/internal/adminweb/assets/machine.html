@@ -51,7 +51,8 @@
   <div class="panel scroll"><table class="kv"><tbody>
     <tr><th>绑定员工</th><td>{{if .BoundUser}}{{.BoundUser}}{{if not .BoundUserExists}} <span class="tag tag-warn">机器上无此用户</span>{{end}}{{else}}<span class="dim">未绑定</span>{{end}}</td></tr>
     <tr><th>Codex</th><td class="mono">{{if .CodexVersion}}{{.CodexVersion}}{{else}}—{{end}}{{if .CodexState}} <span class="tag tag-warn">{{.CodexState}}{{if .CodexDeferReason}} · {{.CodexDeferReason}}{{end}}</span>{{end}}</td></tr>
-    <tr><th>AppLocker</th><td>{{if .AppLockerMode}}{{.AppLockerMode}}{{else}}<span class="dim">未管理</span>{{end}}</td></tr>
+    <tr><th>AppLocker</th><td>{{if .AppLockerMode}}{{.AppLockerMode}}{{else}}<span class="dim">未管理</span>{{end}}{{if gt .AppLockerManagedPathCount 0}} · {{.AppLockerManagedPathCount}} 条受管规则{{end}}</td></tr>
+    <tr><th>Codex 沙盒规则</th><td>{{if .CodexSandboxState}}{{.CodexSandboxState}}{{else}}<span class="dim">未上报</span>{{end}}{{if gt .CodexSandboxProfileCount 0}} · {{.CodexSandboxProfileCount}} 个用户{{end}}</td></tr>
     <tr><th>凭据</th><td>{{if .CredsApplied}}已投递{{else}}<span class="dim">未投递</span>{{end}}</td></tr>
     {{if .Errors}}<tr><th>错误</th><td class="remark">{{range .Errors}}{{.}}<br>{{end}}</td></tr>{{end}}
     {{if .Warnings}}<tr><th>提示</th><td class="remark">{{range .Warnings}}{{.}}<br>{{end}}</td></tr>{{end}}

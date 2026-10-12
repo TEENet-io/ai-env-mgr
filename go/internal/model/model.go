@@ -328,8 +328,15 @@ type Status struct {
 	SyncIntervalMinutes int      `json:"syncIntervalMinutes"`
 	CredsApplied        bool     `json:"credsApplied"`
 	AppLockerMode       string   `json:"appLockerMode"`
-	CollectEnabled      bool     `json:"collectEnabled"`
-	CollectUploaded     int      `json:"collectUploaded"`
+	// AppLockerManagedPathCount is the number of Agent-owned executable path
+	// rules read back from the local policy. It includes Codex sandbox rules.
+	AppLockerManagedPathCount int `json:"appLockerManagedPathCount,omitempty"`
+	// CodexSandboxProfileCount counts explicit user-profile rules for the
+	// .codex\\.sandbox-bin tree, not arbitrary AppLocker rules.
+	CodexSandboxProfileCount int    `json:"codexSandboxProfileCount,omitempty"`
+	CodexSandboxState        string `json:"codexSandboxState,omitempty"`
+	CollectEnabled           bool   `json:"collectEnabled"`
+	CollectUploaded          int    `json:"collectUploaded"`
 
 	// Errors are things that failed: a policy that would not apply, a download
 	// that broke, credentials that could not be delivered. Something has to be

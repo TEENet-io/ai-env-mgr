@@ -390,6 +390,37 @@ func TestFilterAllowPathsAllValidKeepsEverything(t *testing.T) {
 	}
 }
 
+func TestFilterCodexSandboxPathsAcceptsExplicitUserTrees(t *testing.T) {
+	got, err := filterCodexSandboxPaths([]string{
+		`C:\Users\peter\.codex\.sandbox-bin\*`,
+		`C:\Users\weipeng\.codex\.sandbox-bin\*`,
+		`C:\Users\peter\.codex\.sandbox-bin\*`,
+	})
+	if err != nil {
+		t.Fatalf("filterCodexSandboxPaths: %v", err)
+	}
+	want := []string{
+		`C:\Users\peter\.codex\.sandbox-bin\*`,
+		`C:\Users\weipeng\.codex\.sandbox-bin\*`,
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("got %v, want %v", got, want)
+	}
+}
+
+func TestFilterCodexSandboxPathsRejectsRemoteOrBroadTrees(t *testing.T) {
+	for _, path := range []string{
+		`C:\Users\*\.codex\.sandbox-bin\*`,
+		`C:\Users\peter\AppData\*.exe`,
+		`C:\Tools\Codex\*`,
+		`%TEMP%\.codex\.sandbox-bin\*`,
+	} {
+		if _, err := filterCodexSandboxPaths([]string{path}); err == nil {
+			t.Errorf("filterCodexSandboxPaths(%q) unexpectedly accepted", path)
+		}
+	}
+}
+
 // A rule that merely matches the managed Id/Name prefixes but sits in a
 // different rule collection must not be reported: ManagedPaths is scoped to
 // the Exe collection exactly like RewriteAppLockerXML.

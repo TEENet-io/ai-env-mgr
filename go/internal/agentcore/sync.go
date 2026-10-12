@@ -74,6 +74,22 @@ type Applier interface {
 	ApplyAppLocker(paths []string, mode string) error
 }
 
+// AppLockerState is the local post-apply view that can be included in the
+// status report. It is optional so platform fakes and older appliers remain
+// compatible; the Windows Agent implements it from the local policy XML.
+type AppLockerState struct {
+	ManagedPathCount     int
+	CodexSandboxProfiles int
+	CodexSandboxState    string
+	Error                error
+}
+
+// AppLockerReporter is deliberately separate from Applier: applying a policy
+// and reading back what Windows actually accepted are different operations.
+type AppLockerReporter interface {
+	AppLockerState() AppLockerState
+}
+
 // Delivery is what one credential deploy actually did on the machine.
 //
 // It is a struct rather than a handful of return values because the facts it
@@ -559,23 +575,33 @@ func (s *Syncer) RunOnce() (model.Status, error) {
 	pendingUpdate, updateState := s.prepareUpdate(agentTarget, &errs)
 
 	// ---- status ----
+	var appLockerState AppLockerState
+	if reporter, ok := s.Applier.(AppLockerReporter); ok {
+		appLockerState = reporter.AppLockerState()
+		if appLockerState.Error != nil {
+			errs = append(errs, fmt.Sprintf("applocker status: %v", appLockerState.Error))
+		}
+	}
 	interval := model.ClampInterval(pol.SyncIntervalMinutes, s.FallbackInterval)
 	st := status.Build(status.Report{
-		Machine:         machine,
-		BoundUser:       binding.User,
-		LocalUsers:      localUsers,
-		BoundUserExists: boundUserExists,
-		Version:         s.Version,
-		Policy:          pol,
-		PolicyETag:      policyETag,
-		CredsETag:       credsETag,
-		Interval:        interval,
-		CredsApplied:    credsApplied,
-		CollectEnabled:  pol.CollectEnabled,
-		CollectUploaded: collectUploaded,
-		CodexVersion:    codex.Version,
-		CodexState:      codex.State,
-		Apps:            appStatuses,
+		Machine:                   machine,
+		BoundUser:                 binding.User,
+		LocalUsers:                localUsers,
+		BoundUserExists:           boundUserExists,
+		Version:                   s.Version,
+		Policy:                    pol,
+		PolicyETag:                policyETag,
+		CredsETag:                 credsETag,
+		Interval:                  interval,
+		CredsApplied:              credsApplied,
+		CollectEnabled:            pol.CollectEnabled,
+		CollectUploaded:           collectUploaded,
+		AppLockerManagedPathCount: appLockerState.ManagedPathCount,
+		CodexSandboxProfileCount:  appLockerState.CodexSandboxProfiles,
+		CodexSandboxState:         appLockerState.CodexSandboxState,
+		CodexVersion:              codex.Version,
+		CodexState:                codex.State,
+		Apps:                      appStatuses,
 		CodexRestart: status.CodexRestart{
 			Nonce: codexRestart.Nonce, At: codexRestart.At, Note: codexRestart.Note,
 		},

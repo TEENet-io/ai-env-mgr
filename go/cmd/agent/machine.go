@@ -129,7 +129,69 @@ type localApplier struct{}
 func (localApplier) ApplyPolicy(p model.Policy) error { return policy.Apply(p) }
 
 func (localApplier) ApplyAppLocker(paths []string, mode string) error {
-	return policy.ApplyAppLocker(paths, mode)
+	// Codex downloads its command runner into each employee's profile.  The
+	// profile is user-writable, so this is deliberately not part of the
+	// policy.json allow-path input (which must remain machine-level only).
+	// Build the small, explicit set of existing employee profile trees locally
+	// and let the policy package mark them as agent-managed rules.
+	return policy.ApplyAppLockerWithCodexSandbox(paths, codexSandboxAllowPaths(), mode)
+}
+
+// AppLockerState reads back the local rules after the apply pass so the
+// uploaded status describes what Windows actually has, not merely what the
+// remote policy requested.
+func (localApplier) AppLockerState() agentcore.AppLockerState {
+	paths, err := policy.LocalAppLockerPaths()
+	if err != nil {
+		return agentcore.AppLockerState{CodexSandboxState: "unknown", Error: err}
+	}
+	state := "applied"
+	switch status.AppLockerMode() {
+	case "None":
+		state = "not_deployed"
+	case "Unknown":
+		state = "unknown"
+	}
+	const sandboxSuffix = `\.codex\.sandbox-bin\*`
+	profiles := 0
+	for _, path := range paths {
+		if strings.HasSuffix(strings.ToLower(path), sandboxSuffix) {
+			profiles++
+		}
+	}
+	return agentcore.AppLockerState{
+		ManagedPathCount:     len(paths),
+		CodexSandboxProfiles: profiles,
+		CodexSandboxState:    state,
+	}
+}
+
+// codexSandboxAllowPaths returns one explicit AppLocker tree per local human
+// profile.  We do not publish a %OSDRIVE%\\Users\\* rule: an interior wildcard
+// would make the user-writable profile root a permanent allow-list escape, and
+// it would not let the agent remove a profile's rule precisely when that
+// profile disappears.  The service runs as SYSTEM, so enumerating profiles is
+// trusted local input rather than remotely supplied policy.
+func codexSandboxAllowPaths() []string {
+	entries, err := os.ReadDir(usersRoot())
+	if err != nil {
+		return nil
+	}
+	root := strings.TrimRight(usersRoot(), `\/`)
+	var paths []string
+	for _, entry := range entries {
+		if !entry.IsDir() || isSystemProfile(entry.Name()) || strings.HasPrefix(entry.Name(), ".") {
+			continue
+		}
+		// Profile names cannot contain a path separator.  Keep this explicit
+		// check because the value becomes an AppLocker XML attribute.
+		if strings.ContainsAny(entry.Name(), `\/`) || entry.Name() == ".." {
+			continue
+		}
+		paths = append(paths, root+`\`+entry.Name()+`\.codex\.sandbox-bin\*`)
+	}
+	sort.Slice(paths, func(i, j int) bool { return strings.ToLower(paths[i]) < strings.ToLower(paths[j]) })
+	return paths
 }
 
 func (localApplier) DeployCreds(profileDir string, set model.CredentialSet) (agentcore.Delivery, error) {

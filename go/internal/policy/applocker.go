@@ -337,6 +337,38 @@ func FilterAllowPaths(paths []string) (keep []string, rejected []string) {
 	return keep, rejected
 }
 
+// filterCodexSandboxPaths validates paths discovered from local user profiles.
+// They are intentionally kept out of FilterAllowPaths: policy.json may only
+// contribute protected machine-level trees, while these paths are generated
+// by the SYSTEM agent from directories that actually exist on this host.
+func filterCodexSandboxPaths(paths []string) ([]string, error) {
+	keep := make([]string, 0, len(paths))
+	seen := make(map[string]struct{}, len(paths))
+	for _, p := range paths {
+		p = strings.TrimSpace(p)
+		if p == "" {
+			continue
+		}
+		lower := strings.ToLower(p)
+		driveUsersPath := len(lower) >= 9 && lower[1] == ':' && lower[2] == '\\' && strings.HasPrefix(lower[3:], `users\`)
+		if !strings.HasSuffix(lower, `\.codex\.sandbox-bin\*`) ||
+			(!strings.HasPrefix(lower, `%osdrive%\users\`) && !driveUsersPath) {
+			return nil, fmt.Errorf("invalid Codex sandbox path %q", p)
+		}
+		if strings.Contains(strings.TrimSuffix(lower, `\.codex\.sandbox-bin\*`), "*") ||
+			strings.ContainsAny(p, "\r\n\x00?<>|\"") || strings.Contains(p, `..`) {
+			return nil, fmt.Errorf("invalid Codex sandbox path %q", p)
+		}
+		if _, ok := seen[lower]; ok {
+			continue
+		}
+		seen[lower] = struct{}{}
+		keep = append(keep, p)
+	}
+	sort.Slice(keep, func(i, j int) bool { return strings.ToLower(keep[i]) < strings.ToLower(keep[j]) })
+	return keep, nil
+}
+
 // rejectedErr summarises the paths FilterAllowPaths dropped, or nil when it
 // dropped nothing. ApplyAppLocker returns it even when every valid path was
 // applied successfully, so a dropped entry is visible on the machine's
