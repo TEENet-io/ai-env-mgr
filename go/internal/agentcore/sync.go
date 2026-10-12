@@ -545,7 +545,7 @@ func (s *Syncer) RunOnce() (model.Status, error) {
 	// Before the agent's own update: a self-update restarts this process, and
 	// a Codex install interrupted halfway is worse than one that waits a cycle.
 	agentTarget, codexTarget := effectiveTargets(pol, binding)
-	codex := s.updateCodex(codexTarget, &errs)
+	codex := s.updateCodex(codexTarget, binding.User, &errs)
 	var appStatuses []model.ApplicationStatus
 	// The API worker owns current Admin tasks. This path remains for direct
 	// OSS/legacy sources and for compatibility tests; the device API no longer

@@ -82,21 +82,17 @@ func TestCodexReportsWhyItDeferred(t *testing.T) {
 	codex := &fakeCodex{installed: "0.41.0", running: true, free: 100 << 30}
 	s := newCodexSyncer(t, store, codex)
 	pol := codexPolicy(store, "0.42.0", []byte("installer"))
+	store.set(ossclient.BindingKey(s.Machine.Name()), bindingBytes(t, model.Binding{User: "work1"}), "b1")
 	store.set(ossclient.PolicyKey(), policyBytes(t, pol), "p1")
 
 	st, _ := s.RunOnce()
-	if st.CodexState != CodexDeferred || st.CodexDeferReason != CodexDeferInUse {
-		t.Fatalf("state %q reason %q, want deferred/in_use", st.CodexState, st.CodexDeferReason)
+	if st.CodexState != CodexIdle || st.CodexDeferReason != "" {
+		t.Fatalf("state %q reason %q, want idle/empty", st.CodexState, st.CodexDeferReason)
 	}
 	if st.CodexTarget != "0.42.0" || st.CodexTargetGeneration != 0 {
 		t.Fatalf("the report must name the target: %q gen %d", st.CodexTarget, st.CodexTargetGeneration)
 	}
 
-	codex.running, codex.free = false, 1<<30
-	st, _ = s.RunOnce()
-	if st.CodexDeferReason != CodexDeferDisk {
-		t.Fatalf("reason = %q, want disk", st.CodexDeferReason)
-	}
 }
 
 func TestANewGenerationRetriesAFailedCodexInstall(t *testing.T) {

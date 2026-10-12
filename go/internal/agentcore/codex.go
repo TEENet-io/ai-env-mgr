@@ -18,9 +18,12 @@ type CodexInstaller interface {
 	// when Codex is not installed.
 	InstalledVersion() (string, error)
 	// Running reports whether Codex is in use. Installing over a running copy
-	// fails on locked files, and would yank the application out from under
-	// whoever is working in it.
+	// is unsafe until the bound user's session is closed.
 	Running() (bool, error)
+	// Stop closes Codex processes for the bound user before an update. The
+	// update policy is explicit: an eligible release is installed immediately,
+	// rather than waiting for the user to exit the application.
+	Stop(user string) (killed int, err error)
 	// Install runs the downloaded installer silently and returns once it is
 	// done.
 	Install(setupPath, version string) error
@@ -32,7 +35,7 @@ type CodexInstaller interface {
 // machine has not taken an update.
 const (
 	CodexIdle        = ""
-	CodexDeferred    = "deferred" // eligible, but not now (in use, or no room)
+	CodexDeferred    = "deferred" // eligible, but not now (insufficient disk)
 	CodexDownloading = "downloading"
 	CodexInstalling  = "installing"
 	CodexFailed      = "failed"
@@ -40,8 +43,7 @@ const (
 
 // Why an eligible Codex install waited, reported beside CodexDeferred.
 const (
-	CodexDeferInUse = "in_use"
-	CodexDeferDisk  = "disk"
+	CodexDeferDisk = "disk"
 )
 
 // codexOutcome is what one Codex update cycle reports.
@@ -108,7 +110,7 @@ func codexEligible(target model.ReleaseTarget, installed string) (bool, string) 
 //
 // Nothing here is fatal to the sync: a machine that cannot update Codex still
 // has to report its status, apply policy, and stay manageable.
-func (s *Syncer) updateCodex(target model.ReleaseTarget, errs *[]string) codexOutcome {
+func (s *Syncer) updateCodex(target model.ReleaseTarget, user string, errs *[]string) codexOutcome {
 	if s.Codex == nil {
 		return codexOutcome{}
 	}
@@ -136,10 +138,21 @@ func (s *Syncer) updateCodex(target model.ReleaseTarget, errs *[]string) codexOu
 
 	if running, err := s.Codex.Running(); err != nil {
 		*errs = append(*errs, fmt.Sprintf("codex: check whether it is running: %v", err))
-		return codexOutcome{Version: installed, State: CodexDeferred, Reason: CodexDeferInUse}
+		return codexOutcome{Version: installed, State: CodexFailed}
 	} else if running {
-		// Not an error: it will install the next time the machine is idle.
-		return codexOutcome{Version: installed, State: CodexDeferred, Reason: CodexDeferInUse}
+		killed, stopErr := s.Codex.Stop(user)
+		if stopErr != nil {
+			*errs = append(*errs, fmt.Sprintf("codex: close running process: %v", stopErr))
+			return codexOutcome{Version: installed, State: CodexFailed}
+		}
+		log.Printf("codex: closed %d running process(es) for immediate update", killed)
+		if stillRunning, checkErr := s.Codex.Running(); checkErr != nil {
+			*errs = append(*errs, fmt.Sprintf("codex: verify process closed: %v", checkErr))
+			return codexOutcome{Version: installed, State: CodexFailed}
+		} else if stillRunning {
+			*errs = append(*errs, "codex: process is still running after close request")
+			return codexOutcome{Version: installed, State: CodexFailed}
+		}
 	}
 	if free, err := s.Codex.FreeBytes(); err == nil && free < installHeadroom {
 		// Reported through the deferred state rather than as an error: the
