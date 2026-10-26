@@ -2,6 +2,7 @@ package catalog
 
 import (
 	"encoding/json"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -90,6 +91,33 @@ func TestBuildCarriesGatewayMetadata(t *testing.T) {
 	glm := find(entries, "glm-5")
 	if glm["web_search_tool_type"] != "text" {
 		t.Errorf("text-only model should stay text, got %v", glm["web_search_tool_type"])
+	}
+}
+
+func TestBuildFiltersModalitiesUnsupportedByPinnedCodex(t *testing.T) {
+	models := []litellm.Model{
+		{Name: "claude-opus-5-5", Info: litellm.ModelInfo{Modalities: []string{"text", "image", "pdf"}}},
+		{Name: "claude-sonnet-5-5", Info: litellm.ModelInfo{Modalities: []string{"text", "image", "pdf"}}},
+		{Name: "gemini-4-argon", Info: litellm.ModelInfo{Modalities: []string{"text", "image", "video"}}},
+		{Name: "audio-model", Info: litellm.ModelInfo{Modalities: []string{"text", "audio"}}},
+	}
+	raw, err := Build(models, nil)
+	if err != nil {
+		t.Fatalf("build: %v", err)
+	}
+	entries := decode(t, raw)
+	for _, model := range models {
+		entry := find(entries, model.Name)
+		if entry == nil {
+			t.Fatalf("%s was removed from the catalog", model.Name)
+		}
+		want := []any{"text", "image"}
+		if model.Name == "audio-model" {
+			want = []any{"text", "audio"}
+		}
+		if got := entry["input_modalities"]; !reflect.DeepEqual(got, want) {
+			t.Errorf("%s input_modalities = %v, want %v", model.Name, got, want)
+		}
 	}
 }
 

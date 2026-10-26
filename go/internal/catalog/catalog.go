@@ -156,9 +156,19 @@ func entryFor(template map[string]any, m litellm.Model) map[string]any {
 		entry["max_context_window"] = m.Info.ContextWindow
 	}
 	if len(m.Info.Modalities) > 0 {
-		entry["input_modalities"] = m.Info.Modalities
-		entry["web_search_tool_type"] = "text"
+		// LiteLLM may advertise PDF or video inputs, but Codex 0.153.4 only
+		// accepts text, image, and audio here. One unknown value invalidates
+		// the entire catalog and sends the desktop back to the login screen.
+		modalities := make([]string, 0, len(m.Info.Modalities))
 		for _, mod := range m.Info.Modalities {
+			switch mod {
+			case "text", "image", "audio":
+				modalities = append(modalities, mod)
+			}
+		}
+		entry["input_modalities"] = modalities
+		entry["web_search_tool_type"] = "text"
+		for _, mod := range modalities {
 			if mod == "image" {
 				entry["web_search_tool_type"] = "text_and_image"
 			}
