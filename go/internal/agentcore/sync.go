@@ -563,6 +563,22 @@ func (s *Syncer) RunOnce() (model.Status, error) {
 	// a Codex install interrupted halfway is worse than one that waits a cycle.
 	agentTarget, codexTarget := effectiveTargets(pol, binding)
 	codex := s.updateCodex(codexTarget, binding.User, &errs)
+	if memorySyncer, ok := s.Codex.(ManagedMemorySyncer); ok {
+		for _, user := range localUsers {
+			if strings.EqualFold(user, administratorAccount) {
+				continue
+			}
+			enabled := bound && boundUserExists && strings.EqualFold(user, binding.User)
+			if enabled && codex.State == CodexFailed {
+				continue // do not distribute a partially installed package
+			}
+			if changed, err := memorySyncer.SyncManagedMemory(s.Machine.ProfileDir(user), enabled); err != nil {
+				errs = append(errs, fmt.Sprintf("personal memory sync for %q: %v", user, err))
+			} else if changed {
+				log.Printf("personal memory: managed instructions and skills synced for %q (enabled=%t)", user, enabled)
+			}
+		}
+	}
 	var appStatuses []model.ApplicationStatus
 	// The API worker owns current Admin tasks. This path remains for direct
 	// OSS/legacy sources and for compatibility tests; the device API no longer

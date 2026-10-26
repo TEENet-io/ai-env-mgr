@@ -16,6 +16,7 @@ import (
 
 	"github.com/TEENet-io/ai-env-mgr/internal/agentcore"
 	"github.com/TEENet-io/ai-env-mgr/internal/creds"
+	"github.com/TEENet-io/ai-env-mgr/internal/personalmemory"
 )
 
 // codexInstaller is the Windows half of the Codex desktop update.
@@ -173,4 +174,22 @@ func (c *codexInstaller) Install(setupPath, version string) error {
 		return err
 	}
 	return os.WriteFile(filepath.Join(c.root, codexVersionFile), []byte(version), 0o644)
+}
+
+func (c *codexInstaller) SyncManagedMemory(profileDir string, enabled bool) (bool, error) {
+	internalRoot := filepath.Join(c.root, "_internal")
+	if enabled {
+		if _, err := os.Stat(filepath.Join(internalRoot, "seed", "personal-memory", "AGENTS-block.md")); os.IsNotExist(err) {
+			// A previous Codex package has no personal-memory feature. This
+			// also removes a prior managed block after rolling back to it.
+			enabled = false
+		} else if err != nil {
+			return false, err
+		}
+	}
+	version, err := c.InstalledVersion()
+	if err != nil {
+		return false, err
+	}
+	return personalmemory.Sync(internalRoot, profileDir, version, enabled)
 }
