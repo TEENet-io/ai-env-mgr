@@ -31,6 +31,13 @@ type CodexInstaller interface {
 	FreeBytes() (uint64, error)
 }
 
+// ManagedMemorySyncer is optional so existing installers remain compatible.
+// It distributes the installed Codex package's memory instructions and skills
+// to one employee profile; disabled removes only Agent-managed files.
+type ManagedMemorySyncer interface {
+	SyncManagedMemory(profileDir string, enabled bool) (changed bool, err error)
+}
+
 // Codex update states, reported in status so the administrator can see why a
 // machine has not taken an update.
 const (
