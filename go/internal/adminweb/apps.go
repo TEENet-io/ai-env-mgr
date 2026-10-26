@@ -34,12 +34,12 @@ func inferApplication(r *http.Request, app *model.Application) {
 	if name == "" {
 		name = "application"
 	}
-	if app.InstallerType == "" {
-		if strings.HasSuffix(strings.ToLower(source), ".msi") {
-			app.InstallerType = "msi"
-		} else {
-			app.InstallerType = "exe"
-		}
+	// The package extension is authoritative. The form's default select value
+	// must not cause a user-uploaded EXE to be published as an MSI.
+	if strings.HasSuffix(strings.ToLower(source), ".msi") {
+		app.InstallerType = "msi"
+	} else if strings.HasSuffix(strings.ToLower(source), ".exe") {
+		app.InstallerType = "exe"
 	}
 	if app.Version == "" {
 		if m := packageVersionRE.FindString(name); m != "" {
@@ -58,16 +58,49 @@ func inferApplication(r *http.Request, app *model.Application) {
 	if app.DisplayName == "" {
 		app.DisplayName = strings.TrimSpace(strings.ReplaceAll(base, "_", " "))
 	}
-	if app.Detection.Path == "" {
-		app.Detection = model.ApplicationDetection{Type: "file_exists", Path: `C:\Program Files\` + app.DisplayName + `\` + app.AppID + `.exe`}
-	}
+	detectionPathProvided := app.Detection.Path != ""
 	if model.IsVSCodeApplication(*app) {
 		app.InstallerType = "exe"
-		app.Publisher = "Microsoft"
-		app.DisplayName = "Visual Studio Code"
-		app.SilentArgs = model.VSCodeSilentArgs()
-		app.Detection = model.ApplicationDetection{Type: "file_exists", Path: `C:\Program Files\Microsoft VS Code\Code.exe`}
-		app.Shortcut = model.ApplicationShortcut{Enabled: true, PublicDesktop: true, Name: "Visual Studio Code", Target: `C:\Program Files\Microsoft VS Code\Code.exe`}
+		if app.Publisher == "" {
+			app.Publisher = "Microsoft"
+		}
+		if app.DisplayName == "" {
+			app.DisplayName = "Visual Studio Code"
+		}
+		if len(app.SilentArgs) == 0 {
+			app.SilentArgs = model.VSCodeSilentArgs()
+		}
+		if app.AppLockerAllowPath == "" {
+			app.AppLockerAllowPath = model.VSCodeAppLockerPath()
+		}
+		if !detectionPathProvided {
+			app.Detection = model.ApplicationDetection{Type: "file_exists", Path: `C:\Program Files\Microsoft VS Code\Code.exe`}
+		}
+		if app.Shortcut.Target == "" {
+			app.Shortcut = model.ApplicationShortcut{Enabled: true, PublicDesktop: true, Name: "Visual Studio Code", Target: app.Detection.Path}
+		}
+	} else if model.IsWeChatApplication(*app) {
+		app.InstallerType = "exe"
+		if app.Publisher == "" {
+			app.Publisher = "Tencent"
+		}
+		if app.DisplayName == "" {
+			app.DisplayName = "WeChat"
+		}
+		if len(app.SilentArgs) == 0 {
+			app.SilentArgs = model.WeChatSilentArgs()
+		}
+		if app.AppLockerAllowPath == "" {
+			app.AppLockerAllowPath = model.WeChatAppLockerPath()
+		}
+		if !detectionPathProvided {
+			app.Detection = model.ApplicationDetection{Type: "file_exists", Path: `C:\Program Files\Tencent\Weixin\Weixin.exe`}
+		}
+		if app.Shortcut.Target == "" {
+			app.Shortcut = model.ApplicationShortcut{Enabled: true, PublicDesktop: true, Name: "WeChat", Target: app.Detection.Path}
+		}
+	} else if !detectionPathProvided {
+		app.Detection = model.ApplicationDetection{Type: "file_exists", Path: `C:\Program Files\` + app.DisplayName + `\` + app.AppID + `.exe`}
 	}
 }
 
@@ -76,17 +109,25 @@ func (s *Server) appManager() *admincore.Manager {
 }
 
 // ensureApplicationAppLocker keeps the security policy and the application
-// catalog in step. Only the trusted VS Code template gets an automatic rule;
-// arbitrary MSI packages still require an explicit administrator allow path.
+// catalog in step. Existing vendor templates without a manifest path retain
+// their known rule. Generic packages use only the reviewed manifest path;
+// Program Files installs are covered by the image's base allow rule.
 func ensureApplicationAppLocker(ctx context.Context, be backend, app model.Application) error {
-	if !model.IsVSCodeApplication(app) {
+	allowPath := app.AppLockerAllowPath
+	if allowPath == "" && model.IsTrustedExeApplication(app) {
+		allowPath = model.TrustedExeAppLockerPath(app)
+	}
+	if allowPath == "" {
 		return nil
 	}
-	return be.MutateAppLockerAllowPaths(ctx, []string{model.VSCodeAppLockerPath()}, nil)
+	if err := model.ValidateAppLockerPath(allowPath); err != nil {
+		return fmt.Errorf("AppLocker allow path: %w", err)
+	}
+	return be.MutateAppLockerAllowPaths(ctx, []string{allowPath}, nil)
 }
 
 func (s *Server) actionApplicationPublish(sess *session, r *http.Request) error {
-	app := model.Application{AppID: formValue(r, "appId"), DisplayName: formValue(r, "displayName"), Publisher: formValue(r, "publisher"), Version: formValue(r, "version"), InstallerType: strings.ToLower(formValue(r, "installerType")), SilentArgs: strings.Fields(formValue(r, "silentArgs")), Detection: model.ApplicationDetection{Type: formValue(r, "detectionType"), Path: formValue(r, "detectionPath"), Version: formValue(r, "detectionVersion")}, Shortcut: model.ApplicationShortcut{Enabled: formValue(r, "shortcutEnabled") == "1", PublicDesktop: true, Name: formValue(r, "shortcutName"), Target: formValue(r, "shortcutTarget"), WorkingDirectory: formValue(r, "shortcutWorkingDirectory"), Icon: formValue(r, "shortcutIcon")}}
+	app := model.Application{AppID: formValue(r, "appId"), DisplayName: formValue(r, "displayName"), Publisher: formValue(r, "publisher"), Version: formValue(r, "version"), InstallerType: strings.ToLower(formValue(r, "installerType")), SilentArgs: strings.Fields(formValue(r, "silentArgs")), AppLockerAllowPath: formValue(r, "appLockerAllowPath"), Detection: model.ApplicationDetection{Type: formValue(r, "detectionType"), Path: formValue(r, "detectionPath"), Version: formValue(r, "detectionVersion")}, Shortcut: model.ApplicationShortcut{Enabled: formValue(r, "shortcutEnabled") == "1", PublicDesktop: true, Name: formValue(r, "shortcutName"), Target: formValue(r, "shortcutTarget"), WorkingDirectory: formValue(r, "shortcutWorkingDirectory"), Icon: formValue(r, "shortcutIcon")}}
 	inferApplication(r, &app)
 	if c := strings.TrimSpace(formValue(r, "confirm")); c != "INSTALL" && c != app.AppID+"@"+app.Version {
 		return fmt.Errorf("type INSTALL to confirm")
@@ -137,10 +178,15 @@ func (s *Server) actionApplicationInstall(sess *session, r *http.Request) error 
 	if err := ensureApplicationAppLocker(r.Context(), sess.be, app); err != nil {
 		return fmt.Errorf("prepare application AppLocker rule: %w", err)
 	}
+	if open, err := s.dbm.store.ApplicationTasks().HasOpenForDevice(r.Context(), device.ID, appID); err != nil {
+		return err
+	} else if open && formValue(r, "replace") != "1" {
+		return fmt.Errorf("这台机器已有同一应用的未完成任务；如需替换，请重新确认 replace=1")
+	}
 	// A policy update normally wakes the Agent, but ask this target to sync
 	// explicitly so the rule is present before the install task reaches its
 	// post-install AppLocker check.
-	if model.IsVSCodeApplication(app) {
+	if app.AppLockerAllowPath != "" || model.IsTrustedExeApplication(app) {
 		if err := sess.be.RequestSync(r.Context(), machine); err != nil {
 			return fmt.Errorf("request AppLocker policy sync: %w", err)
 		}

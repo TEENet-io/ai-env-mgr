@@ -82,11 +82,11 @@ func (h StatusImport) Run(ctx context.Context, _ repo.Task) (Result, error) {
 		if err := SettleTargets(ctx, h.Store, device.ID, status); err != nil {
 			return Result{}, err
 		}
-		lastSeen := time.Now().UTC()
-		if report.LastSyncAt != nil {
-			lastSeen = *report.LastSyncAt
-		}
-		if err := h.Store.Devices().MarkSeen(ctx, device.ID, status.AgentVersion, lastSeen); err != nil {
+		// OSS object age is not a reliable liveness signal: the report may carry
+		// a bad client clock, and an old object can be read today. Keep the
+		// report's LastSyncAt for diagnostics, but use the import receive time
+		// for the device heartbeat.
+		if err := h.Store.Devices().MarkSeen(ctx, device.ID, status.AgentVersion, time.Now().UTC()); err != nil {
 			return Result{}, err
 		}
 	}

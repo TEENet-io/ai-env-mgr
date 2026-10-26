@@ -1,9 +1,12 @@
 package adminweb
 
 import (
+	"context"
 	"fmt"
 	"sync"
 	"time"
+
+	"github.com/TEENet-io/ai-env-mgr/internal/repo"
 )
 
 // A publish moves hundreds of megabytes twice -- down from GitHub, up to OSS --
@@ -25,6 +28,7 @@ const (
 )
 
 type job struct {
+	ID      string
 	Kind    string // "agent" or "codex", for the wording on the page
 	Version string
 	State   jobState
@@ -37,8 +41,9 @@ type job struct {
 	// step cannot say how much there is -- a server that sent no
 	// Content-Length -- and the page then shows an indeterminate bar rather
 	// than a wrong one.
-	Done  int64
-	Total int64
+	Done        int64
+	Total       int64
+	lastPersist time.Time
 }
 
 // Percent is how far the current step has got, 0 when it cannot be known.
@@ -82,15 +87,18 @@ func (j *job) Elapsed() string {
 	return fmt.Sprintf("%d 分 %d 秒", int(d.Minutes()), int(d.Seconds())%60)
 }
 
-// jobRunner holds the one publish that may be in flight.
+// jobRunner holds the one publish that may be in flight. In database mode the
+// same state is mirrored to AdminJobs so a page reload or console restart does
+// not erase the operator's only progress record.
 //
 // One at a time on purpose. Two publishes of the same kind would race to write
 // the same policy fields, and the loser would silently win: the fleet would
 // end up pointed at whichever upload happened to finish second, which is not
 // necessarily the one the operator started last.
 type jobRunner struct {
-	mu      sync.Mutex
-	current *job
+	mu         sync.Mutex
+	current    *job
+	persistent repo.AdminJobs
 }
 
 var errJobBusy = fmt.Errorf("上一个发布还在进行中，等它结束再发下一个")
@@ -98,13 +106,22 @@ var errJobBusy = fmt.Errorf("上一个发布还在进行中，等它结束再发
 // start runs fn in the background, refusing if something is already running.
 func (r *jobRunner) start(kind, version string, fn func(setStep func(string), setProgress func(done, total int64)) error) error {
 	r.mu.Lock()
+	defer r.mu.Unlock()
 	if r.current != nil && r.current.Running() {
-		r.mu.Unlock()
 		return errJobBusy
 	}
 	j := &job{Kind: kind, Version: version, State: jobRunning, Step: "准备中", Started: time.Now()}
+	if r.persistent != nil {
+		id := fmt.Sprintf("admin-%d", j.Started.UnixNano())
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		_, err := r.persistent.Create(ctx, id, kind, version)
+		cancel()
+		if err != nil {
+			return fmt.Errorf("create admin job: %w", err)
+		}
+		j.ID = id
+	}
 	r.current = j
-	r.mu.Unlock()
 
 	setStep := func(step string) {
 		r.mu.Lock()
@@ -112,24 +129,52 @@ func (r *jobRunner) start(kind, version string, fn func(setStep func(string), se
 		// rather than carrying the previous step's numbers.
 		j.Step, j.Done, j.Total = step, 0, 0
 		r.mu.Unlock()
+		r.persist(j, true)
 	}
 	setProgress := func(done, total int64) {
 		r.mu.Lock()
 		j.Done, j.Total = done, total
 		r.mu.Unlock()
+		r.persist(j, false)
 	}
 	go func() {
 		err := fn(setStep, setProgress)
 		r.mu.Lock()
-		defer r.mu.Unlock()
 		j.Ended = time.Now()
 		if err != nil {
 			j.State, j.Err = jobFailed, err.Error()
-			return
+		} else {
+			j.State, j.Step = jobDone, "完成"
 		}
-		j.State, j.Step = jobDone, "完成"
+		copy := *j
+		r.mu.Unlock()
+		r.persist(&copy, true)
 	}()
 	return nil
+}
+
+// persist mirrors the in-memory snapshot into PostgreSQL. Progress updates
+// are throttled so a fast download does not turn every network callback into a
+// database round trip; step changes and terminal states are always written.
+func (r *jobRunner) persist(j *job, force bool) {
+	if r.persistent == nil || j.ID == "" {
+		return
+	}
+	r.mu.Lock()
+	if !force && !j.lastPersist.IsZero() && time.Since(j.lastPersist) < time.Second {
+		r.mu.Unlock()
+		return
+	}
+	j.lastPersist = time.Now()
+	copy := *j
+	r.mu.Unlock()
+	var ended *time.Time
+	if !copy.Ended.IsZero() {
+		ended = &copy.Ended
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	_ = r.persistent.Update(ctx, copy.ID, string(copy.State), copy.Step, copy.Done, copy.Total, copy.Err, ended)
+	cancel()
 }
 
 // wait blocks until nothing is running, or until the deadline passes. It
@@ -137,9 +182,10 @@ func (r *jobRunner) start(kind, version string, fn func(setStep func(string), se
 //
 // This exists for shutdown. A publish moves ~700 MB and writes the policy only
 // at the very end, so a process that exits mid-flight destroys the work and
-// leaves nothing behind to say so: no policy change, no audit line, and a job
-// page that comes back empty because the state lived in memory. An operator
-// then sees a fleet that was never given the new version and no reason why.
+// leaves nothing behind to say so: no policy change, no audit line, and (in
+// legacy mode) a job page that comes back empty because the state lived in
+// memory. Database mode records the interrupted job before serving pages, so
+// the operator sees why it needs to be retried.
 // It has happened -- a deploy restarted the console while a Codex publish was
 // uploading.
 func (r *jobRunner) wait(deadline time.Duration) bool {
@@ -158,10 +204,25 @@ func (r *jobRunner) wait(deadline time.Duration) bool {
 // snapshot returns a copy safe to render while the job keeps running.
 func (r *jobRunner) snapshot() *job {
 	r.mu.Lock()
-	defer r.mu.Unlock()
-	if r.current == nil {
+	if r.current != nil {
+		c := *r.current
+		r.mu.Unlock()
+		return &c
+	}
+	persistent := r.persistent
+	r.mu.Unlock()
+	if persistent == nil {
 		return nil
 	}
-	c := *r.current
-	return &c
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	record, err := persistent.Latest(ctx)
+	cancel()
+	if err != nil {
+		return nil
+	}
+	j := &job{ID: record.ID, Kind: record.Kind, Version: record.Version, State: jobState(record.State), Step: record.Step, Err: record.LastError, Started: record.StartedAt, Done: record.DoneBytes, Total: record.TotalBytes}
+	if record.EndedAt != nil {
+		j.Ended = *record.EndedAt
+	}
+	return j
 }

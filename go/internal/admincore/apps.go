@@ -49,14 +49,56 @@ func validateApplication(app model.Application, installer []byte) error {
 	if len(installer) == 0 {
 		return fmt.Errorf("the application installer is empty")
 	}
-	if !strings.EqualFold(app.InstallerType, "msi") && !(strings.EqualFold(app.InstallerType, "exe") && model.IsVSCodeApplication(app)) {
-		return fmt.Errorf("only MSI or the trusted VS Code installer is supported")
+	if !model.IsSupportedApplicationInstaller(app) {
+		return fmt.Errorf("only MSI or an EXE with approved silentArgs is supported")
+	}
+	if app.AppLockerAllowPath != "" {
+		if err := model.ValidateAppLockerPath(app.AppLockerAllowPath); err != nil {
+			return fmt.Errorf("AppLocker allow path: %w", err)
+		}
 	}
 	if app.Detection.Path == "" || (app.Detection.Type != "file_exists" && app.Detection.Type != "file_version") {
 		return fmt.Errorf("a file_exists or file_version detection rule is required")
 	}
+	if err := validateWindowsPath(app.Detection.Path, "detection path"); err != nil {
+		return err
+	}
 	if app.Shortcut.Enabled && (app.Shortcut.Name == "" || app.Shortcut.Target == "") {
 		return fmt.Errorf("shortcut name and target are required when shortcuts are enabled")
+	}
+	if app.Shortcut.Enabled {
+		if strings.ContainsAny(app.Shortcut.Name, `/\\`) || strings.ContainsRune(app.Shortcut.Name, 0) {
+			return fmt.Errorf("shortcut name must be a file name, not a path")
+		}
+		if err := validateWindowsPath(app.Shortcut.Target, "shortcut target"); err != nil {
+			return err
+		}
+		if app.Shortcut.WorkingDirectory != "" {
+			if err := validateWindowsPath(app.Shortcut.WorkingDirectory, "shortcut working directory"); err != nil {
+				return err
+			}
+		}
+		if app.Shortcut.Icon != "" {
+			if err := validateWindowsPath(app.Shortcut.Icon, "shortcut icon"); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
+func validateWindowsPath(raw, label string) error {
+	p := strings.TrimSpace(raw)
+	if p == "" || strings.ContainsRune(p, 0) || strings.Contains(p, "..") {
+		return fmt.Errorf("%s must be an absolute Windows path", label)
+	}
+	// Permit drive paths and the small set of Windows environment roots used
+	// by managed installers, but never a relative or UNC path supplied by a
+	// form. This keeps detection and shortcut creation inside predictable
+	// machine-wide locations.
+	upper := strings.ToUpper(p)
+	if !(len(p) >= 3 && ((p[1] == ':' && (p[2] == '\\' || p[2] == '/')) || strings.HasPrefix(upper, `%PROGRAMFILES%\\`) || strings.HasPrefix(upper, `%WINDIR%\\`))) {
+		return fmt.Errorf("%s must be an absolute Windows path", label)
 	}
 	return nil
 }
@@ -104,8 +146,8 @@ func (m *Manager) GetApplication(appID, version string) (model.Application, erro
 	if !app.Enabled || !app.Approved {
 		return model.Application{}, fmt.Errorf("application %q version %q is not enabled and approved", appID, version)
 	}
-	if !strings.EqualFold(app.InstallerType, "msi") && !(strings.EqualFold(app.InstallerType, "exe") && model.IsVSCodeApplication(app)) {
-		return model.Application{}, fmt.Errorf("application %q version %q is not supported: only MSI or the trusted VS Code installer is allowed", appID, version)
+	if !model.IsSupportedApplicationInstaller(app) {
+		return model.Application{}, fmt.Errorf("application %q version %q is not supported: only MSI or an EXE with approved silentArgs is allowed", appID, version)
 	}
 	if app.ObjectKey != ossclient.ApplicationPackageKey(app.AppID, app.Version, app.InstallerType) {
 		return model.Application{}, fmt.Errorf("application manifest points outside its approved package key")

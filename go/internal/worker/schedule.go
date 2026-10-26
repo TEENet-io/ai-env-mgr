@@ -29,6 +29,7 @@ const (
 	TaskCredentialRotation = "credential_rotation"
 	// TaskDevicePrune forgets self-enrolled machines nobody assigned.
 	TaskDevicePrune = "device_prune"
+	TaskDataCleanup = "data_cleanup"
 
 	EveryStatusImport  = time.Minute
 	EveryReleaseScan   = 24 * time.Hour
@@ -37,6 +38,7 @@ const (
 	EveryAlertNotify   = time.Minute
 	EveryRotation      = 24 * time.Hour
 	EveryDevicePrune   = 24 * time.Hour
+	EveryDataCleanup   = 24 * time.Hour
 	// Rotation runs an hour into the day, after the usage snapshot and
 	// before anybody is at their desk in Asia.
 	AfterRotation = time.Hour
@@ -65,6 +67,7 @@ func Schedule(ctx context.Context, store repo.Store, onError func(error)) {
 			{TaskAlertNotify, EveryAlertNotify, 0, 1},
 			{TaskCredentialRotation, EveryRotation, AfterRotation, 2},
 			{TaskDevicePrune, EveryDevicePrune, 2 * time.Hour, 2},
+			{TaskDataCleanup, EveryDataCleanup, 3 * time.Hour, 2},
 			{repo.TaskAuditPublish, EveryAuditPublish, 0, 2},
 			{repo.TaskReconcile, EveryReconcile, 0, 3},
 		} {

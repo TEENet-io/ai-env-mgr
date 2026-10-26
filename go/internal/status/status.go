@@ -21,22 +21,26 @@ const unreachableAge = 100 * 365 * 24 * time.Hour
 // a Status. It is a struct rather than a long parameter list so that adding a
 // field later does not silently reorder existing call sites.
 type Report struct {
-	Machine         string
-	BoundUser       string
-	LocalUsers      []string
-	BoundUserExists bool
-	Version         string
-	Policy          model.Policy
-	PolicyETag      string
-	CredsETag       string
-	Interval        int
-	CredsApplied    bool
-	CollectEnabled  bool
-	CollectUploaded int
-	CodexVersion    string
-	CodexState      string
-	Apps            []model.ApplicationStatus
-	CodexRestart    CodexRestart
+	Machine                   string
+	BoundUser                 string
+	LocalUsers                []string
+	BoundUserExists           bool
+	Version                   string
+	Policy                    model.Policy
+	PolicyETag                string
+	CredsETag                 string
+	Interval                  int
+	CredsApplied              bool
+	CollectEnabled            bool
+	CollectUploaded           int
+	AppLockerManagedPathCount int
+	CodexSandboxProfileCount  int
+	CodexRuntimeProfileCount  int
+	CodexSandboxState         string
+	CodexVersion              string
+	CodexState                string
+	Apps                      []model.ApplicationStatus
+	CodexRestart              CodexRestart
 
 	CodexTarget           string
 	CodexTargetGeneration int
@@ -70,35 +74,39 @@ func Build(r Report) model.Status {
 		users = []string{}
 	}
 	return model.Status{
-		Machine:               r.Machine,
-		BoundUser:             r.BoundUser,
-		LocalUsers:            users,
-		BoundUserExists:       r.BoundUserExists,
-		LastSync:              time.Now().UTC().Format(time.RFC3339),
-		AgentVersion:          r.Version,
-		PolicyETag:            r.PolicyETag,
-		CredsETag:             r.CredsETag,
-		BlockEnabled:          r.Policy.BlockEnabled,
-		BlockedDomains:        len(r.Policy.BlockedDomains),
-		SyncIntervalMinutes:   r.Interval,
-		CredsApplied:          r.CredsApplied,
-		AppLockerMode:         AppLockerMode(),
-		CollectEnabled:        r.CollectEnabled,
-		CollectUploaded:       r.CollectUploaded,
-		CodexVersion:          r.CodexVersion,
-		CodexState:            r.CodexState,
-		Apps:                  r.Apps,
-		CodexRestartNonce:     r.CodexRestart.Nonce,
-		CodexRestartAt:        r.CodexRestart.At,
-		CodexRestartNote:      r.CodexRestart.Note,
-		CodexTarget:           r.CodexTarget,
-		CodexTargetGeneration: r.CodexTargetGeneration,
-		CodexDeferReason:      r.CodexDeferReason,
-		AgentUpdateTarget:     r.AgentUpdateTarget,
-		AgentUpdateGeneration: r.AgentUpdateGeneration,
-		AgentUpdateState:      r.AgentUpdateState,
-		Warnings:              r.Warnings,
-		Errors:                errs,
+		Machine:                   r.Machine,
+		BoundUser:                 r.BoundUser,
+		LocalUsers:                users,
+		BoundUserExists:           r.BoundUserExists,
+		LastSync:                  time.Now().UTC().Format(time.RFC3339),
+		AgentVersion:              r.Version,
+		PolicyETag:                r.PolicyETag,
+		CredsETag:                 r.CredsETag,
+		BlockEnabled:              r.Policy.BlockEnabled,
+		BlockedDomains:            len(r.Policy.BlockedDomains),
+		SyncIntervalMinutes:       r.Interval,
+		CredsApplied:              r.CredsApplied,
+		AppLockerMode:             AppLockerMode(),
+		AppLockerManagedPathCount: r.AppLockerManagedPathCount,
+		CodexSandboxProfileCount:  r.CodexSandboxProfileCount,
+		CodexRuntimeProfileCount:  r.CodexRuntimeProfileCount,
+		CodexSandboxState:         r.CodexSandboxState,
+		CollectEnabled:            r.CollectEnabled,
+		CollectUploaded:           r.CollectUploaded,
+		CodexVersion:              r.CodexVersion,
+		CodexState:                r.CodexState,
+		Apps:                      r.Apps,
+		CodexRestartNonce:         r.CodexRestart.Nonce,
+		CodexRestartAt:            r.CodexRestart.At,
+		CodexRestartNote:          r.CodexRestart.Note,
+		CodexTarget:               r.CodexTarget,
+		CodexTargetGeneration:     r.CodexTargetGeneration,
+		CodexDeferReason:          r.CodexDeferReason,
+		AgentUpdateTarget:         r.AgentUpdateTarget,
+		AgentUpdateGeneration:     r.AgentUpdateGeneration,
+		AgentUpdateState:          r.AgentUpdateState,
+		Warnings:                  r.Warnings,
+		Errors:                    errs,
 	}
 }
 

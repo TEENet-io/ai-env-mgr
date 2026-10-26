@@ -43,10 +43,11 @@ func (s *Server) handleStatus(w http.ResponseWriter, r *http.Request, device rep
 		s.fail(w, r, "settle targets", err)
 		return
 	}
+	// Liveness is a fact about when the console received this request, not a
+	// timestamp supplied by the machine. Keep the agent's timestamp in the
+	// report for diagnostics, but never let a clock-skewed or forged future
+	// value make an offline device look healthy.
 	seen := s.now()
-	if report.LastSyncAt != nil {
-		seen = *report.LastSyncAt
-	}
 	if err := s.Store.Devices().MarkSeen(ctx, device.ID, st.AgentVersion, seen); err != nil {
 		s.fail(w, r, "mark seen", err)
 		return

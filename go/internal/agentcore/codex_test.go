@@ -17,15 +17,25 @@ type fakeCodex struct {
 	running    bool
 	free       uint64
 	installErr error
+	stopErr    error
 
 	installedPath    string
 	installedVersion string
 	installs         int
+	stops            int
 }
 
 func (f *fakeCodex) InstalledVersion() (string, error) { return f.installed, nil }
 func (f *fakeCodex) Running() (bool, error)            { return f.running, nil }
-func (f *fakeCodex) FreeBytes() (uint64, error)        { return f.free, nil }
+func (f *fakeCodex) Stop(string) (int, error) {
+	f.stops++
+	if f.stopErr != nil {
+		return 0, f.stopErr
+	}
+	f.running = false
+	return 1, nil
+}
+func (f *fakeCodex) FreeBytes() (uint64, error) { return f.free, nil }
 func (f *fakeCodex) Install(path, version string) error {
 	f.installs++
 	f.installedPath, f.installedVersion = path, version
@@ -68,7 +78,7 @@ func TestCodexInstallsWhenEligible(t *testing.T) {
 	pol := codexPolicy(store, "26.810.52044-b1", []byte("setup"))
 
 	var errs []string
-	out := s.updateCodex(fleetCodexTarget(pol), &errs)
+	out := s.updateCodex(fleetCodexTarget(pol), "work1", &errs)
 	got, state := out.Version, out.State
 	if len(errs) > 0 {
 		t.Fatalf("unexpected errors: %v", errs)
@@ -95,7 +105,7 @@ func TestCodexRefusesAChecksumMismatch(t *testing.T) {
 	pol.CodexSHA256 = strings.Repeat("00", 32)
 
 	var errs []string
-	out := s.updateCodex(fleetCodexTarget(pol), &errs)
+	out := s.updateCodex(fleetCodexTarget(pol), "work1", &errs)
 	_, state := out.Version, out.State
 	if codex.installs != 0 {
 		t.Fatal("installed despite a checksum mismatch")
@@ -120,7 +130,7 @@ func TestCodexInstallsAnOlderPublishedVersion(t *testing.T) {
 	pol := codexPolicy(store, "1.0.0", []byte("older"))
 
 	var errs []string
-	if out := s.updateCodex(fleetCodexTarget(pol), &errs); out.State != CodexIdle {
+	if out := s.updateCodex(fleetCodexTarget(pol), "work1", &errs); out.State != CodexIdle {
 		t.Fatalf("state = %q", out.State)
 	}
 	if codex.installedVersion != "1.0.0" {
@@ -135,7 +145,7 @@ func TestCodexSkipsWhenAlreadyOnTheTarget(t *testing.T) {
 	pol := codexPolicy(store, "1.0.0", []byte("setup"))
 
 	var errs []string
-	s.updateCodex(fleetCodexTarget(pol), &errs)
+	s.updateCodex(fleetCodexTarget(pol), "work1", &errs)
 	if codex.installs != 0 {
 		t.Fatal("reinstalled a version already present")
 	}
@@ -148,7 +158,7 @@ func TestCodexDoesNothingWithoutATarget(t *testing.T) {
 	s := newCodexSyncer(t, store, codex)
 
 	var errs []string
-	if out := s.updateCodex(fleetCodexTarget(model.Policy{}), &errs); out.State != CodexIdle {
+	if out := s.updateCodex(fleetCodexTarget(model.Policy{}), "work1", &errs); out.State != CodexIdle {
 		t.Fatalf("state = %q", out.State)
 	}
 	if codex.installs != 0 || len(errs) > 0 {
@@ -156,22 +166,22 @@ func TestCodexDoesNothingWithoutATarget(t *testing.T) {
 	}
 }
 
-// Installing over a running Codex fails on locked files and would yank the
-// application away from whoever is using it. Waiting is not an error.
-func TestCodexDefersWhileInUse(t *testing.T) {
+// A running Codex is closed for the bound user and the update proceeds
+// immediately; the old deferred/in_use state is no longer used.
+func TestCodexClosesWhenInUse(t *testing.T) {
 	store := newFakeStore()
 	codex := &fakeCodex{running: true, free: 100 << 30}
 	s := newCodexSyncer(t, store, codex)
 	pol := codexPolicy(store, "1.0.0", []byte("setup"))
 
 	var errs []string
-	out := s.updateCodex(fleetCodexTarget(pol), &errs)
+	out := s.updateCodex(fleetCodexTarget(pol), "work1", &errs)
 	_, state := out.Version, out.State
-	if codex.installs != 0 {
-		t.Fatal("installed while Codex was running")
+	if codex.stops != 1 || codex.installs != 1 {
+		t.Fatalf("stops=%d installs=%d, want one close and install", codex.stops, codex.installs)
 	}
-	if state != CodexDeferred {
-		t.Fatalf("state = %q, want deferred", state)
+	if state != CodexIdle {
+		t.Fatalf("state = %q, want idle", state)
 	}
 	if len(errs) > 0 {
 		t.Fatalf("deferring reported an error: %v", errs)
@@ -185,7 +195,7 @@ func TestCodexDefersWhenTheDiskIsFull(t *testing.T) {
 	pol := codexPolicy(store, "1.0.0", []byte("setup"))
 
 	var errs []string
-	out := s.updateCodex(fleetCodexTarget(pol), &errs)
+	out := s.updateCodex(fleetCodexTarget(pol), "work1", &errs)
 	_, state := out.Version, out.State
 	if codex.installs != 0 || state != CodexDeferred {
 		t.Fatalf("installs=%d state=%q", codex.installs, state)
@@ -201,15 +211,15 @@ func TestCodexTriesAFailedVersionOnce(t *testing.T) {
 	pol := codexPolicy(store, "1.0.0", []byte("setup"))
 
 	var errs []string
-	s.updateCodex(fleetCodexTarget(pol), &errs)
-	s.updateCodex(fleetCodexTarget(pol), &errs)
+	s.updateCodex(fleetCodexTarget(pol), "work1", &errs)
+	s.updateCodex(fleetCodexTarget(pol), "work1", &errs)
 	if codex.installs != 1 {
 		t.Fatalf("attempted %d times, want 1", codex.installs)
 	}
 
 	// A newly published version is attempted again.
 	pol2 := codexPolicy(store, "1.0.1", []byte("setup2"))
-	s.updateCodex(fleetCodexTarget(pol2), &errs)
+	s.updateCodex(fleetCodexTarget(pol2), "work1", &errs)
 	if codex.installs != 2 {
 		t.Fatalf("a new version was not attempted: installs=%d", codex.installs)
 	}
@@ -227,7 +237,7 @@ func TestCodexIgnoresTheRolloutField(t *testing.T) {
 	pol.CodexRolloutPct = 0
 
 	var errs []string
-	out := s.updateCodex(fleetCodexTarget(pol), &errs)
+	out := s.updateCodex(fleetCodexTarget(pol), "work1", &errs)
 	installed, state := out.Version, out.State
 	if codex.installs != 1 {
 		t.Fatalf("rollout 0 blocked the install: installs=%d", codex.installs)

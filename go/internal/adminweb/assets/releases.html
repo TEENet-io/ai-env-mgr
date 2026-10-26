@@ -5,7 +5,7 @@
 {{template "nav" .}}
 <main class="sheet">
   <header class="pagehead"><h1>软件安装</h1></header>
-  <p class="dim"><a href="/tasks">查看全局任务与安装进度 →</a></p>
+  <p class="dim"><a href="/applications">软件目录与安装 →</a>　<a href="/tasks">查看全局任务与安装进度 →</a></p>
   {{template "tabs-releases" .}}
   <p class="lede">CI 传到 OSS 的 agent 和 Codex 安装包会自动出现在这里（每天扫描一次，刚传完可点「立即扫描」）。<b>设为全局</b>：所有跟随全局的机器一起更新。<b>指定给机器</b>：只更新选中的机器；在机器页可以改回「跟随全局」。
     <form method="post" action="/releases/scan" class="inline"><input type="hidden" name="csrf" value="{{.CSRF}}"><button class="link">立即扫描 OSS</button></form></p>
@@ -60,7 +60,7 @@
     <thead><tr><th>版本</th><th>大小</th><th>上传</th><th>说明</th><th>操作</th></tr></thead>
     <tbody>{{range index $.Artifacts $product}}
       <tr>
-        <td class="id" title="SHA-256 {{.SHA256}}">{{.Version}}{{if .IsGlobal}} <span class="tag tag-ok">全局</span>{{end}}{{if eq (printf "%s" .Status) "retired"}} <span class="tag tag-bad">已停用</span>{{end}}<div class="rowsub hash">sha256 {{.SHA256}}{{if .MinAgentVersion}} · 需 agent ≥ {{.MinAgentVersion}}{{end}}</div></td>
+        <td class="id" title="SHA-256 {{.SHA256}}">{{.Version}}{{if .IsGlobal}} <span class="tag tag-ok">全局</span>{{end}} <span class="tag tag-{{astatus .Status}}">{{alabel (astatus .Status)}}</span><div class="rowsub hash">sha256 {{.SHA256}}{{if .MinAgentVersion}} · 需 agent ≥ {{.MinAgentVersion}}{{end}}</div></td>
         <td class="num">{{.SizeMB}} MB</td>
         <td class="dim nowrap">{{.CreatedAt.Local.Format "01-02 15:04"}}</td>
         <td class="remark">{{if .Notes}}{{.Notes}}{{else}}<span class="muted">—</span>{{end}}
@@ -72,30 +72,17 @@
           </details></td>
         <td class="actions">
           {{if ne (printf "%s" .Status) "retired"}}
-          {{if and (not .IsGlobal) (may $.Role "/releases/global")}}<form method="post" action="/releases/global" class="inline"><input type="hidden" name="csrf" value="{{$.CSRF}}"><input type="hidden" name="product" value="{{$product}}"><input type="hidden" name="version" value="{{.Version}}"><input name="confirm" placeholder="输入版本号确认" size="12" autocomplete="off"><button class="link danger-link">设为全局</button></form>{{end}}
+          {{if and (eq (printf "%s" .Status) "candidate") (may $.Role "/releases/status")}}<form method="post" action="/releases/status" class="inline" data-confirm="确认将 {{.Product}} {{.Version}} 标记为已验收？"><input type="hidden" name="csrf" value="{{$.CSRF}}"><input type="hidden" name="id" value="{{.ID}}"><input type="hidden" name="status" value="accepted"><button class="link">标记已验收</button></form>{{end}}
+          {{if and (eq (printf "%s" .Status) "accepted") (may $.Role "/releases/status")}}<form method="post" action="/releases/status" class="inline" data-confirm="确认批准 {{.Product}} {{.Version}} 为稳定版本？稳定版本才允许设为全局"><input type="hidden" name="csrf" value="{{$.CSRF}}"><input type="hidden" name="id" value="{{.ID}}"><input type="hidden" name="status" value="stable"><button class="link">批准稳定</button></form>{{end}}
+          {{if and (not .IsGlobal) (eq (printf "%s" .Status) "stable") (may $.Role "/releases/global")}}<form method="post" action="/releases/global" class="inline"><input type="hidden" name="csrf" value="{{$.CSRF}}"><input type="hidden" name="product" value="{{$product}}"><input type="hidden" name="version" value="{{.Version}}"><input name="confirm" placeholder="输入版本号确认" size="12" autocomplete="off"><button class="link danger-link">设为全局</button></form>{{end}}
           <a href="/rollouts/new?artifact={{.ID}}">指定给机器…</a>
-          {{if not .IsGlobal}}<form method="post" action="/releases/status" class="inline"><input type="hidden" name="csrf" value="{{$.CSRF}}"><input type="hidden" name="id" value="{{.ID}}"><input type="hidden" name="status" value="retired"><button class="link">停用</button></form>{{end}}
-          {{else}}<form method="post" action="/releases/status" class="inline"><input type="hidden" name="csrf" value="{{$.CSRF}}"><input type="hidden" name="id" value="{{.ID}}"><input type="hidden" name="status" value="candidate"><button class="link">恢复</button></form>{{end}}
+          {{if not .IsGlobal}}<form method="post" action="/releases/status" class="inline" data-confirm="确认停用 {{.Product}} {{.Version}}？停用只会阻止后续发布，不会卸载已经安装的软件。"><input type="hidden" name="csrf" value="{{$.CSRF}}"><input type="hidden" name="id" value="{{.ID}}"><input type="hidden" name="status" value="retired"><button class="link">停用</button></form>{{end}}
+          {{else}}<form method="post" action="/releases/status" class="inline" data-confirm="确认恢复 {{.Product}} {{.Version}} 为候选版本？恢复后它可以再次被指定给机器。"><input type="hidden" name="csrf" value="{{$.CSRF}}"><input type="hidden" name="id" value="{{.ID}}"><input type="hidden" name="status" value="candidate"><button class="link">恢复</button></form>{{end}}
           {{if and (eq (printf "%s" .Status) "retired") (not .IsGlobal) (may $.Role "/releases/delete")}}<form method="post" action="/releases/delete" class="inline" data-confirm="确认删除 {{.Product}} {{.Version}} 的 OSS 文件吗？数据库历史会保留。"><input type="hidden" name="csrf" value="{{$.CSRF}}"><input type="hidden" name="id" value="{{.ID}}"><input type="hidden" name="confirm" value="{{.Version}}"><button class="link danger-link" title="删除 OSS 文件" aria-label="删除 OSS 文件">×</button></form>{{end}}
         </td>
       </tr>{{else}}<tr><td colspan="5" class="empty">还没有 {{$product}} 版本。CI 上传到 <span class="mono">{{if eq $product "agent"}}_agent/&lt;版本&gt;/agent.exe{{else}}_codex/codex-setup-&lt;版本&gt;.exe{{end}}</span> 后会自动出现。</td></tr>{{end}}
     </tbody></table></div>
   {{end}}
-
-  <h2>其他软件</h2>
-  <p class="dim">当前仅允许管理员审核后的 MSI，按机器安装；Agent 会统一静默安装、校验 SHA-256、检测安装结果，并可创建公共桌面快捷方式。</p>
-  <div class="panel scroll"><table><thead><tr><th>应用</th><th>版本</th><th>类型</th><th>状态</th><th>操作</th></tr></thead><tbody>
-    {{range .Applications}}<tr><td>{{.DisplayName}} <span class="mono dim">{{.AppID}}</span></td><td class="mono">{{.Version}}</td><td>{{if eq .InstallerType "exe"}}VS Code EXE{{else}}{{.InstallerType}}{{end}}</td><td>{{if not (appSupported .)}}不支持{{else if and .Enabled .Approved}}已审核{{else}}已停用{{end}}</td><td class="actions">{{if may $.Role "/apps/delete"}}<form method="post" action="/apps/delete" class="inline" data-confirm="确认删除 {{.DisplayName}} {{.Version}} 的 OSS 安装包和应用记录吗？已安装的软件不会从机器卸载，任务历史会保留。"><input type="hidden" name="csrf" value="{{$.CSRF}}"><input type="hidden" name="appId" value="{{.AppID}}"><input type="hidden" name="version" value="{{.Version}}"><input type="hidden" name="confirm" value="{{.AppID}}@{{.Version}}"><button class="link danger-link" title="删除应用安装包和记录" aria-label="删除应用安装包和记录">×</button></form>{{end}}</td></tr>{{else}}<tr><td colspan="5" class="dim">还没有应用包</td></tr>{{end}}
-  </tbody></table></div>
-  <form method="post" action="/apps/publish" enctype="multipart/form-data" class="form panel"><input type="hidden" name="csrf" value="{{.CSRF}}"><h3>添加其他软件</h3>
-    <p class="dim">选择 MSI 安装包，或选择官方 VS Code EXE。普通 EXE 不允许上传；应用名称和版本会从文件名自动识别。</p>
-    <div class="grid"><label>安装包文件 <input type="file" name="file" accept=".msi,.exe,application/x-msi,application/vnd.microsoft.portable-executable"></label><label>或下载 URL <input name="url" placeholder="https://.../app-1.2.3.msi"></label><label>显示名称（可选） <input name="displayName"></label><label>确认输入 <input name="confirm" required placeholder="INSTALL"></label></div>
-    <details><summary>高级选项（静默参数、安装检测、快捷方式）</summary><div class="grid">
-      <label>应用 ID <input name="appId" placeholder="自动生成"></label><label>版本 <input name="version" placeholder="自动识别"></label><label>厂商 <input name="publisher"></label><label>类型 <select name="installerType"><option value="msi">MSI</option><option value="exe">VS Code EXE（受信模板）</option></select></label>
-      <label>MSI 属性（可选） <input name="silentArgs" placeholder="例如 ALLUSERS=1"></label><label>检测类型 <select name="detectionType"><option value="file_exists">文件存在</option><option value="file_version">文件版本</option></select></label><label>检测路径 <input name="detectionPath" placeholder="默认 C:\\Program Files\\应用\\应用.exe"></label><label>检测版本 <input name="detectionVersion"></label>
-      <label>快捷方式名称 <input name="shortcutName"></label><label>快捷方式目标 <input name="shortcutTarget"></label>
-    </div></details><button>上传并审核</button></form>
-  <form method="post" action="/apps/install" class="form panel"><input type="hidden" name="csrf" value="{{.CSRF}}"><h3>按机器安装</h3><div class="grid"><label>机器 <select name="machine" required><option value="">请选择机器</option>{{range .Machines}}<option value="{{.Machine}}">{{.Machine}}{{if .Bound}}（已绑定）{{end}}</option>{{end}}</select></label><label>应用与版本 <select name="appKey" required><option value="">请选择应用</option>{{range .Applications}}{{if appSupported .}}<option value="{{.AppID}}|{{.Version}}">{{.DisplayName}} {{.Version}}（{{if eq .InstallerType "msi"}}MSI{{else}}VS Code EXE{{end}}）</option>{{end}}{{end}}</select></label><label><input type="checkbox" name="allowDowngrade" value="1"> 允许降级</label></div><button>创建安装任务</button></form>
 
   {{template "fleet" .}}
 </main>

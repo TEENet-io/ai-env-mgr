@@ -78,6 +78,22 @@ func TestLocalUsersIsSorted(t *testing.T) {
 	}
 }
 
+func TestCodexLocalAllowPathsEnumeratesOnlyHumanProfiles(t *testing.T) {
+	fakeUsersRoot(t, "peter", "weipeng", "Public", "CodexSandboxOffline", ".hidden")
+
+	got := codexLocalAllowPaths()
+	root := strings.TrimRight(os.Getenv("AIENVMGR_USERS_ROOT"), `\\/`)
+	want := []string{
+		root + `\peter\.cache\codex-runtimes\*`,
+		root + `\peter\.codex\.sandbox-bin\*`,
+		root + `\weipeng\.cache\codex-runtimes\*`,
+		root + `\weipeng\.codex\.sandbox-bin\*`,
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("codexLocalAllowPaths() = %v, want %v", got, want)
+	}
+}
+
 func TestLocalUsersSkipsFilesAndHiddenEntries(t *testing.T) {
 	root := fakeUsersRoot(t, "work1", ".hidden")
 	if err := os.WriteFile(filepath.Join(root, "desktop.ini"), []byte("x"), 0o644); err != nil {

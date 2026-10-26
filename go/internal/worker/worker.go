@@ -108,6 +108,7 @@ type Event struct {
 	Task        repo.Task
 	Outcome     string // "succeeded", "retry", "failed", "superseded"
 	Err         error
+	Note        string
 	ExternalRef string
 	Duration    time.Duration
 }
@@ -261,7 +262,7 @@ func (w *Worker) finishSuccess(ctx context.Context, task repo.Task, result Resul
 		w.emit(Event{Task: task, Outcome: "lost", Err: err, ExternalRef: result.ExternalRef, Duration: elapsed})
 		return
 	}
-	w.emit(Event{Task: task, Outcome: "succeeded", ExternalRef: result.ExternalRef, Duration: elapsed})
+	w.emit(Event{Task: task, Outcome: "succeeded", ExternalRef: result.ExternalRef, Note: result.Note, Duration: elapsed})
 }
 
 func (w *Worker) finishRetry(ctx context.Context, task repo.Task, runErr error, externalRef string, elapsed time.Duration) {

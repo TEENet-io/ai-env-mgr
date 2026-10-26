@@ -59,6 +59,8 @@ func main() {
 	switch os.Args[1] {
 	case "setup":
 		must(cmdSetup())
+	case "prepare-image":
+		must(cmdPrepareImage())
 	case "install":
 		must(winsvc.Install(serviceName, serviceDisp, serviceDesc))
 		fmt.Println("service installed")
@@ -94,6 +96,10 @@ func usage() {
   setup       do everything at once: copy into place, lock down permissions,
               register and start the service, then verify. Run this once on
               the template machine, as Administrator.
+
+  prepare-image
+              stop the service and remove this machine's enrollment token and
+              transient sync markers before capturing a reusable image.
 
   install     register as an auto-start Windows service
   uninstall   remove the service
@@ -422,6 +428,11 @@ func loop(s *agentcore.Syncer, stop <-chan struct{}, wake <-chan struct{}) {
 		}
 		for _, w := range st.Warnings {
 			log.Printf("  - %s", w)
+		}
+		if st.CodexTarget != "" || st.CodexVersion != "" || st.CodexState != "" {
+			log.Printf("  codex: target=%s generation=%d installed=%s state=%s reason=%s",
+				orDash(st.CodexTarget), st.CodexTargetGeneration, orDash(st.CodexVersion),
+				orDash(st.CodexState), orDash(st.CodexDeferReason))
 		}
 		for _, app := range st.Apps {
 			log.Printf("  application %s@%s task=%s state=%s error=%s",

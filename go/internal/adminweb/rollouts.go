@@ -288,6 +288,18 @@ func (s *Server) handleRolloutNew(w http.ResponseWriter, r *http.Request, sess *
 			c.HasOpen = true
 		}
 		data.Candidates = append(data.Candidates, c)
+		data.CandidateTotal++
+		if c.Online {
+			data.CandidateOnline++
+		} else {
+			data.CandidateOffline++
+		}
+		if !c.Compatible {
+			data.CandidateIncompatible++
+		}
+		if c.HasOpen {
+			data.CandidateOpen++
+		}
 	}
 	s.render(w, "rollout_new.html", http.StatusOK, data)
 }

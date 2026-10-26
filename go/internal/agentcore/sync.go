@@ -74,6 +74,23 @@ type Applier interface {
 	ApplyAppLocker(paths []string, mode string) error
 }
 
+// AppLockerState is the local post-apply view that can be included in the
+// status report. It is optional so platform fakes and older appliers remain
+// compatible; the Windows Agent implements it from the local policy XML.
+type AppLockerState struct {
+	ManagedPathCount     int
+	CodexSandboxProfiles int
+	CodexRuntimeProfiles int
+	CodexSandboxState    string
+	Error                error
+}
+
+// AppLockerReporter is deliberately separate from Applier: applying a policy
+// and reading back what Windows actually accepted are different operations.
+type AppLockerReporter interface {
+	AppLockerState() AppLockerState
+}
+
 // Delivery is what one credential deploy actually did on the machine.
 //
 // It is a struct rather than a handful of return values because the facts it
@@ -395,7 +412,24 @@ func (s *Syncer) RunOnce() (model.Status, error) {
 	if !bound {
 		// The policy above is already in force. Only credentials need an
 		// employee to deliver to, so the machine reports itself and waits.
+		// Unbinding is also a revocation: no employee is allowed to keep the
+		// last employee's managed Codex files or a running session on this box.
+		// Remove only the whitelisted files; the employee's other .codex data
+		// (sessions, history and personal settings) is not ours to delete.
 		warns = append(warns, "no binding: this machine has not been assigned to a user yet")
+		for _, user := range localUsers {
+			n, rmErr := s.Applier.RemoveCreds(s.Machine.ProfileDir(user))
+			switch {
+			case rmErr != nil:
+				errs = append(errs, fmt.Sprintf("credentials revoke for %q: %v", user, rmErr))
+			case n > 0:
+				warns = append(warns, fmt.Sprintf("credentials revoked: removed %d file(s) for %q after unbind", n, user))
+				warns = append(warns, s.stopCodex(user, "a credential revocation after unbind", &sweep))
+			}
+		}
+		// Do not let a stale ETag prevent a later binding from delivering a
+		// fresh bundle after the old files have been removed.
+		s.writeMarker(credsMarkerFile, "")
 	} else {
 		boundUserExists = containsFold(localUsers, binding.User)
 		if !boundUserExists {
@@ -528,7 +562,23 @@ func (s *Syncer) RunOnce() (model.Status, error) {
 	// Before the agent's own update: a self-update restarts this process, and
 	// a Codex install interrupted halfway is worse than one that waits a cycle.
 	agentTarget, codexTarget := effectiveTargets(pol, binding)
-	codex := s.updateCodex(codexTarget, &errs)
+	codex := s.updateCodex(codexTarget, binding.User, &errs)
+	if memorySyncer, ok := s.Codex.(ManagedMemorySyncer); ok {
+		for _, user := range localUsers {
+			if strings.EqualFold(user, administratorAccount) {
+				continue
+			}
+			enabled := bound && boundUserExists && strings.EqualFold(user, binding.User)
+			if enabled && codex.State == CodexFailed {
+				continue // do not distribute a partially installed package
+			}
+			if changed, err := memorySyncer.SyncManagedMemory(s.Machine.ProfileDir(user), enabled); err != nil {
+				errs = append(errs, fmt.Sprintf("personal memory sync for %q: %v", user, err))
+			} else if changed {
+				log.Printf("personal memory: managed instructions and skills synced for %q (enabled=%t)", user, enabled)
+			}
+		}
+	}
 	var appStatuses []model.ApplicationStatus
 	// The API worker owns current Admin tasks. This path remains for direct
 	// OSS/legacy sources and for compatibility tests; the device API no longer
@@ -542,23 +592,34 @@ func (s *Syncer) RunOnce() (model.Status, error) {
 	pendingUpdate, updateState := s.prepareUpdate(agentTarget, &errs)
 
 	// ---- status ----
+	var appLockerState AppLockerState
+	if reporter, ok := s.Applier.(AppLockerReporter); ok {
+		appLockerState = reporter.AppLockerState()
+		if appLockerState.Error != nil {
+			errs = append(errs, fmt.Sprintf("applocker status: %v", appLockerState.Error))
+		}
+	}
 	interval := model.ClampInterval(pol.SyncIntervalMinutes, s.FallbackInterval)
 	st := status.Build(status.Report{
-		Machine:         machine,
-		BoundUser:       binding.User,
-		LocalUsers:      localUsers,
-		BoundUserExists: boundUserExists,
-		Version:         s.Version,
-		Policy:          pol,
-		PolicyETag:      policyETag,
-		CredsETag:       credsETag,
-		Interval:        interval,
-		CredsApplied:    credsApplied,
-		CollectEnabled:  pol.CollectEnabled,
-		CollectUploaded: collectUploaded,
-		CodexVersion:    codex.Version,
-		CodexState:      codex.State,
-		Apps:            appStatuses,
+		Machine:                   machine,
+		BoundUser:                 binding.User,
+		LocalUsers:                localUsers,
+		BoundUserExists:           boundUserExists,
+		Version:                   s.Version,
+		Policy:                    pol,
+		PolicyETag:                policyETag,
+		CredsETag:                 credsETag,
+		Interval:                  interval,
+		CredsApplied:              credsApplied,
+		CollectEnabled:            pol.CollectEnabled,
+		CollectUploaded:           collectUploaded,
+		AppLockerManagedPathCount: appLockerState.ManagedPathCount,
+		CodexSandboxProfileCount:  appLockerState.CodexSandboxProfiles,
+		CodexRuntimeProfileCount:  appLockerState.CodexRuntimeProfiles,
+		CodexSandboxState:         appLockerState.CodexSandboxState,
+		CodexVersion:              codex.Version,
+		CodexState:                codex.State,
+		Apps:                      appStatuses,
 		CodexRestart: status.CodexRestart{
 			Nonce: codexRestart.Nonce, At: codexRestart.At, Note: codexRestart.Note,
 		},
