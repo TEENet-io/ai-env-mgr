@@ -1,0 +1,3 @@
+month,cost_id,product,weight,driver,source_ref
+2026-10,REPLACE-SHARED-SERVER,customer_tools,REPLACE,CPU-memory-hours,REPLACE
+2026-10,REPLACE-SHARED-SERVER,ai_workspace,REPLACE,CPU-memory-hours,REPLACE

@@ -89,6 +89,76 @@ func (c fakeCatalog) Models(context.Context) ([]litellm.Model, error) {
 	return out, nil
 }
 
+type mutableCatalog struct{ models []litellm.Model }
+
+func (c *mutableCatalog) Models(context.Context) ([]litellm.Model, error) {
+	return append([]litellm.Model(nil), c.models...), nil
+}
+
+func TestModelDeliveryReplacesClientListAfterAddUpdateAndRemoval(t *testing.T) {
+	store, service, _, ring, w, ctx := provisioned(t)
+	objects := newFakeObjects()
+	catalogSource := &mutableCatalog{models: []litellm.Model{{Name: "claude-4.5-sonnet", Info: litellm.ModelInfo{DisplayName: "Claude", CatalogVisible: true}}}}
+	w.Register(repo.TaskOSSExport, OSSExport{Store: store, Objects: objects, Keyring: ring, Catalog: catalogSource, GatewayBaseURL: "https://litellm.teenet.app"})
+	e := onboard(t, ctx, service, "work1")
+	if err := store.Employees().SetModels(ctx, e.ID, []string{"claude-4.5-sonnet", "gemini-2.5-pro"}); err != nil {
+		t.Fatal(err)
+	}
+	drain(t, ctx, w)
+	readCatalog := func() map[string]string {
+		blob, ok := objects.get(ossclient.UserKey("work1", "credentials.zip"))
+		if !ok {
+			t.Fatal("missing client bundle")
+		}
+		set, err := creds.Unpack(blob)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var payload struct {
+			Models []struct {
+				Slug        string `json:"slug"`
+				DisplayName string `json:"display_name"`
+			} `json:"models"`
+		}
+		if err := json.Unmarshal(set[model.PathCodexModels], &payload); err != nil {
+			t.Fatal(err)
+		}
+		out := map[string]string{}
+		for _, m := range payload.Models {
+			out[m.Slug] = m.DisplayName
+		}
+		return out
+	}
+	if got := readCatalog(); len(got) != 1 || got["claude-4.5-sonnet"] != "Claude" {
+		t.Fatalf("initial client catalog: %v", got)
+	}
+	update := func() {
+		_, version, err := service.CatalogDeliveryState(ctx)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := service.DeliverCatalog(ctx, ops.SnapshotOf(catalogSource.models), e.ID, version, "admin", "catalog-change"); err != nil {
+			t.Fatal(err)
+		}
+		drain(t, ctx, w)
+	}
+	catalogSource.models = append(catalogSource.models, litellm.Model{Name: "gemini-2.5-pro", Info: litellm.ModelInfo{DisplayName: "Gemini", CatalogVisible: true}})
+	update()
+	if got := readCatalog(); len(got) != 2 || got["gemini-2.5-pro"] != "Gemini" {
+		t.Fatalf("add did not reach client bundle: %v", got)
+	}
+	catalogSource.models[1].Info.DisplayName = "Gemini Pro"
+	update()
+	if got := readCatalog(); got["gemini-2.5-pro"] != "Gemini Pro" {
+		t.Fatalf("metadata update did not reach client bundle: %v", got)
+	}
+	catalogSource.models = catalogSource.models[1:]
+	update()
+	if got := readCatalog(); len(got) != 1 || got["gemini-2.5-pro"] != "Gemini Pro" {
+		t.Fatalf("removed model remained in client bundle: %v", got)
+	}
+}
+
 // exporting wires a worker with all three handlers over a fake gateway and a
 // fake object store, which between them are the whole delivery path.
 func exporting(t *testing.T) (*dbstore.Store, *ops.Service, *fakeObjects, *Worker, context.Context) {

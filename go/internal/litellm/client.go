@@ -11,9 +11,11 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
 )
@@ -66,6 +68,8 @@ type Key struct {
 // unknown model_info keys through verbatim, which is what lets the gateway
 // be the single source of truth for the picker.
 type ModelInfo struct {
+	ID               string   `json:"id"`
+	Mode             string   `json:"mode"`
 	DisplayName      string   `json:"display_name"`
 	ContextWindow    int      `json:"context_window"`
 	ReasoningLevels  []string `json:"reasoning_levels"`
@@ -250,24 +254,165 @@ func (c *Client) ListKeys(ctx context.Context) ([]Key, error) {
 	return nil, fmt.Errorf("gateway /key/list did not terminate after %d pages", keyPageLimit)
 }
 
-// Models returns the gateway's catalog metadata.
-//
-// Only models marked catalog_visible are returned: a model may be routable
-// for testing without being something employees should see in the picker.
-func (c *Client) Models(ctx context.Context) ([]Model, error) {
+// AllModels returns every gateway deployment, including hidden backups.
+// Channel diagnostics must see those too; employee pickers must not.
+func (c *Client) AllModels(ctx context.Context) ([]Model, error) {
 	var out struct {
 		Data []Model `json:"data"`
 	}
 	if err := c.do(ctx, http.MethodGet, "/model/info", nil, &out); err != nil {
 		return nil, err
 	}
-	visible := make([]Model, 0, len(out.Data))
-	for _, m := range out.Data {
+	return out.Data, nil
+}
+
+// Models returns only deployments visible in the employee catalog.
+func (c *Client) Models(ctx context.Context) ([]Model, error) {
+	all, err := c.AllModels(ctx)
+	if err != nil {
+		return nil, err
+	}
+	visible := make([]Model, 0, len(all))
+	for _, m := range all {
 		if m.Info.CatalogVisible {
 			visible = append(visible, m)
 		}
 	}
 	return visible, nil
+}
+
+// DeploymentHealth is the result of a health check scoped to one deployment.
+// A 503 with an unhealthy_endpoints body is a completed failed check, not a
+// transport error. No provider credentials or endpoint URLs are retained.
+type DeploymentHealth struct {
+	HealthyCount   int `json:"healthy_count"`
+	UnhealthyCount int `json:"unhealthy_count"`
+	Healthy        []struct {
+		ModelID string `json:"model_id"`
+	} `json:"healthy_endpoints"`
+	Unhealthy []struct {
+		ModelID string `json:"model_id"`
+	} `json:"unhealthy_endpoints"`
+}
+
+func (c *Client) CheckDeployment(ctx context.Context, modelID string) (DeploymentHealth, error) {
+	if modelID == "" {
+		return DeploymentHealth{}, fmt.Errorf("health check: no deployment ID")
+	}
+	var out DeploymentHealth
+	path := "/health?model_id=" + url.QueryEscape(modelID)
+	err := c.do(ctx, http.MethodGet, path, nil, &out)
+	if err != nil {
+		var apiErr *APIError
+		if !asAPIError(err, &apiErr) || apiErr.Status != http.StatusServiceUnavailable || json.Unmarshal([]byte(apiErr.Body), &out) != nil {
+			return DeploymentHealth{}, err
+		}
+	}
+	if out.HealthyCount+out.UnhealthyCount != 1 {
+		return DeploymentHealth{}, fmt.Errorf("health check returned %d deployments, expected one", out.HealthyCount+out.UnhealthyCount)
+	}
+	if out.HealthyCount == 1 {
+		if len(out.Healthy) != 1 || out.Healthy[0].ModelID != modelID {
+			return DeploymentHealth{}, fmt.Errorf("health check returned another deployment")
+		}
+	} else if len(out.Unhealthy) != 1 || out.Unhealthy[0].ModelID != modelID {
+		return DeploymentHealth{}, fmt.Errorf("health check returned another deployment")
+	}
+	return out, nil
+}
+
+// ChatTrial sends a small, non-streaming prompt to one exact deployment. The
+// caller must still validate that the deployment belongs to the requested
+// channel. Prompt and output are returned to the caller only; they are not
+// recorded in the console's audit trail.
+type ChatTrial struct {
+	Output           string `json:"output"`
+	ModelID          string `json:"model_id"`
+	PromptTokens     int    `json:"prompt_tokens"`
+	CompletionTokens int    `json:"completion_tokens"`
+	FinishReason     string `json:"finish_reason"`
+}
+
+type ChatTrialOptions struct {
+	DisableThinking bool
+}
+
+var ErrNoVisibleOutput = errors.New("gateway chat response had no visible text")
+
+func (c *Client) TryChat(ctx context.Context, modelID, prompt string, opts ChatTrialOptions) (ChatTrial, error) {
+	if modelID == "" || strings.TrimSpace(prompt) == "" {
+		return ChatTrial{}, fmt.Errorf("chat trial requires a deployment and prompt")
+	}
+	params := map[string]any{
+		"model":      modelID,
+		"messages":   []map[string]string{{"role": "user", "content": prompt}},
+		"max_tokens": 256,
+		"stream":     false,
+		"metadata":   map[string]string{"request_source": "windows-control-channel-test"},
+	}
+	if opts.DisableThinking {
+		params["thinking"] = map[string]any{"type": "disabled", "budget_tokens": 0}
+	}
+	body, err := json.Marshal(params)
+	if err != nil {
+		return ChatTrial{}, err
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.BaseURL+"/chat/completions", bytes.NewReader(body))
+	if err != nil {
+		return ChatTrial{}, err
+	}
+	req.Header.Set("Authorization", "Bearer "+c.AdminKey)
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := c.HTTP.Do(req)
+	if err != nil {
+		return ChatTrial{}, err
+	}
+	defer resp.Body.Close()
+	payload, err := io.ReadAll(io.LimitReader(resp.Body, 64<<10))
+	if err != nil {
+		return ChatTrial{}, err
+	}
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		// Provider errors can contain credentials or echoed prompts. Only the
+		// status is propagated to the admin page.
+		return ChatTrial{}, &APIError{Status: resp.StatusCode, Path: "/chat/completions"}
+	}
+	var out struct {
+		Choices []struct {
+			Message struct {
+				Content string `json:"content"`
+			} `json:"message"`
+			FinishReason string `json:"finish_reason"`
+		} `json:"choices"`
+		Usage struct {
+			PromptTokens     int `json:"prompt_tokens"`
+			CompletionTokens int `json:"completion_tokens"`
+		} `json:"usage"`
+	}
+	if err := json.Unmarshal(payload, &out); err != nil {
+		return ChatTrial{}, fmt.Errorf("decode gateway chat response: %w", err)
+	}
+	if len(out.Choices) == 0 {
+		return ChatTrial{}, fmt.Errorf("gateway chat response had no choices")
+	}
+	routedID := resp.Header.Get("x-litellm-model-id")
+	if routedID == "" {
+		return ChatTrial{}, fmt.Errorf("gateway did not identify the serving deployment")
+	}
+	if routedID != modelID {
+		return ChatTrial{}, fmt.Errorf("gateway routed the trial to another deployment")
+	}
+	trial := ChatTrial{
+		Output:           out.Choices[0].Message.Content,
+		ModelID:          routedID,
+		PromptTokens:     out.Usage.PromptTokens,
+		CompletionTokens: out.Usage.CompletionTokens,
+		FinishReason:     out.Choices[0].FinishReason,
+	}
+	if strings.TrimSpace(trial.Output) == "" {
+		return trial, ErrNoVisibleOutput
+	}
+	return trial, nil
 }
 
 func (c *Client) do(ctx context.Context, method, path string, body any, out any) error {

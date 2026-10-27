@@ -30,16 +30,16 @@
 
   <h2>发布任务</h2>
   <div class="panel scroll"><table>
-    <thead><tr><th>创建</th><th>产品</th><th>版本</th><th>类型</th><th>成功</th><th>失败</th><th>待执行</th><th>已排除</th><th>状态</th><th>说明</th></tr></thead>
+    <thead><tr><th>创建</th><th>产品</th><th>版本</th><th>类型</th><th>成功</th><th>失败</th><th>待执行</th><th>已排除</th><th>已取消</th><th>已取代</th><th>状态</th><th>说明</th></tr></thead>
     <tbody>{{range .Rollouts}}
       <tr>
         <td class="dim"><a href="/rollouts/detail?id={{.ID}}">{{.CreatedAt.Format "01-02 15:04"}}</a> {{.CreatedBy}}</td>
         <td>{{.Product}}</td><td class="mono">{{.Artifact.Version}}</td>
-        <td>{{if eq (printf "%s" .Kind) "rollback"}}回滚{{else}}发布{{end}}</td>
-        <td class="num">{{.Summary.Succeeded}}</td><td class="num">{{.Summary.Failed}}</td><td class="num">{{.Summary.Pending}}</td><td class="num">{{.Summary.Excluded}}</td>
-        <td>{{if .Paused}}<span class="tag tag-warn">已暂停</span>{{else if .Summary.Complete}}<span class="tag tag-ok">已完成</span>{{else}}<span class="tag">进行中</span>{{end}}</td>
+        <td>{{if eq (printf "%s" .Kind) "rollback"}}回滚{{else if eq (printf "%s" .Kind) "global"}}全局{{else}}发布{{end}}</td>
+        <td class="num">{{.Summary.Succeeded}}</td><td class="num">{{.Summary.Failed}}</td><td class="num">{{.Summary.Pending}}</td><td class="num">{{.Summary.Excluded}}</td><td class="num">{{.Summary.Cancelled}}</td><td class="num">{{.Summary.Superseded}}</td>
+        <td>{{if .Paused}}<span class="tag tag-warn">已暂停</span>{{else}}<span class="tag tag-{{.Summary.StatusTone}}">{{.Summary.StatusLabel}}</span>{{end}}</td>
         <td>{{.Note}}</td>
-      </tr>{{else}}<tr><td colspan="10" class="dim">还没有发布任务</td></tr>{{end}}
+      </tr>{{else}}<tr><td colspan="12" class="dim">还没有发布任务</td></tr>{{end}}
     </tbody></table></div>
 </main>
 </div>

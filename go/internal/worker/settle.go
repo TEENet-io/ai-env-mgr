@@ -2,7 +2,9 @@ package worker
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
+	"fmt"
 	"strings"
 	"time"
 
@@ -50,6 +52,24 @@ func SettleTargets(ctx context.Context, store repo.Store, deviceID string, s mod
 		switch {
 		case k.running == artifact.Version:
 			_, err = store.Releases().FinishTarget(ctx, target.ID, repo.TargetSucceeded, "", k.running)
+			if err == nil {
+				rollout, rolloutErr := store.Releases().RolloutByID(ctx, target.RolloutID)
+				if rolloutErr != nil {
+					return rolloutErr
+				}
+				// Global targets are tracking rows only. deviceconfig ignores
+				// them after success, so the next fleet publish can target the
+				// same machine again without a manual "follow global" action.
+				if rollout.Kind == repo.RolloutGlobal {
+					if _, err = store.Releases().ReleaseSucceeded(ctx, deviceID, k.product); err == nil {
+						// OSS agents need their binding object rewritten after the
+						// tracking target is released. API agents see the same
+						// change on their next config request; this task keeps both
+						// channels consistent.
+						err = reexportDevice(ctx, store, deviceID, target.ID)
+					}
+				}
+			}
 		case k.target == artifact.Version && k.generation == target.Generation &&
 			(k.state == agentcore.CodexFailed || k.state == agentcore.AgentUpdateFailed):
 			_, err = store.Releases().FinishTarget(ctx, target.ID, repo.TargetFailed, firstError(s.Errors, k.prefix), k.running)
@@ -59,6 +79,24 @@ func SettleTargets(ctx context.Context, store repo.Store, deviceID string, s mod
 		}
 	}
 	return nil
+}
+
+func reexportDevice(ctx context.Context, store repo.Store, deviceID, targetID string) error {
+	device, err := store.Devices().ByID(ctx, deviceID)
+	if err != nil {
+		return err
+	}
+	payload, err := json.Marshal(map[string]string{"device_id": device.ID, "hostname": device.Hostname})
+	if err != nil {
+		return err
+	}
+	_, _, err = store.Tasks().Enqueue(ctx, repo.NewTask{
+		Kind:           repo.TaskOSSExport,
+		IdempotencyKey: fmt.Sprintf("oss_export:device:%s:global-settled:%s", device.ID, targetID),
+		Payload:        payload,
+		DeviceID:       device.ID,
+	})
+	return err
 }
 
 // firstError picks the line about this product, or a generic note.

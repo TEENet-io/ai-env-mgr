@@ -189,6 +189,10 @@ func (s *Server) handleReleases(w http.ResponseWriter, r *http.Request, sess *se
 			IsGlobal: data.GlobalTargets[a.Product] == a.Version,
 		})
 	}
+	appMgr := &admincore.Manager{Store: s.dbm.objects, Events: s.events}
+	if data.Applications, err = appMgr.ListApplications(); err != nil {
+		data.Error = "could not list application catalog: " + err.Error()
+	}
 	s.render(w, "releases.html", http.StatusOK, data)
 }
 

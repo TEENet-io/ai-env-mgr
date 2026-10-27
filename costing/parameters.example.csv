@@ -1,0 +1,3 @@
+month,product,billable_units,unit_name,onboarding_amort_cny,risk_reserve_pct,payment_fee_pct,min_margin_pct,approval_status,source_ref
+2026-10,customer_tools,REPLACE,customer-month,REPLACE,REPLACE,REPLACE,REPLACE,working,REPLACE
+2026-10,ai_workspace,REPLACE,seat-month,REPLACE,REPLACE,REPLACE,REPLACE,working,REPLACE

@@ -150,8 +150,9 @@ func Build(ctx context.Context, store repo.Store, deviceID string) (Config, erro
 //     "this machine: nothing" -- so that pausing holds the machine where it
 //     is instead of handing it back to the fleet target;
 //   - an open target, or none open but one that succeeded: that version, so
-//     that a machine the rollout updated stays updated when the rollout is
-//     over, rather than sliding back to an older fleet target.
+//     that a machine-specific rollout stays pinned when it is over, rather
+//     than sliding back to an older fleet target. Global targets are released
+//     after success and never pin a machine.
 func machineTargets(ctx context.Context, store repo.Store, deviceID string) (model.Binding, error) {
 	var out model.Binding
 	for _, product := range []string{repo.ProductAgent, repo.ProductCodex} {
@@ -164,6 +165,17 @@ func machineTargets(ctx context.Context, store repo.Store, deviceID string) (mod
 		}
 		if err != nil {
 			return out, err
+		}
+		// A successful global target is tracking data only. The fleet policy
+		// remains authoritative, so do not turn it into a machine pin.
+		if target.Status == repo.TargetSucceeded {
+			rollout, err := store.Releases().RolloutByID(ctx, target.RolloutID)
+			if err != nil {
+				return out, err
+			}
+			if rollout.Kind == repo.RolloutGlobal {
+				continue
+			}
 		}
 		rt := &model.ReleaseTarget{Generation: target.Generation}
 		rollout, err := store.Releases().RolloutByID(ctx, target.RolloutID)

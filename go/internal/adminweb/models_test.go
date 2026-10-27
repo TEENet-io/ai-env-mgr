@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -70,7 +71,7 @@ func TestTheOverviewDeliversTheModelConfiguration(t *testing.T) {
 	}
 	synced := time.Now()
 	if _, err := store.Reports().Import(ctx, repo.DeviceReport{DeviceID: pc.ID, ImportedAt: synced, LastSyncAt: &synced,
-		Report: []byte(`{"errors":[]}`), SourceETag: "s1"}); err != nil {
+		Report: []byte(`{"boundUser":"alice","credsApplied":true,"errors":[]}`), SourceETag: "s1"}); err != nil {
 		t.Fatal(err)
 	}
 	if page = dbGet(t, h, "/models", cookie).Body.String(); !strings.Contains(page, "已收到") || !strings.Contains(page, "PC-A") {
@@ -82,5 +83,62 @@ func TestTheOverviewDeliversTheModelConfiguration(t *testing.T) {
 	page = dbGet(t, h, "/models", cookie).Body.String()
 	if !strings.Contains(page, "有变化") || !strings.Contains(page, `新增 <span class="mono">gemini-3</span>`) || !strings.Contains(page, `下架 <span class="mono">claude-5</span>`) {
 		t.Fatal("a changed gateway should be shown as added and removed models")
+	}
+	if !strings.Contains(page, `name="employees"`) || !strings.Contains(page, `name="devices"`) {
+		t.Fatal("the page must offer batch employee and device selection")
+	}
+	rec = dbPost(t, h, "/models/deliver", url.Values{
+		"csrf": {csrf}, "scope": {"batch"}, "version": {"1"}, "employees": {e.ID}, "devices": {pc.ID},
+	}, cookie)
+	if loc := rec.Header().Get("Location"); strings.Contains(loc, "err=") {
+		t.Fatalf("batch deliver: %s", loc)
+	}
+	state, version, err := s.dbm.ops.CatalogDeliveryState(ctx)
+	if err != nil || state.Last.Scope != "batch" || len(state.Last.Targets) != 1 || state.Last.Targets[0].DeviceID != pc.ID {
+		t.Fatalf("batch target not recorded: %+v err=%v", state.Last, err)
+	}
+	if _, err := s.dbm.db.Pool().Exec(ctx, `update tasks set status = 'failed', last_error = 'test export failure'
+		where id = $1`, state.Last.Tasks[e.ID]); err != nil {
+		t.Fatal(err)
+	}
+	page = dbGet(t, h, "/models", cookie).Body.String()
+	if !strings.Contains(page, "test export failure") || !strings.Contains(page, `action="/models/retry"`) {
+		t.Fatal("each failed target should show its error and retry action")
+	}
+	rec = dbPost(t, h, "/models/retry", url.Values{"csrf": {csrf}, "version": {strconv.Itoa(version)}, "employee": {e.ID}}, cookie)
+	if loc := rec.Header().Get("Location"); strings.Contains(loc, "err=") {
+		t.Fatalf("retry: %s (version before retry %d)", loc, version)
+	}
+	state, _, err = s.dbm.ops.CatalogDeliveryState(ctx)
+	if err != nil || state.Last.Retries[e.ID] != 1 {
+		t.Fatalf("retry not recorded: %+v err=%v", state.Last, err)
+	}
+	if _, err := s.dbm.db.Pool().Exec(ctx, `update tasks set status = 'succeeded', finished_at = now() - interval '1 minute'
+		where id = $1`, state.Last.Tasks[e.ID]); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.Devices().SetEnrolled(ctx, pc.ID, "192.0.2.1", time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.CredentialBundles().Put(ctx, e.ID, e.AuthEpoch, []byte("zip"), "new-etag"); err != nil {
+		t.Fatal(err)
+	}
+	synced = time.Now()
+	if _, err := store.Reports().Import(ctx, repo.DeviceReport{DeviceID: pc.ID, ImportedAt: synced, LastSyncAt: &synced,
+		Report: []byte(`{"boundUser":"alice","credsApplied":true,"credsEtag":"old-etag","errors":[]}`), SourceETag: "s2"}); err != nil {
+		t.Fatal(err)
+	}
+	page = dbGet(t, h, "/models", cookie).Body.String()
+	if !strings.Contains(page, "未收到新配置") || strings.Contains(page, "已收到</span>") {
+		t.Fatal("a later sync with the old bundle must not be shown as delivered")
+	}
+	synced = time.Now().Add(time.Second)
+	if _, err := store.Reports().Import(ctx, repo.DeviceReport{DeviceID: pc.ID, ImportedAt: synced, LastSyncAt: &synced,
+		Report: []byte(`{"boundUser":"alice","credsApplied":true,"credsEtag":"new-etag","errors":[]}`), SourceETag: "s3"}); err != nil {
+		t.Fatal(err)
+	}
+	page = dbGet(t, h, "/models", cookie).Body.String()
+	if !strings.Contains(page, "已收到") {
+		t.Fatal("matching agent bundle ETag should confirm delivery")
 	}
 }

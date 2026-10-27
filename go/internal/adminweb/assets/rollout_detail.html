@@ -4,12 +4,12 @@
 {{template "nav" .}}
 <main class="sheet">
   {{with .Rollout}}
-  <header class="pagehead"><h1>{{if eq (printf "%s" .Kind) "rollback"}}回滚{{else}}发布{{end}}：{{.Product}} <span class="mono">{{.Artifact.Version}}</span></h1></header>
+  <header class="pagehead"><h1>{{if eq (printf "%s" .Kind) "rollback"}}回滚{{else if eq (printf "%s" .Kind) "global"}}全局发布{{else}}发布{{end}}：{{.Product}} <span class="mono">{{.Artifact.Version}}</span></h1></header>
   {{template "notices" $}}
   <p class="dim"><a href="/rollouts">← 发布任务</a> · {{.CreatedBy}} 于 {{.CreatedAt.Format "2006-01-02 15:04"}}{{if .Note}} · {{.Note}}{{end}}{{if .RollbackOf}} · 回滚自 <a href="/rollouts/detail?id={{.RollbackOf}}">另一次发布</a>{{end}}</p>
   <p>
     成功 <strong>{{.Summary.Succeeded}}</strong> · 失败 <strong>{{.Summary.Failed}}</strong> · 待执行 <strong>{{.Summary.Pending}}</strong> · 已排除 {{.Summary.Excluded}} · 已取消 {{.Summary.Cancelled}} · 已取代 {{.Summary.Superseded}}
-    {{if .Paused}}<span class="tag tag-warn">已暂停</span>{{else if .Summary.Complete}}<span class="tag tag-ok">已完成</span>{{end}}
+    {{if .Paused}}<span class="tag tag-warn">已暂停</span>{{else}}<span class="tag tag-{{.Summary.StatusTone}}">{{.Summary.StatusLabel}}</span>{{end}}
   </p>
   <div class="panel scroll"><table>
     <thead><tr><th>机器</th><th>状态</th><th>详情</th><th>代次</th><th>创建</th><th>结束</th><th></th></tr></thead>

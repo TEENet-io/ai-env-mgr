@@ -67,14 +67,26 @@ type CatalogDelivery struct {
 	// Last is the most recent delivery, test or fleet: the one whose
 	// arrival the page follows. Tasks maps employee id to the export task.
 	Last LastDelivery `json:"last"`
+	// Recent completed presses remain inspectable after a new delivery.
+	History []LastDelivery `json:"history,omitempty"`
 }
 
 // LastDelivery is one press of the button.
 type LastDelivery struct {
-	Scope string            `json:"scope"` // "all" or "test"
-	At    string            `json:"at"`
-	By    string            `json:"by"`
-	Tasks map[string]string `json:"tasks"`
+	Scope    string                  `json:"scope"` // "all", "test" or "batch"
+	At       string                  `json:"at"`
+	By       string                  `json:"by"`
+	Snapshot CatalogSnapshot         `json:"snapshot,omitempty"`
+	Targets  []CatalogDeliveryTarget `json:"targets,omitempty"`
+	Tasks    map[string]string       `json:"tasks"`
+	Retries  map[string]int          `json:"retries,omitempty"`
+}
+
+type CatalogDeliveryTarget struct {
+	EmployeeID  string `json:"employeeId"`
+	WindowsUser string `json:"windowsUser"`
+	DeviceID    string `json:"deviceId,omitempty"`
+	Hostname    string `json:"hostname,omitempty"`
 }
 
 // CatalogDeliveryState reads the setting; nothing stored is a zero value
@@ -92,43 +104,120 @@ func (s *Service) CatalogDeliveryState(ctx context.Context) (CatalogDelivery, in
 //
 // It returns how many employees were queued.
 func (s *Service) DeliverCatalog(ctx context.Context, snapshot CatalogSnapshot, employeeID string, expectVersion int, actor, requestID string) (int, error) {
+	scope := "all"
+	employees := []string(nil)
+	if employeeID != "" {
+		scope, employees = "test", []string{employeeID}
+	}
+	return s.deliverCatalog(ctx, snapshot, scope, employees, nil, expectVersion, actor, requestID)
+}
+
+// DeliverCatalogBatch accepts explicit employees and/or bound devices. A
+// credential bundle is employee-scoped: selecting a device also refreshes any
+// other machine bound to that employee, though only selected devices are
+// listed as batch targets.
+func (s *Service) DeliverCatalogBatch(ctx context.Context, snapshot CatalogSnapshot, employeeIDs, deviceIDs []string, expectVersion int, actor, requestID string) (int, error) {
+	if len(employeeIDs)+len(deviceIDs) == 0 || len(employeeIDs)+len(deviceIDs) > 200 {
+		return 0, errors.New("select 1 to 200 employees or devices")
+	}
+	return s.deliverCatalog(ctx, snapshot, "batch", employeeIDs, deviceIDs, expectVersion, actor, requestID)
+}
+
+func (s *Service) deliverCatalog(ctx context.Context, snapshot CatalogSnapshot, scope string, employeeIDs, deviceIDs []string, expectVersion int, actor, requestID string) (int, error) {
 	now := s.now()
 	marker := "catalog:" + strconv.FormatInt(now.UnixNano(), 36)
-	scope := "all"
-	if employeeID != "" {
-		scope = "test"
-	}
 	var queued int
 	err := s.store.InTx(ctx, func(tx repo.Store) error {
 		var targets []repo.Employee
-		if employeeID != "" {
-			e, err := tx.Employees().ByID(ctx, employeeID)
-			if err != nil {
-				return err
-			}
-			targets = []repo.Employee{e}
-		} else {
+		selectedDevices := map[string]map[string]bool{}
+		selectedEmployees := map[string]bool{}
+		if scope == "all" {
 			all, err := tx.Employees().List(ctx, repo.EmployeeFilter{})
 			if err != nil {
 				return err
 			}
 			targets = all
+		} else {
+			for _, id := range employeeIDs {
+				if id == "" {
+					return errors.New("employee selection contains an empty ID")
+				}
+				selectedEmployees[id] = true
+			}
+			for _, id := range deviceIDs {
+				device, err := tx.Devices().ByID(ctx, id)
+				if err != nil {
+					return fmt.Errorf("selected device %s: %w", id, err)
+				}
+				if device.Status == repo.DeviceRevoked {
+					return fmt.Errorf("%s is revoked", device.Hostname)
+				}
+				binding, err := tx.Bindings().Open(ctx, id)
+				if err != nil {
+					return fmt.Errorf("%s has no bound employee: %w", device.Hostname, err)
+				}
+				if selectedDevices[binding.EmployeeID] == nil {
+					selectedDevices[binding.EmployeeID] = map[string]bool{}
+				}
+				selectedDevices[binding.EmployeeID][id] = true
+			}
+			ids := map[string]bool{}
+			for id := range selectedEmployees {
+				ids[id] = true
+			}
+			for id := range selectedDevices {
+				ids[id] = true
+			}
+			for id := range ids {
+				e, err := tx.Employees().ByID(ctx, id)
+				if err != nil {
+					return fmt.Errorf("selected employee %s: %w", id, err)
+				}
+				targets = append(targets, e)
+			}
 		}
 		tasks := map[string]string{}
+		var deliveryTargets []CatalogDeliveryTarget
 		for _, e := range targets {
 			if !e.Active() {
-				if employeeID != "" {
+				if scope != "all" {
 					return fmt.Errorf("%s is not active", e.WindowsUser)
 				}
 				continue
 			}
 			if _, err := tx.Credentials().Live(ctx, e.ID, repo.PurposeCodexGateway); errors.Is(err, repo.ErrNotFound) {
-				if employeeID != "" {
+				if scope != "all" {
 					return fmt.Errorf("%s has no gateway token yet; there is no configuration to deliver", e.WindowsUser)
 				}
 				continue
 			} else if err != nil {
 				return err
+			}
+			bindings, err := tx.Bindings().OpenByEmployee(ctx, e.ID)
+			if err != nil {
+				return err
+			}
+			found := false
+			seenDevices := map[string]bool{}
+			for _, binding := range bindings {
+				if scope == "batch" && !selectedEmployees[e.ID] && !selectedDevices[e.ID][binding.DeviceID] {
+					continue
+				}
+				device, err := tx.Devices().ByID(ctx, binding.DeviceID)
+				if err != nil {
+					return err
+				}
+				deliveryTargets = append(deliveryTargets, CatalogDeliveryTarget{EmployeeID: e.ID, WindowsUser: e.WindowsUser, DeviceID: device.ID, Hostname: device.Hostname})
+				seenDevices[device.ID] = true
+				found = true
+			}
+			for id := range selectedDevices[e.ID] {
+				if !seenDevices[id] {
+					return fmt.Errorf("device %s changed binding while selecting targets: %w", id, repo.ErrConflict)
+				}
+			}
+			if !found {
+				deliveryTargets = append(deliveryTargets, CatalogDeliveryTarget{EmployeeID: e.ID, WindowsUser: e.WindowsUser})
 			}
 			task, err := s.enqueueEmployeeExportTask(ctx, tx, e, marker)
 			if err != nil {
@@ -146,7 +235,13 @@ func (s *Service) DeliverCatalog(ctx context.Context, snapshot CatalogSnapshot, 
 			return err
 		}
 		after := before
-		after.Last = LastDelivery{Scope: scope, At: now.UTC().Format(time.RFC3339), By: actor, Tasks: tasks}
+		if before.Last.At != "" {
+			after.History = append(after.History, before.Last)
+			if len(after.History) > 10 {
+				after.History = after.History[len(after.History)-10:]
+			}
+		}
+		after.Last = LastDelivery{Scope: scope, At: now.UTC().Format(time.RFC3339), By: actor, Snapshot: snapshot, Targets: deliveryTargets, Tasks: tasks}
 		if scope == "all" {
 			after.Fleet, after.FleetAt, after.FleetBy = snapshot, after.Last.At, actor
 		}
@@ -165,6 +260,68 @@ func (s *Service) DeliverCatalog(ctx context.Context, snapshot CatalogSnapshot, 
 		return 0, fmt.Errorf("deliver the model configuration: %w", err)
 	}
 	return queued, nil
+}
+
+// RetryCatalogDelivery requeues only one employee from the latest batch. The
+// gateway must still match that batch's snapshot, otherwise a retry could
+// silently deliver a different model catalog under the old result row.
+func (s *Service) RetryCatalogDelivery(ctx context.Context, snapshot CatalogSnapshot, employeeID string, expectVersion int, actor, requestID string) error {
+	if employeeID == "" {
+		return errors.New("select an employee to retry")
+	}
+	err := s.store.InTx(ctx, func(tx repo.Store) error {
+		state, _, err := s.catalogDeliveryIn(ctx, tx)
+		if err != nil {
+			return err
+		}
+		if state.Last.Tasks[employeeID] == "" {
+			return errors.New("employee is not in the latest delivery")
+		}
+		previousTask := state.Last.Tasks[employeeID]
+		previous, err := tx.Tasks().ByID(ctx, previousTask)
+		if err != nil {
+			return err
+		}
+		if previous.Status != repo.TaskFailed && previous.Status != repo.TaskSuperseded && previous.Status != repo.TaskSucceeded {
+			return errors.New("the previous delivery is still running; wait for its result")
+		}
+		if state.Last.Snapshot.Digest == "" || state.Last.Snapshot.Digest != snapshot.Digest {
+			return errors.New("gateway models have changed; create a new delivery instead of retrying")
+		}
+		e, err := tx.Employees().ByID(ctx, employeeID)
+		if err != nil {
+			return err
+		}
+		if !e.Active() {
+			return fmt.Errorf("%s is no longer active", e.WindowsUser)
+		}
+		if _, err := tx.Credentials().Live(ctx, e.ID, repo.PurposeCodexGateway); err != nil {
+			return fmt.Errorf("%s has no usable gateway token: %w", e.WindowsUser, err)
+		}
+		marker := "catalog-retry:" + strconv.FormatInt(s.now().UnixNano(), 36)
+		task, err := s.enqueueEmployeeExportTask(ctx, tx, e, marker)
+		if err != nil {
+			return err
+		}
+		state.Last.Tasks[employeeID] = task.ID
+		if state.Last.Retries == nil {
+			state.Last.Retries = map[string]int{}
+		}
+		state.Last.Retries[employeeID]++
+		value, err := json.Marshal(state)
+		if err != nil {
+			return err
+		}
+		if _, err := tx.Settings().Set(ctx, SettingCatalogDelivery, value, expectVersion, actor); err != nil {
+			return err
+		}
+		return s.auditTarget(ctx, tx, actor, requestID, ActionCatalogDeliver, "employee", employeeID,
+			map[string]any{"task": previousTask}, map[string]any{"retry": state.Last.Retries[employeeID], "task": task.ID})
+	})
+	if err != nil {
+		return fmt.Errorf("retry model delivery: %w", err)
+	}
+	return nil
 }
 
 func (s *Service) catalogDeliveryIn(ctx context.Context, tx repo.Store) (CatalogDelivery, int, error) {

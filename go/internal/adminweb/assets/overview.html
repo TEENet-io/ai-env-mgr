@@ -65,7 +65,7 @@
 
     {{if .DB}}
     <p>{{if not .GatewayEnabled}}{{.GatewayUnusable}}{{else if .GatewayUnusable}}<span class="tag tag-bad">网关不可达</span>{{else}}可用模型 <b>{{len .GatewayModels}}</b> 个{{range .GatewayChannels}}{{if .Paused}} · <span class="tag tag-bad">{{.Label}} 已暂停</span>{{end}}{{end}}{{end}}
-      · <a href="/models">模型、渠道与下发 →</a></p>
+      · <a href="/channels">查看渠道 →</a> · <a href="/models">模型下发 →</a></p>
     {{else}}
     <details>
       {{/* Three different states, and conflating the first two sends somebody

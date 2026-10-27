@@ -1,0 +1,7 @@
+{{define "ticket_change_details"}}{{with index .Details "change_type"}}
+<p>申请日期：{{index $.Details "change_application_date"}} · 变更类型：{{changeType .}} · 动作：{{changeAction (index $.Details "change_action")}} · 期望生效：{{index $.Details "change_desired_at"}}</p>
+<p>紧急：{{if eq (index $.Details "change_urgent") "yes"}}是{{else}}否{{end}}{{with index $.Details "change_urgent_reason"}} · 原因：{{.}}{{end}}</p>
+<p>申请说明：</p><p class="ticket-pre">{{index $.Details "change_application_note"}}</p>
+{{with index $.Details "change_items"}}<div class="scroll"><table><thead><tr><th>序号</th><th>名称</th><th>工作邮箱 / 最低版本</th><th>员工编号 / 适用人员设备</th><th>截止日期</th><th>备注</th></tr></thead><tbody>{{range $i, $row := .}}<tr><td>{{add $i 1}}</td><td>{{index $row "name"}}</td><td>{{with index $row "email"}}{{.}}{{else}}{{index $row "min_version"}}{{end}}</td><td>{{with index $row "number"}}{{.}}{{else}}{{index $row "target"}}{{end}}</td><td>{{index $row "cutoff"}}</td><td>{{index $row "note"}}</td></tr>{{end}}</tbody></table></div>{{end}}
+<p>客户联系人：{{index $.Details "change_contact_name"}} · 联系人签名：{{index $.Details "change_contact_signature"}} · 日期：{{index $.Details "change_contact_date"}}</p>
+{{else}}<p class="hint">旧工单仅在详细说明中记录了环境变更内容。</p>{{end}}{{end}}

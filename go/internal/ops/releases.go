@@ -128,7 +128,98 @@ func (s *Service) SetGlobalTarget(ctx context.Context, product, version, actor, 
 	if err != nil {
 		return model.Policy{}, err
 	}
+	// The policy remains the compatibility path for old agents and OSS-only
+	// machines. Modern agents also get explicit targets so the release appears
+	// in the task centre and can be settled per machine.
+	deviceIDs, err := s.createGlobalRollout(ctx, artifact, actor, requestID)
+	if err != nil {
+		return model.Policy{}, fmt.Errorf("record global %s rollout: %w", product, err)
+	}
+	s.wake(deviceIDs...)
 	return pol, nil
+}
+
+// createGlobalRollout records one target for each modern machine that follows
+// the fleet target. A machine with a normal (machine-specific) target is left
+// alone. Global targets are superseded when the global version changes, so a
+// repeated global publish is safe and visible in history.
+func (s *Service) createGlobalRollout(ctx context.Context, artifact repo.Artifact, actor, requestID string) ([]string, error) {
+	var deviceIDs []string
+	err := s.store.InTx(ctx, func(tx repo.Store) error {
+		devices, err := tx.Devices().List(ctx, repo.DeviceFilter{})
+		if err != nil {
+			return err
+		}
+		eligible := make([]repo.Device, 0, len(devices))
+		for _, device := range devices {
+			if device.Status == repo.DeviceRevoked || !model.AgentCanTakeTargets(device.AgentVersion) {
+				continue
+			}
+			if artifact.MinAgentVersion != "" && model.CompareVersions(device.AgentVersion, artifact.MinAgentVersion) < 0 {
+				continue
+			}
+			// A normal rollout pins this machine and must win over a global
+			// publish. An existing global target is replaced below.
+			pinned, err := s.machineHasPrivateTarget(ctx, tx, device.ID, artifact.Product)
+			if err != nil {
+				return err
+			}
+			if pinned {
+				continue
+			}
+			eligible = append(eligible, device)
+		}
+		if len(eligible) == 0 {
+			return nil
+		}
+		rollout, err := tx.Releases().CreateRollout(ctx, repo.NewRollout{
+			Product: artifact.Product, ArtifactID: artifact.ID, Kind: repo.RolloutGlobal,
+			Note: "全局目标", CreatedBy: actor,
+		})
+		if err != nil {
+			return err
+		}
+		if err := s.auditTarget(ctx, tx, actor, requestID, ActionGlobalTarget, "rollout", rollout.ID, nil,
+			map[string]any{"product": artifact.Product, "version": artifact.Version, "scope": "global"}); err != nil {
+			return err
+		}
+		for _, device := range eligible {
+			target, err := tx.Releases().CreateTarget(ctx, device.ID, artifact.Product, artifact.ID, rollout.ID)
+			if err != nil {
+				return err
+			}
+			if err := s.enqueueDeviceExport(ctx, tx, device, "target:"+target.ID); err != nil {
+				return err
+			}
+			deviceIDs = append(deviceIDs, device.ID)
+		}
+		return nil
+	})
+	return deviceIDs, err
+}
+
+// machineHasPrivateTarget distinguishes a machine-specific pin from a target
+// created while publishing the fleet target. Global targets are intentionally
+// not pins and may be replaced by the next global publish.
+func (s *Service) machineHasPrivateTarget(ctx context.Context, store repo.Store, deviceID, product string) (bool, error) {
+	for _, load := range []func(context.Context, string, string) (repo.Target, error){
+		store.Releases().OpenTarget,
+		store.Releases().LastSucceededTarget,
+	} {
+		target, err := load(ctx, deviceID, product)
+		if errors.Is(err, repo.ErrNotFound) {
+			continue
+		}
+		if err != nil {
+			return false, err
+		}
+		rollout, err := store.Releases().RolloutByID(ctx, target.RolloutID)
+		if err != nil {
+			return false, err
+		}
+		return rollout.Kind != repo.RolloutGlobal, nil
+	}
+	return false, nil
 }
 
 // ClearGlobalTarget is the kill switch for the old channel.

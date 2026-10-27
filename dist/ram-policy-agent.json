@@ -11,7 +11,9 @@
         "acs:oss:*:*:your-bucket-name/agent_workdir/_bindings/*",
         "acs:oss:*:*:your-bucket-name/agent_workdir/*/credentials.zip",
         "acs:oss:*:*:your-bucket-name/agent_workdir/_agent/*",
-        "acs:oss:*:*:your-bucket-name/agent_workdir/_codex/*"
+        "acs:oss:*:*:your-bucket-name/agent_workdir/_codex/*",
+        "acs:oss:*:*:your-bucket-name/agent_workdir/_apps/*",
+        "acs:oss:*:*:your-bucket-name/agent_workdir/_machines/*/apps.json"
       ]
     },
     {

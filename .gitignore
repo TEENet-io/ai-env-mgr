@@ -21,6 +21,10 @@ admin.config.json
 *.out
 vendor/
 
+# Costing calculator test artifacts
+__pycache__/
+*.pyc
+
 # Editors / OS
 .DS_Store
 Thumbs.db

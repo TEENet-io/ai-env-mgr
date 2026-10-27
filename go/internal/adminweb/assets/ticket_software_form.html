@@ -1,0 +1,6 @@
+{{define "ticket_software_form"}}<section class="ticket-form-section" data-ticket-subtype="software">
+<h3>软件预装清单</h3><p class="hint">请列出希望在工作环境中预先安装的软件，一个软件一行。最低版本不知道可留空；如仅部分人员使用，请在补充说明中注明人员或设备。</p><p class="note">请勿填写软件账号、密码、API 密钥或许可证密钥。如需许可证，请另行确认交付方式。</p>
+<div class="scroll"><table class="ticket-entry-table"><thead><tr><th>序号</th><th>软件名称（必填）</th><th>最低版本（可选）</th><th>补充说明（可选）</th></tr></thead><tbody>{{range list "1" "2" "3" "4" "5" "6" "7" "8" "9" "10"}}<tr><td>{{.}}</td><td><input name="software_name_{{.}}" maxlength="200" aria-label="第 {{.}} 行软件名称"></td><td><input name="software_min_version_{{.}}" maxlength="100" aria-label="第 {{.}} 行最低版本"></td><td><input name="software_note_{{.}}" maxlength="500" aria-label="第 {{.}} 行补充说明"></td></tr>{{end}}</tbody></table></div>
+<div class="ticket-contact-grid"><label>公司／部门<input name="company_department" maxlength="100"></label><label>联系人<input name="contact_name" maxlength="100"></label><label>联系人签名（电子填写）<input name="contact_signature" maxlength="100"></label><label>填写日期<input name="filled_date" type="date"></label></div>
+<p class="hint">如没有需要预装的软件，请在第一行填写“无”。最终能否安装及实际可用版本，以实施方测试结果为准。</p>
+</section>{{end}}

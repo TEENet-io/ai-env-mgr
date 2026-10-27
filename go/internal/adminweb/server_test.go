@@ -328,6 +328,9 @@ func TestSecurityHeadersArePresent(t *testing.T) {
 	if !strings.Contains(csp, "script-src 'self'") || strings.Contains(csp, "unsafe-inline") {
 		t.Fatalf("script policy: %s", csp)
 	}
+	if !strings.Contains(csp, "connect-src 'self'") {
+		t.Fatalf("same-origin API requests are blocked: %s", csp)
+	}
 	js := httptest.NewRecorder()
 	s.Handler().ServeHTTP(js, httptest.NewRequest(http.MethodGet, "/static/app.js", nil))
 	if js.Code != http.StatusOK || !strings.Contains(js.Header().Get("Content-Type"), "javascript") {

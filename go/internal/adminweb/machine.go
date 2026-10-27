@@ -178,8 +178,10 @@ func (s *Server) machineVersions(r *http.Request, device repo.Device, report *mo
 			target, err = s.dbm.store.Releases().LastSucceededTarget(ctx, device.ID, product)
 		}
 		if err == nil {
-			if a, err := s.dbm.store.Releases().ArtifactByID(ctx, target.ArtifactID); err == nil {
-				v.Pinned = a.Version
+			if rollout, e := s.dbm.store.Releases().RolloutByID(ctx, target.RolloutID); e == nil && rollout.Kind != repo.RolloutGlobal {
+				if a, err := s.dbm.store.Releases().ArtifactByID(ctx, target.ArtifactID); err == nil {
+					v.Pinned = a.Version
+				}
 			}
 		}
 		if !model.AgentCanTakeTargets(device.AgentVersion) {

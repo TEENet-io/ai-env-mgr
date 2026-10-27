@@ -79,6 +79,49 @@ func reportFor(product string, s *model.Status) (running, target string, generat
 
 type targetSummary struct{ Total, Pending, Succeeded, Failed, Excluded, Cancelled, Superseded int }
 
+// StatusLabel is the rollout-level outcome shown in the history table. A
+// rollout can have no pending targets and still not be successful: failures,
+// cancellations and superseded targets are terminal outcomes too. Keeping
+// those states explicit prevents old history from looking like a live job.
+func (s targetSummary) StatusLabel() string {
+	switch {
+	case s.Total == 0:
+		return "无目标"
+	case s.Pending > 0:
+		return "进行中"
+	case s.Failed > 0:
+		if s.Succeeded > 0 || s.Excluded > 0 {
+			return "部分失败"
+		}
+		return "失败"
+	case s.Cancelled > 0:
+		if s.Succeeded > 0 || s.Excluded > 0 {
+			return "部分取消"
+		}
+		return "已取消"
+	case s.Superseded > 0:
+		if s.Succeeded > 0 || s.Excluded > 0 {
+			return "部分取代"
+		}
+		return "已取代"
+	default:
+		return "已完成"
+	}
+}
+
+func (s targetSummary) StatusTone() string {
+	switch s.StatusLabel() {
+	case "已完成":
+		return "ok"
+	case "失败", "部分失败":
+		return "bad"
+	case "无目标", "进行中", "部分取消":
+		return "warn"
+	default:
+		return "muted"
+	}
+}
+
 // Complete is the spec's condition: every machine succeeded, or was
 // explicitly excluded with a reason. Excluded is not success and is not
 // counted as it; a rollout whose targets were all taken over by a newer one

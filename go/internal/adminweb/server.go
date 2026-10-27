@@ -188,28 +188,35 @@ func New(opts Options) (*Server, error) {
 	// classify lets a row ask for its own state without the template
 	// re-deriving the rules that fleet.go already owns.
 	tpl, err := template.New("").Funcs(template.FuncMap{
-		"classify": stateSeverity,
-		"state":    stateLabel,
-		"age":      humanAge,
-		"stamp":    localStamp,
-		"noscan":   noEmailScan,
-		"codex":    codexNote,
-		"codexsev": codexNoteSeverity,
-		"alsev":    appLockerSeverity,
-		"ctxsize":  contextWindowLabel,
-		"usagepct": usagePercent,
-		"usagesev": usageSeverity,
-		"money":    func(v float64) string { return strconv.FormatFloat(v, 'f', 2, 64) },
-		"list":     func(xs ...string) []string { return xs },
-		"orDash":   orDash,
-		"may":      mayPost,
-		"chof":     litellm.ChannelOf,
-		"chlabel":  litellm.ChannelLabel,
-		"astatus":  artifactSeverity,
-		"add":      func(a, b int) int { return a + b },
-		"dur":      humanDuration,
-		"sub":      func(a, b int) int { return a - b },
-		"alabel":   artifactLabel,
+		"classify":          stateSeverity,
+		"state":             stateLabel,
+		"age":               humanAge,
+		"stamp":             localStamp,
+		"noscan":            noEmailScan,
+		"codex":             codexNote,
+		"codexsev":          codexNoteSeverity,
+		"alsev":             appLockerSeverity,
+		"ctxsize":           contextWindowLabel,
+		"usagepct":          usagePercent,
+		"usagesev":          usageSeverity,
+		"money":             func(v float64) string { return strconv.FormatFloat(v, 'f', 2, 64) },
+		"list":              func(xs ...string) []string { return xs },
+		"siteLabel":         ticketSiteLabel,
+		"operationLabel":    ticketOperationLabel,
+		"changeStage":       ticketChangeStageLabel,
+		"changeType":        ticketChangeTypeLabel,
+		"changeAction":      ticketChangeActionLabel,
+		"confirmationLabel": ticketConfirmationLabel,
+		"ticketField":       ticketField,
+		"orDash":            orDash,
+		"may":               mayPost,
+		"chof":              litellm.ChannelOf,
+		"chlabel":           litellm.ChannelLabel,
+		"astatus":           artifactSeverity,
+		"add":               func(a, b int) int { return a + b },
+		"dur":               humanDuration,
+		"sub":               func(a, b int) int { return a - b },
+		"alabel":            artifactLabel,
 		"appSupported": func(app model.Application) bool {
 			return model.IsSupportedApplicationInstaller(app)
 		},
@@ -385,6 +392,26 @@ func (s *Server) Handler() http.Handler {
 
 	// Database mode only: accounts, the authenticator, the queue, health.
 	if s.dbm != nil {
+		mux.HandleFunc("/customer", s.handleCustomerHome)
+		mux.HandleFunc("/customer/login", s.handleCustomerLogin)
+		mux.HandleFunc("/customer/logout", s.handleCustomerLogout)
+		mux.HandleFunc("/customer/password", s.handleCustomerPassword)
+		mux.HandleFunc("/customer/ticket", s.handleCustomerTicket)
+		mux.HandleFunc("/customer/ticket/create", s.handleCustomerCreateTicket)
+		mux.HandleFunc("/customer/ticket/edit", s.handleCustomerEditTicket)
+		mux.HandleFunc("/customer/ticket/proposal", s.handleCustomerDecideProposal)
+		mux.HandleFunc("/customer/ticket/reply", s.handleCustomerReply)
+		mux.HandleFunc("/customer/ticket/confirm-change", s.handleCustomerConfirmChange)
+		mux.HandleFunc("/tickets", s.requireSession(s.handleTickets))
+		mux.HandleFunc("/tickets/new", s.requireSession(s.handleAdminTicketNew))
+		mux.HandleFunc("/tickets/create", s.requireSession(s.handleAdminTicketCreate))
+		mux.HandleFunc("/tickets/detail", s.requireSession(s.handleTicketDetail))
+		mux.HandleFunc("/tickets/action", s.requirePostBack(backToTicket, s.actionTicket))
+		mux.HandleFunc("/tickets/contacts/create", s.requireSession(s.handleCustomerContactCreate))
+		mux.HandleFunc("/tickets/contacts/reset", s.requireSession(s.handleCustomerContactReset))
+		mux.HandleFunc("/tickets/contacts/role", s.requirePost("/tickets", s.actionCustomerContactRole))
+		mux.HandleFunc("/tickets/contacts/disable", s.requirePost("/tickets", s.actionCustomerContactDisabled(true)))
+		mux.HandleFunc("/tickets/contacts/enable", s.requirePost("/tickets", s.actionCustomerContactDisabled(false)))
 		mux.HandleFunc("/enrol", s.handleEnrol)
 		mux.HandleFunc("/account", s.requireSession(s.handleAccount))
 		mux.HandleFunc("/admins", s.requireSession(s.handleAdmins))
@@ -413,13 +440,19 @@ func (s *Server) Handler() http.Handler {
 		mux.HandleFunc("/machines/version", s.requirePostBack(backToMachine, s.actionMachineVersion))
 		mux.HandleFunc("/models", s.requireSession(s.handleModels))
 		mux.HandleFunc("/models/deliver", s.requirePostNotice("/models", s.actionModelsDeliver))
-		mux.HandleFunc("/channels/pause", s.requirePostNotice("/models", s.actionChannelPause))
+		mux.HandleFunc("/models/retry", s.requirePostNotice("/models", s.actionModelsRetry))
+		mux.HandleFunc("/channels", s.requireSession(s.handleChannels))
+		mux.HandleFunc("/channels/pause", s.requirePostNotice("/channels", s.actionChannelPause))
+		mux.HandleFunc("/channels/test", s.requirePostNotice("/channels", s.actionChannelTest))
+		mux.HandleFunc("/channels/try", s.requireSession(s.handleChannelTrial))
 		// The agents' own API: device tokens, not administrator sessions.
 		mux.Handle("/agent/v1/", s.dbm.devices.Handler())
 		mux.HandleFunc("/usage", s.requireSession(s.handleUsage))
 		mux.HandleFunc("/usage.csv", s.requireSession(s.handleUsageCSV))
 		mux.HandleFunc("/usage/keys", s.requireSession(s.handleKeyBilling))
 		mux.HandleFunc("/usage/keys.csv", s.requireSession(s.handleKeyBillingCSV))
+		mux.HandleFunc("/usage/cloud", s.requireSession(s.handleCloudBilling))
+		mux.HandleFunc("/usage/cloud.csv", s.requireSession(s.handleCloudBillingCSV))
 		mux.HandleFunc("/usage/snapshot-now", s.requirePostNotice("/usage", s.actionUsageSnapshotNow))
 		mux.HandleFunc("/releases", s.requireSession(s.handleReleases))
 		mux.HandleFunc("/applications", s.requireSession(s.handleApplications))
@@ -600,7 +633,7 @@ func (s *Server) secureHeaders(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		h := w.Header()
 		h.Set("Content-Security-Policy",
-			"default-src 'none'; style-src 'self'; script-src 'self'; img-src 'self'; form-action 'self'; frame-ancestors 'none'; base-uri 'none'")
+			"default-src 'none'; style-src 'self'; script-src 'self'; connect-src 'self'; img-src 'self'; form-action 'self'; frame-ancestors 'none'; base-uri 'none'")
 		h.Set("X-Content-Type-Options", "nosniff")
 		h.Set("Referrer-Policy", "no-referrer")
 		h.Set("X-Frame-Options", "DENY")

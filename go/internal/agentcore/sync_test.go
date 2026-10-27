@@ -467,6 +467,36 @@ func TestRunOnceAppliesPolicyAndCreds(t *testing.T) {
 	}
 }
 
+func TestModelCatalogAddUpdateAndRemovalReplacesAgentFile(t *testing.T) {
+	store := newFakeStore()
+	bind(t, store, "DESKTOP-A", "work1")
+	store.set(ossclient.PolicyKey(), policyBytes(t, model.Policy{}), "p1")
+	app := &fakeApplier{}
+	s := newSyncer(t, store, app)
+	key := ossclient.UserKey("work1", "credentials.zip")
+	for i, contents := range []string{
+		`{"models":[{"slug":"model-a","display_name":"A"}]}`,
+		`{"models":[{"slug":"model-a","display_name":"A"},{"slug":"model-b","display_name":"B"}]}`,
+		`{"models":[{"slug":"model-a","display_name":"A updated"},{"slug":"model-b","display_name":"B"}]}`,
+		`{"models":[{"slug":"model-b","display_name":"B"}]}`,
+	} {
+		etag := fmt.Sprintf("catalog-%d", i)
+		store.set(key, credsBytesFor(t, model.CredentialSet{
+			model.PathCodexConfig: []byte("model_provider = \"gateway\""),
+			model.PathCodexModels: []byte(contents),
+		}), etag)
+		status, err := s.RunOnce()
+		if err != nil || !status.CredsApplied || status.CredsETag != etag {
+			t.Fatalf("sync %d: status=%+v err=%v", i, status, err)
+		}
+		path := filepath.Join(s.Machine.ProfileDir("work1"), "models.json")
+		got, err := os.ReadFile(path)
+		if err != nil || string(got) != contents {
+			t.Fatalf("client models.json after change %d: %s err=%v", i, got, err)
+		}
+	}
+}
+
 // Re-applying an unchanged policy would rewrite the registry on every cycle
 // for no reason, so a matching ETag must short-circuit the work.
 func TestRunOnceSkipsWhenETagUnchanged(t *testing.T) {

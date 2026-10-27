@@ -1,0 +1,94 @@
+/* The customer portal keeps its own visual identity. Staff ticket pages use
+   the same surfaces, typography and accent as the rest of the admin console. */
+.ticket-admin-page{background:var(--ground);color:var(--ink)}
+.ticket-admin-page *{box-sizing:border-box}
+.ticket-admin-page .app{background:var(--ground)}
+.ticket-admin-page .ticket-admin-sheet{max-width:1440px;padding:40px clamp(24px,4vw,64px) 72px}
+.ticket-admin-page .ticket-admin-sheet>*{max-width:1280px}
+.ticket-admin-header{display:flex;align-items:flex-start;justify-content:space-between;gap:24px;margin:0 0 28px}
+.ticket-admin-header h1{margin:5px 0 8px;color:var(--ink);font-size:clamp(28px,3vw,40px);font-weight:600;letter-spacing:-.5px;line-height:1.15}
+.ticket-admin-header p:last-child{margin:0;color:var(--ink-faint);font-size:15px}
+.ticket-admin-eyebrow{margin:0!important;color:var(--ink-faint)!important;font-size:11px!important;font-weight:600;letter-spacing:0}
+.ticket-admin-primary{display:inline-flex;align-items:center;justify-content:center;min-height:40px;padding:9px 17px;border:1px solid var(--accent);border-radius:8px;background:var(--accent);color:var(--on-fill)!important;font-size:14px;font-weight:500;text-decoration:none;white-space:nowrap}
+.ticket-admin-primary:hover{background:#4534b3;color:var(--on-fill)!important}
+
+.ticket-admin-card,.ticket-admin-contacts{overflow:hidden;border:1px solid var(--rule);border-radius:12px;background:var(--panel);box-shadow:none}
+.ticket-admin-card-head{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:20px 22px 14px}
+.ticket-admin-card-head h2{margin:5px 0 0;color:var(--ink);font-size:20px;font-weight:600}
+.ticket-admin-card-head>span{color:var(--ink-faint);font-size:12px}
+.ticket-admin-filters{display:flex;gap:6px;margin:0 20px 16px;padding:4px;overflow-x:auto;border:1px solid var(--rule);border-radius:9px;background:var(--panel-sunk);scrollbar-width:thin}
+.ticket-admin-filters a{padding:7px 12px;border-radius:6px;color:var(--ink-faint);font-size:13px;text-decoration:none;white-space:nowrap}
+.ticket-admin-filters a:hover{background:#ebeae8;color:var(--ink)}
+.ticket-admin-filters a.active{background:var(--panel);color:var(--ink);font-weight:600;box-shadow:var(--shadow)}
+.ticket-admin-table-wrap{overflow-x:auto}
+.ticket-admin-table{width:100%;min-width:800px;border-collapse:collapse;text-align:left}
+.ticket-admin-table th{padding:12px 18px;background:var(--panel-sunk);color:var(--ink-faint);font-size:12px;font-weight:600;white-space:nowrap}
+.ticket-admin-table td{padding:15px 18px;border-top:1px solid var(--rule);color:var(--ink-soft);font-size:13px;vertical-align:middle}
+.ticket-admin-table tr:hover td{background:#fafaf9}
+.ticket-admin-table td:first-child{min-width:235px;width:34%}
+.ticket-admin-table td a{color:var(--ink);text-decoration:none}
+.ticket-admin-table td a strong,.ticket-admin-table td a small{display:block}
+.ticket-admin-table td a strong{font-size:14px;font-weight:600}
+.ticket-admin-table td a small{margin-top:3px;color:var(--ink-faint);font-size:11px}
+.ticket-admin-table td a:hover strong{color:var(--accent)}
+.ticket-admin-muted,.ticket-admin-empty{color:var(--ink-faint)}
+.ticket-admin-empty{text-align:center;padding:42px!important}
+.ticket-admin-state{display:inline-block;padding:4px 9px;border-radius:9999px;background:var(--panel-sunk);color:var(--ink-soft);font-size:11px;font-weight:600;white-space:nowrap}
+.ticket-admin-state-new{background:var(--warn-bg);color:#a94800}
+.ticket-admin-state-working{background:var(--accent-soft);color:#4931a0}
+.ticket-admin-state-waiting_customer{background:#fef7d6;color:#8d5900}
+.ticket-admin-state-done{background:var(--ok-bg);color:#168431}
+.ticket-admin-state-closed{background:var(--panel-sunk);color:var(--ink-faint)}
+.ticket-admin-pager{display:flex;align-items:center;justify-content:flex-end;gap:15px;padding:15px 20px;border-top:1px solid var(--rule);color:var(--ink-faint);font-size:12px}
+.ticket-admin-pager a{color:var(--accent);font-weight:600;text-decoration:none}
+
+.ticket-admin-contacts{margin-top:20px}
+.ticket-admin-contacts>summary{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:19px 22px;cursor:pointer;list-style:none}
+.ticket-admin-contacts>summary::-webkit-details-marker{display:none}
+.ticket-admin-contacts>summary strong,.ticket-admin-contacts>summary small{display:block}
+.ticket-admin-contacts>summary strong{font-size:15px;font-weight:600}
+.ticket-admin-contacts>summary small,.ticket-admin-contacts>summary>span:last-child{color:var(--ink-faint);font-size:12px}
+.ticket-admin-contacts-body{padding:0 22px 22px;border-top:1px solid var(--rule)}
+.ticket-admin-contacts-body .panel{margin-top:18px}
+.ticket-admin-contacts-body h2{margin-top:24px;font-size:17px}
+.ticket-admin-contacts-body form.inline{display:inline-flex;align-items:center;gap:7px;vertical-align:middle}
+.ticket-admin-contacts-body form.inline select{min-height:36px;margin:0;padding:6px 28px 6px 10px;font-size:13px}
+.ticket-admin-contacts-body form.inline button{min-height:36px;margin:0;padding:6px 10px;font-size:13px;line-height:1.35}
+.ticket-admin-page .ticket-page.ticket-admin-sheet{max-width:1120px}
+.ticket-admin-page .ticket-pagehead h1{color:var(--ink)}
+
+/* Admin new-ticket view reuses the customer's form fields but not its shell. */
+.tp-admin-body .rail a{color:var(--ink-soft)}
+.tp-admin-body .rail a:hover,.tp-admin-body .rail a.active{color:var(--ink)}
+.tp-admin-body .tp-admin-main{max-width:1440px;min-width:0;padding:40px clamp(24px,4vw,64px) 72px}
+.tp-admin-body .tp-content{max-width:1280px;margin:0;padding:0}
+.tp-admin-body .tp-heading{margin-bottom:28px}
+.tp-admin-body .tp-heading h1{color:var(--ink);font-size:clamp(28px,3vw,40px);font-weight:600;letter-spacing:-.5px}
+.tp-admin-body .tp-heading p:last-child{color:var(--ink-faint);font-size:15px}
+.tp-admin-body .tp-eyebrow{color:var(--ink-faint);font-size:11px;letter-spacing:0}
+.tp-admin-body .tp-section-title h2{color:var(--ink);font-size:18px;font-weight:600}
+.tp-admin-body .tp-section-title span,.tp-admin-body .tp-hint,.tp-admin-body .tp-safety{color:var(--ink-faint)}
+.tp-admin-body .tp-button{font-size:13px;font-weight:500}
+.tp-admin-body .tp-button-primary{border-color:var(--accent);background:var(--accent);color:var(--on-fill)!important}
+.tp-admin-body .tp-button-primary:hover{background:#4534b3}
+.tp-admin-body .tp-button-muted{border-color:var(--rule-strong);background:var(--panel);color:var(--ink)!important}
+.tp-admin-body .tp-button-muted:hover{background:var(--panel-sunk)}
+.tp-admin-body .tp-category-grid>button{border-color:var(--rule);background:var(--panel);color:var(--ink);box-shadow:none}
+.tp-admin-body .tp-category-grid>button:hover,.tp-admin-body .tp-category-grid>button.active{border-color:var(--accent);box-shadow:var(--shadow)}
+.tp-admin-body .tp-category-grid>button>span{background:var(--accent-soft);color:var(--accent)}
+.tp-admin-body .tp-category-grid strong{font-size:14px;font-weight:600;line-height:1.4}
+.tp-admin-body .tp-category-grid small{color:var(--ink-faint);font-size:12px;line-height:1.45}
+.tp-admin-body .tp-type-panel,.tp-admin-body .tp-form-panel,.tp-admin-body .tp-review{border-color:var(--rule);background:var(--panel);box-shadow:none}
+.tp-admin-body .tp-type-grid button{border-color:var(--rule);background:var(--panel);color:var(--ink);font-size:14px;line-height:1.45}
+.tp-admin-body .tp-type-grid button span{color:var(--ink-faint);font-size:12px;line-height:1.45}
+.tp-admin-body .tp-type-grid button:hover{border-color:var(--accent);background:var(--panel-sunk)}
+.tp-admin-body .tp-text-button,.tp-admin-body .tp-optional summary{color:var(--accent)}
+.tp-admin-body .tp-form legend{font-size:18px;font-weight:600;line-height:1.35}
+.tp-admin-body .tp-form label{color:var(--ink-soft);font-size:14px;font-weight:500;line-height:1.45}
+.tp-admin-body .tp-form input:not([type=checkbox]),.tp-admin-body .tp-form select,.tp-admin-body .tp-form textarea{min-height:44px;border-color:var(--rule-strong);background:var(--panel);color:var(--ink);font-size:14px;line-height:1.5}
+.tp-admin-body .tp-form input[type=checkbox]{accent-color:var(--accent)}
+.tp-admin-body .tp-targets,.tp-admin-body .tp-site-grid>div,.tp-admin-body .tp-current-grid>div,.tp-admin-body .tp-review-content{border-color:var(--rule);background:var(--panel-sunk)}
+.tp-admin-body .tp-footer{display:none}
+
+@media(max-width:900px){.ticket-admin-page .ticket-admin-sheet,.tp-admin-body .tp-admin-main{padding:28px 20px 60px}}
+@media(max-width:620px){.ticket-admin-header{flex-direction:column}.ticket-admin-primary{width:100%}.ticket-admin-card-head{padding:16px}.ticket-admin-filters{margin:0 14px 14px}.ticket-admin-table th,.ticket-admin-table td{padding:12px 14px}.ticket-admin-contacts>summary{align-items:flex-start;flex-direction:column}.tp-admin-body .tp-admin-main{padding:24px 16px 48px}.tp-admin-body .tp-category-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}

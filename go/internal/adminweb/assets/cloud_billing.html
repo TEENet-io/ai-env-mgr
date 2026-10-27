@@ -1,0 +1,75 @@
+{{define "cloud_billing.html"}}{{template "head" "云供应商账单"}}
+<body>
+<div class="app">
+{{template "nav" .}}
+<main class="sheet">
+  <header class="pagehead"><h1>云供应商账单</h1></header>
+  {{template "tabs-usage" .}}
+  <p class="lede">AWS、Azure、Google 的同一账期账单。每月在 OSS 保存一份固定路径的 ZIP，包含 CSV 与校验信息；Admin 读取并核对文件哈希、行数和来源，不把不同币种或费用口径合计。</p>
+  {{template "notices" .}}
+  {{with .CloudBillingPage}}
+  <form method="get" action="/usage/cloud" class="form filter">
+    <label>账期<input type="month" name="month" value="{{.Month}}" required></label>
+    <button type="submit">查看</button>
+    {{if not .Empty}}<a class="button-link" href="/usage/cloud.csv?month={{.Month}}">下载已校验 CSV</a>{{end}}
+  </form>
+  {{if .Months}}<p class="dim small">已有账期：{{range .Months}}<a href="/usage/cloud?month={{.}}">{{.}}</a>　{{end}}</p>{{end}}
+  {{if .Empty}}
+    <p class="note note-warn">{{.Month}} 尚无三云账单文件；需要上传该月的 bill.zip。</p>
+  {{else}}
+    <div class="sechead"><p class="dim">{{.Month}} · {{.Rows}} 行 · 采集完成 {{.GeneratedAt}}</p></div>
+    <p class="dim small">来源快照指纹 <span class="mono">{{.BatchFingerprint}}</span></p>
+    <p class="note note-warn">Google 当前共享 View 仅提供列表价，不是实际应付金额。“模型待确认”表示费用已读取，但尚未确认它对应哪个 LiteLLM 模型。</p>
+    <h2>三家供应商账单</h2>
+    <div class="panel scroll"><table>
+      <thead><tr><th>供应商</th><th>模型已识别</th><th>模型待确认</th><th>调整项</th><th>来源行数</th></tr></thead>
+      <tbody>{{range .Sources}}<tr>
+        <td><strong>{{.DisplayName}}</strong><div class="rowsub mono">{{.SourceID}}</div><div class="rowsub">{{.CostBases}}</div></td>
+        <td class="num mono">{{range .Breakdowns}}<div>{{.Currency}} {{.Comparable}}</div>{{else}}—{{end}}</td>
+        <td class="num mono">{{range .Breakdowns}}<div>{{.Currency}} {{.Unmapped}}</div>{{else}}—{{end}}</td>
+        <td class="num mono">{{range .Breakdowns}}<div>{{.Currency}} {{.Adjustment}}</div>{{else}}—{{end}}</td>
+        <td class="num">{{.Rows}}</td>
+      </tr>{{end}}</tbody>
+    </table></div>
+    <p class="dim small">非目标服务（例如 AWS EC2）在 Python 发布 CSV 时已过滤。每个金额均保持原币和原费用口径，不跨币种相加。</p>
+    <details>
+    <summary>查看 Google 模型候选与 SKU（{{len .Candidates}} 组）</summary>
+    <p class="dim small">仅根据供应商 SKU 描述整理，仍属于“模型待确认”；不能据此认定 LiteLLM 实际调用模型，也不能把 count 当作 token。共用 SKU 会单独标明。旧账单需重新生成才能显示候选。</p>
+    <div class="panel scroll"><table>
+      <thead><tr><th>模型候选</th><th>判断</th><th>SKU ID / 原描述</th><th>费用口径</th><th>币种</th><th>行数</th><th>列表价金额</th></tr></thead>
+      <tbody>{{range .Candidates}}<tr>
+        <td>{{if .Model}}{{.Model}}{{else}}无法识别{{end}}</td><td>{{.Status}}</td>
+        <td><span class="mono">{{.SKU}}</span><div class="rowsub">{{.Description}}</div></td>
+        <td class="rowsub">{{.CostBasis}}</td><td>{{.Currency}}</td><td class="num">{{.Rows}}</td><td class="num mono">{{.Amount}}</td>
+      </tr>{{else}}<tr><td colspan="7" class="empty">本批次没有待确认的 Google SKU。</td></tr>{{end}}</tbody>
+    </table></div>
+    {{if .MoreCandidates}}<p class="dim small">另有 {{.MoreCandidates}} 组未展开；下载 CSV 查看全部。</p>{{end}}
+    </details>
+    <details>
+    <summary>查看费用分类明细</summary>
+    <div class="panel scroll"><table>
+      <thead><tr><th>供应商</th><th>费用口径</th><th>分类</th><th>币种</th><th>行数</th><th>账单金额</th></tr></thead>
+      <tbody>{{range .Groups}}<tr>
+        <td>{{.Provider}}</td><td class="rowsub">{{.CostBasis}}</td><td>{{.Disposition}}</td>
+        <td>{{.Currency}}</td><td class="num">{{.Rows}}</td><td class="num mono">{{.Amount}}</td>
+      </tr>{{else}}<tr><td colspan="6" class="empty">本批次没有费用行。</td></tr>{{end}}</tbody>
+    </table></div>
+    </details>
+    <details>
+    <summary>查看云账号 / 项目 / 订阅明细</summary>
+    <div class="panel scroll"><table>
+      <thead><tr><th>供应商</th><th>账号 / 项目 / 订阅</th><th>口径</th><th>分类</th><th>币种</th><th>行数</th><th>金额</th></tr></thead>
+      <tbody>{{range .Scopes}}<tr>
+        <td>{{.Provider}}</td><td class="mono">{{.Scope}}</td><td class="rowsub">{{.CostBasis}}</td>
+        <td>{{.Disposition}}</td><td>{{.Currency}}</td><td class="num">{{.Rows}}</td><td class="num mono">{{.Amount}}</td>
+      </tr>{{else}}<tr><td colspan="7" class="empty">没有可展示的账号数据。</td></tr>{{end}}</tbody>
+    </table></div>
+    {{if .MoreScopes}}<p class="dim small">另有 {{.MoreScopes}} 组未在页面展开；下载 CSV 查看全部。</p>{{end}}
+    </details>
+    <p class="dim small">“模型已识别／模型待确认”只表示账单费用能否归属到具体模型，不是对账结果；Admin 尚未计算与 LiteLLM 的差额。金额保持供应商原始口径，不是最终发票净额。</p>
+  {{end}}
+  {{end}}
+</main>
+</div>
+</body>
+</html>{{end}}

@@ -1,0 +1,85 @@
+{{define "customer_portal.html"}}<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>工单中心 · TEENet</title><link rel="stylesheet" href="/static/app.css"><link rel="stylesheet" href="/static/ticket-portal.css">{{if .AdminMode}}<link rel="stylesheet" href="/static/ticket-admin.css">{{end}}<script src="/static/ticket-portal.js" defer></script></head><body class="tp-body{{if .AdminMode}} ticket-admin-page tp-admin-body{{end}}">
+{{if .AdminMode}}
+<div class="app">{{template "nav" .AdminPage}}<main class="sheet tp-admin-main"><div class="tp-content">
+{{else}}
+<div class="tp-prototype-note">TEENet 工作间服务 <span>／</span> {{if .AdminMode}}管理员工单中心{{else}}客户工单中心{{end}}</div>
+<div class="tp-shell">
+  <aside class="tp-sidebar" aria-label="工单导航">
+    <a class="tp-brand" href="{{if .AdminMode}}/tickets{{else}}/customer{{end}}"><span class="tp-brand-mark">T</span><span><strong>TEENet</strong><small>WORKSPACE SERVICES</small></span></a>
+    <div class="tp-workspace"><span class="tp-workspace-icon">▦</span><span><strong>工作间服务</strong><small>客户服务中心</small></span></div>
+    <div class="tp-nav-label">服务中心</div>
+    <nav class="tp-nav">
+      <a href="{{if .AdminMode}}/tickets{{else}}/customer{{end}}"{{if not .NewView}} class="active"{{end}}>▦ <span>{{if .AdminMode}}全部工单{{else}}我的工单{{end}}</span>{{if .Pending}}<b>{{.Pending}}</b>{{end}}</a>
+      <a href="{{if .AdminMode}}/tickets/new{{else}}/customer?view=new{{end}}"{{if .NewView}} class="active"{{end}}>＋ <span>新建工单</span></a>
+    </nav>
+    <div class="tp-sidebar-foot"><p>不知道如何分类？</p><a href="{{if .AdminMode}}/tickets/new{{else}}/customer?view=new&category=other{{end}}">描述遇到的问题 →</a><div class="tp-profile"><span class="tp-avatar">{{if .AdminMode}}管{{else}}客{{end}}</span><span>{{.Name}}<small>{{if .AdminMode}}管理员{{else}}客户联系人{{end}}</small></span></div><form method="post" action="{{if .AdminMode}}/logout{{else}}/customer/logout{{end}}"><input type="hidden" name="csrf" value="{{.CSRF}}"><button type="submit" class="tp-logout">退出登录</button></form></div>
+  </aside>
+  <main class="tp-main">
+    <header class="tp-topbar"><span>工作间 <i>／</i> <strong>工单中心</strong></span><span>{{.Name}}</span></header>
+    <div class="tp-content">
+{{end}}
+      {{if .Notice}}<p class="tp-notice" role="status">{{.Notice}}</p>{{end}}
+      {{if .NewView}}
+      <div class="tp-heading"><div><p class="tp-eyebrow">HOW CAN WE HELP?</p><h1>{{if .EditTicket}}修改申请{{else}}新建工单{{end}}</h1><p>{{if .EditTicket}}工单编号不变；重新提交后保留修改前的申请版本。{{else}}选择事项，只填写这次需要处理的信息。{{end}}</p></div><a class="tp-button tp-button-muted" href="{{if .EditTicket}}/customer/ticket?id={{.EditTicket.ID}}{{else if .AdminMode}}/tickets{{else}}/customer{{end}}">返回{{if .EditTicket}}工单详情{{else}}工单列表{{end}}</a></div>
+      <section class="tp-new" aria-label="选择工单事项">
+        <div class="tp-section-title"><h2>你需要哪方面的帮助？</h2><span>先选择分类</span></div>
+        <div class="tp-category-grid{{if not .Manager}} tp-category-grid-four{{end}}">
+          {{if .Manager}}<button type="button" data-tp-category="account"><span>♧</span><strong>员工账号</strong><small>新增、停用、离职与信息修改</small></button>{{end}}
+          <button type="button" data-tp-category="desktop"><span>▣</span><strong>远程桌面</strong><small>使用问题、软件与网站</small></button>
+          <button type="button" data-tp-category="ai"><span>✧</span><strong>AI 模型与使用额度</strong><small>使用问题与额度追加</small></button>
+          <button type="button" data-tp-category="tool"><span>◈</span><strong>定制工具</strong><small>工具使用遇到问题</small></button>
+          <button type="button" data-tp-category="other"><span>☷</span><strong>其他问题</strong><small>不知道选哪一类时从这里提交</small></button>
+        </div>
+        <div class="tp-type-panel" id="tp-type-panel" hidden><div class="tp-section-title"><h2>选择具体事项</h2><button type="button" class="tp-text-button" id="tp-back-categories">返回分类</button></div><div class="tp-type-grid">
+          <button type="button" data-tp-kind="account-add" data-tp-parent="account">新增员工账号 <span>填写姓名和工作邮箱，可以一次添加多人 →</span></button>
+          <button type="button" data-tp-kind="account-toggle" data-tp-parent="account">停用或恢复账号 <span>选择员工和操作 →</span></button>
+          <button type="button" data-tp-kind="account-delete" data-tp-parent="account">员工离职／删除账号 <span>服务团队会先提供删除及资料安排 →</span></button>
+          <button type="button" data-tp-kind="account-edit" data-tp-parent="account">修改员工信息 <span>只填写需要修改的值 →</span></button>
+          <button type="button" data-tp-kind="desktop-problem" data-tp-parent="desktop">远程桌面使用问题 <span>简单描述遇到的情况 →</span></button>
+          <button type="button" data-tp-kind="software-add" data-tp-parent="desktop">安装软件 <span>选择适用员工并填写软件名称 →</span></button>
+          <button type="button" data-tp-kind="software-change" data-tp-parent="desktop">更新或卸载软件 <span>选择员工、软件和操作 →</span></button>
+          <button type="button" data-tp-kind="website" data-tp-parent="desktop">调整网站访问限制 <span>封禁、解除封禁或临时放行 →</span></button>
+          <button type="button" data-tp-kind="ai-problem" data-tp-parent="ai">AI 使用遇到问题 <span>对话或助手未正常工作 →</span></button>
+          <button type="button" data-tp-kind="quota" data-tp-parent="ai">额度用完，申请增加 <span>具体额度由团队核对后提出方案 →</span></button>
+          <button type="button" data-tp-kind="tool-problem" data-tp-parent="tool">工具使用遇到问题 <span>选择工具并描述问题 →</span></button>
+          <button type="button" data-tp-kind="other-problem" data-tp-parent="other">其他问题 <span>告诉我们遇到了什么问题 →</span></button>
+        </div></div>
+      </section>
+      <section class="tp-form-panel" id="tp-form-panel" hidden><div class="tp-section-title"><div><p class="tp-eyebrow">REQUEST DETAILS</p><h2 id="tp-form-title">填写信息</h2></div><button type="button" class="tp-text-button" id="tp-back-types">更换事项</button></div>
+        <form method="post" action="{{if .EditTicket}}/customer/ticket/edit{{else if .AdminMode}}/tickets/create{{else}}/customer/ticket/create{{end}}" id="tp-request-form" class="tp-form" data-customer-email="{{.Email}}"{{if .EditTicket}} data-edit-json="{{.EditPayload}}"{{end}}><input type="hidden" name="csrf" value="{{.CSRF}}"><input type="hidden" name="request_key" value="{{.SubmitKey}}"><input type="hidden" name="request_kind" id="tp-request-kind">{{with .EditTicket}}<input type="hidden" name="id" value="{{.ID}}"><input type="hidden" name="version" value="{{.Version}}">{{end}}
+          <fieldset data-tp-fields="account-add" disabled hidden><legend>新增员工</legend><p class="tp-hint">请填写目前确定的信息。不要填写密码或 API 密钥。</p><div class="tp-employee-rows">{{range list "1" "2" "3" "4" "5" "6" "7" "8" "9" "10"}}<div class="tp-employee-row"{{if ne . "1"}} hidden{{end}}><span class="tp-row-index">{{.}}</span><label>员工姓名<input name="employee_name_{{.}}" maxlength="100" placeholder="姓名"></label><label>工作邮箱<input name="work_email_{{.}}" type="email" maxlength="254" placeholder="name@example.com"></label><label>员工编号 <small>选填</small><input name="employee_number_{{.}}" maxlength="100"></label></div>{{end}}</div><button type="button" class="tp-text-button" id="tp-add-employee">＋ 添加一位员工</button></fieldset>
+          <fieldset data-tp-fields="account-toggle" disabled hidden><legend>停用或恢复账号</legend><label>选择员工<select name="target_employee"><option value="">请选择</option>{{range .Employees}}<option value="{{.ID}}">{{.Name}} · {{.Email}}</option>{{end}}</select></label><label>操作<select name="account_action"><option value="disable">停用账号</option><option value="restore">恢复账号</option></select></label></fieldset>
+          <fieldset data-tp-fields="account-delete" disabled hidden><legend>员工离职／删除账号</legend><label>选择员工<select name="target_employee"><option value="">请选择</option>{{range .Employees}}<option value="{{.ID}}">{{.Name}} · {{.Email}}</option>{{end}}</select></label><p class="tp-hint">提交后不会立即删除；服务团队会先提供删除范围和资料安排，待授权联系人确认。</p></fieldset>
+          <fieldset data-tp-fields="account-edit" disabled hidden><legend>修改员工信息</legend><label>选择员工<select name="target_employee" id="tp-edit-employee"><option value="">请选择</option>{{range .Employees}}<option value="{{.ID}}" data-name="{{.Name}}" data-email="{{.Email}}" data-number="{{.ExternalID}}">{{.Name}} · {{.Email}}</option>{{end}}</select></label><p class="tp-hint">左侧是当前资料，右侧只填写需要修改的值；留空表示保持不变。</p><div class="tp-current-grid"><div><span>当前姓名</span><strong id="tp-current-name">—</strong></div><label>新姓名 <small>选填</small><input name="new_name" maxlength="100"></label><div><span>当前工作邮箱</span><strong id="tp-current-email">—</strong></div><label>新工作邮箱 <small>选填</small><input name="new_email" type="email" maxlength="254"></label><div><span>当前员工编号</span><strong id="tp-current-number">—</strong></div><label>新员工编号 <small>选填</small><input name="new_number" maxlength="100"></label></div></fieldset>
+          <fieldset data-tp-fields="desktop-problem" disabled hidden><legend>远程桌面使用问题</legend><label>遇到了什么问题？<textarea name="problem" maxlength="3000" rows="5" placeholder="例如：今天一直连不上远程桌面。​"></textarea></label></fieldset>
+          <fieldset data-tp-fields="software-add" disabled hidden><legend>安装软件</legend>{{template "tp-software-targets" .}}<label>软件名称<input name="software" maxlength="200" placeholder="例如：VS Code"></label><label>最低版本 <small>选填</small><input name="min_version" maxlength="100" placeholder="不知道可以留空"></label></fieldset>
+          <fieldset data-tp-fields="software-change" disabled hidden><legend>更新或卸载软件</legend>{{template "tp-software-targets" .}}<label>软件名称<input name="software" maxlength="200" placeholder="选择或填写需要处理的软件"></label><label>操作<select name="software_action"><option value="update">更新</option><option value="uninstall">卸载</option></select></label><label>最低版本 <small>更新时选填</small><input name="min_version" maxlength="100"></label></fieldset>
+          <fieldset data-tp-fields="website" disabled hidden><legend>调整网站访问限制</legend><label>操作<select name="website_action" id="tp-website-action"><option value="block">封禁</option><option value="unblock">解除封禁</option><option value="temporary">临时放行</option></select></label><p class="tp-hint">常用网站可直接勾选；实际域名由服务团队核对。</p><div class="tp-site-grid"><div><strong>国际大模型网站</strong>{{range list "ChatGPT" "Claude" "Gemini" "Grok" "Perplexity" "Microsoft Copilot"}}<label><input type="checkbox" name="sites" value="{{.}}"> {{.}}</label>{{end}}</div><div><strong>国内大模型网站</strong>{{range list "DeepSeek" "通义千问" "Kimi" "豆包" "文心一言" "智谱清言" "MiniMax" "腾讯元宝" "讯飞星火"}}<label><input type="checkbox" name="sites" value="{{.}}"> {{.}}</label>{{end}}</div></div><label>其他网站名称或域名 <small>选填</small><input name="other_site" maxlength="200" placeholder="例如：example.com"></label><label id="tp-expires-field" hidden>临时放行截止时间<input name="expires" type="datetime-local"></label></fieldset>
+          <fieldset data-tp-fields="ai-problem" disabled hidden><legend>AI 使用遇到问题</legend><label>遇到了什么问题？<textarea name="problem" maxlength="3000" rows="5" placeholder="例如：发送消息后没有回复。"></textarea></label></fieldset>
+          <fieldset data-tp-fields="quota" disabled hidden><legend>额度用完，申请增加</legend><p class="tp-hint">无需猜测要增加多少 Token。服务团队核对后会提出数量、有效期和费用方案，再由授权联系人确认。</p></fieldset>
+          <fieldset data-tp-fields="tool-problem" disabled hidden><legend>工具使用遇到问题</legend><label>工具名称<input name="tool" maxlength="200" placeholder="例如：销售报表助手"></label><label>遇到了什么问题？<textarea name="problem" maxlength="3000" rows="5" placeholder="简单说说看到的现象"></textarea></label></fieldset>
+          <fieldset data-tp-fields="other-problem" disabled hidden><legend>其他问题</legend><label>遇到了什么问题？<textarea name="problem" maxlength="3000" rows="5" placeholder="简单描述即可，我们会帮你分类。"></textarea></label></fieldset>
+          <details class="tp-optional"><summary>补充说明和希望处理时间 <small>选填</small></summary><label>补充说明<textarea name="note" maxlength="1000" rows="3" placeholder="人员、用途或其他背景"></textarea></label><label>希望处理时间<input name="desired_at" type="datetime-local"></label></details>
+          <p class="tp-safety">请勿填写员工个人密码、云平台密码、API 密钥或许可证密钥。提交申请不会自动执行变更。</p>
+          <div class="tp-form-actions"><button type="submit" class="tp-button tp-button-primary" id="tp-submit">继续</button></div>
+        </form>
+      </section>
+      <section class="tp-review" id="tp-review" hidden><div class="tp-section-title"><div><p class="tp-eyebrow">REVIEW REQUEST</p><h2>核对并提交申请</h2></div></div><p>请核对本次事项和适用人员；提交后服务团队会安排处理。</p><div id="tp-review-content" class="tp-review-content"></div><div class="tp-form-actions"><button type="button" class="tp-button tp-button-muted" id="tp-review-back">返回修改</button><button type="button" class="tp-button tp-button-primary" id="tp-review-confirm">确认提交</button></div></section>
+      {{else}}
+      <div class="tp-heading"><div><p class="tp-eyebrow">YOUR WORKSPACE, TAKEN CARE OF</p><h1>我的工单</h1><p>提交问题，查看进度，与服务团队沟通。</p></div><a class="tp-button tp-button-primary" href="/customer?view=new">＋ 新建工单</a></div>
+      <div class="tp-overview"><div class="tp-metric tp-metric-highlight"><span>◉</span><div><small>待确认／补充</small><strong>{{.Pending}}</strong><p>需要客户进一步回应</p></div></div><div class="tp-metric"><span>◷</span><div><small>已提交／处理中</small><strong>{{.Working}}</strong><p>进展持续更新</p></div></div><div class="tp-metric"><span>✓</span><div><small>已结束</small><strong>{{.Finished}}</strong><p>结果与记录可查</p></div></div></div>
+      {{if .Approvals}}<section class="tp-approvals" aria-label="待确认方案"><div class="tp-section-title"><h2>需要你确认的方案</h2><span>确认具体范围、额度与费用后才会执行</span></div>{{range .Approvals}}<a href="/customer/ticket?id={{.TicketID}}"><strong>#{{.Number}} · {{.Title}}</strong><small>提交人：{{.RequesterName}}</small><span>查看方案 →</span></a>{{end}}</section>{{end}}
+      <div class="tp-section-title"><h2>你需要哪方面的帮助？</h2><span>选择分类，开始申请</span></div>
+      <div class="tp-category-grid tp-category-grid-home{{if not .Manager}} tp-category-grid-four{{end}}">{{if .Manager}}<a href="/customer?view=new&category=account"><span>♧</span><strong>员工账号</strong><small>新增、停用、离职与信息修改</small></a>{{end}}<a href="/customer?view=new&category=desktop"><span>▣</span><strong>远程桌面</strong><small>使用问题、软件与网站</small></a><a href="/customer?view=new&category=ai"><span>✧</span><strong>AI 模型与使用额度</strong><small>使用问题与额度追加</small></a><a href="/customer?view=new&category=tool"><span>◈</span><strong>定制工具</strong><small>工具使用遇到问题</small></a><a href="/customer?view=new&category=other"><span>☷</span><strong>其他问题</strong><small>不确定问题属于哪一类</small></a></div>
+      <section class="tp-list-panel" aria-label="我的工单"><div class="tp-list-head"><h2>工单记录</h2><label>搜索当前页<input id="tp-search" type="search" placeholder="标题或工单编号"></label></div><div class="tp-tabs"><a href="/customer"{{if eq .Filter ""}} class="active"{{end}}>全部</a><a href="/customer?status=customer_action"{{if eq .Filter "customer_action"}} class="active"{{end}}>待确认／补充</a><a href="/customer?status=active"{{if eq .Filter "active"}} class="active"{{end}}>已提交／处理中</a><a href="/customer?status=finished"{{if eq .Filter "finished"}} class="active"{{end}}>已结束</a></div><div class="tp-table-scroll"><table class="tp-table"><thead><tr><th>工单内容</th><th>分类</th><th>最近更新</th><th>状态</th></tr></thead><tbody>{{range .Rows}}<tr data-tp-ticket-row><td><a href="/customer/ticket?id={{.ID}}"><strong>{{.Title}}</strong><small>#{{.Number}}</small></a></td><td>{{.TypeLabel}}</td><td>{{.UpdatedAt.Format "01-02 15:04"}}</td><td><span class="tp-status tp-status-{{.Status}}">{{.StatusLabel}}</span></td></tr>{{else}}<tr><td colspan="4" class="tp-empty">此筛选下暂无工单。</td></tr>{{end}}</tbody></table></div><div class="tp-list-foot"><span>本页 {{len .Rows}} 张工单</span><span>{{if gt .Page 1}}<a href="/customer?page={{sub .Page 1}}&status={{.Filter}}">上一页</a>{{end}} 第 {{.Page}} 页 {{if .HasNext}}<a href="/customer?page={{add .Page 1}}&status={{.Filter}}">下一页</a>{{end}}</span></div></section>
+      {{end}}
+      <footer class="tp-footer"><span>TEENet 工作间服务</span><span>申请、沟通与处理记录</span></footer>
+    </div>
+  </main>
+</div>
+{{if not .AdminMode}}
+<nav class="tp-mobile-nav" aria-label="移动端工单导航"><a href="{{if .AdminMode}}/tickets{{else}}/customer{{end}}"{{if not .NewView}} class="active"{{end}}>{{if .AdminMode}}全部工单{{else}}我的工单{{end}}</a><a href="{{if .AdminMode}}/tickets/new{{else}}/customer?view=new{{end}}"{{if .NewView}} class="active"{{end}}>＋ 新建工单</a></nav>
+{{end}}
+</body></html>{{end}}
+
+{{define "tp-software-targets"}}<div class="tp-targets"><div class="tp-targets-head"><strong>适用员工</strong><label><input type="checkbox" data-tp-select-all> 全选</label></div><p class="tp-hint">至少选择一位；本次选择不会自动覆盖以后新增的员工。</p><div class="tp-target-list">{{range .Employees}}<label><input type="checkbox" name="employee_ids" value="{{.ID}}" data-employee-email="{{.Email}}"> <span>{{.Name}}<small>{{.Email}}{{if not .Active}} · 已停用{{end}}</small></span></label>{{else}}<p class="tp-hint">{{if .Manager}}暂无可选员工，请先核对员工名单。{{else}}登录邮箱未唯一匹配员工记录，请联系服务团队核对账号。{{end}}</p>{{end}}</div></div>{{end}}

@@ -50,6 +50,7 @@ func (s *Server) currentSession(r *http.Request) *session {
 }
 
 type pageData struct {
+	ctx      context.Context
 	Bucket   string
 	Endpoint string
 	Fixed    bool // the OSS location is baked in, so sign-in only asks for the key
@@ -69,6 +70,7 @@ type pageData struct {
 	NewPassword      string
 	NewUsername      string
 	Tasks            []taskRow
+	Tickets          *ticketPage
 	ApplicationTasks []applicationTaskRow
 	TaskColumns      []taskColumn
 	TaskStatusFilter string
@@ -113,21 +115,24 @@ type pageData struct {
 	Show     string // the list filter: "", "active", "offboarded", "deleted"
 
 	// Version library (database mode).
-	Artifacts      map[string][]artifactRow // by product
-	Applications   []model.Application
-	Unregistered   []packageRow      // in the bucket, not yet in the library
-	GlobalTargets  map[string]string // product -> the fleet policy's version
-	Rollouts       []rolloutView
-	AuditPage      *auditPage
-	UsagePage      *usagePage
-	KeyBillingPage *keyBillingPage
-	AlertsPage     *alertsPage
-	AlertSettings  *alertSettingsView
-	DataRetention  *dataRetentionView
-	Channels       *channelView
-	Rotation       *rotationView
-	DeviceChannel  *channelSettingsView
-	OpenAlerts     int // drawn in the nav on every page
+	Artifacts           map[string][]artifactRow // by product
+	Applications        []model.Application
+	Unregistered        []packageRow      // in the bucket, not yet in the library
+	GlobalTargets       map[string]string // product -> the fleet policy's version
+	Rollouts            []rolloutView
+	AuditPage           *auditPage
+	UsagePage           *usagePage
+	KeyBillingPage      *keyBillingPage
+	CloudBillingPage    *cloudBillPage
+	AlertsPage          *alertsPage
+	AlertSettings       *alertSettingsView
+	DataRetention       *dataRetentionView
+	Channels            *channelView
+	Rotation            *rotationView
+	DeviceChannel       *channelSettingsView
+	OpenAlerts          int // drawn in the nav on every page
+	PendingTickets      int // actionable customer tickets, drawn in the nav
+	PendingTicketsError bool
 	// Tab is the entry inside the nav group this page is (see the tabs-*
 	// templates); empty for a group with no second level.
 	Tab                                                                                     string
@@ -156,7 +161,7 @@ type pageData struct {
 	GatewayModels  []litellm.Model
 	// ModelDelivery is the 模型下发 block (database mode, gateway readable).
 	ModelDelivery *modelDelivery
-	// GatewayChannels is the 渠道 table: the gateway's models by supplier.
+	// GatewayChannels groups the gateway's deployments by supplier.
 	GatewayChannels []channelRow
 	ChannelsVersion int
 	PausedChannels  map[string]bool
@@ -177,6 +182,7 @@ type pageData struct {
 // through the redirect that follows a POST.
 func newPage(sess *session, r *http.Request, nav string) pageData {
 	data := pageData{
+		ctx:      r.Context(),
 		Bucket:   sess.bucket,
 		Endpoint: sess.endpoint,
 		CSRF:     sess.csrf,
@@ -198,6 +204,17 @@ func (s *Server) render(w http.ResponseWriter, name string, code int, data pageD
 	data.SLS = s.opts.SLSProject != ""
 	if data.DB {
 		data.OpenAlerts = s.openAlertCount()
+		if s.dbm != nil && s.dbm.db != nil {
+			ctx := data.ctx
+			if ctx == nil {
+				ctx = context.Background()
+			}
+			if count, err := s.dbm.db.Tickets().ActionRequiredCount(ctx); err == nil {
+				data.PendingTickets = count
+			} else {
+				data.PendingTicketsError = true
+			}
+		}
 	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.WriteHeader(code)
@@ -405,7 +422,7 @@ func (s *Server) handleOverview(w http.ResponseWriter, r *http.Request, sess *se
 	}
 
 	s.loadGatewayPanel(ctx, &data)
-	// The overview says which channels are paused; the rest is on /models.
+	// The overview says which channels are paused; the rest is on /channels.
 	s.loadChannels(ctx, &data)
 	// The probe bar is the log page's, reused rather than reimplemented: two
 	// renderings of "is the gateway up" would eventually disagree.

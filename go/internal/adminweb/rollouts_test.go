@@ -87,6 +87,32 @@ func TestRolloutSummaryCountsEachMachinesLatestAttempt(t *testing.T) {
 	}
 }
 
+func TestRolloutSummaryLabelsTerminalOutcomes(t *testing.T) {
+	cases := []struct {
+		name    string
+		targets []repo.Target
+		label   string
+		tone    string
+	}{
+		{"failed", []repo.Target{{DeviceID: "a", Generation: 1, Status: repo.TargetFailed}}, "失败", "bad"},
+		{"superseded", []repo.Target{{DeviceID: "a", Generation: 1, Status: repo.TargetSuperseded}}, "已取代", "muted"},
+		{"cancelled", []repo.Target{{DeviceID: "a", Generation: 1, Status: repo.TargetCancelled}}, "已取消", "muted"},
+		{"empty", nil, "无目标", "warn"},
+		{"partial failure", []repo.Target{
+			{DeviceID: "a", Generation: 1, Status: repo.TargetSucceeded},
+			{DeviceID: "b", Generation: 1, Status: repo.TargetFailed},
+		}, "部分失败", "bad"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			summary := summariseTargets(tc.targets)
+			if summary.StatusLabel() != tc.label || summary.StatusTone() != tc.tone {
+				t.Fatalf("summary = %+v, label=%q tone=%q; want %q/%q", summary, summary.StatusLabel(), summary.StatusTone(), tc.label, tc.tone)
+			}
+		})
+	}
+}
+
 func TestChoosingOneMachineLeavesTheOtherAlone(t *testing.T) {
 	s, _ := newDatabaseServer(t)
 	h := s.Handler()

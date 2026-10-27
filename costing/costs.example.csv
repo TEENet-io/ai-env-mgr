@@ -1,0 +1,12 @@
+month,cost_id,product,category,amount,currency,fx_to_cny,fx_ref,basis,source_ref,notes
+2026-10,REPLACE-CT-MODEL,customer_tools,model,REPLACE,CNY,1,,estimate,REPLACE,Admin model testing
+2026-10,REPLACE-CT-SERVER,customer_tools,server,REPLACE,CNY,1,,estimate,REPLACE,Admin and database
+2026-10,REPLACE-CT-GATEWAY,customer_tools,gateway,REPLACE,CNY,1,,estimate,REPLACE,Exclusive gateway cost or confirmed zero
+2026-10,REPLACE-CT-STORAGE,customer_tools,storage,REPLACE,CNY,1,,estimate,REPLACE,Attachments and backup
+2026-10,REPLACE-CT-OPS,customer_tools,operations,REPLACE,CNY,1,,estimate,REPLACE,Loaded labor cost
+2026-10,REPLACE-AW-MODEL,ai_workspace,model,REPLACE,CNY,1,,estimate,REPLACE,Employee model spend
+2026-10,REPLACE-AW-SERVER,ai_workspace,server,REPLACE,CNY,1,,estimate,REPLACE,Cloud PCs and compute
+2026-10,REPLACE-AW-GATEWAY,ai_workspace,gateway,REPLACE,CNY,1,,estimate,REPLACE,LiteLLM gateway infra
+2026-10,REPLACE-AW-STORAGE,ai_workspace,storage,REPLACE,CNY,1,,estimate,REPLACE,OSS and logs
+2026-10,REPLACE-AW-OPS,ai_workspace,operations,REPLACE,CNY,1,,estimate,REPLACE,Loaded labor cost
+2026-10,REPLACE-SHARED-SERVER,shared,server,REPLACE,CNY,1,,estimate,REPLACE,Shared host; delete row if none

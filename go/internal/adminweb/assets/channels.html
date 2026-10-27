@@ -1,0 +1,75 @@
+{{define "channels.html"}}{{template "head" "模型渠道"}}
+<body>
+<div class="app">
+{{template "nav" .}}
+<main class="sheet">
+  <header class="pagehead"><h1>模型渠道</h1></header>
+  {{template "notices" .}}
+  <p class="lede">在这里查看供应商部署、检测指定模型，并在故障时暂停渠道。暂停是管理员策略，不等于供应商健康状态。</p>
+  <section class="panel summary-row">
+    <p>LiteLLM 网关 {{if .GatewayURL}}<code>{{.GatewayURL}}</code>{{else}}未配置{{end}}
+    {{if .GatewayUnusable}}<span class="tag tag-bad">无法读取</span>{{else if .GatewayEnabled}}<span class="tag tag-ok">清单可读</span>{{end}}</p>
+    {{if .GatewayUnusable}}<p class="note note-err">{{.GatewayUnusable}}</p>{{end}}
+    <p class="hint">模型清单可读只说明网关可访问，不代表上游推理可用。下方的「发送测试」会实际调用所选聊天部署，不使用健康检查缓存，并产生少量供应商费用。</p>
+  </section>
+
+  <div class="channel-stack">
+  {{range .GatewayChannels}}
+  <section class="panel channel-card" id="channel-{{.ID}}">
+    <div class="channel-card-head">
+      <div><div class="channel-kicker">供应商渠道 · {{.ID}}</div><h2>{{.Label}}</h2></div>
+      <div>{{if .Paused}}<span class="tag tag-bad">管理员已暂停</span>{{else}}<span class="tag tag-ok">管理员已启用</span>{{end}}</div>
+    </div>
+    <p class="channel-meta">{{len .Deployments}} 个部署 · {{len .Models}} 个员工可见条目{{if .Paused}} · {{.Pause.At}} 由 {{.Pause.By}} 暂停{{end}}</p>
+    {{if .Pause.Reason}}<p class="channel-reason">暂停原因：{{.Pause.Reason}}</p>{{end}}
+
+    {{if and (may $.Role "/channels/test") $.GatewayEnabled (not $.GatewayUnusable) .Testable}}
+    <form method="post" action="/channels/try" class="channel-test-form" data-channel-trial>
+      <input type="hidden" name="csrf" value="{{$.CSRF}}"><input type="hidden" name="channel" value="{{.ID}}">
+      <label>选择部署
+        <select name="model_id" required>{{range .Deployments}}{{if and .ID .ChatCapable}}<option value="{{.ID}}">{{.Name}}{{if not .Visible}} · 隐藏部署{{end}}</option>{{end}}{{end}}</select>
+      </label>
+      <label>输入测试内容
+        <textarea name="prompt" maxlength="2000" rows="3" required>请用一句话回复：渠道测试成功。</textarea>
+      </label>
+      <button type="submit">发送测试</button>
+    </form>
+    <div class="channel-trial-result" data-channel-result hidden aria-live="polite">
+      <p class="channel-trial-state" data-channel-state></p>
+      <div class="channel-trial-transcript" data-channel-transcript hidden>
+        <div><span>输入</span><pre data-channel-input></pre></div>
+        <div><span>模型回复</span><pre data-channel-output></pre></div>
+      </div>
+      <p class="channel-trial-meta" data-channel-meta></p>
+    </div>
+    <p class="hint">按部署 ID 定向调用并核对网关返回的部署 ID；不会把同名模型误判为此渠道。输入最多 2000 字，回复上限 256 tokens。输入和回复只在当前页面显示，不写入 Admin 审计记录。单个部署通过不代表整个渠道的所有部署均可用。</p>
+    {{else if and (may $.Role "/channels/test") $.GatewayEnabled (not $.GatewayUnusable) (not .Testable)}}
+    <p class="hint">网关没有提供可试调用的聊天部署 ID。请检查模型配置。</p>
+    {{end}}
+
+    {{if may $.Role "/channels/pause"}}
+    <div class="channel-policy">
+      {{if .Paused}}
+      <form method="post" action="/channels/pause"><input type="hidden" name="csrf" value="{{$.CSRF}}"><input type="hidden" name="version" value="{{$.ChannelsVersion}}"><input type="hidden" name="channel" value="{{.ID}}"><input type="hidden" name="pause" value="0"><button class="link">恢复渠道</button></form>
+      {{else}}
+      <form method="post" action="/channels/pause"><input type="hidden" name="csrf" value="{{$.CSRF}}"><input type="hidden" name="version" value="{{$.ChannelsVersion}}"><input type="hidden" name="channel" value="{{.ID}}"><input type="hidden" name="pause" value="1">
+        <input name="reason" placeholder="暂停原因（可选）" aria-label="暂停原因"><input name="confirm" placeholder="输入 {{.ID}} 确认" aria-label="输入渠道代号确认" autocomplete="off"><button class="link danger-link">暂停渠道</button>
+      </form>
+      {{end}}
+    </div>
+    {{end}}
+    {{if .Deployments}}
+    <details class="channel-details"><summary>查看全部部署</summary>
+      <div class="scroll"><table><thead><tr><th>模型名</th><th>部署 ID</th><th>员工可见</th></tr></thead><tbody>
+      {{range .Deployments}}<tr><td class="id">{{.Name}}</td><td class="mono">{{orDash .ID}}</td><td>{{if .Visible}}是{{else}}否{{end}}</td></tr>{{end}}
+      </tbody></table></div>
+    </details>
+    {{else}}<p class="hint">网关当前没有报告这个渠道的部署。</p>{{end}}
+  </section>
+  {{else}}<section class="panel summary-row"><p>还没有可展示的渠道。</p></section>{{end}}
+  </div>
+  <p class="hint">暂停渠道后，员工模型清单与权限会重新生成；若同名模型还由其他渠道提供，仍可能通过其他渠道调用。员工端的模型下发进度在<a href="/models">模型下发</a>查看。</p>
+</main>
+</div>
+</body>
+</html>{{end}}
