@@ -15,6 +15,7 @@ import (
 	"golang.org/x/sys/windows/registry"
 
 	"github.com/TEENet-io/ai-env-mgr/internal/agentcore"
+	"github.com/TEENet-io/ai-env-mgr/internal/creds"
 )
 
 // codexInstaller is the Windows half of the Codex desktop update.
@@ -107,6 +108,10 @@ func (c *codexInstaller) Running() (bool, error) {
 			return false, nil // ERROR_NO_MORE_FILES: end of the list
 		}
 	}
+}
+
+func (c *codexInstaller) Stop(user string) (int, error) {
+	return creds.StopAIToolsFor(user)
 }
 
 func (c *codexInstaller) FreeBytes() (uint64, error) {

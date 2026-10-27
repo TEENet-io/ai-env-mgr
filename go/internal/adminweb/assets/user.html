@@ -63,12 +63,12 @@
   <div class="row">
     <form method="post" action="/users/reissue" class="inline">
       <input type="hidden" name="csrf" value="{{$.CSRF}}"><input type="hidden" name="windowsUser" value="{{.WindowsUser}}"><input type="hidden" name="back" value="detail">
-      <button{{if or (not $.GatewayEnabled) (not .Enabled)}} disabled{{end}}>重发令牌并下发配置</button>
+      <button data-confirm="确认重发 {{.WindowsUser}} 的令牌并下发配置？旧令牌会立即失效，正在使用的工具可能被结束。"{{if or (not $.GatewayEnabled) (not .Enabled)}} disabled{{end}}>重发令牌并下发配置</button>
     </form>
     {{if .Enabled}}
     <form method="post" action="/users/offboard" class="inline">
       <input type="hidden" name="csrf" value="{{$.CSRF}}"><input type="hidden" name="windowsUser" value="{{.WindowsUser}}"><input type="hidden" name="back" value="detail">
-      <button class="danger">关户</button>
+      <button class="danger" data-confirm="确认关户 {{.WindowsUser}}？这会立即撤回网关令牌，并在机器同步后清理本地凭据。">关户</button>
     </form>
     {{else}}
     <form method="post" action="/users/reopen" class="inline">
@@ -89,7 +89,7 @@
     {{range .Machines}}
     <form method="post" action="/machines/restart-codex" class="inline">
       <input type="hidden" name="csrf" value="{{$.CSRF}}"><input type="hidden" name="machine" value="{{.}}">
-      <button class="link">关闭 {{.}} 上的 Codex</button>
+      <button class="link" data-confirm="确认关闭 {{.}} 上正在运行的 Codex？请先确认员工已保存工作。">关闭 {{.}} 上的 Codex</button>
     </form>
     {{end}}
     {{range .Flags}}{{if eq .Fix "offboard"}}

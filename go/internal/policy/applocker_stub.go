@@ -16,6 +16,12 @@ var ErrAppLockerNotDeployed = errors.New("AppLocker is not deployed on this mach
 // status full of noise for a machine that has no AppLocker to manage.
 func ApplyAppLocker(paths []string, mode string) error { return nil }
 
+// ApplyAppLockerWithCodexLocalPaths is a no-op off Windows, just like
+// ApplyAppLocker. The extra paths are discovered only by the Windows agent.
+func ApplyAppLockerWithCodexLocalPaths(paths, codexLocalPaths []string, mode string) error {
+	return nil
+}
+
 // LocalAppLockerPaths is the non-Windows stand-in for reading the local
 // AppLocker policy back out. There is nothing to read here, and unlike a
 // real failed read this is not worth reporting as an error: it mirrors

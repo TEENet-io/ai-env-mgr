@@ -58,6 +58,7 @@ func (s *Store) CredentialBundles() repo.CredentialBundles { return bundleRepo{s
 func (s *Store) ApplicationTasks() repo.ApplicationTasks {
 	return applicationTaskRepo{s.q, s.db, s.inTx}
 }
+func (s *Store) AdminJobs() repo.AdminJobs { return adminJobRepo{s.q} }
 
 // errNoRow is what an Exec that matched nothing reports, so that a statement
 // written as an UPDATE goes through the same mapping as one written with

@@ -71,6 +71,20 @@ type pageData struct {
 	Tasks            []taskRow
 	ApplicationTasks []applicationTaskRow
 	TaskColumns      []taskColumn
+	TaskStatusFilter string
+	TaskKindFilter   string
+	TaskShowSystem   bool
+	TaskHidden       int
+	TaskTotal        int
+	TaskPage         int
+	TaskPageSize     int
+	TaskHasPrev      bool
+	TaskHasNext      bool
+	TaskLive         bool
+	TaskQuery        string
+	TaskRefreshed    string
+	TaskKinds        []taskKindOption
+	TaskDetail       *taskDetailView
 	Error            string
 	OK               bool
 	// Notice replaces the standard "已保存" for an action whose outcome needs
@@ -99,33 +113,36 @@ type pageData struct {
 	Show     string // the list filter: "", "active", "offboarded", "deleted"
 
 	// Version library (database mode).
-	Artifacts     map[string][]artifactRow // by product
-	Applications  []model.Application
-	Unregistered  []packageRow      // in the bucket, not yet in the library
-	GlobalTargets map[string]string // product -> the fleet policy's version
-	Rollouts      []rolloutView
-	AuditPage     *auditPage
-	UsagePage     *usagePage
-	AlertsPage    *alertsPage
-	AlertSettings *alertSettingsView
-	Channels      *channelView
-	Rotation      *rotationView
-	DeviceChannel *channelSettingsView
-	OpenAlerts    int // drawn in the nav on every page
+	Artifacts      map[string][]artifactRow // by product
+	Applications   []model.Application
+	Unregistered   []packageRow      // in the bucket, not yet in the library
+	GlobalTargets  map[string]string // product -> the fleet policy's version
+	Rollouts       []rolloutView
+	AuditPage      *auditPage
+	UsagePage      *usagePage
+	KeyBillingPage *keyBillingPage
+	AlertsPage     *alertsPage
+	AlertSettings  *alertSettingsView
+	DataRetention  *dataRetentionView
+	Channels       *channelView
+	Rotation       *rotationView
+	DeviceChannel  *channelSettingsView
+	OpenAlerts     int // drawn in the nav on every page
 	// Tab is the entry inside the nav group this page is (see the tabs-*
 	// templates); empty for a group with no second level.
-	Tab           string
-	MachinePage   *machinePage
-	History       *employeeHistory // the detail page's history (database mode)
-	Report        []versionReport  // the rollouts page's report by version
-	Deferred      []deferredRow    // machines that keep putting an update off
-	Dists         []distribution   // the overview's fleet distributions
-	Rollout       *rolloutView
-	Artifact      *repo.Artifact         // the "new rollout" page's subject
-	Candidates    []deviceCandidate      // machines to choose from
-	Account       *accountRow            // the detail page's subject
-	Audit         []admincore.AuditEntry // that account's history, newest first
-	QuotaDefaults litellm.Quota          // pre-fills the onboarding form
+	Tab                                                                                     string
+	MachinePage                                                                             *machinePage
+	History                                                                                 *employeeHistory // the detail page's history (database mode)
+	Report                                                                                  []versionReport  // the rollouts page's report by version
+	Deferred                                                                                []deferredRow    // machines that keep putting an update off
+	Dists                                                                                   []distribution   // the overview's fleet distributions
+	Rollout                                                                                 *rolloutView
+	Artifact                                                                                *repo.Artifact    // the "new rollout" page's subject
+	Candidates                                                                              []deviceCandidate // machines to choose from
+	CandidateTotal, CandidateOnline, CandidateOffline, CandidateIncompatible, CandidateOpen int
+	Account                                                                                 *accountRow            // the detail page's subject
+	Audit                                                                                   []admincore.AuditEntry // that account's history, newest first
+	QuotaDefaults                                                                           litellm.Quota          // pre-fills the onboarding form
 
 	// SLS says the deployment has a log project, which is what decides
 	// whether the nav offers the log page. Set centrally in render.
@@ -460,6 +477,11 @@ func (s *Server) renderSettings(w http.ResponseWriter, r *http.Request, sess *se
 		log.Printf("adminweb: LoadQuotaDefaults: %v", err)
 	}
 	s.settingsExtras(r, &data)
+	if s.dbm != nil {
+		if cfg, version, err := repo.LoadDataRetentionSettings(r.Context(), s.dbm.store.Settings()); err == nil {
+			data.DataRetention = &dataRetentionView{DataRetentionSettings: cfg, Version: version}
+		}
+	}
 	s.render(w, "settings.html", http.StatusOK, data)
 }
 

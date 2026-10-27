@@ -64,6 +64,23 @@ func TestUsagePageSumsAndExports(t *testing.T) {
 			t.Errorf("page lacks %q", want)
 		}
 	}
+	keyPage := dbGet(t, h, "/usage/keys?month=2026-09", cookie)
+	keyBody := keyPage.Body.String()
+	if keyPage.Code != 200 {
+		t.Fatalf("key billing page: %d", keyPage.Code)
+	}
+	for _, want := range []string{"API Key 账单", "a1", "a2", "sk-stray", "$2.0000", "本地快照"} {
+		if !strings.Contains(keyBody, want) {
+			t.Errorf("key billing page lacks %q", want)
+		}
+	}
+	if strings.Contains(keyBody, "明文 Key") == false {
+		t.Error("key billing page should explain that plaintext keys are not shown")
+	}
+	keyCSV := dbGet(t, h, "/usage/keys.csv?month=2026-09", cookie)
+	if keyCSV.Code != 200 || !strings.Contains(keyCSV.Body.String(), "key_alias") || !strings.Contains(keyCSV.Body.String(), "sk-stray") {
+		t.Fatalf("key billing csv: %d %q", keyCSV.Code, keyCSV.Body.String())
+	}
 	one := dbGet(t, h, "/usage?month=2026-09&employee=work2", cookie).Body.String()
 	if strings.Contains(one, ">sonnet<") || !strings.Contains(one, ">opus<") || !strings.Contains(one, "$3.0000") {
 		t.Fatalf("one employee's page shows other people's models")

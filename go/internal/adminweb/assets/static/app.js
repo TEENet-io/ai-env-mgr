@@ -29,4 +29,23 @@
       }
     });
   });
+  document.querySelectorAll("[data-history-toggle]").forEach(function (button) {
+    var list = document.getElementById(button.getAttribute("aria-controls"));
+    if (!list) { return; }
+    button.addEventListener("click", function () {
+      var expanded = list.classList.toggle("is-expanded");
+      button.setAttribute("aria-expanded", expanded ? "true" : "false");
+      var isHistory = button.textContent.indexOf("历史") !== -1 || button.getAttribute("aria-controls") === "task-list-done";
+      button.textContent = expanded ? (isHistory ? "收起历史" : "收起其余任务") : (isHistory ? "展开其余历史" : "展开其余任务");
+    });
+  });
+  document.querySelectorAll("[data-rollout-selection]").forEach(function (form) {
+    var summary = form.querySelector("[data-rollout-summary]");
+    var update = function () {
+      var n = form.querySelectorAll('input[name="device"]:checked').length;
+      if (summary) summary.textContent = n ? ("已选择 " + n + " 台机器；提交后这些机器将不再跟随全局版本") : "尚未选择机器";
+    };
+    form.addEventListener("change", update);
+    update();
+  });
 })();

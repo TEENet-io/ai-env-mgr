@@ -12,6 +12,8 @@ import (
 	"strings"
 	"time"
 	"unicode/utf16"
+
+	"github.com/TEENet-io/ai-env-mgr/internal/model"
 )
 
 // ErrAppLockerNotDeployed means this machine has no AppLocker policy with an
@@ -110,11 +112,32 @@ func LocalAppLockerPaths() ([]string, error) {
 // nothing has drifted: one read, and a write only when the XML actually
 // changes.
 func ApplyAppLocker(paths []string, mode string) error {
+	return applyAppLocker(paths, nil, mode)
+}
+
+// ApplyAppLockerWithCodexLocalPaths is the Agent-only variant of ApplyAppLocker.
+// The second list is generated locally from existing user profiles; it never
+// comes from policy.json or the console.  Keeping this separate from the
+// public machine-level allow-path list prevents a remotely supplied user path
+// from becoming an AppLocker rule.
+func ApplyAppLockerWithCodexLocalPaths(paths, codexLocalPaths []string, mode string) error {
+	return applyAppLocker(paths, codexLocalPaths, mode)
+}
+
+func applyAppLocker(paths, codexLocalPaths []string, mode string) error {
 	// policy.json is written on the publishing side, not here, and this
 	// agent runs as SYSTEM: re-validate before anything reaches the
 	// rewriter rather than trusting whatever OSS happened to hand back. See
 	// FilterAllowPaths.
 	paths, rejected := FilterAllowPaths(paths)
+	sandbox, sandboxErr := filterCodexLocalPaths(codexLocalPaths)
+	if sandboxErr != nil {
+		return fmt.Errorf("validate Codex local paths: %w", sandboxErr)
+	}
+	if len(paths)+len(sandbox) > model.AppLockerMaxAllowPaths {
+		return fmt.Errorf("AppLocker allow paths exceed %d including Codex sandbox profiles", model.AppLockerMaxAllowPaths)
+	}
+	paths = append(paths, sandbox...)
 
 	xml, err := readLocalAppLockerXML()
 	if err != nil {

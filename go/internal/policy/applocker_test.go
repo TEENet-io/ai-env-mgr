@@ -390,6 +390,42 @@ func TestFilterAllowPathsAllValidKeepsEverything(t *testing.T) {
 	}
 }
 
+func TestFilterCodexLocalPathsAcceptsExplicitUserTrees(t *testing.T) {
+	got, err := filterCodexLocalPaths([]string{
+		`C:\Users\peter\.codex\.sandbox-bin\*`,
+		`C:\Users\peter\.cache\codex-runtimes\*`,
+		`C:\Users\weipeng\.codex\.sandbox-bin\*`,
+		`C:\Users\peter\.codex\.sandbox-bin\*`,
+	})
+	if err != nil {
+		t.Fatalf("filterCodexLocalPaths: %v", err)
+	}
+	want := []string{
+		`C:\Users\peter\.cache\codex-runtimes\*`,
+		`C:\Users\peter\.codex\.sandbox-bin\*`,
+		`C:\Users\weipeng\.codex\.sandbox-bin\*`,
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("got %v, want %v", got, want)
+	}
+}
+
+func TestFilterCodexLocalPathsRejectsRemoteOrBroadTrees(t *testing.T) {
+	for _, path := range []string{
+		`C:\Users\*\.codex\.sandbox-bin\*`,
+		`C:\Users\*\.cache\codex-runtimes\*`,
+		`C:\Users\peter\.cache\*`,
+		`C:\Users\peter\other\.cache\codex-runtimes\*`,
+		`C:\Users\peter\AppData\*.exe`,
+		`C:\Tools\Codex\*`,
+		`%TEMP%\.codex\.sandbox-bin\*`,
+	} {
+		if _, err := filterCodexLocalPaths([]string{path}); err == nil {
+			t.Errorf("filterCodexLocalPaths(%q) unexpectedly accepted", path)
+		}
+	}
+}
+
 // A rule that merely matches the managed Id/Name prefixes but sits in a
 // different rule collection must not be reported: ManagedPaths is scoped to
 // the Exe collection exactly like RewriteAppLockerXML.

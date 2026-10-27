@@ -18,9 +18,12 @@ type CodexInstaller interface {
 	// when Codex is not installed.
 	InstalledVersion() (string, error)
 	// Running reports whether Codex is in use. Installing over a running copy
-	// fails on locked files, and would yank the application out from under
-	// whoever is working in it.
+	// is unsafe until the bound user's session is closed.
 	Running() (bool, error)
+	// Stop closes Codex processes for the bound user before an update. The
+	// update policy is explicit: an eligible release is installed immediately,
+	// rather than waiting for the user to exit the application.
+	Stop(user string) (killed int, err error)
 	// Install runs the downloaded installer silently and returns once it is
 	// done.
 	Install(setupPath, version string) error
@@ -32,7 +35,7 @@ type CodexInstaller interface {
 // machine has not taken an update.
 const (
 	CodexIdle        = ""
-	CodexDeferred    = "deferred" // eligible, but not now (in use, or no room)
+	CodexDeferred    = "deferred" // eligible, but not now (insufficient disk)
 	CodexDownloading = "downloading"
 	CodexInstalling  = "installing"
 	CodexFailed      = "failed"
@@ -40,8 +43,7 @@ const (
 
 // Why an eligible Codex install waited, reported beside CodexDeferred.
 const (
-	CodexDeferInUse = "in_use"
-	CodexDeferDisk  = "disk"
+	CodexDeferDisk = "disk"
 )
 
 // codexOutcome is what one Codex update cycle reports.
@@ -55,6 +57,29 @@ type codexOutcome struct {
 // package that fails to install is not retried every sync forever. Clearing
 // the target, or publishing a different version, makes it try again.
 const codexMarkerFile = "codex-target"
+
+const codexInstallerLogTailBytes = 16 * 1024
+
+// logCodexInstallerTail copies the useful tail of the platform installer's
+// own log into agent.log. The installer writes its detailed diagnostics to a
+// separate file, while the console only receives agent.log; without this
+// bridge an administrator sees only "安装失败" and has to RDP into the box.
+func logCodexInstallerTail(path string) {
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		log.Printf("codex: installer log unavailable (%s): %v", path, err)
+		return
+	}
+	if len(raw) > codexInstallerLogTailBytes {
+		raw = raw[len(raw)-codexInstallerLogTailBytes:]
+	}
+	text := strings.TrimSpace(string(raw))
+	if text == "" {
+		log.Printf("codex: installer log is empty (%s)", path)
+		return
+	}
+	log.Printf("codex: installer log tail (%s):\n%s", path, text)
+}
 
 // installHeadroom is what must be free before downloading: the installer
 // itself plus room for what it unpacks. A cloud desktop that fills its disk
@@ -85,7 +110,7 @@ func codexEligible(target model.ReleaseTarget, installed string) (bool, string) 
 //
 // Nothing here is fatal to the sync: a machine that cannot update Codex still
 // has to report its status, apply policy, and stay manageable.
-func (s *Syncer) updateCodex(target model.ReleaseTarget, errs *[]string) codexOutcome {
+func (s *Syncer) updateCodex(target model.ReleaseTarget, user string, errs *[]string) codexOutcome {
 	if s.Codex == nil {
 		return codexOutcome{}
 	}
@@ -107,15 +132,27 @@ func (s *Syncer) updateCodex(target model.ReleaseTarget, errs *[]string) codexOu
 	// bandwidth on every machine; the console retries by moving the
 	// generation, which is a decision somebody made.
 	if markerMatches(s.readMarker(codexMarkerFile), target) {
+		log.Printf("codex: target %s generation=%d was already attempted and failed; waiting for a new target generation", target.Version, target.Generation)
 		return codexOutcome{Version: installed, State: CodexFailed}
 	}
 
 	if running, err := s.Codex.Running(); err != nil {
 		*errs = append(*errs, fmt.Sprintf("codex: check whether it is running: %v", err))
-		return codexOutcome{Version: installed, State: CodexDeferred, Reason: CodexDeferInUse}
+		return codexOutcome{Version: installed, State: CodexFailed}
 	} else if running {
-		// Not an error: it will install the next time the machine is idle.
-		return codexOutcome{Version: installed, State: CodexDeferred, Reason: CodexDeferInUse}
+		killed, stopErr := s.Codex.Stop(user)
+		if stopErr != nil {
+			*errs = append(*errs, fmt.Sprintf("codex: close running process: %v", stopErr))
+			return codexOutcome{Version: installed, State: CodexFailed}
+		}
+		log.Printf("codex: closed %d running process(es) for immediate update", killed)
+		if stillRunning, checkErr := s.Codex.Running(); checkErr != nil {
+			*errs = append(*errs, fmt.Sprintf("codex: verify process closed: %v", checkErr))
+			return codexOutcome{Version: installed, State: CodexFailed}
+		} else if stillRunning {
+			*errs = append(*errs, "codex: process is still running after close request")
+			return codexOutcome{Version: installed, State: CodexFailed}
+		}
 	}
 	if free, err := s.Codex.FreeBytes(); err == nil && free < installHeadroom {
 		// Reported through the deferred state rather than as an error: the
@@ -148,6 +185,7 @@ func (s *Syncer) updateCodex(target model.ReleaseTarget, errs *[]string) codexOu
 	log.Printf("codex: installing %s", target.Version)
 	if err := s.Codex.Install(dest, target.Version); err != nil {
 		*errs = append(*errs, fmt.Sprintf("codex: install: %v", err))
+		logCodexInstallerTail(filepath.Join(filepath.Dir(dest), "codex-install.log"))
 		return codexOutcome{Version: installed, State: CodexFailed}
 	}
 	os.Remove(dest) // ~700 MB; the marker records what was done
