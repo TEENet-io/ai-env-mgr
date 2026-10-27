@@ -23,6 +23,9 @@ func TestLocalFileSourceFindsSessions(t *testing.T) {
 	mk(".codex/sessions/2026/08/notes.txt", "ignore\n")   // wrong extension
 	mk(".codex/sessions/2026/08/other.jsonl", "ignore\n") // not rollout-*
 	mk(".codex/sessions/2026/09/rollout-def.jsonl", "3\n")
+	mk(".workbuddy/projects/project-a/session.jsonl", "4\n")
+	mk("AppData/Roaming/WorkBuddy/projects/project-b/session.JSONL", "5\n")
+	mk(".workbuddy/workbuddy.db", "do not collect\n")
 
 	files, err := localFileSource{}.Sessions(profile)
 	if err != nil {
@@ -39,6 +42,8 @@ func TestLocalFileSourceFindsSessions(t *testing.T) {
 	want := []string{
 		".codex/sessions/2026/08/rollout-abc.jsonl",
 		".codex/sessions/2026/09/rollout-def.jsonl",
+		".workbuddy/projects/project-a/session.jsonl",
+		"AppData/Roaming/WorkBuddy/projects/project-b/session.JSONL",
 	}
 	if len(rels) != len(want) {
 		t.Fatalf("rels=%v want %v", rels, want)
@@ -130,5 +135,31 @@ func TestLocalFileSourceMissingGlobalStateIsNotAnError(t *testing.T) {
 	}
 	if len(files) != 0 {
 		t.Errorf("expected nothing, got %+v", files)
+	}
+}
+
+func TestLocalFileSourceWorkBuddyAllowlistRejectsLinksAndSecrets(t *testing.T) {
+	profile := t.TempDir()
+	buddy := filepath.Join(profile, ".workbuddy", "projects", "demo")
+	if err := os.MkdirAll(buddy, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	good := filepath.Join(buddy, "conversation.jsonl")
+	if err := os.WriteFile(good, []byte(`{"type":"message","role":"user","content":"hello"}`+"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	secret := filepath.Join(profile, ".workbuddy", "credentials.json")
+	if err := os.WriteFile(secret, []byte("token-secret"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(secret, filepath.Join(buddy, "linked.jsonl")); err != nil {
+		t.Fatal(err)
+	}
+	files, err := localFileSource{}.Sessions(profile)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(files) != 1 || files[0].Rel != ".workbuddy/projects/demo/conversation.jsonl" {
+		t.Fatalf("unexpected WorkBuddy files: %+v", files)
 	}
 }

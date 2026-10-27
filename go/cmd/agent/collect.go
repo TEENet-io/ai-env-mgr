@@ -11,10 +11,14 @@ import (
 
 // localFileSource finds and reads the bound employee's AI session files.
 //
-// It mirrors the two globs in collect_to_oss.py:
+// It mirrors the Codex globs in collect_to_oss.py and the WorkBuddy project
+// layout used by the offline collector:
 //
 //	<profile>/.claude/projects/**/*.jsonl
 //	<profile>/.codex/sessions/**/rollout-*.jsonl
+//	<profile>/.workbuddy/projects/**/*.jsonl
+//	<profile>/.workbuddy-ai/projects/**/*.jsonl
+//	<profile>/AppData/Roaming/WorkBuddy*/projects/**/*.jsonl
 //
 // plus the exact files in collectedFiles below.
 //
@@ -47,12 +51,29 @@ func (localFileSource) Sessions(profileDir string) ([]agentcore.SessionFile, err
 	}{
 		{filepath.Join(profileDir, ".codex", "sessions"),
 			func(n string) bool { return strings.HasPrefix(n, "rollout-") && strings.HasSuffix(n, ".jsonl") }},
+		// WorkBuddy stores provider-neutral conversation records in project
+		// JSONL files. Keep the roots explicit: do not scan all of .workbuddy,
+		// which may contain credentials, caches, or diagnostics.
+		{filepath.Join(profileDir, ".workbuddy", "projects"),
+			func(n string) bool { return strings.HasSuffix(strings.ToLower(n), ".jsonl") }},
+		{filepath.Join(profileDir, ".workbuddy-ai", "projects"),
+			func(n string) bool { return strings.HasSuffix(strings.ToLower(n), ".jsonl") }},
+		{filepath.Join(profileDir, "AppData", "Roaming", "WorkBuddy", "projects"),
+			func(n string) bool { return strings.HasSuffix(strings.ToLower(n), ".jsonl") }},
+		{filepath.Join(profileDir, "AppData", "Roaming", "WorkBuddy AI", "projects"),
+			func(n string) bool { return strings.HasSuffix(strings.ToLower(n), ".jsonl") }},
 	}
 
 	for _, r := range roots {
 		err := filepath.WalkDir(r.dir, func(path string, d os.DirEntry, err error) error {
 			if err != nil {
 				return nil // unreadable dir/entry: skip, do not abort the whole walk
+			}
+			// Never follow a link into another profile or outside the approved
+			// WorkBuddy/Codex tree. WalkDir does not follow directory links, but
+			// Open would otherwise follow file links later.
+			if d.Type()&os.ModeSymlink != 0 {
+				return nil
 			}
 			if d.IsDir() || !r.match(d.Name()) {
 				return nil
@@ -80,10 +101,13 @@ func (localFileSource) Sessions(profileDir string) ([]agentcore.SessionFile, err
 
 	for _, rel := range collectedFiles {
 		path := filepath.Join(profileDir, filepath.FromSlash(rel))
-		info, err := os.Stat(path)
+		info, err := os.Lstat(path)
 		if err != nil || info.IsDir() {
 			// Absent is the normal case for an employee who does not use the
 			// tool; unreadable is not worth failing the whole pass over.
+			continue
+		}
+		if info.Mode()&os.ModeSymlink != 0 {
 			continue
 		}
 		out = append(out, agentcore.SessionFile{
