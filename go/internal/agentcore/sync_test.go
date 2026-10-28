@@ -1460,15 +1460,15 @@ func TestRunOnceRunsCollectorWhenEnabled(t *testing.T) {
 	}
 }
 
-// Collection is machine-wide: it runs for every real user profile on the box
-// regardless of the binding, and skips the built-in Administrator. This locks
-// in that collection no longer depends on `bound`.
-func TestRunOnceCollectsAllLocalUsersRegardlessOfBinding(t *testing.T) {
+// Collection is restricted to the employee bound to the machine. Unbound
+// local profiles must never reach the upload path, which rejects them.
+func TestRunOnceCollectsOnlyBoundUser(t *testing.T) {
 	store := newFakeStore()
 	app := &fakeApplier{}
 	s := newSyncer(t, store, app)
-	// Two employee profiles plus Administrator; deliberately NO binding.
+	// Two employee profiles plus Administrator; bind only peter.
 	s.Machine.(*fakeMachine).localUsers = []string{"Administrator", "peter", "weipeng"}
+	bind(t, store, "DESKTOP-A", "peter")
 	pol := model.DefaultPolicy()
 	pol.CollectEnabled = true
 	store.set(ossclient.PolicyKey(), policyBytes(t, pol), "petag")
@@ -1479,12 +1479,11 @@ func TestRunOnceCollectsAllLocalUsersRegardlessOfBinding(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// peter and weipeng collected, Administrator skipped -- even though unbound.
-	if len(col.calls) != 2 || col.calls[0] != "peter" || col.calls[1] != "weipeng" {
-		t.Fatalf("collector calls=%v want [peter weipeng]", col.calls)
+	if len(col.calls) != 1 || col.calls[0] != "peter" {
+		t.Fatalf("collector calls=%v want [peter]", col.calls)
 	}
-	if st.CollectUploaded != 4 { // 2 users x 2 uploaded each
-		t.Fatalf("CollectUploaded = %d, want 4", st.CollectUploaded)
+	if st.CollectUploaded != 2 {
+		t.Fatalf("CollectUploaded = %d, want 2", st.CollectUploaded)
 	}
 }
 

@@ -541,18 +541,13 @@ func (s *Syncer) RunOnce() (model.Status, error) {
 	}
 
 	// ---- collection ----
-	// Machine-wide and independent of the binding: every real user profile on
-	// the box is collected into its own data_collect/{user}/, so a shared
-	// desktop with several accounts has all of them captured, not just the one
-	// it is bound to. LocalUsers already drops system profiles; the built-in
-	// Administrator is skipped here because it is not an employee.
+	// Collection is limited to the employee bound to this machine. The upload
+	// API enforces the same rule, so scanning other local profiles only creates
+	// predictable 403 errors and can never produce useful uploads.
 	collectUploaded := 0
-	if pol.CollectEnabled && s.Collector != nil {
-		for _, u := range localUsers {
-			if strings.EqualFold(u, administratorAccount) {
-				continue
-			}
-			cr := s.Collector.CollectOnce(u, pol.CollectQuietSeconds, pol.CollectSince)
+	if pol.CollectEnabled && s.Collector != nil && boundUserExists {
+		if !strings.EqualFold(binding.User, administratorAccount) {
+			cr := s.Collector.CollectOnce(binding.User, pol.CollectQuietSeconds, pol.CollectSince)
 			collectUploaded += cr.Uploaded
 			errs = append(errs, cr.Errors...)
 		}
