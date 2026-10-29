@@ -30,6 +30,9 @@ const (
 	// TaskDevicePrune forgets self-enrolled machines nobody assigned.
 	TaskDevicePrune = "device_prune"
 	TaskDataCleanup = "data_cleanup"
+	// TaskCatalogSync compares LiteLLM's current visible model catalog with
+	// the last fleet delivery and queues a refresh when the gateway changed.
+	TaskCatalogSync = "catalog_sync"
 
 	EveryStatusImport  = time.Minute
 	EveryReleaseScan   = 24 * time.Hour
@@ -39,6 +42,7 @@ const (
 	EveryRotation      = 24 * time.Hour
 	EveryDevicePrune   = 24 * time.Hour
 	EveryDataCleanup   = 24 * time.Hour
+	EveryCatalogSync   = time.Minute
 	// Rotation runs an hour into the day, after the usage snapshot and
 	// before anybody is at their desk in Asia.
 	AfterRotation = time.Hour
@@ -68,6 +72,7 @@ func Schedule(ctx context.Context, store repo.Store, onError func(error)) {
 			{TaskCredentialRotation, EveryRotation, AfterRotation, 2},
 			{TaskDevicePrune, EveryDevicePrune, 2 * time.Hour, 2},
 			{TaskDataCleanup, EveryDataCleanup, 3 * time.Hour, 2},
+			{TaskCatalogSync, EveryCatalogSync, 0, 2},
 			{repo.TaskAuditPublish, EveryAuditPublish, 0, 2},
 			{repo.TaskReconcile, EveryReconcile, 0, 3},
 		} {

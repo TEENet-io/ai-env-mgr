@@ -16,6 +16,9 @@ const (
 	AlertGatewayDrift   = "gateway_drift"
 	AlertBudget         = "budget"
 	AlertTaskFailed     = "task_failed"
+	// AlertCatalogChanged records a gateway model catalog change that was
+	// automatically delivered to the employee machines.
+	AlertCatalogChanged = "catalog_changed"
 	// AlertOffboardCleanup: an employee left long enough ago that the cloud
 	// account and instance are due for deletion (ai工作间流程 §8), and the
 	// console still has a machine of theirs.

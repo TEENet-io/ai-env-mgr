@@ -322,8 +322,18 @@ func (h OSSExport) exportEmployee(ctx context.Context, employeeID string) (Resul
 		available = litellm.WithoutChannels(available, channels.PausedSet())
 		routable := intersect(available, models)
 		if len(routable) == 0 {
-			return Result{}, Permanent(fmt.Errorf(
-				"none of %s's models are on the gateway; the machine would get a config pointing at nothing", employee.WindowsUser))
+			// A gateway model can be removed outside this console. Retaining the
+			// old bundle would leave a stale model picker on the desktop, so
+			// withdraw the published bundle when the employee's last allowed model
+			// disappears. The stored gateway credential remains; if a model is
+			// re-enabled later, the next catalog sync can publish it again.
+			if err := h.withdraw(ctx, employee); err != nil {
+				return Result{}, err
+			}
+			if err := h.refreshBindings(ctx, employee); err != nil {
+				return Result{}, err
+			}
+			return Result{Note: fmt.Sprintf("credentials withdrawn; none of %s's models remain on the gateway", employee.WindowsUser)}, nil
 		}
 		catalogJSON, err := catalog.Build(available, routable)
 		if err != nil {
