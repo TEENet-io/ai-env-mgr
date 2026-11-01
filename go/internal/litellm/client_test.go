@@ -3,6 +3,7 @@ package litellm
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -84,11 +85,81 @@ func TestIsAliasTakenIgnoresOtherFailures(t *testing.T) {
 	}
 }
 
+func TestTryChatTargetsAndVerifiesExactDeployment(t *testing.T) {
+	c := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/chat/completions" || r.Method != http.MethodPost {
+			t.Errorf("request = %s %s", r.Method, r.URL.Path)
+		}
+		var body struct {
+			Model    string `json:"model"`
+			Messages []struct {
+				Content string `json:"content"`
+			} `json:"messages"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil || body.Model != "google-deployment-1" || len(body.Messages) != 1 || body.Messages[0].Content != "你好" {
+			t.Errorf("trial request = %+v, err = %v", body, err)
+		}
+		w.Header().Set("x-litellm-model-id", "google-deployment-1")
+		_, _ = io.WriteString(w, `{"choices":[{"message":{"content":"你好，我可以用。"},"finish_reason":"stop"}],"usage":{"prompt_tokens":2,"completion_tokens":7}}`)
+	})
+	out, err := c.TryChat(context.Background(), "google-deployment-1", "你好", ChatTrialOptions{})
+	if err != nil || out.Output != "你好，我可以用。" || out.PromptTokens != 2 || out.CompletionTokens != 7 {
+		t.Fatalf("trial = %+v, err = %v", out, err)
+	}
+}
+
+func TestTryChatRejectsResponseFromAnotherDeployment(t *testing.T) {
+	c := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("x-litellm-model-id", "aws-deployment-1")
+		_, _ = io.WriteString(w, `{"choices":[{"message":{"content":"wrong provider"}}]}`)
+	})
+	if _, err := c.TryChat(context.Background(), "google-deployment-1", "hi", ChatTrialOptions{}); err == nil || !strings.Contains(err.Error(), "another deployment") {
+		t.Fatalf("wrong deployment should be rejected: %v", err)
+	}
+}
+
+func TestTryChatThinkingIsOptInForTheProbe(t *testing.T) {
+	var calls int
+	c := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+		calls++
+		var body map[string]any
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			t.Fatal(err)
+		}
+		thinking, present := body["thinking"].(map[string]any)
+		if calls == 1 && (present || body["max_tokens"] != float64(256)) {
+			t.Errorf("default trial parameters = %+v", body)
+		}
+		if calls == 2 && (!present || thinking["type"] != "disabled" || thinking["budget_tokens"] != float64(0)) {
+			t.Errorf("Gemini Flash trial thinking = %+v", thinking)
+		}
+		w.Header().Set("x-litellm-model-id", "google-1")
+		_, _ = io.WriteString(w, `{"choices":[{"message":{"content":"OK"},"finish_reason":"stop"}]}`)
+	})
+	for _, opts := range []ChatTrialOptions{{}, {DisableThinking: true}} {
+		if _, err := c.TryChat(context.Background(), "google-1", "hi", opts); err != nil {
+			t.Fatal(err)
+		}
+	}
+}
+
+func TestTryChatRejectsEmptyVisibleOutput(t *testing.T) {
+	c := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("x-litellm-model-id", "google-1")
+		_, _ = io.WriteString(w, `{"choices":[{"message":{"content":null},"finish_reason":"length"}],"usage":{"prompt_tokens":10,"completion_tokens":253}}`)
+	})
+	trial, err := c.TryChat(context.Background(), "google-1", "hi", ChatTrialOptions{})
+	if !errors.Is(err, ErrNoVisibleOutput) || trial.FinishReason != "length" || trial.CompletionTokens != 253 {
+		t.Fatalf("empty output trial = %+v, err = %v", trial, err)
+	}
+}
+
 func TestModelsFiltersOutInvisibleEntries(t *testing.T) {
 	// A model can be routable for testing without belonging in the picker.
 	c := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
 		_, _ = io.WriteString(w, `{"data":[
 			{"model_name":"grok-4.6","model_info":{"display_name":"Grok 4.6","context_window":256000,"catalog_visible":true}},
+			{"model_name":"closed","model_info":{"display_name":"Closed","catalog_visible":true,"blocked":true}},
 			{"model_name":"probe","model_info":{"display_name":"Probe","catalog_visible":false}},
 			{"model_name":"nometa","model_info":{}}
 		]}`)
