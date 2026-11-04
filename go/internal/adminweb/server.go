@@ -137,6 +137,7 @@ type Server struct {
 	sessions *sessionStore
 	limiter  *loginLimiter
 	tpl      *template.Template
+	static   *staticAssets
 	// dialOSS is the seam tests use to avoid talking to a real bucket.
 	dialOSS func(cfg config.Config) (store, error)
 
@@ -187,7 +188,18 @@ func New(opts Options) (*Server, error) {
 	}
 	// classify lets a row ask for its own state without the template
 	// re-deriving the rules that fleet.go already owns.
+	staticFS, err := fs.Sub(assetFS, "assets/static")
+	if err != nil {
+		// Only reachable if the embedded tree is missing, which is a build-time
+		// mistake rather than something to handle at runtime.
+		panic("adminweb: embedded assets/static missing: " + err.Error())
+	}
+	static, err := newStaticAssets(staticFS)
+	if err != nil {
+		return nil, fmt.Errorf("read the embedded static files: %w", err)
+	}
 	tpl, err := template.New("").Funcs(template.FuncMap{
+		"static":            static.URL,
 		"classify":          stateSeverity,
 		"state":             stateLabel,
 		"age":               humanAge,
@@ -238,6 +250,7 @@ func New(opts Options) (*Server, error) {
 		return nil, err
 	}
 	s := &Server{
+		static:   static,
 		opts:     opts,
 		events:   events,
 		sessions: newSessionStore(opts.IdleTTL, opts.AbsTTL),
@@ -483,13 +496,7 @@ func (s *Server) Handler() http.Handler {
 	}
 	// Serve only assets/static, so the templates next to it are never handed
 	// out as raw files, and strip the prefix so paths resolve inside it.
-	staticFS, err := fs.Sub(assetFS, "assets/static")
-	if err != nil {
-		// Only reachable if the embedded tree is missing, which is a build-time
-		// mistake rather than something to handle at runtime.
-		panic("adminweb: embedded assets/static missing: " + err.Error())
-	}
-	mux.Handle("/static/", http.StripPrefix("/static/", http.FileServer(http.FS(staticFS))))
+	mux.Handle("/static/", http.StripPrefix("/static/", s.static))
 	return s.accessLog(s.secureHeaders(mux))
 }
 

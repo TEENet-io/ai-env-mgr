@@ -1,4 +1,4 @@
-{{define "customer_portal.html"}}<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>工单中心 · TEENet</title><link rel="stylesheet" href="/static/app.css"><link rel="stylesheet" href="/static/ticket-portal.css">{{if .AdminMode}}<link rel="stylesheet" href="/static/ticket-admin.css">{{end}}<script src="/static/ticket-portal.js" defer></script></head><body class="tp-body{{if .AdminMode}} ticket-admin-page tp-admin-body{{end}}">
+{{define "customer_portal.html"}}<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>工单中心 · TEENet</title><link rel="stylesheet" href="{{static "app.css"}}"><link rel="stylesheet" href="{{static "ticket-portal.css"}}">{{if .AdminMode}}<link rel="stylesheet" href="{{static "ticket-admin.css"}}">{{end}}<script src="{{static "ticket-portal.js"}}" defer></script></head><body class="tp-body{{if .AdminMode}} ticket-admin-page tp-admin-body{{end}}">
 {{if .AdminMode}}
 <div class="app">{{template "nav" .AdminPage}}<main class="sheet tp-admin-main"><div class="tp-content">
 {{else}}
