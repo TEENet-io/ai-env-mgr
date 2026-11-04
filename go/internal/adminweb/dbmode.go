@@ -260,6 +260,9 @@ func (s *Server) buildWorker(st *dbState) *worker.Worker {
 			Store: st.store, Objects: st.objects, Keyring: st.ring, Catalog: gw,
 			GatewayBaseURL: s.opts.GatewayURL, Notifier: st.hub,
 		})
+		w.Register(worker.TaskCatalogSync, worker.CatalogSync{
+			Store: st.store, Ops: st.ops, Catalog: gw,
+		})
 	}
 	w.Register(worker.TaskStatusImport, worker.StatusImport{Store: st.store, Objects: st.objects})
 	w.Register(worker.TaskAlertEval, worker.AlertEval{Store: st.store, Gateway: users})

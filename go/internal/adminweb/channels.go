@@ -30,6 +30,7 @@ type channelRow struct {
 type channelDeployment struct {
 	ID, Name    string
 	Visible     bool
+	Blocked     bool
 	ChatCapable bool
 }
 
@@ -60,11 +61,11 @@ func (s *Server) loadChannelsFrom(ctx context.Context, data *pageData, models []
 			byID[id] = row
 		}
 		chatCapable := m.Info.Mode == "" || strings.EqualFold(m.Info.Mode, "chat")
-		row.Deployments = append(row.Deployments, channelDeployment{ID: m.Info.ID, Name: m.Name, Visible: m.Info.CatalogVisible, ChatCapable: chatCapable})
-		if m.Info.ID != "" && chatCapable {
+		row.Deployments = append(row.Deployments, channelDeployment{ID: m.Info.ID, Name: m.Name, Visible: m.Info.CatalogVisible, Blocked: m.Info.Blocked, ChatCapable: chatCapable})
+		if m.Info.ID != "" && chatCapable && !m.Info.Blocked {
 			row.Testable = true
 		}
-		if m.Info.CatalogVisible {
+		if m.Info.CatalogVisible && !m.Info.Blocked {
 			row.Models = append(row.Models, m.Name)
 		}
 	}
@@ -123,7 +124,7 @@ func (s *Server) handleChannels(w http.ResponseWriter, r *http.Request, sess *se
 			if sess.admin.Role != repo.RoleAdmin {
 				visible := models[:0:0]
 				for _, m := range models {
-					if m.Info.CatalogVisible {
+					if m.Info.CatalogVisible && !m.Info.Blocked {
 						visible = append(visible, m)
 					}
 				}

@@ -159,6 +159,7 @@ func TestModelsFiltersOutInvisibleEntries(t *testing.T) {
 	c := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
 		_, _ = io.WriteString(w, `{"data":[
 			{"model_name":"grok-4.6","model_info":{"display_name":"Grok 4.6","context_window":256000,"catalog_visible":true}},
+			{"model_name":"closed","model_info":{"display_name":"Closed","catalog_visible":true,"blocked":true}},
 			{"model_name":"probe","model_info":{"display_name":"Probe","catalog_visible":false}},
 			{"model_name":"nometa","model_info":{}}
 		]}`)

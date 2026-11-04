@@ -109,6 +109,10 @@ func (s *Server) alertRows(r *http.Request, alerts []repo.Alert, now time.Time) 
 					row.Subject, row.Link = e.WindowsUser, "/users/detail?user="+url.QueryEscape(e.WindowsUser)
 				}
 			}
+		case "settings":
+			if a.SubjectID == "model_catalog" {
+				row.Subject, row.Link = "模型目录", "/models"
+			}
 		}
 		switch {
 		case a.NotifiedAt != nil:

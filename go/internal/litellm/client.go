@@ -76,6 +76,7 @@ type ModelInfo struct {
 	DefaultReasoning string   `json:"default_reasoning"`
 	Modalities       []string `json:"modalities"`
 	CatalogVisible   bool     `json:"catalog_visible"`
+	Blocked          bool     `json:"blocked"`
 
 	// LitellmProvider is LiteLLM's own name for how it calls the model
 	// ("bedrock", "vertex_ai", "openai", ...). It is not the supplier:
@@ -274,7 +275,7 @@ func (c *Client) Models(ctx context.Context) ([]Model, error) {
 	}
 	visible := make([]Model, 0, len(all))
 	for _, m := range all {
-		if m.Info.CatalogVisible {
+		if m.Info.CatalogVisible && !m.Info.Blocked {
 			visible = append(visible, m)
 		}
 	}

@@ -159,6 +159,39 @@ func TestModelDeliveryReplacesClientListAfterAddUpdateAndRemoval(t *testing.T) {
 	}
 }
 
+func TestModelDeliveryWithdrawsStaleBundleWhenLastModelIsRemoved(t *testing.T) {
+	store, service, _, ring, w, ctx := provisioned(t)
+	objects := newFakeObjects()
+	catalogSource := &mutableCatalog{models: []litellm.Model{{Name: "model-a", Info: litellm.ModelInfo{DisplayName: "A", CatalogVisible: true}}}}
+	w.Register(repo.TaskOSSExport, OSSExport{
+		Store: store, Objects: objects, Keyring: ring, Catalog: catalogSource,
+		GatewayBaseURL: "https://litellm.teenet.app",
+	})
+	employee := onboard(t, ctx, service, "work1")
+	if err := store.Employees().SetModels(ctx, employee.ID, []string{"model-a"}); err != nil {
+		t.Fatal(err)
+	}
+	drain(t, ctx, w)
+	if _, ok := objects.get(ossclient.UserKey("work1", "credentials.zip")); !ok {
+		t.Fatal("initial model bundle was not published")
+	}
+
+	syncer := CatalogSync{Store: store, Ops: service, Catalog: catalogSource}
+	if _, err := syncer.Run(ctx, repo.Task{}); err != nil {
+		t.Fatal("initial catalog sync: ", err)
+	}
+	drain(t, ctx, w)
+
+	catalogSource.models = nil
+	if _, err := syncer.Run(ctx, repo.Task{}); err != nil {
+		t.Fatal("removal catalog sync: ", err)
+	}
+	drain(t, ctx, w)
+	if _, ok := objects.get(ossclient.UserKey("work1", "credentials.zip")); ok {
+		t.Fatal("stale model bundle remained after the last gateway model was removed")
+	}
+}
+
 // exporting wires a worker with all three handlers over a fake gateway and a
 // fake object store, which between them are the whole delivery path.
 func exporting(t *testing.T) (*dbstore.Store, *ops.Service, *fakeObjects, *Worker, context.Context) {

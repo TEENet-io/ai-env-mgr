@@ -27,7 +27,7 @@
     <form method="post" action="/channels/try" class="channel-test-form" data-channel-trial>
       <input type="hidden" name="csrf" value="{{$.CSRF}}"><input type="hidden" name="channel" value="{{.ID}}">
       <label>选择部署
-        <select name="model_id" required>{{range .Deployments}}{{if and .ID .ChatCapable}}<option value="{{.ID}}">{{.Name}}{{if not .Visible}} · 隐藏部署{{end}}</option>{{end}}{{end}}</select>
+        <select name="model_id" required>{{range .Deployments}}{{if and .ID .ChatCapable (not .Blocked)}}<option value="{{.ID}}">{{.Name}}{{if not .Visible}} · 隐藏部署{{end}}</option>{{end}}{{end}}</select>
       </label>
       <label>输入测试内容
         <textarea name="prompt" maxlength="2000" rows="3" required>请用一句话回复：渠道测试成功。</textarea>
@@ -60,8 +60,8 @@
     {{end}}
     {{if .Deployments}}
     <details class="channel-details"><summary>查看全部部署</summary>
-      <div class="scroll"><table><thead><tr><th>模型名</th><th>部署 ID</th><th>员工可见</th></tr></thead><tbody>
-      {{range .Deployments}}<tr><td class="id">{{.Name}}</td><td class="mono">{{orDash .ID}}</td><td>{{if .Visible}}是{{else}}否{{end}}</td></tr>{{end}}
+      <div class="scroll"><table><thead><tr><th>模型名</th><th>部署 ID</th><th>状态</th></tr></thead><tbody>
+      {{range .Deployments}}<tr><td class="id">{{.Name}}</td><td class="mono">{{orDash .ID}}</td><td>{{if .Blocked}}已关闭{{else if .Visible}}员工可见{{else}}隐藏部署{{end}}</td></tr>{{end}}
       </tbody></table></div>
     </details>
     {{else}}<p class="hint">网关当前没有报告这个渠道的部署。</p>{{end}}
