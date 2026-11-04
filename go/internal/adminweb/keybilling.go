@@ -161,7 +161,10 @@ func (s *Server) loadKeyBillingPage(r *http.Request) (*keyBillingPage, error) {
 			gatewayReady = true
 			employeesByGatewayID := map[string]repo.Employee{}
 			for _, employee := range names {
-				employeesByGatewayID[worker.GatewayUserID(employee.WindowsUser)] = employee
+				// Both spellings: keys issued before the console had a
+				// team are under the pre-team user.
+				employeesByGatewayID[worker.GatewayUserID("", employee.WindowsUser)] = employee
+				employeesByGatewayID[worker.GatewayUserID(s.opts.GatewayTeamID, employee.WindowsUser)] = employee
 			}
 			for _, key := range keys {
 				if strings.TrimSpace(key.KeyAlias) == "" {

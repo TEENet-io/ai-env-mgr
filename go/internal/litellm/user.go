@@ -57,7 +57,7 @@ const budgetDuration = "1mo"
 
 // UserSpec is what the console wants a gateway user to look like.
 type UserSpec struct {
-	UserID     string // admincore.KeyAlias(windowsUser)
+	UserID     string // EmployeeUserID(team, windowsUser)
 	Alias      string // display name, shown in the gateway UI
 	Department string // stored as metadata.department
 	Quota      Quota
@@ -132,17 +132,25 @@ func (c *Client) UpsertUser(ctx context.Context, spec UserSpec) error {
 		body["models"] = spec.Models
 	}
 
+	if err := c.EnsureTeam(ctx); err != nil {
+		return fmt.Errorf("upsert user %q: %w", spec.UserID, err)
+	}
 	_, found, err := c.UserInfo(ctx, spec.UserID)
 	if err != nil {
 		return fmt.Errorf("upsert user %q: %w", spec.UserID, err)
 	}
 	if found {
-		return c.do(ctx, http.MethodPost, "/user/update", body, nil)
+		err = c.do(ctx, http.MethodPost, "/user/update", body, nil)
+	} else {
+		body["user_role"] = "internal_user"
+		// The console mints keys itself, under its own alias scheme.
+		body["auto_create_key"] = false
+		err = c.do(ctx, http.MethodPost, "/user/new", body, nil)
 	}
-	body["user_role"] = "internal_user"
-	// The console mints keys itself, under its own alias scheme.
-	body["auto_create_key"] = false
-	return c.do(ctx, http.MethodPost, "/user/new", body, nil)
+	if err != nil || c.TeamID == "" {
+		return err
+	}
+	return c.addTeamMember(ctx, spec.UserID)
 }
 
 // DeleteUser removes a gateway user and, with it, the gateway's record of
@@ -187,9 +195,10 @@ func (c *Client) UserInfo(ctx context.Context, userID string) (User, bool, error
 // userPageSize mirrors keyPageSize; the gateway caps list pages at 100.
 const userPageSize = 100
 
-// ListUsers returns every internal user, following pagination to the end.
-// Reconciliation joins this against the roster, so a truncated list would
-// make a live account look like it was never opened.
+// ListUsers returns every internal user of the client's team (every one,
+// with no team), following pagination to the end. Reconciliation joins this
+// against the roster, so a truncated list would make a live account look
+// like it was never opened.
 func (c *Client) ListUsers(ctx context.Context) ([]User, error) {
 	var all []User
 	for page := 1; page <= keyPageLimit; page++ {
@@ -198,6 +207,9 @@ func (c *Client) ListUsers(ctx context.Context) ([]User, error) {
 			TotalPages int    `json:"total_pages"`
 		}
 		path := fmt.Sprintf("/user/list?page=%d&page_size=%d", page, userPageSize)
+		if c.TeamID != "" {
+			path += "&team=" + url.QueryEscape(c.TeamID)
+		}
 		if err := c.do(ctx, http.MethodGet, path, nil, &out); err != nil {
 			return nil, err
 		}

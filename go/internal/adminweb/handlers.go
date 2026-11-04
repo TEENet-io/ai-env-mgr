@@ -157,6 +157,7 @@ type pageData struct {
 
 	// Gateway panel: what the gateway offers.
 	GatewayURL     string
+	GatewayTeamID  string // shown on the onboarding form; "" on an unshared gateway
 	GatewayEnabled bool
 	GatewayModels  []litellm.Model
 	// ModelDelivery is the 模型下发 block (database mode, gateway readable).

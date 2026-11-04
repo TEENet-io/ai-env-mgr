@@ -71,6 +71,7 @@ const (
 	ActionOffboard      = "account.offboard"
 	ActionReissue       = "account.reissue"
 	ActionRotate        = "account.rotate"
+	ActionTeamMove      = "account.team_move"
 	ActionDelete        = "account.delete"
 	ActionSetQuota      = "account.quota"
 	ActionSetModels     = "account.models"

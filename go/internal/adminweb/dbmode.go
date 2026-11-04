@@ -236,10 +236,10 @@ func (s *Server) buildWorker(st *dbState) *worker.Worker {
 
 	var gw *litellm.Client
 	if s.opts.GatewayURL != "" && s.opts.GatewayAdminKey != "" {
-		gw = litellm.New(s.opts.GatewayURL, s.opts.GatewayAdminKey)
+		gw = s.newGateway()
 	}
 	if gw != nil {
-		w.Register(repo.TaskGatewayProvision, worker.GatewayProvision{Store: st.store, Gateway: gw, Keyring: st.ring, Catalog: gw})
+		w.Register(repo.TaskGatewayProvision, worker.GatewayProvision{Store: st.store, Gateway: gw, Keyring: st.ring, Catalog: gw, TeamID: gw.TeamID})
 		w.Register(repo.TaskGatewayRevoke, worker.GatewayRevoke{Store: st.store, Gateway: gw})
 		w.Register(repo.TaskReconcile, worker.Reconcile{
 			Store: st.store, Gateway: gw,
@@ -325,7 +325,7 @@ func (s *Server) dbSession(r *http.Request) *session {
 	}
 	return &session{
 		be: dbBackend{
-			store: s.dbm.store, ops: s.dbm.ops, objects: s.dbm.objects,
+			store: s.dbm.store, ops: s.dbm.ops, objects: s.dbm.objects, team: s.opts.GatewayTeamID,
 			actor: admin.Username, requestID: requestID(r),
 		},
 		actor:    admin.Username,

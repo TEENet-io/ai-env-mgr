@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -25,25 +26,16 @@ type Gateway interface {
 	DeleteUser(ctx context.Context, userID string) error
 }
 
-// GatewayUserID is the gateway's id for an employee.
-//
-// It is derived from the Windows user name and deliberately does not carry the
-// epoch: the user owns the spend history, and minting a new one on every
-// re-issue would scatter one person's usage across a row of accounts.
-func GatewayUserID(windowsUser string) string { return "emp-" + strings.ToLower(windowsUser) }
+// GatewayUserID is the gateway's id for an employee of team; see
+// litellm.EmployeeUserID. Grants record the id they were issued under, and
+// code that has a grant uses that rather than rebuilding it.
+func GatewayUserID(team, windowsUser string) string { return litellm.EmployeeUserID(team, windowsUser) }
 
-// KeyAlias is the gateway's name for one issued token. Unlike the user id it
-// carries the epoch, so that a re-issue is a new alias rather than a
-// collision, and a fragment of the employee's own id, so that a deleted
-// account's name reused by a new person starts its aliases afresh instead of
-// running into the old account's history. Aliases already issued keep their
-// old spelling; nothing looks one up by rebuilding it.
-func KeyAlias(windowsUser, employeeID string, epoch int) string {
-	id := strings.ReplaceAll(employeeID, "-", "")
-	if len(id) > 8 {
-		id = id[:8]
-	}
-	return fmt.Sprintf("emp-%s-%s-e%d", strings.ToLower(windowsUser), id, epoch)
+// KeyAlias is the gateway's name for one issued token; see
+// litellm.EmployeeKeyAlias. Aliases already issued keep their old spelling;
+// nothing looks one up by rebuilding it.
+func KeyAlias(team, windowsUser, employeeID string, epoch int) string {
+	return litellm.EmployeeKeyAlias(team, windowsUser, employeeID, epoch)
 }
 
 // taskPayload is what ops writes into a task. It carries references only.
@@ -70,6 +62,9 @@ type GatewayProvision struct {
 	// paused channel is not enforced on the gateway (the picker still
 	// hides it).
 	Catalog ModelCatalog
+	// TeamID names new gateway users and aliases. It must match the
+	// Gateway client's own team, which is what puts keys and members in it.
+	TeamID string
 }
 
 // effectiveModels is the allowlist the gateway should hold for an employee.
@@ -127,7 +122,10 @@ func (h GatewayProvision) Run(ctx context.Context, task repo.Task) (Result, erro
 		return Result{}, err
 	}
 
-	userID := GatewayUserID(employee.WindowsUser)
+	userID, err := h.userFor(ctx, employee, payload.Epoch)
+	if err != nil {
+		return Result{}, err
+	}
 	budget, err := strconv.ParseFloat(quota.MonthlyBudget, 64)
 	if err != nil {
 		// The column cannot hold anything else, so this is a bug rather than
@@ -260,7 +258,23 @@ func (h GatewayProvision) aliasFor(ctx context.Context, employee repo.Employee, 
 	if err != nil && !errors.Is(err, repo.ErrNotFound) {
 		return "", err
 	}
-	return KeyAlias(employee.WindowsUser, employee.ID, epoch), nil
+	return KeyAlias(h.TeamID, employee.WindowsUser, employee.ID, epoch), nil
+}
+
+// userFor names the gateway user for this epoch, the way aliasFor names the
+// token: a live grant at this epoch keeps the user it was issued under. A
+// quota or model change for somebody still on a pre-team user must change
+// that user -- the one their token draws on -- not create the new one beside
+// it. A new epoch is issued under the team's naming.
+func (h GatewayProvision) userFor(ctx context.Context, employee repo.Employee, epoch int) (string, error) {
+	grant, err := h.Store.Grants().Active(ctx, "", employee.ID)
+	if err == nil && grant.Epoch == epoch {
+		return grant.ExternalUser, nil
+	}
+	if err != nil && !errors.Is(err, repo.ErrNotFound) {
+		return "", err
+	}
+	return GatewayUserID(h.TeamID, employee.WindowsUser), nil
 }
 
 var errSuperseded = errors.New("superseded")
@@ -439,6 +453,7 @@ func (h GatewayRevoke) Run(ctx context.Context, task repo.Task) (Result, error) 
 type GatewayDelete struct {
 	Store   repo.Store
 	Gateway Gateway
+	TeamID  string
 }
 
 // Run revokes what is left and deletes the user. Both halves are safe to
@@ -456,7 +471,13 @@ func (h GatewayDelete) Run(ctx context.Context, task repo.Task) (Result, error) 
 		return Result{}, err
 	}
 	revoked := 0
+	// Every user this account was ever issued under: moving to a team leaves
+	// the pre-team user behind, and deleting the account removes both.
+	userIDs := []string{GatewayUserID(h.TeamID, payload.WindowsUser)}
 	for _, grant := range grants {
+		if grant.ExternalUser != "" && !slices.Contains(userIDs, grant.ExternalUser) {
+			userIDs = append(userIDs, grant.ExternalUser)
+		}
 		if grant.Actual == repo.ActualRevoked || grant.Actual == repo.ActualMissing {
 			continue
 		}
@@ -472,16 +493,17 @@ func (h GatewayDelete) Run(ctx context.Context, task repo.Task) (Result, error) 
 	// record. If the name has been given to a new account since this delete
 	// was queued, the user on the gateway is theirs now: their provisioning
 	// re-created it, and deleting it would cut off the wrong person.
-	userID := GatewayUserID(payload.WindowsUser)
 	if current, err := h.Store.Employees().ByWindowsUser(ctx, payload.WindowsUser); err == nil && current.ID != payload.EmployeeID {
-		return Result{Note: fmt.Sprintf("revoked %d token(s); gateway user %s kept, the name is in use again", revoked, userID)}, nil
+		return Result{Note: fmt.Sprintf("revoked %d token(s); gateway user %s kept, the name is in use again", revoked, strings.Join(userIDs, ", "))}, nil
 	} else if err != nil && !errors.Is(err, repo.ErrNotFound) {
 		return Result{}, err
 	}
-	if err := h.Gateway.DeleteUser(ctx, userID); err != nil {
-		return Result{}, gatewayError("delete_user", err)
+	for _, userID := range userIDs {
+		if err := h.Gateway.DeleteUser(ctx, userID); err != nil {
+			return Result{}, gatewayError("delete_user", err)
+		}
 	}
-	return Result{Note: fmt.Sprintf("revoked %d token(s), removed gateway user %s", revoked, userID)}, nil
+	return Result{Note: fmt.Sprintf("revoked %d token(s), removed gateway user %s", revoked, strings.Join(userIDs, ", "))}, nil
 }
 
 // gatewayError labels a gateway failure and decides whether trying again could

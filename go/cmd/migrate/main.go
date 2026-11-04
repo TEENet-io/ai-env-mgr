@@ -8,6 +8,7 @@
 //	migrate import          # bring the OSS objects and gateway state into the database
 //	migrate compare         # read-only: would a database in charge publish anything different? exit 2 if so
 //	migrate grants          # re-apply the privilege grid (Migrate does this itself)
+//	migrate move-to-team    # re-issue every token not yet in AIENVMGR_GATEWAY_TEAM_ID's team
 //
 // import and compare read OSS with AIENVMGR_OSS_ACCESS_KEY_ID / _SECRET and
 // the gateway with AIENVMGR_GATEWAY_URL / _ADMIN_KEY, all from the environment.
@@ -55,10 +56,10 @@ func run() error {
 	bucket := flag.String("bucket", envOr("AIENVMGR_OSS_BUCKET", "ai-collect-sg"), "OSS bucket")
 	endpoint := flag.String("endpoint", envOr("AIENVMGR_OSS_ENDPOINT", "oss-ap-southeast-1.aliyuncs.com"), "OSS endpoint")
 	masterKey := flag.String("master-key", os.Getenv("AIENVMGR_MASTER_KEY_FILE"), "master key file, for rekey")
-	dryRun := flag.Bool("dry-run", false, "rekey: count what would move, change nothing")
+	dryRun := flag.Bool("dry-run", false, "rekey, move-to-team: say what would change, change nothing")
 	pruneUnused := flag.Bool("prune-unused", false, "rekey: afterwards drop key versions nothing references from the key file")
 	flag.Usage = func() {
-		fmt.Fprintf(flag.CommandLine.Output(), "usage: migrate [flags] <status|up|down|grants|probe|import|compare|rekey|lift-rate-limits>\n\n")
+		fmt.Fprintf(flag.CommandLine.Output(), "usage: migrate [flags] <status|up|down|grants|probe|import|compare|rekey|lift-rate-limits|move-to-team>\n\n")
 		flag.PrintDefaults()
 	}
 	flag.Parse()
@@ -190,6 +191,29 @@ func run() error {
 		}
 		if len(changed) == 0 {
 			fmt.Println("nothing to do: every active employee is limited by budget only")
+		}
+		return nil
+	case "move-to-team":
+		// One-off, for a console that starts sharing its gateway: every token
+		// is re-issued in the team. Run it after the console (and its Worker)
+		// has been restarted with the same AIENVMGR_GATEWAY_TEAM_ID.
+		team := os.Getenv("AIENVMGR_GATEWAY_TEAM_ID")
+		if team == "" {
+			return errors.New("set AIENVMGR_GATEWAY_TEAM_ID to the team the console runs with")
+		}
+		moved, err := ops.New(dbstore.NewStore(database)).MoveToTeam(ctx, team, *dryRun, "migrate:move-to-team", "move-to-team")
+		verb := "re-issued; the Worker mints the new token in team " + team
+		if *dryRun {
+			verb = "would be re-issued (dry run)"
+		}
+		for _, u := range moved {
+			fmt.Printf("%s: %s\n", u, verb)
+		}
+		if err != nil {
+			return err
+		}
+		if len(moved) == 0 {
+			fmt.Printf("nothing to do: every active token is already in team %s\n", team)
 		}
 		return nil
 	case "down":

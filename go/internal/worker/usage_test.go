@@ -40,7 +40,7 @@ func TestUsageSnapshotFillsThreeDaysAndResolvesAliases(t *testing.T) {
 	// old emp-<user> shape in the logs.
 	cred, _ := store.Credentials().Store(ctx, repo.NewCredential{
 		EmployeeID: work1.ID, Epoch: 1, Purpose: repo.PurposeCodexGateway, Ciphertext: []byte("x"), KeyVersion: "k1"})
-	alias := KeyAlias("work1", work1.ID, 1)
+	alias := KeyAlias("", "work1", work1.ID, 1)
 	if _, err := store.Grants().Create(ctx, repo.NewGrant{
 		EmployeeID: work1.ID, Epoch: 1, ExternalUser: "emp-work1", KeyAlias: alias, CredentialID: cred.ID}); err != nil {
 		t.Fatal(err)

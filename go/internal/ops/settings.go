@@ -180,3 +180,51 @@ func (s *Service) LiftRateLimits(ctx context.Context, actor, requestID string) (
 	}
 	return changed, nil
 }
+
+// MoveToTeam re-issues the token of every active employee whose live grant is
+// not under team's gateway user, so that the Worker issues the next one in
+// team (litellm.EmployeeUserID). It returns who was, or with dryRun would be,
+// re-issued.
+//
+// The Worker does the gateway half and must already run with the same team;
+// one without it would issue the new token under the old name again. The old
+// token stops working when the new one is minted, and each machine picks the
+// new configuration up on its next sync. The pre-team gateway user is kept:
+// it holds the spend history, and deleting a user deletes its keys too.
+// Its spend this month does not follow: the new user's budget starts at zero.
+func (s *Service) MoveToTeam(ctx context.Context, team string, dryRun bool, actor, requestID string) ([]string, error) {
+	if team == "" {
+		return nil, errors.New("move to team: no team given")
+	}
+	if err := litellm.ValidateTeamID(team); err != nil {
+		return nil, err
+	}
+	employees, err := s.store.Employees().List(ctx, repo.EmployeeFilter{})
+	if err != nil {
+		return nil, err
+	}
+	var moved []string
+	for _, e := range employees {
+		if !e.Active() {
+			continue
+		}
+		grant, err := s.store.Grants().Active(ctx, "", e.ID)
+		if errors.Is(err, repo.ErrNotFound) {
+			// No token to move: the next one is issued in the team anyway.
+			continue
+		}
+		if err != nil {
+			return moved, err
+		}
+		if grant.ExternalUser == litellm.EmployeeUserID(team, e.WindowsUser) {
+			continue
+		}
+		if !dryRun {
+			if _, err := s.reissue(ctx, e.ID, ActionTeamMove, actor, requestID); err != nil {
+				return moved, fmt.Errorf("%s: %w", e.WindowsUser, err)
+			}
+		}
+		moved = append(moved, e.WindowsUser)
+	}
+	return moved, nil
+}

@@ -204,7 +204,7 @@ func TestProvisioningIssuesOneTokenAndStoresItSealed(t *testing.T) {
 
 	// The limits go on the user, not the key, so that re-issuing a token does
 	// not reset the month's spend to zero.
-	spec, ok := gateway.users[GatewayUserID("work1")]
+	spec, ok := gateway.users[GatewayUserID("", "work1")]
 	if !ok {
 		t.Fatalf("no gateway user was created; users = %v", gateway.users)
 	}
@@ -212,7 +212,7 @@ func TestProvisioningIssuesOneTokenAndStoresItSealed(t *testing.T) {
 		t.Errorf("gateway user = %+v", spec)
 	}
 
-	alias := KeyAlias("work1", employee.ID, employee.AuthEpoch)
+	alias := KeyAlias("", "work1", employee.ID, employee.AuthEpoch)
 	if got := gateway.aliases(); len(got) != 1 || got[0] != alias {
 		t.Fatalf("gateway holds %v, want just %s", got, alias)
 	}
@@ -285,7 +285,7 @@ func TestReissuingReplacesTheTokenOnTheGateway(t *testing.T) {
 	store, service, gateway, _, w, ctx := provisioned(t)
 	employee := onboard(t, ctx, service, "work1")
 	drain(t, ctx, w)
-	firstAlias := KeyAlias("work1", employee.ID, employee.AuthEpoch)
+	firstAlias := KeyAlias("", "work1", employee.ID, employee.AuthEpoch)
 
 	reissued, err := service.Reissue(ctx, employee.ID, "zhang", "")
 	if err != nil {
@@ -296,7 +296,7 @@ func TestReissuingReplacesTheTokenOnTheGateway(t *testing.T) {
 	// The old key is gone from the gateway, not merely marked revoked here. A
 	// key the gateway still serves for a grant we consider revoked is a token
 	// nobody thinks exists.
-	secondAlias := KeyAlias("work1", reissued.ID, reissued.AuthEpoch)
+	secondAlias := KeyAlias("", "work1", reissued.ID, reissued.AuthEpoch)
 	if got := gateway.aliases(); len(got) != 1 || got[0] != secondAlias {
 		t.Fatalf("gateway holds %v, want only %s", got, secondAlias)
 	}
@@ -309,7 +309,7 @@ func TestReissuingReplacesTheTokenOnTheGateway(t *testing.T) {
 	}
 	// The gateway user survives: it owns the spend history, which must not
 	// restart every time somebody's token is replaced.
-	if _, ok := gateway.users[GatewayUserID("work1")]; !ok {
+	if _, ok := gateway.users[GatewayUserID("", "work1")]; !ok {
 		t.Error("the gateway user was removed by a re-issue")
 	}
 }
@@ -329,7 +329,7 @@ func TestOffboardingRevokesTheTokenButKeepsTheUser(t *testing.T) {
 	}
 	// Deleting the gateway user would delete every key under it and take the
 	// spend history with it -- verified against the live gateway 2026-09-18.
-	if _, ok := gateway.users[GatewayUserID("work1")]; !ok {
+	if _, ok := gateway.users[GatewayUserID("", "work1")]; !ok {
 		t.Error("offboarding deleted the gateway user")
 	}
 	grants, err := store.Grants().ByEmployee(ctx, employee.ID)
@@ -419,8 +419,8 @@ func TestAnOrphanedKeyIsReplacedRatherThanAdopted(t *testing.T) {
 	store, service, gateway, _, w, ctx := provisioned(t)
 	employee := onboard(t, ctx, service, "work1")
 
-	alias := KeyAlias("work1", employee.ID, employee.AuthEpoch)
-	if _, err := gateway.GenerateKey(ctx, alias, GatewayUserID("work1"), nil, nil); err != nil {
+	alias := KeyAlias("", "work1", employee.ID, employee.AuthEpoch)
+	if _, err := gateway.GenerateKey(ctx, alias, GatewayUserID("", "work1"), nil, nil); err != nil {
 		t.Fatalf("plant an orphaned key: %v", err)
 	}
 	drain(t, ctx, w)
@@ -455,7 +455,7 @@ func TestChangingModelsUpdatesTheExistingToken(t *testing.T) {
 	}
 	drain(t, ctx, w)
 
-	alias := KeyAlias("work1", employee.ID, employee.AuthEpoch)
+	alias := KeyAlias("", "work1", employee.ID, employee.AuthEpoch)
 	gateway.mu.Lock()
 	key := gateway.keys[alias]
 	gateway.mu.Unlock()
@@ -556,8 +556,8 @@ func TestProvisioningQueuesTheDeliveryItMadePossible(t *testing.T) {
 }
 
 func TestAReusedNameStartsItsAliasesAfresh(t *testing.T) {
-	a := KeyAlias("work1", "0e5b2f1c-aaaa-bbbb-cccc-000000000001", 1)
-	b := KeyAlias("work1", "9d4c7a20-aaaa-bbbb-cccc-000000000002", 1)
+	a := KeyAlias("", "work1", "0e5b2f1c-aaaa-bbbb-cccc-000000000001", 1)
+	b := KeyAlias("", "work1", "9d4c7a20-aaaa-bbbb-cccc-000000000002", 1)
 	if a == b || !strings.HasPrefix(a, "emp-work1-0e5b2f1c-e1") {
 		t.Fatalf("aliases %q and %q", a, b)
 	}
@@ -645,7 +645,7 @@ func TestDeletingAnOldAccountSparesItsNamesake(t *testing.T) {
 	if err != nil {
 		t.Fatalf("reuse the name: %v", err)
 	}
-	newAlias := KeyAlias("work1", fresh.ID, 1)
+	newAlias := KeyAlias("", "work1", fresh.ID, 1)
 	gw.users["emp-work1"] = litellm.UserSpec{UserID: "emp-work1", Alias: "new"}
 	gw.keys["emp-work1-e1"] = litellm.Key{KeyAlias: "emp-work1-e1"}
 	gw.keys[newAlias] = litellm.Key{KeyAlias: newAlias}
@@ -736,7 +736,7 @@ func TestAPausedChannelNarrowsEveryModelAndResumingWidensIt(t *testing.T) {
 		t.Fatal(err)
 	}
 	drain(t, ctx, w)
-	user := gateway.users[GatewayUserID("alice")]
+	user := gateway.users[GatewayUserID("", "alice")]
 	if user.Models == nil || len(user.Models) != 0 {
 		t.Fatalf("every model is sent as an explicit empty list, got %#v", user.Models)
 	}
@@ -747,7 +747,7 @@ func TestAPausedChannelNarrowsEveryModelAndResumingWidensIt(t *testing.T) {
 	}
 	drain(t, ctx, w)
 	want := []string{"grok-4.6", "qwen3-coder-480b"}
-	if got := gateway.users[GatewayUserID("alice")].Models; !sameSet(got, want) {
+	if got := gateway.users[GatewayUserID("", "alice")].Models; !sameSet(got, want) {
 		t.Fatalf("paused: user models %v, want %v", got, want)
 	}
 	for _, k := range gateway.keys {
@@ -760,7 +760,7 @@ func TestAPausedChannelNarrowsEveryModelAndResumingWidensIt(t *testing.T) {
 		t.Fatal(err)
 	}
 	drain(t, ctx, w)
-	if got := gateway.users[GatewayUserID("alice")].Models; got == nil || len(got) != 0 {
+	if got := gateway.users[GatewayUserID("", "alice")].Models; got == nil || len(got) != 0 {
 		t.Fatalf("resumed: user models %#v, want an explicit empty list", got)
 	}
 	for _, k := range gateway.keys {

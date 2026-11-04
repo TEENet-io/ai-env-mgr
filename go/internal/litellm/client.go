@@ -30,6 +30,11 @@ type Client struct {
 	BaseURL  string
 	AdminKey string
 	HTTP     *http.Client
+	// TeamID is the customer this console serves on a shared gateway (see
+	// team.go). Keys are minted into it, employees are made members of it,
+	// and ListKeys and ListUsers see only it. Empty: the gateway is this
+	// customer's alone and nothing is narrowed.
+	TeamID string
 }
 
 // New returns a client for a gateway at baseURL (e.g.
@@ -124,6 +129,9 @@ func (c *Client) GenerateKey(ctx context.Context, alias, userID string, models [
 		"user_id":   userID,
 		"models":    models,
 	}
+	if c.TeamID != "" {
+		body["team_id"] = c.TeamID
+	}
 	if len(metadata) > 0 {
 		body["metadata"] = metadata
 	}
@@ -203,8 +211,12 @@ func (c *Client) DeleteKeyByAlias(ctx context.Context, alias string) error {
 // alias), so this lists and filters. It exists for reconciliation: after a
 // failed onboarding the token may exist with no configuration delivered, and
 // the alias is the only handle left to find it by.
+//
+// It looks across every team. Aliases are unique on the whole gateway, and a
+// token minted before this console had a team carries none: narrowing the
+// search would report it missing while it still works.
 func (c *Client) FindKeyByAlias(ctx context.Context, alias string) (Key, bool, error) {
-	keys, err := c.ListKeys(ctx)
+	keys, err := c.listKeys(ctx, "")
 	if err != nil {
 		return Key{}, false, err
 	}
@@ -225,14 +237,18 @@ const keyPageSize = 100
 // console manages.
 const keyPageLimit = 200
 
-// ListKeys returns every token the gateway knows about, following pagination
-// to the end.
+// ListKeys returns every token of the client's team (every token, with no
+// team), following pagination to the end.
 //
 // Reading only the first page would be worse than an error here. This list is
 // what reconciliation compares the roster against, and a token missing from
 // it reads as "already revoked" -- so a truncated read would quietly report
 // a departed employee's live token as gone.
 func (c *Client) ListKeys(ctx context.Context) ([]Key, error) {
+	return c.listKeys(ctx, c.TeamID)
+}
+
+func (c *Client) listKeys(ctx context.Context, team string) ([]Key, error) {
 	var all []Key
 	for page := 1; page <= keyPageLimit; page++ {
 		var out struct {
@@ -240,6 +256,9 @@ func (c *Client) ListKeys(ctx context.Context) ([]Key, error) {
 			TotalPages int   `json:"total_pages"`
 		}
 		path := fmt.Sprintf("/key/list?return_full_object=true&size=%d&page=%d", keyPageSize, page)
+		if team != "" {
+			path += "&team_id=" + url.QueryEscape(team)
+		}
 		if err := c.do(ctx, http.MethodGet, path, nil, &out); err != nil {
 			return nil, err
 		}

@@ -38,7 +38,15 @@ func (s *Server) gateway() (*litellm.Client, error) {
 	if s.opts.GatewayAdminKey == "" {
 		return nil, fmt.Errorf("网关管理密钥未注入（设置环境变量 AIENVMGR_GATEWAY_ADMIN_KEY）")
 	}
-	return litellm.New(s.opts.GatewayURL, s.opts.GatewayAdminKey), nil
+	return s.newGateway(), nil
+}
+
+// newGateway is the one place a gateway client is made, so that none of them
+// can forget the team.
+func (s *Server) newGateway() *litellm.Client {
+	gw := litellm.New(s.opts.GatewayURL, s.opts.GatewayAdminKey)
+	gw.TeamID = s.opts.GatewayTeamID
+	return gw
 }
 
 // loadGatewayPanel fills the overview's gateway panel.

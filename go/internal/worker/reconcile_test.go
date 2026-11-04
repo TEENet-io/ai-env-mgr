@@ -17,7 +17,7 @@ func TestReconcileFindsATokenWeThoughtWasGone(t *testing.T) {
 	store, service, gateway, _, w, ctx := provisioned(t)
 	employee := onboard(t, ctx, service, "work1")
 	drain(t, ctx, w)
-	alias := KeyAlias("work1", employee.ID, employee.AuthEpoch)
+	alias := KeyAlias("", "work1", employee.ID, employee.AuthEpoch)
 
 	// Offboard, but the gateway never actually loses the key -- a revoke that
 	// reported success and did not take, or somebody putting it back by hand.
@@ -25,7 +25,7 @@ func TestReconcileFindsATokenWeThoughtWasGone(t *testing.T) {
 		t.Fatalf("offboard: %v", err)
 	}
 	drain(t, ctx, w)
-	if _, err := gateway.GenerateKey(ctx, alias, GatewayUserID("work1"), nil, nil); err != nil {
+	if _, err := gateway.GenerateKey(ctx, alias, GatewayUserID("", "work1"), nil, nil); err != nil {
 		t.Fatalf("put the key back: %v", err)
 	}
 
@@ -66,7 +66,7 @@ func TestReconcileReportsAMissingTokenWithoutIssuingOne(t *testing.T) {
 	store, service, gateway, _, w, ctx := provisioned(t)
 	employee := onboard(t, ctx, service, "work1")
 	drain(t, ctx, w)
-	alias := KeyAlias("work1", employee.ID, employee.AuthEpoch)
+	alias := KeyAlias("", "work1", employee.ID, employee.AuthEpoch)
 
 	if err := gateway.DeleteKeyByAlias(ctx, alias); err != nil {
 		t.Fatalf("remove the key behind our back: %v", err)

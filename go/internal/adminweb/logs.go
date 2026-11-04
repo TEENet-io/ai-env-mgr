@@ -13,7 +13,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/TEENet-io/ai-env-mgr/internal/admincore"
+	"github.com/TEENet-io/ai-env-mgr/internal/litellm"
 	"github.com/TEENet-io/ai-env-mgr/internal/model"
 	"github.com/TEENet-io/ai-env-mgr/internal/slsclient"
 )
@@ -83,6 +83,7 @@ var shanghai = sync.OnceValue(func() *time.Location {
 // value that passed its allow-list or the default.
 type logFilter struct {
 	Employee string // windows user, lowercase, without the gateway's "emp-" prefix
+	Team     string // the console's gateway team; "" on an unshared gateway
 	Status   string // "", success, failure, cancelled
 	Model    string // a model_group
 	Range    string // today, 7d, 30d, custom
@@ -111,8 +112,8 @@ func parseLogFilter(q url.Values) logFilter {
 	f := logFilter{Range: "7d", Page: 1}
 
 	// employee_id is spelled two ways in this system. The gateway writes the
-	// LiteLLM user id, which admincore.KeyAlias builds as "emp-" + the
-	// lowercased Windows user; every link in this console -- /users/detail,
+	// LiteLLM user id, "emp-" + the lowercased Windows user (with the team in
+	// front on a shared gateway, see litellm.EmployeeUserID); every link in this console -- /users/detail,
 	// the roster, the dropdown below -- names the same person by the bare
 	// Windows user. Strip the prefix here so both spellings land on one
 	// filter, and put it back in filterQuery, which is the only place that
@@ -205,8 +206,19 @@ func (f logFilter) rangeLabel() string {
 // quote, a space or an operator.
 func (f logFilter) filterQuery() string {
 	q := "event_type: llm_call"
-	if f.Employee != "" {
-		q += ` and employee_id: "` + admincore.KeyAlias(f.Employee) + `"`
+	switch {
+	case f.Employee != "" && f.Team != "":
+		// The pre-team spelling too, for what was logged before the move.
+		q += ` and (employee_id: "` + litellm.EmployeeUserID(f.Team, f.Employee) +
+			`" or employee_id: "` + litellm.EmployeeUserID("", f.Employee) + `")`
+	case f.Employee != "":
+		q += ` and employee_id: "` + litellm.EmployeeUserID("", f.Employee) + `"`
+	case f.Team != "":
+		// A shared gateway logs every customer's calls into the same
+		// logstore. employee_id is indexed whole (no tokens), so a prefix
+		// match is exact. Unprefixed ids predate teams and are this
+		// console's own: no other customer was ever on the gateway without one.
+		q += ` and (employee_id: ` + f.Team + `-emp-* or employee_id: emp-*)`
 	}
 	if f.Status != "" {
 		q += " and status: " + f.Status
@@ -581,6 +593,7 @@ func (s *Server) handleLogs(w http.ResponseWriter, r *http.Request, sess *sessio
 	data.Tab = "logs"
 
 	f := parseLogFilter(r.URL.Query())
+	f.Team = s.opts.GatewayTeamID
 	from, to := f.resolveWindow(time.Now())
 	// Read once and used twice: the filter dropdown lists it, and the table
 	// asks it whether each employee id still belongs to somebody.

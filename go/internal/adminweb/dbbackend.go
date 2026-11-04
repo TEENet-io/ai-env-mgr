@@ -31,6 +31,8 @@ type dbBackend struct {
 	store   repo.Store
 	ops     *ops.Service
 	objects admincore.Store
+	// team is the gateway team new employees are named under.
+	team string
 	// actor and requestID go on every audit row this session writes.
 	actor     string
 	requestID string
@@ -336,9 +338,13 @@ func (b dbBackend) accountRow(ctx context.Context, e repo.Employee, gwUsers []li
 	}
 	row.Models = models
 
+	// The gateway user is the one the live token was issued under, which for
+	// somebody not yet moved to the team is still the pre-team user.
+	userID := worker.GatewayUserID(b.team, e.WindowsUser)
 	grant, err := b.store.Grants().Active(ctx, "", e.ID)
 	switch {
 	case err == nil:
+		userID = grant.ExternalUser
 		row.HasToken = grant.Actual == repo.ActualActive || grant.Actual == repo.ActualUnknown
 		if c, err := b.store.Credentials().Live(ctx, e.ID, repo.PurposeCodexGateway); err == nil {
 			row.TokenIssued = c.CreatedAt.Local().Format("2006-01-02")
@@ -351,7 +357,6 @@ func (b dbBackend) accountRow(ctx context.Context, e repo.Employee, gwUsers []li
 		return accountRow{}, err
 	}
 
-	userID := worker.GatewayUserID(e.WindowsUser)
 	for _, u := range gwUsers {
 		if u.UserID == userID {
 			row.HasUser = true

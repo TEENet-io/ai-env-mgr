@@ -73,6 +73,12 @@ type Options struct {
 	// entirely rather than showing controls that cannot work.
 	GatewayURL string
 
+	// GatewayTeamID is this customer's LiteLLM team on a shared gateway:
+	// keys are minted into it, employees are made members of it, and the
+	// console reads only it. Empty for a gateway this customer does not
+	// share. Database mode only.
+	GatewayTeamID string
+
 	// GatewayAdminKey authenticates this console to the gateway's management
 	// API. It is injected from the environment at startup and lives only in
 	// this process's memory, like every other credential here: never written
@@ -156,6 +162,15 @@ type Server struct {
 func New(opts Options) (*Server, error) {
 	if opts.Listen == "" {
 		return nil, fmt.Errorf("a listen address is required")
+	}
+	if err := litellm.ValidateTeamID(opts.GatewayTeamID); err != nil {
+		return nil, err
+	}
+	// The OSS console names gateway users without a team, so on a shared
+	// gateway it would take over another customer's employee of the same
+	// name. It goes away at cutover; refuse rather than teach it teams.
+	if opts.GatewayTeamID != "" && opts.Database == nil {
+		return nil, fmt.Errorf("a gateway team needs database mode (AIENVMGR_DB_DSN)")
 	}
 	if opts.IdleTTL == 0 {
 		opts.IdleTTL = 30 * time.Minute
