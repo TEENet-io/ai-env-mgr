@@ -3,7 +3,6 @@ package worker
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"strings"
 	"sync"
 	"testing"
@@ -12,6 +11,7 @@ import (
 	"github.com/TEENet-io/ai-env-mgr/internal/dbstore"
 
 	"github.com/TEENet-io/ai-env-mgr/internal/creds"
+	"github.com/TEENet-io/ai-env-mgr/internal/deviceconfig"
 	"github.com/TEENet-io/ai-env-mgr/internal/litellm"
 	"github.com/TEENet-io/ai-env-mgr/internal/model"
 	"github.com/TEENet-io/ai-env-mgr/internal/ops"
@@ -76,6 +76,45 @@ func (f *fakeObjects) get(key string) ([]byte, bool) {
 	return data, ok
 }
 
+// delivered answers, for a bucket key the agents once read, what the device
+// API serves in its place now: the employee's bundle, the machine's binding,
+// the current policy. The tests below were written against the bucket and
+// still ask by those keys.
+type delivered struct {
+	store repo.Store
+	ctx   context.Context
+}
+
+func (d delivered) get(key string) ([]byte, bool) {
+	switch {
+	case key == ossclient.PolicyKey():
+		current, err := d.store.Policies().Current(d.ctx)
+		return current.Content, err == nil
+	case strings.HasPrefix(key, ossclient.BindingPrefix):
+		device, err := d.store.Devices().ByHostname(d.ctx, ossclient.MachineFromBindingKey(key))
+		if err != nil {
+			return nil, false
+		}
+		cfg, err := deviceconfig.Build(d.ctx, d.store, device.ID)
+		if err != nil || cfg.Forgotten || !cfg.HasBinding {
+			return nil, false
+		}
+		data, err := cfg.BindingObject()
+		return data, err == nil
+	}
+	employees, err := d.store.Employees().List(d.ctx, repo.EmployeeFilter{IncludeOffboarded: true})
+	if err != nil {
+		return nil, false
+	}
+	for _, e := range employees {
+		if key == ossclient.UserKey(e.WindowsUser, "credentials.zip") {
+			data, _, err := d.store.CredentialBundles().Live(d.ctx, e.ID)
+			return data, err == nil
+		}
+	}
+	return nil, false
+}
+
 // fakeCatalog is the gateway's model list.
 type fakeCatalog struct{ names []string }
 
@@ -97,9 +136,9 @@ func (c *mutableCatalog) Models(context.Context) ([]litellm.Model, error) {
 
 func TestModelDeliveryReplacesClientListAfterAddUpdateAndRemoval(t *testing.T) {
 	store, service, _, ring, w, ctx := provisioned(t)
-	objects := newFakeObjects()
+	objects := delivered{store, ctx}
 	catalogSource := &mutableCatalog{models: []litellm.Model{{Name: "claude-4.5-sonnet", Info: litellm.ModelInfo{DisplayName: "Claude", CatalogVisible: true}}}}
-	w.Register(repo.TaskOSSExport, OSSExport{Store: store, Objects: objects, Keyring: ring, Catalog: catalogSource, GatewayBaseURL: "https://litellm.teenet.app"})
+	w.Register(repo.TaskOSSExport, OSSExport{Store: store, Keyring: ring, Catalog: catalogSource, GatewayBaseURL: "https://litellm.teenet.app"})
 	e := onboard(t, ctx, service, "work1")
 	if err := store.Employees().SetModels(ctx, e.ID, []string{"claude-4.5-sonnet", "gemini-2.5-pro"}); err != nil {
 		t.Fatal(err)
@@ -161,10 +200,10 @@ func TestModelDeliveryReplacesClientListAfterAddUpdateAndRemoval(t *testing.T) {
 
 func TestModelDeliveryWithdrawsStaleBundleWhenLastModelIsRemoved(t *testing.T) {
 	store, service, _, ring, w, ctx := provisioned(t)
-	objects := newFakeObjects()
+	objects := delivered{store, ctx}
 	catalogSource := &mutableCatalog{models: []litellm.Model{{Name: "model-a", Info: litellm.ModelInfo{DisplayName: "A", CatalogVisible: true}}}}
 	w.Register(repo.TaskOSSExport, OSSExport{
-		Store: store, Objects: objects, Keyring: ring, Catalog: catalogSource,
+		Store: store, Keyring: ring, Catalog: catalogSource,
 		GatewayBaseURL: "https://litellm.teenet.app",
 	})
 	employee := onboard(t, ctx, service, "work1")
@@ -192,14 +231,14 @@ func TestModelDeliveryWithdrawsStaleBundleWhenLastModelIsRemoved(t *testing.T) {
 	}
 }
 
-// exporting wires a worker with all three handlers over a fake gateway and a
-// fake object store, which between them are the whole delivery path.
-func exporting(t *testing.T) (*dbstore.Store, *ops.Service, *fakeObjects, *Worker, context.Context) {
+// exporting wires a worker with all three handlers over a fake gateway, which
+// with the database is the whole delivery path.
+func exporting(t *testing.T) (*dbstore.Store, *ops.Service, delivered, *Worker, context.Context) {
 	t.Helper()
 	store, service, gateway, ring, w, ctx := provisioned(t)
-	objects := newFakeObjects()
+	objects := delivered{store, ctx}
 	w.Register(repo.TaskOSSExport, OSSExport{
-		Store: store, Objects: objects, Keyring: ring,
+		Store: store, Keyring: ring,
 		Catalog:        fakeCatalog{names: []string{"claude-4.5-sonnet", "gemini-2.5-pro"}},
 		GatewayBaseURL: "https://litellm.teenet.app",
 	})
@@ -239,9 +278,9 @@ func TestTheExportPutsAWorkingConfigWhereTheAgentLooks(t *testing.T) {
 }
 
 func TestTheExportKeepsWhatItDidNotPublishAndDropsWhatNobodyPublishesAnyMore(t *testing.T) {
-	_, service, objects, w, ctx := exporting(t)
+	store, service, objects, w, ctx := exporting(t)
 
-	// An archive from before: an entry this export does not produce, which
+	// A bundle from before: an entry this export does not produce, which
 	// must survive, and the Claude login an earlier console published, which
 	// must not -- Claude Code is no longer managed.
 	existing, err := creds.Pack(model.CredentialSet{
@@ -252,11 +291,10 @@ func TestTheExportKeepsWhatItDidNotPublishAndDropsWhatNobodyPublishesAnyMore(t *
 	if err != nil {
 		t.Fatalf("pack: %v", err)
 	}
-	if err := objects.Put(ossclient.UserKey("work1", "credentials.zip"), existing); err != nil {
+	employee := onboard(t, ctx, service, "work1")
+	if err := store.CredentialBundles().Put(ctx, employee.ID, employee.AuthEpoch, existing, "seed"); err != nil {
 		t.Fatalf("seed: %v", err)
 	}
-
-	onboard(t, ctx, service, "work1")
 	drain(t, ctx, w)
 
 	blob, _ := objects.get(ossclient.UserKey("work1", "credentials.zip"))
@@ -383,53 +421,12 @@ func TestThePolicyExportAlwaysWritesTheCurrentOne(t *testing.T) {
 	}
 }
 
-func TestAnOSSFailureDelaysTheDeliveryRatherThanLosingIt(t *testing.T) {
-	store, service, objects, w, ctx := exporting(t)
-	objects.putErr = errors.New("connection reset by peer")
-	employee := onboard(t, ctx, service, "work1")
-
-	for range 4 {
-		if _, err := w.RunOnce(ctx); err != nil {
-			t.Fatalf("RunOnce: %v", err)
-		}
-	}
-	var export repo.Task
-	tasks, err := store.Tasks().ListOpen(ctx, 0)
-	if err != nil {
-		t.Fatalf("list: %v", err)
-	}
-	for _, task := range tasks {
-		if task.Kind == repo.TaskOSSExport {
-			export = task
-		}
-	}
-	if export.Status != repo.TaskRetryWait {
-		t.Fatalf("the export is %s, want it waiting to be retried", export.Status)
-	}
-
-	// The credentials exist in the database the whole time; only the delivery
-	// is late.
-	if _, err := store.Credentials().Live(ctx, employee.ID, repo.PurposeCodexGateway); err != nil {
-		t.Fatalf("the credential was lost while the delivery failed: %v", err)
-	}
-
-	objects.putErr = nil
-	time.Sleep(30 * time.Millisecond)
-	drain(t, ctx, w)
-	if _, ok := objects.get(ossclient.UserKey("work1", "credentials.zip")); !ok {
-		t.Error("the delivery never happened after OSS recovered")
-	}
-}
-
-func TestForgettingAMachineRemovesItsObjects(t *testing.T) {
+func TestForgettingAMachineRemovesItsBinding(t *testing.T) {
 	_, service, objects, w, ctx := exporting(t)
 	employee := onboard(t, ctx, service, "work1")
 	if _, err := service.BindMachine(ctx, "DESKTOP-01", employee.ID, "", "zhang", ""); err != nil {
 		t.Fatalf("bind: %v", err)
 	}
-	objects.mu.Lock()
-	objects.objects[ossclient.StatusKey("DESKTOP-01")] = []byte(`{"machine":"DESKTOP-01"}`)
-	objects.mu.Unlock()
 	drain(t, ctx, w)
 
 	if err := service.ForgetMachine(ctx, "desktop-01", "zhang", ""); err != nil {
@@ -437,48 +434,13 @@ func TestForgettingAMachineRemovesItsObjects(t *testing.T) {
 	}
 	drain(t, ctx, w)
 	if _, ok := objects.get(ossclient.BindingKey("DESKTOP-01")); ok {
-		t.Error("the binding object survived forgetting")
-	}
-	if _, ok := objects.get(ossclient.StatusKey("DESKTOP-01")); ok {
-		t.Error("the status object survived forgetting")
-	}
-}
-
-func TestThePolicyExportCopiesTheChosenAgentBuildToTheFixedKey(t *testing.T) {
-	store, ctx := newWorkerStore(t)
-	objects := newFakeObjects()
-	objects.objects[ossclient.AgentVersionKey("1.2.16")] = []byte("agent 1.2.16")
-	if _, err := store.Releases().CreateArtifact(ctx, repo.NewArtifact{Product: repo.ProductAgent, Version: "1.2.16",
-		SHA256: strings.Repeat("a", 64), SizeBytes: 12, ObjectKey: ossclient.AgentVersionKey("1.2.16"), CreatedBy: "t"}); err != nil {
-		t.Fatal(err)
-	}
-	pol := model.DefaultPolicy()
-	pol.AgentUpdateVersion, pol.AgentUpdateSHA256 = "1.2.16", strings.Repeat("a", 64)
-	content, _ := json.Marshal(pol)
-	published, _ := store.Policies().Publish(ctx, content, "aim", "t")
-
-	h := OSSExport{Store: store, Objects: objects}
-	if _, err := h.Run(ctx, repo.Task{Kind: repo.TaskOSSExport,
-		Payload: mustJSON(t, map[string]any{"policy_version": published.Version})}); err != nil {
-		t.Fatalf("export: %v", err)
-	}
-	if got, _ := objects.get(ossclient.AgentBinaryKey()); string(got) != "agent 1.2.16" {
-		t.Fatalf("fixed key holds %q", got)
-	}
-	var written model.Policy
-	if got, _ := objects.get(ossclient.PolicyKey()); json.Unmarshal(got, &written) != nil || written.AgentUpdateVersion != "1.2.16" {
-		t.Fatalf("policy.json was not written after the copy: %s", got)
-	}
-	// The copy comes before the policy: a fleet pointed at a key that does
-	// not hold the build yet is a fleet failing checksums.
-	if len(objects.copies) != 1 {
-		t.Fatalf("copies = %v", objects.copies)
+		t.Error("the binding survived forgetting")
 	}
 }
 
 func TestTheBindingCarriesTheMachinesTargetsAndSurvivesUnbinding(t *testing.T) {
 	store, ctx := newWorkerStore(t)
-	objects := newFakeObjects()
+	objects := delivered{store, ctx}
 	device, _ := store.Devices().EnsureByHostname(ctx, "PC-7")
 	store.Devices().MarkSeen(ctx, device.ID, "1.2.16", time.Now())
 	a, err := store.Releases().CreateArtifact(ctx, repo.NewArtifact{Product: repo.ProductCodex, Version: "0.42.0",
@@ -495,7 +457,7 @@ func TestTheBindingCarriesTheMachinesTargetsAndSurvivesUnbinding(t *testing.T) {
 		t.Fatalf("target: %v", err)
 	}
 
-	h := OSSExport{Store: store, Objects: objects}
+	h := OSSExport{Store: store}
 	run := func() model.Binding {
 		t.Helper()
 		res, err := h.Run(ctx, repo.Task{Kind: repo.TaskOSSExport, Payload: mustJSON(t, map[string]any{"device_id": device.ID})})
@@ -554,10 +516,10 @@ func TestTheBindingCarriesTheMachinesTargetsAndSurvivesUnbinding(t *testing.T) {
 
 func TestSyncNowReachesAnUnboundMachineToo(t *testing.T) {
 	store, ctx := newWorkerStore(t)
-	objects := newFakeObjects()
+	objects := delivered{store, ctx}
 	device, _ := store.Devices().EnsureByHostname(ctx, "PC-8")
 	svc := ops.New(store)
-	h := OSSExport{Store: store, Objects: objects}
+	h := OSSExport{Store: store}
 	export := func() {
 		t.Helper()
 		if _, err := h.Run(ctx, repo.Task{Kind: repo.TaskOSSExport, Payload: mustJSON(t, map[string]any{"device_id": device.ID})}); err != nil {
@@ -594,10 +556,10 @@ func (f *recordingNotifier) Wake(ids ...string) { f.woken = append(f.woken, ids.
 func (f *recordingNotifier) WakeAll()           { f.all++ }
 
 func TestExportsWakeTheMachinesTheyTouch(t *testing.T) {
-	store, service, objects, w, ctx := exporting(t)
+	store, service, _, w, ctx := exporting(t)
 	hub := &recordingNotifier{}
 	w.Register(repo.TaskOSSExport, OSSExport{
-		Store: store, Objects: objects, Keyring: testKeyring(t),
+		Store: store, Keyring: testKeyring(t),
 		Catalog:        fakeCatalog{names: []string{"claude-4.5-sonnet"}},
 		GatewayBaseURL: "https://litellm.teenet.app", Notifier: hub,
 	})
@@ -628,9 +590,9 @@ func TestExportsWakeTheMachinesTheyTouch(t *testing.T) {
 
 func TestAPausedChannelLeavesThePicker(t *testing.T) {
 	store, service, _, ring, w, ctx := provisioned(t)
-	objects := newFakeObjects()
+	objects := delivered{store, ctx}
 	w.Register(repo.TaskOSSExport, OSSExport{
-		Store: store, Objects: objects, Keyring: ring, GatewayBaseURL: "https://litellm.teenet.app",
+		Store: store, Keyring: ring, GatewayBaseURL: "https://litellm.teenet.app",
 		Catalog: staticCatalog{
 			{Name: "grok-4.6", Info: litellm.ModelInfo{DisplayName: "Grok", ContextWindow: 200000, CatalogVisible: true, LitellmProvider: "bedrock"}},
 			{Name: "gemini-3.1-pro", Info: litellm.ModelInfo{DisplayName: "Gemini", ContextWindow: 200000, CatalogVisible: true, LitellmProvider: "vertex_ai"}},

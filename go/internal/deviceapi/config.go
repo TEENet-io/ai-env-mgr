@@ -16,8 +16,8 @@ func (s *Server) config(ctx context.Context, device repo.Device) (deviceconfig.C
 	}
 	// Application tasks are now leased from PostgreSQL by the Agent worker.
 	// Do not copy the legacy OSS machine plan into this API configuration:
-	// an old object must never resurrect a cancelled Admin task. Bucket remains
-	// available for pre-API agents and immutable package objects.
+	// an old object must never resurrect a cancelled Admin task. The bucket
+	// holds only immutable package objects.
 	return cfg, nil
 }
 

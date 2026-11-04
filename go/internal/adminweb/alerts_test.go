@@ -200,17 +200,20 @@ func TestDeviceChannelPageAndMachineControls(t *testing.T) {
 	csrf := csrfFrom(t, s, cookie, "/settings")
 
 	page := dbGet(t, h, "/settings/devices", cookie).Body.String()
-	if !strings.Contains(page, "设备通道") || !strings.Contains(page, `name="write_oss"`) {
+	if !strings.Contains(page, "设备通道") || !strings.Contains(page, `name="enrol_cidrs"`) {
 		t.Fatal("the devices tab lacks its form")
 	}
-	if rec := dbPost(t, h, "/settings/device-channel", url.Values{"csrf": {csrf}, "version": {"0"}, "write_oss": {"1"}, "import_status": {"1"}, "enrol_cidrs": {"198.51.100.0/24\n203.0.113.9"}}, cookie); strings.Contains(rec.Header().Get("Location"), "err=") {
+	if strings.Contains(page, `name="write_oss"`) || strings.Contains(page, `name="import_status"`) {
+		t.Fatal("the bucket channel switches are gone with the bucket channel")
+	}
+	if rec := dbPost(t, h, "/settings/device-channel", url.Values{"csrf": {csrf}, "version": {"0"}, "enrol_cidrs": {"198.51.100.0/24\n203.0.113.9"}}, cookie); strings.Contains(rec.Header().Get("Location"), "err=") {
 		t.Fatalf("save: %s", rec.Header().Get("Location"))
 	}
 	got, _, _ := repo.LoadDeviceChannelSettings(ctx, s.dbm.store.Settings())
-	if len(got.EnrolCIDRs) != 2 || !got.WriteOSSObjects {
+	if len(got.EnrolCIDRs) != 2 {
 		t.Fatalf("stored = %+v", got)
 	}
-	if rec := dbPost(t, h, "/settings/device-channel", url.Values{"csrf": {csrf}, "version": {"1"}, "write_oss": {"1"}, "import_status": {"1"}, "enrol_cidrs": {"not-a-network"}}, cookie); !strings.Contains(rec.Header().Get("Location"), "err=") {
+	if rec := dbPost(t, h, "/settings/device-channel", url.Values{"csrf": {csrf}, "version": {"1"}, "enrol_cidrs": {"not-a-network"}}, cookie); !strings.Contains(rec.Header().Get("Location"), "err=") {
 		t.Fatal("a bad network must be refused")
 	}
 	// The API now refuses enrolment from outside the list.

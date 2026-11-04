@@ -32,8 +32,7 @@ type DataPresigner interface {
 	SignedDataPutURL(key string, ttl time.Duration, contentType string) (string, error)
 }
 
-// BucketReader reads one object: the fallback for a credentials bundle that
-// predates the bundle table, while the bucket is still written.
+// BucketReader reads one object: an application's manifest.
 type BucketReader interface {
 	Get(key string) ([]byte, string, error)
 }
@@ -47,7 +46,7 @@ type Events interface {
 type Server struct {
 	Store   repo.Store
 	Objects Presigner    // nil: artifact and upload links answer 503
-	Bucket  BucketReader // nil: no fallback for bundles the table lacks
+	Bucket  BucketReader // nil: application manifests are unavailable
 	Hub     *Hub
 	Events  Events
 	Now     func() time.Time

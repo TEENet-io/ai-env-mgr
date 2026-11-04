@@ -15,8 +15,6 @@ import (
 // console that was down for an hour does not catch up by running sixty of
 // them.
 const (
-	// TaskStatusImport copies machine reports in from OSS.
-	TaskStatusImport = "status_import"
 	// TaskReleaseScan registers packages CI put in the bucket.
 	TaskReleaseScan = "release_scan"
 	// TaskUsageSnapshot copies the gateway's usage into usage_daily.
@@ -34,7 +32,6 @@ const (
 	// the last fleet delivery and queues a refresh when the gateway changed.
 	TaskCatalogSync = "catalog_sync"
 
-	EveryStatusImport  = time.Minute
 	EveryReleaseScan   = 24 * time.Hour
 	EveryUsageSnapshot = 24 * time.Hour
 	EveryAlertEval     = 10 * time.Minute
@@ -64,7 +61,6 @@ func Schedule(ctx context.Context, store repo.Store, onError func(error)) {
 			after time.Duration
 			max   int
 		}{
-			{TaskStatusImport, EveryStatusImport, 0, 2},
 			{TaskReleaseScan, EveryReleaseScan, 0, 2},
 			{TaskUsageSnapshot, EveryUsageSnapshot, AfterUsageSnapshot, 2},
 			{TaskAlertEval, EveryAlertEval, 0, 1},

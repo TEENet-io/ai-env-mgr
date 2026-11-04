@@ -1,7 +1,6 @@
 package deviceapi
 
 import (
-	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
@@ -10,7 +9,6 @@ import (
 	"strings"
 	"unicode/utf8"
 
-	"github.com/TEENet-io/ai-env-mgr/internal/ossclient"
 	"github.com/TEENet-io/ai-env-mgr/internal/repo"
 	"github.com/TEENet-io/ai-env-mgr/internal/status"
 	"github.com/TEENet-io/ai-env-mgr/internal/worker"
@@ -96,12 +94,6 @@ func (s *Server) handleCredentials(w http.ResponseWriter, r *http.Request, devic
 	}
 	zip, etag, err := s.Store.CredentialBundles().Live(ctx, binding.EmployeeID)
 	if errors.Is(err, repo.ErrNotFound) {
-		// A bundle delivered before the table existed is still in the
-		// bucket, while the bucket is written. Serve that rather than
-		// "nothing published", which the agent would act on by revoking.
-		zip, etag, err = s.bundleFromBucket(ctx, binding.EmployeeID)
-	}
-	if errors.Is(err, repo.ErrNotFound) {
 		http.Error(w, "no credentials published yet", http.StatusNotFound)
 		return
 	}
@@ -117,36 +109,4 @@ func (s *Server) handleCredentials(w http.ResponseWriter, r *http.Request, devic
 	w.Header().Set("ETag", etag)
 	w.Header().Set("Cache-Control", "no-store")
 	w.Write(zip)
-}
-
-// bundleFromBucket reads the employee's credentials.zip as the exporter
-// wrote it to the bucket, for a machine whose assignee has no bundle row
-// yet. ErrNotFound when the bucket is not read, not written, or has none.
-func (s *Server) bundleFromBucket(ctx context.Context, employeeID string) ([]byte, string, error) {
-	if s.Bucket == nil {
-		return nil, "", repo.ErrNotFound
-	}
-	settings, _, err := repo.LoadDeviceChannelSettings(ctx, s.Store.Settings())
-	if err != nil {
-		return nil, "", err
-	}
-	if !settings.WriteOSSObjects {
-		return nil, "", repo.ErrNotFound
-	}
-	employee, err := s.Store.Employees().ByID(ctx, employeeID)
-	if err != nil {
-		return nil, "", err
-	}
-	data, etag, err := s.Bucket.Get(ossclient.UserKey(employee.WindowsUser, "credentials.zip"))
-	if errors.Is(err, ossclient.ErrNotFound) {
-		return nil, "", repo.ErrNotFound
-	}
-	if err != nil {
-		return nil, "", err
-	}
-	if etag == "" {
-		sum := sha256.Sum256(data)
-		etag = "oss:" + hex.EncodeToString(sum[:8])
-	}
-	return data, etag, nil
 }

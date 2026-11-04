@@ -511,29 +511,22 @@ func (f fakeBucket) Get(key string) ([]byte, string, error) {
 	return data, "oss-etag", nil
 }
 
-func TestCredentialsFallBackToTheBucketUntilABundleExists(t *testing.T) {
+func TestCredentialsComeOnlyFromTheBundleTable(t *testing.T) {
 	s, store, ctx, h, _, _ := newServer(t)
 	publishPolicy(t, ctx, store, model.Policy{})
 	e, _ := store.Employees().Create(ctx, repo.NewEmployee{WindowsUser: "work1"})
 	deviceID, token := enrol(t, h, "PC-1")
 	store.Bindings().Bind(ctx, deviceID, e.ID, "", "admin")
-	bucket := fakeBucket{objects: map[string][]byte{ossclient.UserKey("work1", "credentials.zip"): []byte("PK-from-bucket")}}
-	s.Bucket = bucket
-
-	rec := do(h, "GET", "/agent/v1/credentials", token, nil)
-	if rec.Code != 200 || rec.Body.String() != "PK-from-bucket" || rec.Header().Get("ETag") != "oss-etag" {
-		t.Fatalf("bucket fallback: %d %q", rec.Code, rec.Body.String())
-	}
-	// A bundle in the table wins once it exists.
-	store.CredentialBundles().Put(ctx, e.ID, e.AuthEpoch, []byte("PK-from-table"), "t1")
-	if rec := do(h, "GET", "/agent/v1/credentials", token, nil); rec.Body.String() != "PK-from-table" {
-		t.Fatalf("table bundle: %q", rec.Body.String())
-	}
-	// With the bucket switched off there is no fallback: 404, as documented.
-	store.CredentialBundles().Purge(ctx, e.ID)
-	store.Settings().Set(ctx, repo.SettingDeviceChannel, []byte(`{"write_oss_objects":false,"import_oss_status":false}`), 0, "admin")
+	// An object a pre-API console left in the bucket is not served: the
+	// bucket is no longer a channel, and a stale bundle there must not bring
+	// back credentials the console has withdrawn.
+	s.Bucket = fakeBucket{objects: map[string][]byte{ossclient.UserKey("work1", "credentials.zip"): []byte("PK-from-bucket")}}
 	if rec := do(h, "GET", "/agent/v1/credentials", token, nil); rec.Code != 404 {
-		t.Fatalf("bucket off: %d", rec.Code)
+		t.Fatalf("no bundle in the table: %d %q", rec.Code, rec.Body.String())
+	}
+	store.CredentialBundles().Put(ctx, e.ID, e.AuthEpoch, []byte("PK-from-table"), "t1")
+	if rec := do(h, "GET", "/agent/v1/credentials", token, nil); rec.Code != 200 || rec.Body.String() != "PK-from-table" {
+		t.Fatalf("table bundle: %d %q", rec.Code, rec.Body.String())
 	}
 }
 

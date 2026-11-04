@@ -13,20 +13,9 @@ import (
 	"github.com/TEENet-io/ai-env-mgr/internal/deviceconfig"
 	"github.com/TEENet-io/ai-env-mgr/internal/litellm"
 	"github.com/TEENet-io/ai-env-mgr/internal/model"
-	"github.com/TEENet-io/ai-env-mgr/internal/ossclient"
 	"github.com/TEENet-io/ai-env-mgr/internal/repo"
 	"github.com/TEENet-io/ai-env-mgr/internal/secrets"
 )
-
-// ObjectStore is the part of OSS the export needs.
-type ObjectStore interface {
-	Get(key string) ([]byte, string, error)
-	Put(key string, data []byte) error
-	Delete(key string) error
-	// Copy duplicates an object server-side; the export uses it to put the
-	// chosen agent build behind the fixed key the fleet reads.
-	Copy(src, dst string) error
-}
 
 // ModelCatalog is the gateway's list of routable models, used to build the
 // picker's models.json.
@@ -34,24 +23,23 @@ type ModelCatalog interface {
 	Models(ctx context.Context) ([]litellm.Model, error)
 }
 
-// OSSExport writes the objects the agents read.
+// OSSExport builds what the agents fetch from the device API and wakes the
+// machines waiting for it.
 //
-// This is the compatibility bridge, and it is meant to be temporary. The
-// database is authoritative; OSS is a publishing format that the agents in the
-// field still speak. Once every machine runs an agent that talks to the API
-// (phase 2), this handler and the objects it writes go away, and OSS goes back
-// to being where large files live.
+// It once wrote the same things to OSS for agents that read the bucket; every
+// machine talks to the console now, and the bucket holds only installers,
+// collected data and backups. The name, and the task kind, stay because
+// queued tasks carry them.
 //
 // It is written to be re-runnable at any moment: the export always reproduces
-// the whole object from the current state rather than applying a change. A
+// the whole bundle from the current state rather than applying a change. A
 // retry, a duplicate task, or a run that happens out of order therefore all
 // converge on the same bytes.
 type OSSExport struct {
-	Store   repo.Store
-	Objects ObjectStore
-	// Notifier, when set, is woken after the objects are written: this is
-	// the authoritative wake, the one that follows every change, because
-	// every change queues an export.
+	Store repo.Store
+	// Notifier, when set, is woken after the export: this is the
+	// authoritative wake, the one that follows every change, because every
+	// change queues an export.
 	Notifier Notifier
 	Keyring  secrets.Keyring
 	Catalog  ModelCatalog
@@ -87,11 +75,10 @@ func (h OSSExport) Run(ctx context.Context, task repo.Task) (Result, error) {
 		return Result{}, Permanent(errors.New("the task says nothing about what to export"))
 	}
 
-	// One export per subject at a time, across every worker. The export reads
-	// the database and then writes an object the database cannot see; two of
-	// them interleaved -- a second worker, or one that took over an expired
-	// lease while the first was still writing -- can leave the older bytes in
-	// the bucket. The lock is held for the whole read-then-write.
+	// One export per subject at a time, across every worker: two of them
+	// interleaved -- a second worker, or one that took over an expired lease
+	// while the first was still writing -- could store the older bundle last.
+	// The lock is held for the whole read-then-write.
 	var result Result
 	err := h.Store.InTx(ctx, func(tx repo.Store) error {
 		if err := tx.Lock(ctx, "oss_export:"+subject); err != nil {
@@ -114,18 +101,6 @@ func (h OSSExport) Run(ctx context.Context, task repo.Task) (Result, error) {
 		h.notify(ctx, payload)
 	}
 	return result, err
-}
-
-// ossChannelOff reports whether the bucket has stopped being a channel: the
-// administrator switched the objects off once every machine talks to the
-// console directly. The exports still run, because they store the
-// credential bundles the device API serves and wake the machines.
-func (h OSSExport) ossChannelOff(ctx context.Context) (bool, error) {
-	settings, _, err := repo.LoadDeviceChannelSettings(ctx, h.Store.Settings())
-	if err != nil {
-		return false, err
-	}
-	return !settings.WriteOSSObjects, nil
 }
 
 // Notifier wakes agents waiting on the console for their configuration.
@@ -158,44 +133,18 @@ func (h OSSExport) notify(ctx context.Context, payload exportPayload) {
 	}
 }
 
-// exportPolicy writes the fleet policy.
+// exportPolicy confirms there is a policy to serve; the run's notify then
+// wakes every machine to fetch it from the device API.
 //
-// It writes whatever is current rather than the version the task names. Two
-// publishes in quick succession queue two exports, and the older one must not
-// be able to put the earlier policy back after the newer one landed.
+// It reports whatever is current rather than the version the task names: two
+// publishes in quick succession queue two exports, and both serve the newer.
 func (h OSSExport) exportPolicy(ctx context.Context, requested int64) (Result, error) {
-	if off, err := h.ossChannelOff(ctx); err != nil || off {
-		return Result{Note: "oss channel off; nothing written"}, err
-	}
 	current, err := h.Store.Policies().Current(ctx)
 	if errors.Is(err, repo.ErrNotFound) {
 		return Result{}, Permanent(errors.New("no policy has been published"))
 	}
 	if err != nil {
 		return Result{}, err
-	}
-	var pol model.Policy
-	if err := json.Unmarshal(current.Content, &pol); err != nil {
-		return Result{}, Permanent(fmt.Errorf("policy version %d is not readable: %w", current.Version, err))
-	}
-	if pol.AgentUpdateVersion != "" {
-		artifact, err := h.Store.Releases().ArtifactByVersion(ctx, repo.ProductAgent, pol.AgentUpdateVersion)
-		switch {
-		case err == nil:
-			// Before the policy, every time: the fixed key must hold the
-			// build the policy names before any agent reads the policy.
-			if err := h.Objects.Copy(artifact.ObjectKey, ossclient.AgentBinaryKey()); err != nil {
-				return Result{}, ClassError("oss_copy", err)
-			}
-		case errors.Is(err, repo.ErrNotFound):
-			// A version set before the version library existed: the fixed
-			// key was written directly and is left as it is.
-		default:
-			return Result{}, err
-		}
-	}
-	if err := h.Objects.Put(ossclient.PolicyKey(), current.Content); err != nil {
-		return Result{}, ClassError("oss_write", err)
 	}
 	note := fmt.Sprintf("policy version %d", current.Version)
 	if current.Version != requested {
@@ -204,12 +153,10 @@ func (h OSSExport) exportPolicy(ctx context.Context, requested int64) (Result, e
 	return Result{Note: note}, nil
 }
 
-// exportBinding writes, or removes, one machine's binding object. What
-// goes in it is deviceconfig's answer, the same one the device API gives.
+// exportBinding describes one machine's assignment, as the device API will
+// serve it (deviceconfig), for the task's note; the run's notify then wakes
+// the machine to fetch it.
 func (h OSSExport) exportBinding(ctx context.Context, deviceID string) (Result, error) {
-	if off, err := h.ossChannelOff(ctx); err != nil || off {
-		return Result{Note: "oss channel off; nothing written"}, err
-	}
 	cfg, err := deviceconfig.Build(ctx, h.Store, deviceID)
 	if errors.Is(err, repo.ErrNotFound) {
 		return Result{}, Permanent(fmt.Errorf("machine %s no longer exists", deviceID))
@@ -217,29 +164,12 @@ func (h OSSExport) exportBinding(ctx context.Context, deviceID string) (Result, 
 	if err != nil {
 		return Result{}, err
 	}
-	if cfg.Forgotten {
-		// Forgotten: both its binding and its status report go, so it
-		// disappears from the console. A machine that is still switched on
-		// will write a new status on its next sync, which is the cue that the
-		// wrong one was forgotten.
-		for _, key := range []string{ossclient.BindingKey(cfg.Hostname), ossclient.StatusKey(cfg.Hostname)} {
-			if err := h.Objects.Delete(key); err != nil {
-				return Result{}, ClassError("oss_delete", err)
-			}
-		}
+	switch {
+	case cfg.Forgotten:
 		return Result{Note: "forgotten"}, nil
-	}
-	if !cfg.HasBinding {
-		// Nobody is assigned to it and nothing is aimed at it. The agent
-		// reads the absence as "not assigned yet" and keeps applying the
-		// machine-wide policy, which is exactly right for a machine that has
-		// just been taken back.
-		if err := h.Objects.Delete(ossclient.BindingKey(cfg.Hostname)); err != nil {
-			return Result{}, ClassError("oss_delete", err)
-		}
+	case !cfg.HasBinding:
 		return Result{Note: "unbound"}, nil
 	}
-
 	note := cfg.Hostname + " -> nobody"
 	if cfg.Bound {
 		note = cfg.Hostname + " -> " + cfg.Binding.User
@@ -250,22 +180,15 @@ func (h OSSExport) exportBinding(ctx context.Context, deviceID string) (Result, 
 	if cfg.Binding.CodexTarget != nil {
 		note += fmt.Sprintf(", codex %s gen %d", cfg.Binding.CodexTarget.Version, cfg.Binding.CodexTarget.Generation)
 	}
-	data, err := cfg.BindingObject()
-	if err != nil {
-		return Result{}, Permanent(fmt.Errorf("encode binding: %w", err))
-	}
-	if err := h.Objects.Put(ossclient.BindingKey(cfg.Hostname), data); err != nil {
-		return Result{}, ClassError("oss_write", err)
-	}
 	return Result{Note: note}, nil
 }
 
-// exportEmployee writes, or removes, one employee's credentials, and refreshes
-// the binding of every machine assigned to them.
+// exportEmployee stores, or removes, one employee's credential bundle, and
+// refreshes the binding of every machine assigned to them.
 //
-// Removing is how a revocation reaches a desktop: the agent sees the object is
-// gone, deletes the local credentials and ends the Codex session that still
-// holds the token in memory.
+// Removing is how a revocation reaches a desktop: the device API answers 404,
+// the agent deletes the local credentials and ends the Codex session that
+// still holds the token in memory.
 func (h OSSExport) exportEmployee(ctx context.Context, employeeID string) (Result, error) {
 	employee, err := h.Store.Employees().ByID(ctx, employeeID)
 	if errors.Is(err, repo.ErrNotFound) {
@@ -283,7 +206,7 @@ func (h OSSExport) exportEmployee(ctx context.Context, employeeID string) (Resul
 	set := model.CredentialSet{}
 
 	// Nothing to deliver -- offboarded, or a fresh account whose token has not
-	// arrived -- means no object. The agent reports the absence as "no
+	// arrived -- means no bundle. The agent reports the absence as "no
 	// credentials published yet" for the second case and revokes for the first.
 	if !employee.Active() || !hasCodex {
 		if err := h.withdraw(ctx, employee); err != nil {
@@ -354,44 +277,28 @@ func (h OSSExport) exportEmployee(ctx context.Context, employeeID string) (Resul
 	return Result{Note: fmt.Sprintf("published %d model(s) to %s", allowed, employee.WindowsUser)}, nil
 }
 
-// publish merges into whatever archive is already there, minus the entries
-// nobody publishes any more.
+// publish merges into the bundle already stored, minus the entries nobody
+// publishes any more.
 //
 // The merge is what keeps an entry this export did not produce; the Claude
 // entries an earlier console published are the exception, dropped on the way
-// through so that an archive stops carrying a login for a tool that is no
+// through so that a bundle stops carrying a login for a tool that is no
 // longer managed.
 func (h OSSExport) publish(ctx context.Context, employee repo.Employee, set model.CredentialSet) error {
-	key := ossclient.UserKey(employee.WindowsUser, "credentials.zip")
 	existing := model.CredentialSet{}
-	var data []byte
-	var err error
-	off, err := h.ossChannelOff(ctx)
-	if err != nil {
-		return err
-	}
-	if off {
-		// The bucket is no longer read: the previous bundle in the table is
-		// the merge base, so an entry this export does not produce survives.
-		data, _, err = h.Store.CredentialBundles().Live(ctx, employee.ID)
-		if errors.Is(err, repo.ErrNotFound) {
-			err = ossclient.ErrNotFound
-		}
-	} else {
-		data, _, err = h.Objects.Get(key)
-	}
+	data, _, err := h.Store.CredentialBundles().Live(ctx, employee.ID)
 	switch {
 	case err == nil:
 		existing, err = creds.Unpack(data)
 		if err != nil {
-			// Leaving the archive alone is the safe failure: replacing one we
+			// Leaving the bundle alone is the safe failure: replacing one we
 			// cannot read would throw away whatever else is in it.
-			return Permanent(fmt.Errorf("the existing archive for %s cannot be read; it was left alone: %w",
+			return Permanent(fmt.Errorf("the existing bundle for %s cannot be read; it was left alone: %w",
 				employee.WindowsUser, err))
 		}
-	case errors.Is(err, ossclient.ErrNotFound):
+	case errors.Is(err, repo.ErrNotFound):
 	default:
-		return ClassError("oss_read", err)
+		return err
 	}
 
 	merged := creds.Merge(existing, set)
@@ -402,36 +309,16 @@ func (h OSSExport) publish(ctx context.Context, employee repo.Employee, set mode
 	if err != nil {
 		return Permanent(fmt.Errorf("pack credentials for %s: %w", employee.WindowsUser, err))
 	}
-	// The same bytes go to the bucket for agents that read objects and to
-	// the table for agents that ask the console.
 	sum := sha256.Sum256(blob)
-	if err := h.Store.CredentialBundles().Put(ctx, employee.ID, employee.AuthEpoch, blob, hex.EncodeToString(sum[:16])); err != nil {
-		return err
-	}
-	if off, err := h.ossChannelOff(ctx); err != nil || off {
-		return err
-	}
-	if err := h.Objects.Put(key, blob); err != nil {
-		return ClassError("oss_write", err)
-	}
-	return nil
+	return h.Store.CredentialBundles().Put(ctx, employee.ID, employee.AuthEpoch, blob, hex.EncodeToString(sum[:16]))
 }
 
 // withdraw removes the delivered credentials.
 func (h OSSExport) withdraw(ctx context.Context, employee repo.Employee) error {
-	if err := h.Store.CredentialBundles().Purge(ctx, employee.ID); err != nil {
-		return err
-	}
-	if off, err := h.ossChannelOff(ctx); err != nil || off {
-		return err
-	}
-	if err := h.Objects.Delete(ossclient.UserKey(employee.WindowsUser, "credentials.zip")); err != nil {
-		return ClassError("oss_delete", err)
-	}
-	return nil
+	return h.Store.CredentialBundles().Purge(ctx, employee.ID)
 }
 
-// refreshBindings rewrites the binding object of every machine this employee
+// refreshBindings re-exports the binding of every machine this employee
 // holds, so that a Windows user name change or a restart request reaches them.
 func (h OSSExport) refreshBindings(ctx context.Context, employee repo.Employee) error {
 	bindings, err := h.Store.Bindings().OpenByEmployee(ctx, employee.ID)
@@ -440,7 +327,7 @@ func (h OSSExport) refreshBindings(ctx context.Context, employee repo.Employee) 
 	}
 	for _, binding := range bindings {
 		// The same lock a device export takes: two exports must not
-		// interleave on one binding object. Employee-then-device is the only
+		// interleave on one binding. Employee-then-device is the only
 		// order anything takes these in, so there is no cycle.
 		if err := h.Store.Lock(ctx, "oss_export:device:"+binding.DeviceID); err != nil {
 			return err

@@ -366,9 +366,7 @@ func (s *Server) actionDeviceChannel(sess *session, r *http.Request) error {
 		return errors.New("这页的设置在你打开后已被别人改过，请刷新后重试")
 	}
 	after := repo.DeviceChannelSettings{
-		WriteOSSObjects: formValue(r, "write_oss") == "1",
-		ImportOSSStatus: formValue(r, "import_status") == "1",
-		EnrolCIDRs:      splitRecipients(formValue(r, "enrol_cidrs")),
+		EnrolCIDRs: splitRecipients(formValue(r, "enrol_cidrs")),
 	}
 	nets, err := after.ParsedCIDRs()
 	if err != nil {

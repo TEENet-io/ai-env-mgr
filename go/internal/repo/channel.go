@@ -12,21 +12,16 @@ import (
 // SettingDeviceChannel holds DeviceChannelSettings as JSON.
 const SettingDeviceChannel = "device_channel"
 
-// DeviceChannelSettings say how far the move from the bucket to the device
-// API has got. Both switches stay on until every machine talks to the
-// console directly; then they go off and the bucket stops being a channel.
+// DeviceChannelSettings govern the agents' channel to the console. (The
+// stored value may still carry write_oss_objects and import_oss_status from
+// when agents also read the bucket; they are ignored.)
 type DeviceChannelSettings struct {
-	// WriteOSSObjects keeps the policy and binding objects in the bucket
-	// up to date for agents that still read them.
-	WriteOSSObjects bool `json:"write_oss_objects"`
-	// ImportOSSStatus keeps reading status objects from the bucket.
-	ImportOSSStatus bool `json:"import_oss_status"`
 	// EnrolCIDRs, when set, is the only place enrolments are accepted from.
 	EnrolCIDRs []string `json:"enrol_cidrs"`
 }
 
 func DefaultDeviceChannelSettings() DeviceChannelSettings {
-	return DeviceChannelSettings{WriteOSSObjects: true, ImportOSSStatus: true}
+	return DeviceChannelSettings{}
 }
 
 // ParsedCIDRs returns the enrolment networks, rejecting anything that is

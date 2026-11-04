@@ -257,14 +257,13 @@ func (s *Server) buildWorker(st *dbState) *worker.Worker {
 		})
 		users = gw
 		w.Register(repo.TaskOSSExport, worker.OSSExport{
-			Store: st.store, Objects: st.objects, Keyring: st.ring, Catalog: gw,
+			Store: st.store, Keyring: st.ring, Catalog: gw,
 			GatewayBaseURL: s.opts.GatewayURL, Notifier: st.hub,
 		})
 		w.Register(worker.TaskCatalogSync, worker.CatalogSync{
 			Store: st.store, Ops: st.ops, Catalog: gw,
 		})
 	}
-	w.Register(worker.TaskStatusImport, worker.StatusImport{Store: st.store, Objects: st.objects})
 	w.Register(worker.TaskAlertEval, worker.AlertEval{Store: st.store, Gateway: users})
 	w.Register(worker.TaskAlertNotify, worker.AlertNotify{Store: st.store, Channels: s.alertChannels, BaseURL: s.consoleURL()})
 	w.Register(worker.TaskCredentialRotation, worker.CredentialRotation{Store: st.store, Ops: st.ops})
