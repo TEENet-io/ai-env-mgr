@@ -218,7 +218,7 @@ func dropGatewayFlags(rows []accountRow) []accountRow {
 func (s *Server) handleUsers(w http.ResponseWriter, r *http.Request, sess *session) {
 	data := newPage(sess, r, "users")
 	data.GatewayURL = s.opts.GatewayURL
-	data.GatewayTeamID = s.opts.GatewayTeamID
+	data.GatewayTeamID = s.teamID()
 
 	if q, err := sess.be.QuotaDefaults(r.Context()); err == nil {
 		data.QuotaDefaults = q

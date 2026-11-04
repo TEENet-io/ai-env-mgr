@@ -65,6 +65,18 @@ type GatewayProvision struct {
 	// TeamID names new gateway users and aliases. It must match the
 	// Gateway client's own team, which is what puts keys and members in it.
 	TeamID string
+	// TeamSource, when set, is asked instead of TeamID, so the handler
+	// follows the console's setting as it changes.
+	TeamSource func() string
+}
+
+func (h GatewayProvision) team() string { return currentTeam(h.TeamID, h.TeamSource) }
+
+func currentTeam(fixed string, source func() string) string {
+	if source != nil {
+		return source()
+	}
+	return fixed
 }
 
 // effectiveModels is the allowlist the gateway should hold for an employee.
@@ -258,7 +270,7 @@ func (h GatewayProvision) aliasFor(ctx context.Context, employee repo.Employee, 
 	if err != nil && !errors.Is(err, repo.ErrNotFound) {
 		return "", err
 	}
-	return KeyAlias(h.TeamID, employee.WindowsUser, employee.ID, epoch), nil
+	return KeyAlias(h.team(), employee.WindowsUser, employee.ID, epoch), nil
 }
 
 // userFor names the gateway user for this epoch, the way aliasFor names the
@@ -274,7 +286,7 @@ func (h GatewayProvision) userFor(ctx context.Context, employee repo.Employee, e
 	if err != nil && !errors.Is(err, repo.ErrNotFound) {
 		return "", err
 	}
-	return GatewayUserID(h.TeamID, employee.WindowsUser), nil
+	return GatewayUserID(h.team(), employee.WindowsUser), nil
 }
 
 var errSuperseded = errors.New("superseded")
@@ -451,9 +463,10 @@ func (h GatewayRevoke) Run(ctx context.Context, task repo.Task) (Result, error) 
 // deleted from the console. Any token still standing is revoked first, so a
 // key cannot outlive the user that owned it.
 type GatewayDelete struct {
-	Store   repo.Store
-	Gateway Gateway
-	TeamID  string
+	Store      repo.Store
+	Gateway    Gateway
+	TeamID     string
+	TeamSource func() string // as GatewayProvision's
 }
 
 // Run revokes what is left and deletes the user. Both halves are safe to
@@ -473,7 +486,7 @@ func (h GatewayDelete) Run(ctx context.Context, task repo.Task) (Result, error) 
 	revoked := 0
 	// Every user this account was ever issued under: moving to a team leaves
 	// the pre-team user behind, and deleting the account removes both.
-	userIDs := []string{GatewayUserID(h.TeamID, payload.WindowsUser)}
+	userIDs := []string{GatewayUserID(currentTeam(h.TeamID, h.TeamSource), payload.WindowsUser)}
 	for _, grant := range grants {
 		if grant.ExternalUser != "" && !slices.Contains(userIDs, grant.ExternalUser) {
 			userIDs = append(userIDs, grant.ExternalUser)

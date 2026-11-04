@@ -25,7 +25,6 @@ func cmdWeb(args []string) error {
 		GatewayURL:   envOr("AIENVMGR_GATEWAY_URL", gatewayURL),
 		// Set when this customer shares the gateway with others: their
 		// LiteLLM team. Unset for a gateway of the customer's own.
-		GatewayTeamID: os.Getenv("AIENVMGR_GATEWAY_TEAM_ID"),
 		// The management key is taken from the environment only -- never a
 		// flag. A flag would put it in the process table, where any local
 		// account could read it off `ps`.

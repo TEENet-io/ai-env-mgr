@@ -45,7 +45,7 @@ func (s *Server) gateway() (*litellm.Client, error) {
 // can forget the team.
 func (s *Server) newGateway() *litellm.Client {
 	gw := litellm.New(s.opts.GatewayURL, s.opts.GatewayAdminKey)
-	gw.TeamID = s.opts.GatewayTeamID
+	gw.TeamID = s.teamID()
 	return gw
 }
 

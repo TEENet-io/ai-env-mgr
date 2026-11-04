@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/TEENet-io/ai-env-mgr/internal/litellm"
 	"github.com/TEENet-io/ai-env-mgr/internal/notify"
 	"github.com/TEENet-io/ai-env-mgr/internal/ops"
 	"github.com/TEENet-io/ai-env-mgr/internal/repo"
@@ -322,6 +323,11 @@ func (s *Server) settingsExtras(r *http.Request, data *pageData) {
 	} else {
 		data.Error = "读取设备通道设置失败：" + err.Error()
 	}
+	if gt, version, err := repo.LoadGatewayTeamSettings(ctx, s.dbm.store.Settings()); err == nil {
+		data.GatewayTeam = &gatewayTeamView{GatewayTeamSettings: gt, Version: version}
+	} else {
+		data.Error = "读取网关客户设置失败：" + err.Error()
+	}
 	if c, version, err := repo.LoadChannelSettings(ctx, s.dbm.store.Settings()); err == nil {
 		if c.Webhook.Format == "" {
 			c.Webhook.Format = notify.FormatGeneric
@@ -378,6 +384,63 @@ func (s *Server) actionDeviceChannel(sess *session, r *http.Request) error {
 	}
 	s.dbm.devices.SetEnrolCIDRs(nets)
 	return nil
+}
+
+type gatewayTeamView struct {
+	repo.GatewayTeamSettings
+	Version int
+}
+
+// actionGatewayTeam sets the gateway team and moves every employee into it.
+// Saving the team only changes how new tokens are named; the employees
+// already issued keep theirs until re-issued, so the move runs right after
+// (ops.MoveToTeam). Saving the same team again re-runs the move, which is how
+// one that stopped half way is finished. "preview" lists who would be
+// re-issued and changes nothing.
+func (s *Server) actionGatewayTeam(sess *session, r *http.Request) (string, error) {
+	ctx := r.Context()
+	before, version, err := repo.LoadGatewayTeamSettings(ctx, s.dbm.store.Settings())
+	if err != nil {
+		return "", err
+	}
+	if v := formInt(r, "version"); v != version {
+		return "", errors.New("这页的设置在你打开后已被别人改过，请刷新后重试")
+	}
+	team := strings.TrimSpace(formValue(r, "team_id"))
+	if team == "" {
+		// Back to no team would need every employee moved out again.
+		return "", errors.New("请填写团队 ID；设置后不能清空")
+	}
+	if err := litellm.ValidateTeamID(team); err != nil {
+		return "", errors.New("团队 ID 只能用小写字母、数字和下划线，2–32 位")
+	}
+	if formValue(r, "preview") == "1" {
+		moved, err := s.dbm.ops.MoveToTeam(ctx, team, true, sess.actor, s.clientKey(r))
+		if err != nil {
+			return "", err
+		}
+		if len(moved) == 0 {
+			return "预览：没有需要重新签发的员工", nil
+		}
+		return fmt.Sprintf("预览：保存后将为 %d 人重新签发令牌（%s），旧令牌随即失效", len(moved), strings.Join(moved, "、")), nil
+	}
+	if team != before.TeamID {
+		after := repo.GatewayTeamSettings{TeamID: team}
+		value, _ := json.Marshal(after)
+		if err := s.dbm.ops.SaveSetting(ctx, repo.SettingGatewayTeam, value, version, ops.ActionGatewayTeam, before, after, sess.actor, s.clientKey(r)); err != nil {
+			return "", err
+		}
+		// Before the move: its re-issues must be minted in the new team.
+		s.dbm.team.Store(&team)
+	}
+	moved, err := s.dbm.ops.MoveToTeam(ctx, team, false, sess.actor, s.clientKey(r))
+	if err != nil {
+		return "", fmt.Errorf("团队已保存，但迁移中断（已迁移 %d 人）：%w；再点一次保存可以继续", len(moved), err)
+	}
+	if len(moved) == 0 {
+		return "网关客户已设为 " + team + "，没有需要迁移的员工", nil
+	}
+	return fmt.Sprintf("网关客户已设为 %s，已为 %d 人重新签发令牌（%s），机器下次同步时换上新令牌", team, len(moved), strings.Join(moved, "、")), nil
 }
 
 func (s *Server) actionAllowReenrol(sess *session, r *http.Request) (string, error) {

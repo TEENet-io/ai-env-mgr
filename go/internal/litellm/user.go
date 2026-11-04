@@ -147,10 +147,11 @@ func (c *Client) UpsertUser(ctx context.Context, spec UserSpec) error {
 		body["auto_create_key"] = false
 		err = c.do(ctx, http.MethodPost, "/user/new", body, nil)
 	}
-	if err != nil || c.TeamID == "" {
+	team := c.Team()
+	if err != nil || team == "" {
 		return err
 	}
-	return c.addTeamMember(ctx, spec.UserID)
+	return c.addTeamMember(ctx, team, spec.UserID)
 }
 
 // DeleteUser removes a gateway user and, with it, the gateway's record of
@@ -207,8 +208,8 @@ func (c *Client) ListUsers(ctx context.Context) ([]User, error) {
 			TotalPages int    `json:"total_pages"`
 		}
 		path := fmt.Sprintf("/user/list?page=%d&page_size=%d", page, userPageSize)
-		if c.TeamID != "" {
-			path += "&team=" + url.QueryEscape(c.TeamID)
+		if team := c.Team(); team != "" {
+			path += "&team=" + url.QueryEscape(team)
 		}
 		if err := c.do(ctx, http.MethodGet, path, nil, &out); err != nil {
 			return nil, err

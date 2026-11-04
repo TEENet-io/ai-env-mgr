@@ -35,6 +35,17 @@ type Client struct {
 	// and ListKeys and ListUsers see only it. Empty: the gateway is this
 	// customer's alone and nothing is narrowed.
 	TeamID string
+	// TeamSource, when set, is asked for the team instead of TeamID: a
+	// long-lived client then follows the console's setting as it changes.
+	TeamSource func() string
+}
+
+// Team is the team this client works in now.
+func (c *Client) Team() string {
+	if c.TeamSource != nil {
+		return c.TeamSource()
+	}
+	return c.TeamID
 }
 
 // New returns a client for a gateway at baseURL (e.g.
@@ -129,8 +140,8 @@ func (c *Client) GenerateKey(ctx context.Context, alias, userID string, models [
 		"user_id":   userID,
 		"models":    models,
 	}
-	if c.TeamID != "" {
-		body["team_id"] = c.TeamID
+	if team := c.Team(); team != "" {
+		body["team_id"] = team
 	}
 	if len(metadata) > 0 {
 		body["metadata"] = metadata
@@ -245,7 +256,7 @@ const keyPageLimit = 200
 // it reads as "already revoked" -- so a truncated read would quietly report
 // a departed employee's live token as gone.
 func (c *Client) ListKeys(ctx context.Context) ([]Key, error) {
-	return c.listKeys(ctx, c.TeamID)
+	return c.listKeys(ctx, c.Team())
 }
 
 func (c *Client) listKeys(ctx context.Context, team string) ([]Key, error) {

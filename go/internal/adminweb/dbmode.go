@@ -15,6 +15,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/TEENet-io/ai-env-mgr/internal/admincore"
@@ -75,6 +76,23 @@ type dbState struct {
 	// changes; devices is that API.
 	hub     *deviceapi.Hub
 	devices *deviceapi.Server
+	// team is the gateway team setting (repo.SettingGatewayTeam), held here
+	// so that the gateway clients and the Worker follow a change at once.
+	team atomic.Pointer[string]
+}
+
+// teamID is this customer's LiteLLM team on a shared gateway: keys are
+// minted into it, employees are made members of it, and the console reads
+// only it. Empty for a gateway this customer does not share, and always
+// outside database mode, where there is nowhere to set it.
+func (s *Server) teamID() string {
+	if s.dbm == nil {
+		return ""
+	}
+	if t := s.dbm.team.Load(); t != nil {
+		return *t
+	}
+	return ""
 }
 
 // enrolCookie carries a pending authenticator enrolment between the sign-in
@@ -145,6 +163,14 @@ func (s *Server) openDatabaseMode(ctx context.Context, opts DatabaseOptions) err
 			st.devices.SetEnrolCIDRs(nets)
 		}
 	}
+	// Unreadable is fatal: running without the team would name new users
+	// and keys outside it, beside another customer's.
+	gt, _, err := repo.LoadGatewayTeamSettings(context.Background(), store.Settings())
+	if err != nil {
+		database.Close()
+		return err
+	}
+	st.team.Store(&gt.TeamID)
 	if s.opts.SLSProject != "" {
 		st.sls = slsclient.New(s.opts.SLSEndpoint, s.opts.SLSProject, opts.OSSAccessKeyID, opts.OSSAccessKeySecret)
 	}
@@ -237,9 +263,10 @@ func (s *Server) buildWorker(st *dbState) *worker.Worker {
 	var gw *litellm.Client
 	if s.opts.GatewayURL != "" && s.opts.GatewayAdminKey != "" {
 		gw = s.newGateway()
+		gw.TeamSource = s.teamID
 	}
 	if gw != nil {
-		w.Register(repo.TaskGatewayProvision, worker.GatewayProvision{Store: st.store, Gateway: gw, Keyring: st.ring, Catalog: gw, TeamID: gw.TeamID})
+		w.Register(repo.TaskGatewayProvision, worker.GatewayProvision{Store: st.store, Gateway: gw, Keyring: st.ring, Catalog: gw, TeamSource: s.teamID})
 		w.Register(repo.TaskGatewayRevoke, worker.GatewayRevoke{Store: st.store, Gateway: gw})
 		w.Register(repo.TaskReconcile, worker.Reconcile{
 			Store: st.store, Gateway: gw,
@@ -324,7 +351,7 @@ func (s *Server) dbSession(r *http.Request) *session {
 	}
 	return &session{
 		be: dbBackend{
-			store: s.dbm.store, ops: s.dbm.ops, objects: s.dbm.objects, team: s.opts.GatewayTeamID,
+			store: s.dbm.store, ops: s.dbm.ops, objects: s.dbm.objects, team: s.teamID(),
 			actor: admin.Username, requestID: requestID(r),
 		},
 		actor:    admin.Username,

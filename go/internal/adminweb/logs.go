@@ -593,7 +593,7 @@ func (s *Server) handleLogs(w http.ResponseWriter, r *http.Request, sess *sessio
 	data.Tab = "logs"
 
 	f := parseLogFilter(r.URL.Query())
-	f.Team = s.opts.GatewayTeamID
+	f.Team = s.teamID()
 	from, to := f.resolveWindow(time.Now())
 	// Read once and used twice: the filter dropdown lists it, and the table
 	// asks it whether each employee id still belongs to somebody.

@@ -8,7 +8,7 @@
 //	migrate import          # bring the OSS objects and gateway state into the database
 //	migrate compare         # read-only: would a database in charge publish anything different? exit 2 if so
 //	migrate grants          # re-apply the privilege grid (Migrate does this itself)
-//	migrate move-to-team    # re-issue every token not yet in AIENVMGR_GATEWAY_TEAM_ID's team
+//	migrate move-to-team    # re-issue every token not yet in the console's gateway team
 //
 // import and compare read OSS with AIENVMGR_OSS_ACCESS_KEY_ID / _SECRET and
 // the gateway with AIENVMGR_GATEWAY_URL / _ADMIN_KEY, all from the environment.
@@ -39,6 +39,7 @@ import (
 	"github.com/TEENet-io/ai-env-mgr/internal/migrate"
 	"github.com/TEENet-io/ai-env-mgr/internal/ops"
 	"github.com/TEENet-io/ai-env-mgr/internal/ossclient"
+	"github.com/TEENet-io/ai-env-mgr/internal/repo"
 	"github.com/TEENet-io/ai-env-mgr/internal/secrets"
 )
 
@@ -194,14 +195,18 @@ func run() error {
 		}
 		return nil
 	case "move-to-team":
-		// One-off, for a console that starts sharing its gateway: every token
-		// is re-issued in the team. Run it after the console (and its Worker)
-		// has been restarted with the same AIENVMGR_GATEWAY_TEAM_ID.
-		team := os.Getenv("AIENVMGR_GATEWAY_TEAM_ID")
-		if team == "" {
-			return errors.New("set AIENVMGR_GATEWAY_TEAM_ID to the team the console runs with")
+		// Saving the team on the console's settings page already does this;
+		// this is the same move from a shell, into the team stored there.
+		store := dbstore.NewStore(database)
+		setting, _, err := repo.LoadGatewayTeamSettings(ctx, store.Settings())
+		if err != nil {
+			return err
 		}
-		moved, err := ops.New(dbstore.NewStore(database)).MoveToTeam(ctx, team, *dryRun, "migrate:move-to-team", "move-to-team")
+		team := setting.TeamID
+		if team == "" {
+			return errors.New("no gateway team is set; set it on the console's settings page")
+		}
+		moved, err := ops.New(store).MoveToTeam(ctx, team, *dryRun, "migrate:move-to-team", "move-to-team")
 		verb := "re-issued; the Worker mints the new token in team " + team
 		if *dryRun {
 			verb = "would be re-issued (dry run)"

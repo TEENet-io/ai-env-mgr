@@ -65,40 +65,41 @@ func EmployeeKeyAlias(team, windowsUser, employeeID string, epoch int) string {
 // added to one, and a missing team answers 404 -- which the provisioning
 // queue reads as "already gone" and would report as success.
 func (c *Client) EnsureTeam(ctx context.Context) error {
-	if c.TeamID == "" {
+	team := c.Team()
+	if team == "" {
 		return nil
 	}
-	err := c.do(ctx, http.MethodGet, "/team/info?team_id="+url.QueryEscape(c.TeamID), nil, nil)
+	err := c.do(ctx, http.MethodGet, "/team/info?team_id="+url.QueryEscape(team), nil, nil)
 	if err == nil {
 		return nil
 	}
 	var apiErr *APIError
 	if !asAPIError(err, &apiErr) || apiErr.Status != http.StatusNotFound {
-		return fmt.Errorf("look up team %q: %w", c.TeamID, err)
+		return fmt.Errorf("look up team %q: %w", team, err)
 	}
 	if err := c.do(ctx, http.MethodPost, "/team/new", map[string]any{
-		"team_id":    c.TeamID,
-		"team_alias": c.TeamID,
+		"team_id":    team,
+		"team_alias": team,
 	}, nil); err != nil {
-		return fmt.Errorf("create team %q: %w", c.TeamID, err)
+		return fmt.Errorf("create team %q: %w", team, err)
 	}
 	return nil
 }
 
-// addTeamMember makes userID a member of the client's team. A key can only
+// addTeamMember makes userID a member of team. A key can only
 // be minted for a user in the key's team ("User=... not assigned to team"),
 // so this runs on every upsert; a user who is already a member is the
 // outcome wanted.
-func (c *Client) addTeamMember(ctx context.Context, userID string) error {
+func (c *Client) addTeamMember(ctx context.Context, team, userID string) error {
 	err := c.do(ctx, http.MethodPost, "/team/member_add", map[string]any{
-		"team_id": c.TeamID,
+		"team_id": team,
 		"member":  map[string]string{"role": "user", "user_id": userID},
 	}, nil)
 	if isAlreadyMember(err) {
 		return nil
 	}
 	if err != nil {
-		return fmt.Errorf("add %q to team %q: %w", userID, c.TeamID, err)
+		return fmt.Errorf("add %q to team %q: %w", userID, team, err)
 	}
 	return nil
 }

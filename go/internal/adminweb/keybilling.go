@@ -164,7 +164,7 @@ func (s *Server) loadKeyBillingPage(r *http.Request) (*keyBillingPage, error) {
 				// Both spellings: keys issued before the console had a
 				// team are under the pre-team user.
 				employeesByGatewayID[worker.GatewayUserID("", employee.WindowsUser)] = employee
-				employeesByGatewayID[worker.GatewayUserID(s.opts.GatewayTeamID, employee.WindowsUser)] = employee
+				employeesByGatewayID[worker.GatewayUserID(s.teamID(), employee.WindowsUser)] = employee
 			}
 			for _, key := range keys {
 				if strings.TrimSpace(key.KeyAlias) == "" {
