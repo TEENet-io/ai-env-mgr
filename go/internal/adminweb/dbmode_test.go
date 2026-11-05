@@ -148,7 +148,7 @@ func TestDatabaseModeSignInEnrolsThenOpensASession(t *testing.T) {
 	if rec := dbGet(t, h, "/overview"); rec.Code != http.StatusSeeOther {
 		t.Fatalf("/overview unauthenticated = %d, want 303", rec.Code)
 	}
-	if rec := dbGet(t, h, "/"); !strings.Contains(rec.Body.String(), `name="username"`) {
+	if rec := dbGet(t, h, opsSignInPath); !strings.Contains(rec.Body.String(), `name="username"`) {
 		t.Fatal("the sign-in page does not ask for a user name")
 	}
 

@@ -653,6 +653,7 @@ type AuditEvent struct {
 // AuditFilter narrows Search. Empty strings and zero times mean "any".
 type AuditFilter struct {
 	TargetType, TargetID, Action, ActorID string
+	ActorAltID                            string // the same account under its other identifier
 	From, To                              time.Time
 	Offset, Limit                         int
 }

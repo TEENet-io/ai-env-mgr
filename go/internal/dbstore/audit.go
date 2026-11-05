@@ -132,14 +132,14 @@ func (r auditRepo) Search(ctx context.Context, f repo.AuditFilter) ([]repo.Audit
 	const where = ` where ($1 = '' or target_type = $1)
 		    and ($2 = '' or target_id = $2)
 		    and ($3 = '' or action = $3)
-		    and ($4 = '' or actor_id = $4)
+		    and ($4 = '' or actor_id = $4 or ($7 <> '' and actor_id = $7))
 		    and ($5::timestamptz is null or occurred_at >= $5)
 		    and ($6::timestamptz is null or occurred_at < $6)`
 	rows, err := r.q.Query(ctx,
 		`select `+auditColumns+`, count(*) over() from audit_events`+where+`
 		  order by occurred_at desc, event_id desc
-		  limit $7 offset $8`,
-		f.TargetType, f.TargetID, f.Action, f.ActorID, from, to, limit, f.Offset)
+		  limit $8 offset $9`,
+		f.TargetType, f.TargetID, f.Action, f.ActorID, from, to, f.ActorAltID, limit, f.Offset)
 	if err != nil {
 		return nil, 0, mapError(err, "search audit")
 	}
@@ -163,7 +163,7 @@ func (r auditRepo) Search(ctx context.Context, f repo.AuditFilter) ([]repo.Audit
 	if len(out) == 0 && f.Offset > 0 {
 		// Past the end: the count is still wanted for the page links.
 		if err := r.q.QueryRow(ctx, `select count(*) from audit_events`+where,
-			f.TargetType, f.TargetID, f.Action, f.ActorID, from, to).Scan(&total); err != nil {
+			f.TargetType, f.TargetID, f.Action, f.ActorID, from, to, f.ActorAltID).Scan(&total); err != nil {
 			return nil, 0, mapError(err, "count audit")
 		}
 	}

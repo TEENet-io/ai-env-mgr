@@ -437,6 +437,7 @@ func (s *Server) Handler() http.Handler {
 		mux.HandleFunc("/tickets/contacts/role", s.requirePost("/tickets", s.actionCustomerContactRole))
 		mux.HandleFunc("/tickets/contacts/disable", s.requirePost("/tickets", s.actionCustomerContactDisabled(true)))
 		mux.HandleFunc("/tickets/contacts/enable", s.requirePost("/tickets", s.actionCustomerContactDisabled(false)))
+		mux.HandleFunc(opsSignInPath, s.handleOpsSignIn)
 		mux.HandleFunc("/enrol", s.handleEnrol)
 		mux.HandleFunc("/account", s.requireSession(s.handleAccount))
 		mux.HandleFunc("/admins", s.requireSession(s.handleAdmins))

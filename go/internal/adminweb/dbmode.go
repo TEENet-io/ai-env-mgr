@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -479,7 +480,7 @@ func (s *Server) dbLogout(w http.ResponseWriter, r *http.Request) {
 		_ = s.dbm.auth.SignOut(r.Context(), c.Value)
 	}
 	s.setSessionCookie(w, "", -1)
-	http.Redirect(w, r, "/", http.StatusSeeOther)
+	http.Redirect(w, r, opsSignInPath, http.StatusSeeOther)
 }
 
 // signEnrolment packs the pending enrolment into a signed cookie value.
@@ -531,20 +532,30 @@ type enrolPage struct {
 	Codes    []string
 }
 
+// opsSignInPath is the operators' own way in. Customers sign in at
+// /customer/login and are never linked here.
+const opsSignInPath = "/ops/login"
+
+// enrolmentURI escapes the account name: it is a person's name, and an
+// authenticator refuses a URI with a raw space in it.
+func enrolmentURI(issuer, username, secret string) string {
+	return "otpauth://totp/" + url.PathEscape(issuer) + ":" + url.PathEscape(username) + "?secret=" + secret + "&issuer=" + url.QueryEscape(issuer)
+}
+
 func (s *Server) handleEnrol(w http.ResponseWriter, r *http.Request) {
 	adminID, secret, ok := s.openEnrolment(r)
 	if !ok {
-		http.Redirect(w, r, "/?err="+"enrolment+expired%3B+sign+in+again", http.StatusSeeOther)
+		http.Redirect(w, r, opsSignInPath+"?err="+"enrolment+expired%3B+sign+in+again", http.StatusSeeOther)
 		return
 	}
 	admin, err := s.dbm.store.Admins().ByID(r.Context(), adminID)
 	if err != nil {
-		http.Redirect(w, r, "/", http.StatusSeeOther)
+		http.Redirect(w, r, opsSignInPath, http.StatusSeeOther)
 		return
 	}
 	data := pageData{DBLogin: true, Enrol: &enrolPage{
 		Username: admin.Username, Secret: secret,
-		URI: "otpauth://totp/" + s.issuer() + ":" + admin.Username + "?secret=" + secret + "&issuer=" + s.issuer(),
+		URI: enrolmentURI(s.issuer(), admin.Username, secret),
 	}}
 	if r.Method != http.MethodPost {
 		s.render(w, "enrol.html", http.StatusOK, data)
@@ -601,7 +612,7 @@ func (s *Server) handleAccount(w http.ResponseWriter, r *http.Request, sess *ses
 	// Every session of this account is now gone, this one included.
 	s.setSessionCookie(w, "", -1)
 	s.events.Audit("admin_password_changed", "administrator changed their password", map[string]any{"user": sess.actor})
-	http.Redirect(w, r, "/?msg="+"密码已修改，请重新登录", http.StatusSeeOther)
+	http.Redirect(w, r, opsSignInPath+"?msg="+"密码已修改，请重新登录", http.StatusSeeOther)
 }
 
 // --- administrators ---

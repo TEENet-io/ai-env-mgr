@@ -22,7 +22,7 @@
     <tbody>{{range .Rows}}
       <tr>
         <td class="dim" title="{{.OccurredAt}}">{{.OccurredAt.Local.Format "01-02 15:04:05"}}</td>
-        <td>{{.ActorID}}<div class="rowsub">{{.ActorType}}</div></td>
+        <td title="{{.ActorID}}">{{.Actor}}<div class="rowsub">{{.ActorType}}</div></td>
         <td class="mono">{{.Action}}</td>
         <td class="id wrap" title="{{.TargetType}} {{.TargetID}}">{{.Target}}<div class="rowsub">{{.TargetType}}</div></td>
         <td class="remark">{{.Change}}</td>

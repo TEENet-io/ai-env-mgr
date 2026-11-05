@@ -25,7 +25,7 @@ func (s *Server) requireSession(next func(http.ResponseWriter, *http.Request, *s
 	return func(w http.ResponseWriter, r *http.Request) {
 		sess := s.currentSession(r)
 		if sess == nil {
-			http.Redirect(w, r, "/", http.StatusSeeOther)
+			http.Redirect(w, r, s.signInPath(), http.StatusSeeOther)
 			return
 		}
 		// The database mode has roles; the legacy mode has one key for
@@ -237,9 +237,34 @@ func (s *Server) handleIndex(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, "/overview", http.StatusSeeOther)
 		return
 	}
+	// A customer who types the bare address lands on their own sign-in.
+	if s.dbm != nil {
+		http.Redirect(w, r, "/customer/login", http.StatusSeeOther)
+		return
+	}
+	s.renderSignIn(w, r)
+}
+
+// signInPath is where somebody without a session goes to sign in as staff.
+func (s *Server) signInPath() string {
+	if s.dbm != nil {
+		return opsSignInPath
+	}
+	return "/"
+}
+
+func (s *Server) renderSignIn(w http.ResponseWriter, r *http.Request) {
 	page := s.loginPage(r.URL.Query().Get("err"))
 	page.Notice = r.URL.Query().Get("msg")
 	s.render(w, "login.html", http.StatusOK, page)
+}
+
+func (s *Server) handleOpsSignIn(w http.ResponseWriter, r *http.Request) {
+	if s.currentSession(r) != nil {
+		http.Redirect(w, r, "/overview", http.StatusSeeOther)
+		return
+	}
+	s.renderSignIn(w, r)
 }
 
 // loginPage seeds the sign-in form, telling it whether the OSS location is
@@ -256,7 +281,7 @@ func (s *Server) loginPage(errMsg string) pageData {
 
 func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
-		http.Redirect(w, r, "/", http.StatusSeeOther)
+		http.Redirect(w, r, s.signInPath(), http.StatusSeeOther)
 		return
 	}
 	if !s.limiter.allow(s.clientKey(r)) {

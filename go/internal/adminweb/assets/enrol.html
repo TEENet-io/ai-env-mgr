@@ -11,7 +11,7 @@
     {{range .Codes}}<tr><td class="id">{{.}}</td></tr>{{end}}
     </tbody></table>
   </div>
-  <p><a href="/">我已保存，去登录</a></p>
+  <p><a href="/ops/login">我已保存，去登录</a></p>
   {{else}}
   <p class="lede">账号 <b>{{.Username}}</b> 还没有验证器。在手机的验证器应用（Google Authenticator、Microsoft Authenticator、1Password 等）里添加一个账号，手动输入下面的密钥，然后把它显示的六位数字填在这里。</p>
   <div class="panel">

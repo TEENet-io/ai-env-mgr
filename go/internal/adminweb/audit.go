@@ -24,6 +24,7 @@ const (
 // change reduced to what differed.
 type auditRow struct {
 	repo.AuditEvent
+	Actor  string // the person's name where the record keeps only their id
 	Target string // the employee's Windows user, the machine's hostname, or the id
 	Change string
 }
@@ -145,8 +146,45 @@ func (s *Server) names(r *http.Request) (employees, devices map[string]string) {
 	return employees, devices
 }
 
+// actorNames names the people behind ids. Ticket events record an account's
+// id where the rest of the console records its name.
+func (s *Server) actorNames(r *http.Request) map[string]string {
+	names := map[string]string{}
+	if list, err := s.dbm.store.Admins().List(r.Context()); err == nil {
+		for _, a := range list {
+			names[a.ID] = a.Username
+		}
+	}
+	if list, err := s.dbm.db.Tickets().ListContacts(r.Context()); err == nil {
+		for _, c := range list {
+			names[c.ID] = c.Name
+		}
+	}
+	return names
+}
+
+func actorName(names map[string]string, id string) string {
+	if name := names[id]; name != "" {
+		return name
+	}
+	return id
+}
+
+// auditFilterForActor lets a search by name also find what was recorded
+// under that account's id.
+func (s *Server) auditFilterForActor(r *http.Request, f repo.AuditFilter) repo.AuditFilter {
+	if f.ActorID == "" {
+		return f
+	}
+	if admin, err := s.dbm.store.Admins().ByUsername(r.Context(), f.ActorID); err == nil {
+		f.ActorAltID = admin.ID
+	}
+	return f
+}
+
 func (s *Server) auditRows(r *http.Request, events []repo.AuditEvent) []auditRow {
 	employees, devices := s.names(r)
+	actors := s.actorNames(r)
 	rows := make([]auditRow, 0, len(events))
 	for _, ev := range events {
 		target := ev.TargetID
@@ -160,7 +198,7 @@ func (s *Server) auditRows(r *http.Request, events []repo.AuditEvent) []auditRow
 				target = name
 			}
 		}
-		rows = append(rows, auditRow{AuditEvent: ev, Target: target, Change: summariseChange(ev.Before, ev.After)})
+		rows = append(rows, auditRow{AuditEvent: ev, Actor: actorName(actors, ev.ActorID), Target: target, Change: summariseChange(ev.Before, ev.After)})
 	}
 	return rows
 }
@@ -181,6 +219,7 @@ func (s *Server) handleAudit(w http.ResponseWriter, r *http.Request, sess *sessi
 	data := newPage(sess, r, "audit")
 	f, fromText, toText, page := auditFilterFrom(r.URL.Query())
 	f.Limit, f.Offset = auditPageSize, (page-1)*auditPageSize
+	f = s.auditFilterForActor(r, f)
 	events, total, err := s.dbm.store.Audit().Search(r.Context(), f)
 	if err != nil {
 		data.Error = "could not search the audit trail"
@@ -205,6 +244,7 @@ func (s *Server) handleAuditCSV(w http.ResponseWriter, r *http.Request, _ *sessi
 	// is not answering produces an error page rather than a 200 with an
 	// empty file that looks like "no events".
 	f.Limit, f.Offset = 1000, 0
+	f = s.auditFilterForActor(r, f)
 	events, _, err := s.dbm.store.Audit().Search(r.Context(), f)
 	if err != nil {
 		http.Error(w, "导出失败："+err.Error(), http.StatusInternalServerError)
@@ -216,6 +256,7 @@ func (s *Server) handleAuditCSV(w http.ResponseWriter, r *http.Request, _ *sessi
 	cw := csv.NewWriter(w)
 	cw.Write([]string{"occurred_at", "actor_type", "actor", "action", "target_type", "target", "result", "request_id", "change", "before", "after"})
 	employees, devices := s.names(r)
+	actors := s.actorNames(r)
 	written := 0
 	for offset := 0; written < csvLimit; offset += 1000 {
 		if offset > 0 {
@@ -238,7 +279,7 @@ func (s *Server) handleAuditCSV(w http.ResponseWriter, r *http.Request, _ *sessi
 			} else if n, ok := devices[ev.TargetID]; ok && ev.TargetType == "device" {
 				target = n
 			}
-			cw.Write([]string{ev.OccurredAt.Local().Format(time.RFC3339), ev.ActorType, csvSafe(ev.ActorID), csvSafe(ev.Action),
+			cw.Write([]string{ev.OccurredAt.Local().Format(time.RFC3339), ev.ActorType, csvSafe(actorName(actors, ev.ActorID)), csvSafe(ev.Action),
 				ev.TargetType, csvSafe(target), csvSafe(ev.Result), csvSafe(ev.RequestID), csvSafe(summariseChange(ev.Before, ev.After)),
 				csvSafe(string(ev.Before)), csvSafe(string(ev.After))})
 			written++
