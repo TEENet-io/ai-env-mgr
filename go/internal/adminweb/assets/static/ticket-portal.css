@@ -48,3 +48,5 @@
 .tp-current-grid>div span{color:inherit;font-size:12px;font-weight:650}
 .tp-current-grid>div strong{min-height:40px;margin-top:6px;padding:10px 11px;border:1px solid #e5ece6;border-radius:8px;background:#f6f8f5;font-weight:400}
 .tp-current-grid label{margin:0 0 14px}
+.tp-form-error{margin:12px 0 0;padding:10px 12px;border:1px solid #e8c4bd;border-radius:8px;background:#fdf1ee;color:#a12f1c}
+.tp-body .ticket-files a{color:#1c7a4d;text-decoration:underline;text-underline-offset:2px}

@@ -293,3 +293,49 @@ func TestATicketsFilesFollowWhoMaySeeIt(t *testing.T) {
 		t.Fatalf("six files across edits: %d", rec.Code)
 	}
 }
+
+func TestTheCurrentRequestNamesItsFilesOnce(t *testing.T) {
+	s, _ := newDatabaseServer(t)
+	h := s.Handler()
+	owner := customerCookieFor(t, s, "owner@example.com", "employee")
+	key, err := randomTicketKey()
+	if err != nil {
+		t.Fatal(err)
+	}
+	fields := map[string]string{"csrf": s.csrfFor(owner.Value), "request_key": key, "request_kind": "desktop-problem", "problem": "连不上"}
+	rec := postTicketForm(t, h, "/customer/ticket/create", owner, fields, testFile{"first.png", testPNG})
+	if rec.Code != http.StatusSeeOther {
+		t.Fatalf("create: %d %s", rec.Code, rec.Body)
+	}
+	id := strings.SplitN(rec.Header().Get("Location"), "id=", 2)[1]
+	page := dbGet(t, h, "/customer/ticket?id="+id, owner).Body.String()
+	if got := strings.Count(page, "first.png"); got != 1 {
+		t.Fatalf("the file is named %d times on the page", got)
+	}
+
+	// A later version still records what each version carried.
+	edit := map[string]string{"csrf": s.csrfFor(owner.Value), "id": strings.ReplaceAll(id, "%2D", "-"), "version": "1", "request_kind": "desktop-problem", "request_key": key, "problem": "还是连不上"}
+	if rec := postTicketForm(t, h, "/customer/ticket/edit", owner, edit, testFile{"second.png", testPNG}); rec.Code != http.StatusSeeOther {
+		t.Fatalf("edit: %d %s", rec.Code, rec.Body)
+	}
+	page = dbGet(t, h, "/customer/ticket?id="+id, owner).Body.String()
+	if !strings.Contains(page, "文件：first.png、second.png") || !strings.Contains(page, "文件：first.png</p>") {
+		t.Fatal("the revision history lost what its versions carried")
+	}
+}
+
+func TestRequestTextLeavesACustomersOwnWordsAlone(t *testing.T) {
+	details := map[string]any{"attachments": []any{map[string]any{"name": "a.png"}}}
+	for in, want := range map[string]string{
+		"连不上\n文件：a.png":      "连不上",
+		"文件：b.png 打不开":       "文件：b.png 打不开",
+		"连不上\n文件：a.png\n已重启": "连不上\n文件：a.png\n已重启",
+	} {
+		if got := ticketRequestText(in, details); got != want {
+			t.Errorf("%q: %q", in, got)
+		}
+	}
+	if got := ticketRequestText("x\n文件：a.png", nil); got != "x\n文件：a.png" {
+		t.Errorf("no attachments: %q", got)
+	}
+}

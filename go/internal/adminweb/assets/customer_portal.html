@@ -61,6 +61,7 @@
           <fieldset data-tp-fields="other-problem" disabled hidden><legend>其他问题</legend><label>遇到了什么问题？<textarea name="problem" maxlength="3000" rows="5" placeholder="简单描述即可，我们会帮你分类。"></textarea></label>{{template "tp-upload" "any"}}</fieldset>
           <details class="tp-optional" id="tp-optional"><summary><span id="tp-optional-title">补充说明和希望处理时间</span> <small>选填</small></summary><label>补充说明<textarea name="note" maxlength="1000" rows="3" placeholder="人员、用途或其他背景"></textarea></label><label id="tp-desired-field">希望处理时间<input name="desired_at" type="text" inputmode="numeric" maxlength="16" pattern="[0-9]{4}-[0-9]{2}-[0-9]{2}[ T][0-9]{2}:[0-9]{2}" placeholder="2026-11-05 14:30" title="格式：2026-11-05 14:30"></label></details>
           <p class="tp-safety">请勿填写员工个人密码、云平台密码、API 密钥或许可证密钥。提交申请不会自动执行变更。</p>
+          <p class="tp-form-error" id="tp-form-error" role="alert" hidden></p>
           <div class="tp-form-actions"><button type="submit" class="tp-button tp-button-primary" id="tp-submit">继续</button></div>
         </form>
       </section>

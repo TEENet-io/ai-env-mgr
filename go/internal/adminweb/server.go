@@ -207,6 +207,7 @@ func New(opts Options) (*Server, error) {
 	}
 	tpl, err := template.New("").Funcs(template.FuncMap{
 		"static":            static.URL,
+		"requestText":       ticketRequestText,
 		"classify":          stateSeverity,
 		"state":             stateLabel,
 		"age":               humanAge,

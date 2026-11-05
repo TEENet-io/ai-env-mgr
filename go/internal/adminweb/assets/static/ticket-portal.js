@@ -25,7 +25,10 @@
   const desiredInput = form.querySelector('[name=desired_at]');
   const maxFiles = 5, maxFileSize = 5 << 20;
   let selectedCategory = '';
+  const formError = document.getElementById('tp-form-error');
+  const reviewConfirm = document.getElementById('tp-review-confirm');
   let confirmed = false;
+  let sending = false;
 
   function selectCategory(category) {
     selectedCategory = category;
@@ -58,6 +61,7 @@
 
   function selectKind(kind) {
     kindInput.value = kind;
+    formError.hidden = true;
     fieldsets.forEach(fieldset => {
       const active = fieldset.dataset.tpFields === kind;
       fieldset.disabled = !active;
@@ -157,6 +161,11 @@
       const kept = Number(form.dataset.keptFiles || 0);
       if (files.length + kept > maxFiles) { upload.setCustomValidity(`最多 ${maxFiles} 个文件${kept ? `，已有 ${kept} 个` : ''}`); invalid = upload; }
       else if (files.some(file => file.size > maxFileSize)) { upload.setCustomValidity('单个文件不能超过 5 MB'); invalid = upload; }
+      else {
+        // The browser's guess catches the wrong kind of file early. The server decides from the content.
+        const wrong = files.find(file => file.type && !upload.accept.split(',').includes(file.type));
+        if (wrong) { upload.setCustomValidity(`${wrong.name} 不是支持的文件类型`); invalid = upload; }
+      }
       if (invalid === upload) { upload.reportValidity(); upload.addEventListener('change', () => upload.setCustomValidity(''), {once:true}); return false; }
     }
     if (invalid) {
@@ -207,13 +216,47 @@
     review.scrollIntoView({behavior:'smooth', block:'start'});
   }
 
+  function setSending(value) {
+    sending = value;
+    submit.disabled = value;
+    reviewConfirm.disabled = value;
+  }
+
+  // A refused request comes back to the form with everything still filled in.
+  // The request key makes trying again safe.
+  function showFormError(message) {
+    confirmed = false;
+    setSending(false);
+    formError.textContent = message;
+    formError.hidden = false;
+    review.hidden = true;
+    formPanel.hidden = false;
+    formError.scrollIntoView({behavior:'smooth', block:'center'});
+  }
+
+  async function send() {
+    if (sending) return;
+    setSending(true);
+    formError.hidden = true;
+    try {
+      const response = await fetch(form.getAttribute('action'), {method:'POST', body:new FormData(form)});
+      if (response.ok || response.redirected) { location.href = response.url; return; }
+      const plain = (response.headers.get('Content-Type') || '').startsWith('text/plain');
+      showFormError((plain && (await response.text()).trim()) || '提交失败，请稍后重试');
+    } catch {
+      showFormError('网络连接失败，已填内容还在，请重试');
+    }
+  }
+
   form.addEventListener('submit', event => {
-    if (!kindInput.value || confirmed) return;
-    if (!validateBusinessFields()) { event.preventDefault(); return; }
-    if (!problemKinds.has(kindInput.value)) { event.preventDefault(); showReview(); }
+    if (!kindInput.value) return;
+    event.preventDefault();
+    if (confirmed) { send(); return; }
+    if (!validateBusinessFields()) return;
+    if (problemKinds.has(kindInput.value)) send(); else showReview();
   });
   document.getElementById('tp-review-back').addEventListener('click', () => { review.hidden = true; formPanel.hidden = false; });
-  document.getElementById('tp-review-confirm').addEventListener('click', () => { confirmed = true; form.requestSubmit(); });
+  reviewConfirm.addEventListener('click', () => { confirmed = true; form.requestSubmit(); });
 
   const edit = form.dataset.editJson ? JSON.parse(form.dataset.editJson) : null;
   if (edit) {

@@ -184,7 +184,28 @@ func (s *Server) attachTicketFiles(r *http.Request, uploads []ticketUpload, kept
 	if err != nil {
 		return "", nil, err
 	}
-	return description + "\n文件：" + strings.Join(names, "、"), out, nil
+	return description + ticketFilesLine(names), out, nil
+}
+
+func ticketFilesLine(names []string) string {
+	return "\n文件：" + strings.Join(names, "、")
+}
+
+// ticketRequestText is the description of the current version without the
+// line naming its files: that page lists them as links. Revisions keep it.
+func ticketRequestText(description string, details map[string]any) string {
+	files, _ := details["attachments"].([]any)
+	if len(files) == 0 {
+		return description
+	}
+	names := make([]string, 0, len(files))
+	for _, item := range files {
+		if file, ok := item.(map[string]any); ok {
+			name, _ := file["name"].(string)
+			names = append(names, name)
+		}
+	}
+	return strings.TrimSuffix(description, ticketFilesLine(names))
 }
 
 // serveTicketFile sends one of a ticket's files. Access has been decided by
