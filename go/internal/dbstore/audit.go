@@ -216,7 +216,7 @@ func (r auditRepo) AwaitingConfirmation(ctx context.Context, target string, writ
 		   join event_deliveries d
 		     on d.event_id = audit_events.event_id and d.target = $1
 		  where d.confirmed_at is null and d.written_at is not null and d.written_at < $2
-		  order by audit_events.occurred_at
+		  order by d.attempts, audit_events.occurred_at
 		  limit $3`, target, writtenBefore.UTC())
 }
 

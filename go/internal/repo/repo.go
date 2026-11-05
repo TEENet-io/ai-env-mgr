@@ -696,7 +696,8 @@ type Audit interface {
 
 	// AwaitingConfirmation lists events written before the given moment that
 	// have still not been seen at the far end. Old ones that never arrive are
-	// the whole point of keeping the two apart.
+	// the whole point of keeping the two apart. The least-asked come first, so
+	// a backlog as large as limit cannot keep newer events from being asked about.
 	AwaitingConfirmation(ctx context.Context, target string, writtenBefore time.Time, limit int) ([]AuditEvent, error)
 
 	ConfirmDelivery(ctx context.Context, eventID, target string) error

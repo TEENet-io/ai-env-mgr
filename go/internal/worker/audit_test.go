@@ -246,3 +246,36 @@ func TestPublishingWorksWithoutAnArchiveToAsk(t *testing.T) {
 		t.Errorf("waiting = %d, want the event written and unconfirmed", len(waiting))
 	}
 }
+
+func TestEventsThatNeverArriveDoNotHoldUpNewerOnes(t *testing.T) {
+	store, sink, archive, ctx := auditing(t)
+	lost := record(t, ctx, store, "account.offboard")
+	arrived := record(t, ctx, store, "account.create")
+	archive.arrived[arrived] = true
+
+	// A batch filled by the lost event is the shape of the fault: a backlog as
+	// large as the batch, always asked about first.
+	handler := AuditPublish{
+		Store: store, Sink: sink, Archive: archive,
+		Logstore: "audit", SettleFor: time.Millisecond, Batch: 1,
+	}
+	for range 2 {
+		if _, err := handler.Run(ctx, repo.Task{}); err != nil {
+			t.Fatalf("publish: %v", err)
+		}
+	}
+	time.Sleep(5 * time.Millisecond)
+	for range 3 {
+		if _, err := handler.Run(ctx, repo.Task{}); err != nil {
+			t.Fatalf("confirm: %v", err)
+		}
+	}
+
+	waiting, err := store.Audit().AwaitingConfirmation(ctx, AuditTarget, time.Now(), 0)
+	if err != nil {
+		t.Fatalf("awaiting: %v", err)
+	}
+	if len(waiting) != 1 || waiting[0].EventID != lost {
+		t.Fatalf("waiting = %d events, want only the one that never arrived", len(waiting))
+	}
+}
