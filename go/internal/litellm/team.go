@@ -86,6 +86,21 @@ func (c *Client) EnsureTeam(ctx context.Context) error {
 	return nil
 }
 
+// WhoAmI asks tenant-admin which team this client's key manages. Only
+// tenant-admin answers it; LiteLLM itself has no such endpoint.
+func (c *Client) WhoAmI(ctx context.Context) (string, error) {
+	var out struct {
+		Team string `json:"team"`
+	}
+	if err := c.do(ctx, http.MethodGet, "/whoami", nil, &out); err != nil {
+		return "", err
+	}
+	if out.Team == "" {
+		return "", fmt.Errorf("whoami: no team in the answer")
+	}
+	return out.Team, nil
+}
+
 // addTeamMember makes userID a member of team. A key can only
 // be minted for a user in the key's team ("User=... not assigned to team"),
 // so this runs on every upsert; a user who is already a member is the

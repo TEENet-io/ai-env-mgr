@@ -82,6 +82,13 @@ type Options struct {
 	// be revoked on its own without rotating the gateway's own secret.
 	GatewayAdminKey string
 
+	// GatewayAdminURL is where management calls go when it differs from
+	// GatewayURL: tenant-admin, on a gateway shared between customers.
+	// GatewayAdminKey is then a tenant token, and the team is tenant-admin's
+	// to say (GET /whoami), not this console's. GatewayURL stays what
+	// employees' machines are configured with.
+	GatewayAdminURL string
+
 	// LogDir is where the unified-log files go (admin.jsonl, audit.jsonl).
 	// Empty means stderr only, which is right for a developer's laptop.
 	LogDir string

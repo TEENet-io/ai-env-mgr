@@ -46,14 +46,24 @@
   {{with .GatewayTeam}}
   <h2>网关客户（team）</h2>
   <p>当前：{{if .TeamID}}<code>{{.TeamID}}</code>{{else}}<span class="tag tag-warn">未设置</span>（网关只有我们一个客户）{{end}}</p>
+  {{if .FromToken}}
+  <p class="hint">由网关凭证决定：本后台通过 tenant-admin 管理网关，只能操作这个团队。要换团队，需要网关运维签发新凭证。</p>
+  {{else}}
   <form method="post" action="/settings/gateway-team" class="form">
     <input type="hidden" name="csrf" value="{{$.CSRF}}">
     <input type="hidden" name="version" value="{{.Version}}">
+    <input type="hidden" name="preview" value="1">
     <label>团队 ID<input name="team_id" value="{{.TeamID}}" pattern="[a-z0-9_]{2,32}" placeholder="teenet" required></label>
-    <button type="submit" name="preview" value="1">预览影响</button>
-    <button type="submit" class="danger" onclick="return confirm('保存后会给所有不在这个团队里的员工重新签发令牌，旧令牌立即失效。确定吗？')">保存并迁移</button>
+    <button type="submit">预览影响</button>
+  </form>
+  <form method="post" action="/settings/gateway-team" class="form" data-confirm="保存后会给所有不在这个团队里的员工重新签发令牌，旧令牌立即失效。确定吗？">
+    <input type="hidden" name="csrf" value="{{$.CSRF}}">
+    <input type="hidden" name="version" value="{{.Version}}">
+    <label>团队 ID<input name="team_id" value="{{.TeamID}}" pattern="[a-z0-9_]{2,32}" placeholder="teenet" required></label>
+    <button type="submit" class="danger">保存并迁移</button>
   </form>
   <p class="hint">多个客户共用一个 LiteLLM 网关时，用 team 区分：之后开户、开密钥、查用户和日志都只在这个团队里进行。保存时会把现有员工迁到带团队前缀的新网关用户（<code>团队-emp-用户名</code>）并重新签发令牌，机器下次同步时自动换上；旧网关用户保留，用于查历史花费，但本月已用预算不会带过去。迁移中断时再点一次保存可以继续。设置后不能清空。</p>
+  {{end}}
   {{end}}
   {{end}}
 

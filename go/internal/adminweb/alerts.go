@@ -325,6 +325,9 @@ func (s *Server) settingsExtras(r *http.Request, data *pageData) {
 	}
 	if gt, version, err := repo.LoadGatewayTeamSettings(ctx, s.dbm.store.Settings()); err == nil {
 		data.GatewayTeam = &gatewayTeamView{GatewayTeamSettings: gt, Version: version}
+		if s.opts.GatewayAdminURL != "" {
+			data.GatewayTeam.TeamID, data.GatewayTeam.FromToken = s.teamID(), true
+		}
 	} else {
 		data.Error = "读取网关客户设置失败：" + err.Error()
 	}
@@ -389,6 +392,9 @@ func (s *Server) actionDeviceChannel(sess *session, r *http.Request) error {
 type gatewayTeamView struct {
 	repo.GatewayTeamSettings
 	Version int
+	// FromToken: the team is the one the tenant-admin token manages, shown
+	// rather than edited here.
+	FromToken bool
 }
 
 // actionGatewayTeam sets the gateway team and moves every employee into it.
@@ -398,6 +404,9 @@ type gatewayTeamView struct {
 // one that stopped half way is finished. "preview" lists who would be
 // re-issued and changes nothing.
 func (s *Server) actionGatewayTeam(sess *session, r *http.Request) (string, error) {
+	if s.opts.GatewayAdminURL != "" {
+		return "", errors.New("网关客户由网关凭证决定，不能在这里修改")
+	}
 	ctx := r.Context()
 	before, version, err := repo.LoadGatewayTeamSettings(ctx, s.dbm.store.Settings())
 	if err != nil {

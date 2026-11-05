@@ -1,6 +1,9 @@
 package adminweb
 
 import (
+	"io"
+	"net/http"
+	"net/http/httptest"
 	"net/url"
 	"strings"
 	"testing"
@@ -74,5 +77,64 @@ func TestSettingTheGatewayTeamMovesEveryone(t *testing.T) {
 	}
 	if gw := s.newGateway(); gw.Team() != "acme" {
 		t.Fatalf("gateway team = %q", gw.Team())
+	}
+}
+
+// tenantAdmin answers /whoami for team, as tenant-admin does.
+func tenantAdmin(t *testing.T, team string) *httptest.Server {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/whoami" || r.Header.Get("Authorization") != "Bearer ta-token" {
+			http.Error(w, `{"error":{}}`, http.StatusForbidden)
+			return
+		}
+		io.WriteString(w, `{"team":"`+team+`"}`)
+	}))
+	t.Cleanup(srv.Close)
+	return srv
+}
+
+func TestTheTenantTokenNamesTheTeam(t *testing.T) {
+	ta := tenantAdmin(t, "wewe")
+	s := &Server{opts: Options{GatewayAdminURL: ta.URL, GatewayAdminKey: "ta-token"}}
+	if team, err := s.tenantTeam(""); err != nil || team != "wewe" {
+		t.Fatalf("nothing stored: %q %v", team, err)
+	}
+	if team, err := s.tenantTeam("wewe"); err != nil || team != "wewe" {
+		t.Fatalf("same team stored: %q %v", team, err)
+	}
+	// A token for another customer must not have this console open accounts
+	// in that customer's team.
+	if _, err := s.tenantTeam("bippo"); err == nil || !strings.Contains(err.Error(), "bippo") {
+		t.Fatalf("another team stored: %v", err)
+	}
+	// tenant-admin down: start on the stored team; tenant-admin checks every
+	// request itself once it is back.
+	ta.Close()
+	if team, err := s.tenantTeam("wewe"); err != nil || team != "wewe" {
+		t.Fatalf("tenant-admin down: %q %v", team, err)
+	}
+}
+
+func TestBehindTenantAdminTheTeamIsNotEditable(t *testing.T) {
+	ta := tenantAdmin(t, "acme")
+	s, _ := newDatabaseServerWith(t, func(o *Options) {
+		o.GatewayURL, o.GatewayAdminURL, o.GatewayAdminKey = "https://gateway.invalid", ta.URL, "ta-token"
+	})
+	if s.teamID() != "acme" {
+		t.Fatalf("team = %q", s.teamID())
+	}
+	if gw := s.newGateway(); gw.BaseURL != ta.URL || gw.Team() != "acme" {
+		t.Fatalf("management goes to %q as %q", gw.BaseURL, gw.Team())
+	}
+	h := s.Handler()
+	cookie := signedIn(t, s)
+	csrf := csrfFrom(t, s, cookie, "/settings")
+	page := dbGet(t, h, "/settings", cookie).Body.String()
+	if !strings.Contains(page, "<code>acme</code>") || strings.Contains(page, `action="/settings/gateway-team"`) {
+		t.Fatal("the settings page should show the team without a form")
+	}
+	rec := dbPost(t, h, "/settings/gateway-team", url.Values{"csrf": {csrf}, "version": {"0"}, "team_id": {"other"}}, cookie)
+	if !strings.Contains(rec.Header().Get("Location"), "err=") {
+		t.Fatal("the team was changed behind tenant-admin")
 	}
 }

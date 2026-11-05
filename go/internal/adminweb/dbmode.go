@@ -81,6 +81,27 @@ type dbState struct {
 	team atomic.Pointer[string]
 }
 
+// tenantTeam is the team tenant-admin says the tenant token manages. It must
+// agree with a team stored here before: a token for another customer would
+// otherwise have this console open accounts in that customer's team. When
+// tenant-admin cannot be reached the stored team is used -- every request
+// it would make goes through tenant-admin anyway, which checks the team
+// itself -- so a gateway outage does not stop the console from starting.
+func (s *Server) tenantTeam(stored string) (string, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	gw := litellm.New(s.opts.GatewayAdminURL, s.opts.GatewayAdminKey)
+	team, err := gw.WhoAmI(ctx)
+	if err != nil {
+		log.Printf("adminweb: tenant-admin whoami failed, using the stored team %q: %v", stored, err)
+		return stored, nil
+	}
+	if stored != "" && stored != team {
+		return "", fmt.Errorf("the gateway token is for team %q but this console's gateway team is %q", team, stored)
+	}
+	return team, nil
+}
+
 // teamID is this customer's LiteLLM team on a shared gateway: keys are
 // minted into it, employees are made members of it, and the console reads
 // only it. Empty for a gateway this customer does not share, and always
@@ -170,7 +191,15 @@ func (s *Server) openDatabaseMode(ctx context.Context, opts DatabaseOptions) err
 		database.Close()
 		return err
 	}
-	st.team.Store(&gt.TeamID)
+	team := gt.TeamID
+	if s.opts.GatewayAdminURL != "" {
+		team, err = s.tenantTeam(gt.TeamID)
+		if err != nil {
+			database.Close()
+			return err
+		}
+	}
+	st.team.Store(&team)
 	if s.opts.SLSProject != "" {
 		st.sls = slsclient.New(s.opts.SLSEndpoint, s.opts.SLSProject, opts.OSSAccessKeyID, opts.OSSAccessKeySecret)
 	}

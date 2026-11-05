@@ -23,8 +23,10 @@ func cmdWeb(args []string) error {
 		// everywhere else, which keeps one endpoint for everything.
 		DataEndpoint: os.Getenv("AIENVMGR_OSS_DATA_ENDPOINT"),
 		GatewayURL:   envOr("AIENVMGR_GATEWAY_URL", gatewayURL),
-		// Set when this customer shares the gateway with others: their
-		// LiteLLM team. Unset for a gateway of the customer's own.
+		// On a shared gateway, management goes through tenant-admin
+		// (https://litellm.teenet.app/tenant-admin) and the key below is
+		// this customer's tenant token. Unset: manage GatewayURL directly.
+		GatewayAdminURL: os.Getenv("AIENVMGR_GATEWAY_ADMIN_URL"),
 		// The management key is taken from the environment only -- never a
 		// flag. A flag would put it in the process table, where any local
 		// account could read it off `ps`.

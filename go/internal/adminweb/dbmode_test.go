@@ -26,6 +26,13 @@ import (
 // tests.
 func newDatabaseServer(t *testing.T) (*Server, *fakeStore) {
 	t.Helper()
+	return newDatabaseServerWith(t, nil)
+}
+
+// newDatabaseServerWith is newDatabaseServer with options changed by adjust
+// before the server is built.
+func newDatabaseServerWith(t *testing.T, adjust func(*Options)) (*Server, *fakeStore) {
+	t.Helper()
 	dsn := os.Getenv("TEST_PG_DSN")
 	if dsn == "" {
 		t.Skip("TEST_PG_DSN is not set; skipping the PostgreSQL integration tests")
@@ -54,14 +61,18 @@ func newDatabaseServer(t *testing.T) (*Server, *fakeStore) {
 	_ = os.Chmod(keyFile, 0o600)
 
 	fs := newFakeStore()
-	s, err := NewWithStore(Options{
+	opts := Options{
 		Listen: "127.0.0.1:0", Bucket: "ai-collect-sg", Endpoint: "oss-ap-southeast-1.aliyuncs.com",
 		Database: &DatabaseOptions{
 			DSN: dsn, MasterKeyFile: keyFile,
 			OSSAccessKeyID: "server-key", OSSAccessKeySecret: "server-secret",
 			Worker: false,
 		},
-	}, func(config.Config) (store, error) { return fs, nil })
+	}
+	if adjust != nil {
+		adjust(&opts)
+	}
+	s, err := NewWithStore(opts, func(config.Config) (store, error) { return fs, nil })
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}

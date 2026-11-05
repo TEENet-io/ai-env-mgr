@@ -353,7 +353,7 @@ func (s *Server) handleUserDetail(w http.ResponseWriter, r *http.Request, sess *
 		} else if found {
 			keys = []litellm.Key{k}
 		}
-		if u, found, err := gw.UserInfo(ctx, admincore.KeyAlias(user)); err != nil {
+		if u, found, err := gw.UserInfo(ctx, s.gatewayUserID(user)); err != nil {
 			data.GatewayUnusable = "无法读取网关用户：" + err.Error()
 		} else if found {
 			gwUsers = []litellm.User{u}

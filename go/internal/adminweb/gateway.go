@@ -7,7 +7,9 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/TEENet-io/ai-env-mgr/internal/admincore"
 	"github.com/TEENet-io/ai-env-mgr/internal/litellm"
+	"github.com/TEENet-io/ai-env-mgr/internal/worker"
 )
 
 // gatewayTimeout bounds the page's calls to the gateway.
@@ -44,9 +46,26 @@ func (s *Server) gateway() (*litellm.Client, error) {
 // newGateway is the one place a gateway client is made, so that none of them
 // can forget the team.
 func (s *Server) newGateway() *litellm.Client {
-	gw := litellm.New(s.opts.GatewayURL, s.opts.GatewayAdminKey)
+	gw := litellm.New(s.gatewayAdminURL(), s.opts.GatewayAdminKey)
 	gw.TeamID = s.teamID()
 	return gw
+}
+
+// gatewayUserID is the gateway user an employee's spend is on: named under
+// the team in database mode, emp-<user> in the OSS mode, which has no team.
+func (s *Server) gatewayUserID(windowsUser string) string {
+	if s.dbm != nil {
+		return worker.GatewayUserID(s.teamID(), windowsUser)
+	}
+	return admincore.KeyAlias(windowsUser)
+}
+
+// gatewayAdminURL is where management calls go.
+func (s *Server) gatewayAdminURL() string {
+	if s.opts.GatewayAdminURL != "" {
+		return s.opts.GatewayAdminURL
+	}
+	return s.opts.GatewayURL
 }
 
 // loadGatewayPanel fills the overview's gateway panel.
