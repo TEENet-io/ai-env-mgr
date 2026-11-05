@@ -131,6 +131,7 @@ type pageData struct {
 	Rotation            *rotationView
 	DeviceChannel       *channelSettingsView
 	GatewayTeam         *gatewayTeamView
+	TicketTools         *ticketToolsView
 	OpenAlerts          int // drawn in the nav on every page
 	PendingTickets      int // actionable customer tickets, drawn in the nav
 	PendingTicketsError bool

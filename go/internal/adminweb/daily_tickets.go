@@ -85,6 +85,30 @@ func dailyText(r *http.Request, name string, max int, required bool) (string, er
 	return value, nil
 }
 
+// employeeName is what to call somebody who may have no name on file: the
+// email, then the Windows user, which every employee has.
+func employeeName(e repo.Employee) string {
+	switch {
+	case e.Name != "":
+		return e.Name
+	case e.Email != "":
+		return e.Email
+	}
+	return e.WindowsUser
+}
+
+// employeeLabel identifies somebody in one line, with their status.
+func employeeLabel(e repo.Employee) string {
+	label := employeeName(e)
+	if e.Name != "" && e.Email != "" {
+		label += " · " + e.Email
+	}
+	if !e.Active() {
+		label += "（已停用）"
+	}
+	return label
+}
+
 func dailyEmployeeOptions(employees []repo.Employee) map[string]repo.Employee {
 	options := make(map[string]repo.Employee, len(employees))
 	for _, employee := range employees {
@@ -144,10 +168,24 @@ func dailyTargets(r *http.Request, options map[string]repo.Employee) ([]map[stri
 			return nil, "", errors.New("适用员工无效或重复")
 		}
 		seen[id] = true
-		targets = append(targets, map[string]string{"id": id, "name": employee.Name, "email": employee.Email})
-		names = append(names, employee.Name)
+		targets = append(targets, map[string]string{"id": id, "name": employeeName(employee), "email": employee.Email})
+		names = append(names, employeeName(employee))
 	}
 	return targets, strings.Join(names, "、"), nil
+}
+
+// dailyDateTime reads a time typed as 2026-11-05 14:30 (the form uses a plain
+// text box, since a date box shows the format of the browser's language) and
+// returns it in the format stored. Empty is ok; the caller decides if it may be.
+func dailyDateTime(value string) (string, bool) {
+	if value == "" {
+		return "", true
+	}
+	t, err := time.Parse("2006-01-02 15:04", strings.Replace(value, "T", " ", 1))
+	if err != nil {
+		return "", false
+	}
+	return t.Format("2006-01-02T15:04"), true
 }
 
 func parseDailyTicketSubmission(r *http.Request, employees []repo.Employee) (kind, title, description, priority, key string, details []byte, err error) {
@@ -210,9 +248,9 @@ func parseDailyTicketSubmission(r *http.Request, employees []repo.Employee) (kin
 		if err != nil {
 			return
 		}
-		data["target_employee"] = map[string]string{"id": employee.ID, "name": employee.Name, "email": employee.Email}
-		title += " · " + employee.Name
-		lines = append(lines, "员工："+employee.Name+" <"+employee.Email+">")
+		data["target_employee"] = map[string]string{"id": employee.ID, "name": employeeName(employee), "email": employee.Email}
+		title += " · " + employeeName(employee)
+		lines = append(lines, "员工："+employeeLabel(employee))
 		if requestKind == "account-toggle" {
 			action := formValue(r, "account_action")
 			if action != "disable" && action != "restore" {
@@ -320,9 +358,9 @@ func parseDailyTicketSubmission(r *http.Request, employees []repo.Employee) (kin
 		}
 		lines = append(lines, "操作："+map[string]string{"block": "封禁", "unblock": "解除封禁", "temporary": "临时放行"}[action], "网站："+strings.Join(selected, "、"))
 		if action == "temporary" {
-			expires := formValue(r, "expires")
-			if _, parseErr := time.Parse("2006-01-02T15:04", expires); parseErr != nil {
-				err = errors.New("临时放行需要有效的截止日期和时间")
+			expires, ok := dailyDateTime(formValue(r, "expires"))
+			if !ok || expires == "" {
+				err = errors.New("临时放行需要有效的截止日期和时间，例如 2026-11-05 14:30")
 				return
 			}
 			data["expires"] = expires
@@ -338,6 +376,17 @@ func parseDailyTicketSubmission(r *http.Request, employees []repo.Employee) (kin
 		}
 		data["problem"] = problem
 		lines = append(lines, problem)
+		if requestKind == "desktop-problem" {
+			occurred, occurredErr := dailyText(r, "occurred_at", 100, false)
+			if occurredErr != nil {
+				err = occurredErr
+				return
+			}
+			if occurred != "" {
+				data["occurred_at"] = occurred
+				lines = append(lines, "大约发生时间："+occurred)
+			}
+		}
 		if requestKind == "tool-problem" {
 			tool, toolErr := dailyText(r, "tool", 200, true)
 			if toolErr != nil {
@@ -353,6 +402,10 @@ func parseDailyTicketSubmission(r *http.Request, employees []repo.Employee) (kin
 	}
 
 	for _, field := range []string{"note", "desired_at"} {
+		// The design asks for no handling time on a problem report.
+		if field == "desired_at" && !spec.Change {
+			continue
+		}
 		value, fieldErr := dailyText(r, field, 1000, false)
 		if fieldErr != nil {
 			err = fieldErr
@@ -360,10 +413,12 @@ func parseDailyTicketSubmission(r *http.Request, employees []repo.Employee) (kin
 		}
 		if value != "" {
 			if field == "desired_at" {
-				if _, parseErr := time.Parse("2006-01-02T15:04", value); parseErr != nil {
-					err = errors.New("希望处理时间无效")
+				normalized, ok := dailyDateTime(value)
+				if !ok {
+					err = errors.New("希望处理时间无效，例如 2026-11-05 14:30")
 					return
 				}
+				value = normalized
 			}
 			data[field] = value
 			lines = append(lines, map[string]string{"note": "补充说明：", "desired_at": "希望处理时间："}[field]+value)

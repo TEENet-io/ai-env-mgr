@@ -67,6 +67,19 @@
   {{end}}
   {{end}}
 
+  {{if and (eq .Tab "general") .TicketTools}}
+  {{with .TicketTools}}
+  <h2>工单工具清单</h2>
+  <form method="post" action="/settings/ticket-tools" class="form">
+    <input type="hidden" name="csrf" value="{{$.CSRF}}">
+    <input type="hidden" name="version" value="{{.Version}}">
+    <label class="wide">工具名称（每行一个，用客户熟悉的叫法）<textarea name="names" rows="4" placeholder="新闻监控&#10;销售报表助手">{{.Text}}</textarea></label>
+    <button type="submit">保存</button>
+  </form>
+  <p class="hint">“工具使用遇到问题”工单从这里选工具，表单总会多一个“不确定”。目前全公司共用一份清单，不区分每个人能用哪些工具。</p>
+  {{end}}
+  {{end}}
+
   {{if and (eq .Tab "general") .DB .DataRetention}}
   <h2>采集数据自动保留</h2>
   <form method="post" action="/settings/data-retention" class="form panel">

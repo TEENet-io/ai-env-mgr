@@ -48,6 +48,7 @@ type customerPage struct {
 	Rows                             []dbstore.Ticket
 	Filter                           string
 	Employees                        []repo.Employee
+	Tools                            []string
 	Ticket                           *dbstore.Ticket
 	Events                           []dbstore.TicketEvent
 	Revisions                        []dbstore.TicketRequestRevision
@@ -753,6 +754,10 @@ func (s *Server) handleCustomerHome(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		p.Employees = dailyAuthorizedEmployees(p.Employees, c)
+		if p.Tools, err = s.ticketTools(r.Context()); err != nil {
+			http.Error(w, "无法读取工具清单", 500)
+			return
+		}
 	}
 	s.tpl.ExecuteTemplate(w, "customer_portal.html", p)
 }
@@ -772,9 +777,14 @@ func (s *Server) handleAdminTicketNew(w http.ResponseWriter, r *http.Request, se
 		http.Error(w, "无法读取员工名单", http.StatusInternalServerError)
 		return
 	}
+	tools, err := s.ticketTools(r.Context())
+	if err != nil {
+		http.Error(w, "无法读取工具清单", http.StatusInternalServerError)
+		return
+	}
 	adminPage := newPage(sess, r, "tickets")
 	adminPage.GatewayTeamID = s.teamID()
-	s.tpl.ExecuteTemplate(w, "customer_portal.html", customerPage{AdminMode: true, AdminPage: adminPage, Manager: true, NewView: true, Name: sess.admin.Username, CSRF: sess.csrf, SubmitKey: key, Employees: employees})
+	s.tpl.ExecuteTemplate(w, "customer_portal.html", customerPage{AdminMode: true, AdminPage: adminPage, Manager: true, NewView: true, Name: sess.admin.Username, CSRF: sess.csrf, SubmitKey: key, Employees: dailyVisibleEmployees(employees), Tools: tools})
 }
 
 func (s *Server) handleAdminTicketCreate(w http.ResponseWriter, r *http.Request, sess *session) {
@@ -782,19 +792,27 @@ func (s *Server) handleAdminTicketCreate(w http.ResponseWriter, r *http.Request,
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
-	r.Body = http.MaxBytesReader(w, r.Body, 32<<10)
-	if err := r.ParseForm(); err != nil || subtle.ConstantTimeCompare([]byte(r.PostFormValue("csrf")), []byte(sess.csrf)) != 1 {
-		http.Error(w, "表单已过期，请刷新页面", http.StatusForbidden)
+	if !parseTicketForm(w, r, sess.csrf) {
 		return
 	}
+	defer removeTicketForm(r)
 	var kind, title, description, priority, key string
 	var details []byte
 	var err error
-	if formValue(r, "request_kind") != "" {
+	if requestKind := formValue(r, "request_kind"); requestKind != "" {
 		var employees []repo.Employee
 		employees, err = s.dbm.store.Employees().List(r.Context(), repo.EmployeeFilter{IncludeOffboarded: true})
 		if err == nil {
 			kind, title, description, priority, key, details, err = parseDailyTicketSubmission(r, employees)
+		}
+		if err == nil {
+			err = s.checkTicketTool(r, "")
+		}
+		if err == nil {
+			var uploads []ticketUpload
+			if uploads, err = ticketUploads(r, requestKind); err == nil {
+				description, details, err = s.attachTicketFiles(r, uploads, nil, description, details)
+			}
 		}
 	} else {
 		kind, title, description, priority, key, details, err = parseTicketSubmission(r)
@@ -836,11 +854,26 @@ func parseTicketSubmission(r *http.Request) (kind, title, description, priority,
 	return
 }
 
+// customerTicketPost is customerPost for the request form, which may carry
+// files and so needs the larger limit.
+func (s *Server) customerTicketPost(w http.ResponseWriter, r *http.Request) (dbstore.CustomerContact, string, bool) {
+	c, csrf, ok := s.customerRequired(w, r)
+	if !ok {
+		return c, csrf, false
+	}
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return c, csrf, false
+	}
+	return c, csrf, parseTicketForm(w, r, csrf)
+}
+
 func (s *Server) handleCustomerCreateTicket(w http.ResponseWriter, r *http.Request) {
-	c, _, ok := s.customerPost(w, r)
+	c, _, ok := s.customerTicketPost(w, r)
 	if !ok {
 		return
 	}
+	defer removeTicketForm(r)
 	var kind, title, description, priority, key string
 	var details []byte
 	var err error
@@ -853,6 +886,15 @@ func (s *Server) handleCustomerCreateTicket(w http.ResponseWriter, r *http.Reque
 		employees, err = s.dbm.store.Employees().List(r.Context(), repo.EmployeeFilter{IncludeOffboarded: true})
 		if err == nil {
 			kind, title, description, priority, key, details, err = parseDailyTicketSubmission(r, dailyAuthorizedEmployees(employees, c))
+		}
+		if err == nil {
+			err = s.checkTicketTool(r, "")
+		}
+		if err == nil {
+			var uploads []ticketUpload
+			if uploads, err = ticketUploads(r, requestKind); err == nil {
+				description, details, err = s.attachTicketFiles(r, uploads, nil, description, details)
+			}
 		}
 	} else {
 		if c.Role != "manager" {
@@ -874,10 +916,11 @@ func (s *Server) handleCustomerCreateTicket(w http.ResponseWriter, r *http.Reque
 }
 
 func (s *Server) handleCustomerEditTicket(w http.ResponseWriter, r *http.Request) {
-	c, _, ok := s.customerPost(w, r)
+	c, _, ok := s.customerTicketPost(w, r)
 	if !ok {
 		return
 	}
+	defer removeTicketForm(r)
 	id := ticketID(r)
 	version, err := strconv.Atoi(formValue(r, "version"))
 	if err != nil || version < 1 {
@@ -895,6 +938,23 @@ func (s *Server) handleCustomerEditTicket(w http.ResponseWriter, r *http.Request
 		return
 	}
 	kind, title, description, _, _, details, err := parseDailyTicketSubmission(r, dailyAuthorizedEmployees(employees, c))
+	if err == nil {
+		// What the version being edited carries: its files stay, and it may
+		// keep a tool that has since left the list. A ticket this contact
+		// cannot read carries nothing; the update below refuses it anyway.
+		var previousTool string
+		var kept []any
+		if current, getErr := s.dbm.db.Tickets().GetForContact(r.Context(), id, c.ID, c.Role); getErr == nil && current.Details["request_kind"] == requestKind {
+			previousTool, _ = current.Details["tool"].(string)
+			kept, _ = current.Details["attachments"].([]any)
+		}
+		if err = s.checkTicketTool(r, previousTool); err == nil {
+			var uploads []ticketUpload
+			if uploads, err = ticketUploads(r, requestKind); err == nil {
+				description, details, err = s.attachTicketFiles(r, uploads, kept, description, details)
+			}
+		}
+	}
 	if err != nil {
 		http.Error(w, err.Error(), 400)
 		return

@@ -220,6 +220,8 @@ func New(opts Options) (*Server, error) {
 		"usagesev":          usageSeverity,
 		"money":             func(v float64) string { return strconv.FormatFloat(v, 'f', 2, 64) },
 		"list":              func(xs ...string) []string { return xs },
+		"employeeName":      employeeName,
+		"employeeLabel":     employeeLabel,
 		"siteLabel":         ticketSiteLabel,
 		"operationLabel":    ticketOperationLabel,
 		"changeStage":       ticketChangeStageLabel,
@@ -419,12 +421,14 @@ func (s *Server) Handler() http.Handler {
 		mux.HandleFunc("/customer/ticket", s.handleCustomerTicket)
 		mux.HandleFunc("/customer/ticket/create", s.handleCustomerCreateTicket)
 		mux.HandleFunc("/customer/ticket/edit", s.handleCustomerEditTicket)
+		mux.HandleFunc("/customer/ticket/file", s.handleCustomerTicketFile)
 		mux.HandleFunc("/customer/ticket/proposal", s.handleCustomerDecideProposal)
 		mux.HandleFunc("/customer/ticket/reply", s.handleCustomerReply)
 		mux.HandleFunc("/customer/ticket/confirm-change", s.handleCustomerConfirmChange)
 		mux.HandleFunc("/tickets", s.requireSession(s.handleTickets))
 		mux.HandleFunc("/tickets/new", s.requireSession(s.handleAdminTicketNew))
 		mux.HandleFunc("/tickets/create", s.requireSession(s.handleAdminTicketCreate))
+		mux.HandleFunc("/tickets/file", s.requireSession(s.handleTicketFile))
 		mux.HandleFunc("/tickets/detail", s.requireSession(s.handleTicketDetail))
 		mux.HandleFunc("/tickets/action", s.requirePostBack(backToTicket, s.actionTicket))
 		mux.HandleFunc("/tickets/contacts/create", s.requireSession(s.handleCustomerContactCreate))
@@ -456,6 +460,7 @@ func (s *Server) Handler() http.Handler {
 		mux.HandleFunc("/settings/devices", s.requireSession(s.handleSettingsTab("devices")))
 		mux.HandleFunc("/settings/device-channel", s.requirePost("/settings/devices", s.actionDeviceChannel))
 		mux.HandleFunc("/settings/gateway-team", s.requirePostNotice("/settings", s.actionGatewayTeam))
+		mux.HandleFunc("/settings/ticket-tools", s.requirePost("/settings", s.actionTicketTools))
 		mux.HandleFunc("/machines/allow-reenrol", s.requirePostNotice("/overview", s.actionAllowReenrol))
 		mux.HandleFunc("/machines/revoke-token", s.requirePostNotice("/overview", s.actionRevokeToken))
 		mux.HandleFunc("/machines/version", s.requirePostBack(backToMachine, s.actionMachineVersion))

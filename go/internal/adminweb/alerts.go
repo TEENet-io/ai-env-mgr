@@ -331,6 +331,11 @@ func (s *Server) settingsExtras(r *http.Request, data *pageData) {
 	} else {
 		data.Error = "读取组织设置失败：" + err.Error()
 	}
+	if tools, version, err := repo.LoadTicketToolSettings(ctx, s.dbm.store.Settings()); err == nil {
+		data.TicketTools = &ticketToolsView{Text: strings.Join(tools.Names, "\n"), Version: version}
+	} else {
+		data.Error = "读取工单工具清单失败：" + err.Error()
+	}
 	if c, version, err := repo.LoadChannelSettings(ctx, s.dbm.store.Settings()); err == nil {
 		if c.Webhook.Format == "" {
 			c.Webhook.Format = notify.FormatGeneric
@@ -387,6 +392,11 @@ func (s *Server) actionDeviceChannel(sess *session, r *http.Request) error {
 	}
 	s.dbm.devices.SetEnrolCIDRs(nets)
 	return nil
+}
+
+type ticketToolsView struct {
+	Text    string
+	Version int
 }
 
 type gatewayTeamView struct {

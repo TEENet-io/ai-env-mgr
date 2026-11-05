@@ -99,6 +99,7 @@ const (
 	ActionRotationSettings = "settings.rotation"
 	ActionDeviceChannel    = "settings.device_channel"
 	ActionGatewayTeam      = "settings.gateway_team"
+	ActionTicketTools      = "settings.ticket_tools"
 	ActionAlertAck         = "alert.ack"
 	ActionAlertResolve     = "alert.resolve"
 )

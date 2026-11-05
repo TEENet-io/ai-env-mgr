@@ -20,6 +20,10 @@
   const submit = document.getElementById('tp-submit');
   const titles = Object.fromEntries(kindButtons.map(button => [button.dataset.tpKind, button.firstChild.textContent.trim()]));
   const problemKinds = new Set(['desktop-problem', 'ai-problem', 'tool-problem', 'other-problem']);
+  const optional = document.getElementById('tp-optional');
+  const noteInput = form.querySelector('[name=note]');
+  const desiredInput = form.querySelector('[name=desired_at]');
+  const maxFiles = 5, maxFileSize = 5 << 20;
   let selectedCategory = '';
   let confirmed = false;
 
@@ -38,6 +42,20 @@
     }
   }
 
+  // A problem report has no handling time. It normally has no note either,
+  // unless an earlier version already carries one. The block starts folded
+  // and opens only for what is already filled in.
+  function syncOptional(kind) {
+    const problem = problemKinds.has(kind);
+    const hasNote = Boolean(noteInput.value.trim());
+    optional.hidden = problem && !hasNote;
+    noteInput.disabled = optional.hidden;
+    desiredInput.disabled = problem;
+    document.getElementById('tp-desired-field').hidden = problem;
+    document.getElementById('tp-optional-title').textContent = problem ? '补充说明' : '补充说明和希望处理时间';
+    optional.open = hasNote || (!problem && Boolean(desiredInput.value.trim()));
+  }
+
   function selectKind(kind) {
     kindInput.value = kind;
     fieldsets.forEach(fieldset => {
@@ -45,6 +63,7 @@
       fieldset.disabled = !active;
       fieldset.hidden = !active;
     });
+    syncOptional(kind);
     document.getElementById('tp-form-title').textContent = titles[kind] || '填写信息';
     submit.textContent = problemKinds.has(kind) ? '提交工单' : '核对申请';
     typePanel.hidden = true;
@@ -89,10 +108,15 @@
 
   const websiteAction = document.getElementById('tp-website-action');
   const expiresField = document.getElementById('tp-expires-field');
-  websiteAction.addEventListener('change', () => {
-    expiresField.hidden = websiteAction.value !== 'temporary';
-    expiresField.querySelector('input').required = websiteAction.value === 'temporary';
-  });
+  function syncExpires() {
+    const temporary = websiteAction.value === 'temporary';
+    const input = expiresField.querySelector('input');
+    expiresField.hidden = !temporary;
+    input.disabled = !temporary;
+    input.required = temporary;
+  }
+  websiteAction.addEventListener('change', syncExpires);
+  syncExpires();
 
   const editEmployee = document.getElementById('tp-edit-employee');
   editEmployee.addEventListener('change', () => {
@@ -127,6 +151,14 @@
     if (kind === 'website' && !active.querySelector('input[name=sites]:checked') && !named('other_site').value.trim()) invalid = named('other_site');
     if (kind === 'tool-problem' && !named('tool').value.trim()) invalid = named('tool');
     if (problemKinds.has(kind) && !named('problem').value.trim()) invalid = named('problem');
+    const upload = named('files');
+    if (upload && upload.files.length) {
+      const files = [...upload.files];
+      const kept = Number(form.dataset.keptFiles || 0);
+      if (files.length + kept > maxFiles) { upload.setCustomValidity(`最多 ${maxFiles} 个文件${kept ? `，已有 ${kept} 个` : ''}`); invalid = upload; }
+      else if (files.some(file => file.size > maxFileSize)) { upload.setCustomValidity('单个文件不能超过 5 MB'); invalid = upload; }
+      if (invalid === upload) { upload.reportValidity(); upload.addEventListener('change', () => upload.setCustomValidity(''), {once:true}); return false; }
+    }
     if (invalid) {
       invalid.focus();
       invalid.setCustomValidity('请完成此项');
@@ -157,7 +189,7 @@
       if (select) add('员工', select.selectedOptions[0]?.textContent || '');
     }
     const targets = [...active.querySelectorAll('input[name=employee_ids]:checked')];
-    if (targets.length) add('适用员工', targets.map(input => input.closest('label').textContent.trim()).join('\n'));
+    if (targets.length) add('适用员工', targets.map(input => input.dataset.label).join('\n'));
     active.querySelectorAll('input:not([type=checkbox]),textarea,select').forEach(input => {
       if (input.name.startsWith('employee_') || input.name.startsWith('work_email_') || input.name === 'target_employee' || input.name === 'expires' && input.closest('label').hidden || !input.value.trim()) return;
       const label = input.closest('label')?.firstChild?.textContent.trim() || input.name;
@@ -226,14 +258,28 @@
       put('website_action', details.action);
       active.querySelectorAll('input[name=sites]').forEach(input => { input.checked = (details.sites || []).includes(input.value); });
       put('other_site', details.other_site);
-      put('expires', details.expires);
+      put('expires', (details.expires || '').replace('T', ' '));
       websiteAction.dispatchEvent(new Event('change'));
     }
     put('problem', details.problem);
-    put('tool', details.tool);
-    form.querySelector('[name=note]').value = details.note || '';
-    form.querySelector('[name=desired_at]').value = details.desired_at || '';
-    if (details.note || details.desired_at) form.querySelector('.tp-optional').open = true;
+    put('occurred_at', details.occurred_at);
+    if (details.tool) {
+      // A tool that has since left the list is still what this version names.
+      const tool = document.getElementById('tp-tool');
+      if (![...tool.options].some(option => option.value === details.tool)) tool.add(new Option(details.tool, details.tool), 1);
+      tool.value = details.tool;
+    }
+    noteInput.value = details.note || '';
+    desiredInput.value = (details.desired_at || '').replace('T', ' ');
+    syncOptional(edit.kind);
+    const kept = details.attachments || [];
+    if (kept.length) {
+      form.dataset.keptFiles = kept.length;
+      const hint = document.createElement('p');
+      hint.className = 'tp-hint';
+      hint.textContent = `已上传的文件会保留：${kept.map(file => file.name).join('、')}`;
+      active.querySelector('[data-tp-upload]')?.closest('label').after(hint);
+    }
   } else {
     const initial = new URLSearchParams(location.search).get('category');
     if (initial && categoryButtons.some(button => button.dataset.tpCategory === initial)) selectCategory(initial);
