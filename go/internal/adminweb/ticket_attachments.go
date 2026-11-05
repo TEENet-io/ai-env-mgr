@@ -11,10 +11,12 @@ import (
 	"io"
 	"log"
 	"mime/multipart"
+	"net"
 	"net/http"
 	"net/url"
 	"path"
 	"strings"
+	"time"
 	"unicode"
 
 	"github.com/TEENet-io/ai-env-mgr/internal/dbstore"
@@ -34,18 +36,33 @@ const (
 	ticketToolUnsure = "不确定"
 )
 
+// ticketUploadTimeout replaces the server's short read limit while a signed-in
+// person's files arrive: a slow connection may take minutes to send them.
+var ticketUploadTimeout = 5 * time.Minute
+
 // parseTicketForm reads a new-ticket form, plain or with files, and checks
 // its CSRF token. The caller must call r.MultipartForm.RemoveAll when set.
 func parseTicketForm(w http.ResponseWriter, r *http.Request, csrf string) bool {
 	limit := int64(32 << 10)
 	if strings.HasPrefix(r.Header.Get("Content-Type"), "multipart/form-data") {
 		limit = maxTicketForm
+		// The server's write limit runs from the request's headers, so it has
+		// to move as well, or an answer to a slow upload could not be sent.
+		rc := http.NewResponseController(w)
+		deadline := time.Now().Add(ticketUploadTimeout)
+		rc.SetReadDeadline(deadline)
+		rc.SetWriteDeadline(deadline.Add(time.Minute))
 	}
 	r.Body = http.MaxBytesReader(w, r.Body, limit)
 	if err := parseUpload(r); err != nil {
 		var tooBig *http.MaxBytesError
 		if errors.As(err, &tooBig) {
 			http.Error(w, "文件太大：单个不超过 5 MB，最多 5 个", http.StatusRequestEntityTooLarge)
+			return false
+		}
+		var netErr net.Error
+		if errors.As(err, &netErr) && netErr.Timeout() {
+			http.Error(w, "上传超时，请换小一点的文件或稍后重试", http.StatusRequestTimeout)
 			return false
 		}
 		http.Error(w, "表单无法读取，请刷新页面", http.StatusBadRequest)

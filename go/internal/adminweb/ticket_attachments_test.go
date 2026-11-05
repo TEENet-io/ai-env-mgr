@@ -3,7 +3,9 @@ package adminweb
 import (
 	"bytes"
 	"crypto/sha256"
+	"io"
 	"mime/multipart"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -337,5 +339,71 @@ func TestRequestTextLeavesACustomersOwnWordsAlone(t *testing.T) {
 	}
 	if got := ticketRequestText("x\n文件：a.png", nil); got != "x\n文件：a.png" {
 		t.Errorf("no attachments: %q", got)
+	}
+}
+
+// slowTicketUpload sends a ticket's form through a real server, a piece at a
+// time, so that it takes about the given time to arrive.
+func slowTicketUpload(t *testing.T, s *Server, addr string, owner *http.Cookie, takes time.Duration) (int, string) {
+	t.Helper()
+	key, err := randomTicketKey()
+	if err != nil {
+		t.Fatal(err)
+	}
+	var body bytes.Buffer
+	w := multipart.NewWriter(&body)
+	for k, v := range map[string]string{"csrf": s.csrfFor(owner.Value), "request_key": key, "request_kind": "desktop-problem", "problem": "连不上"} {
+		w.WriteField(k, v)
+	}
+	part, _ := w.CreateFormFile("files", "slow.png")
+	part.Write(append(append([]byte{}, testPNG...), make([]byte, 1<<20)...))
+	w.Close()
+
+	const pieces = 20
+	data := body.Bytes()
+	pr, pw := io.Pipe()
+	go func() {
+		for i := 0; i < pieces; i++ {
+			if _, err := pw.Write(data[i*len(data)/pieces : (i+1)*len(data)/pieces]); err != nil {
+				return
+			}
+			time.Sleep(takes / pieces)
+		}
+		pw.Close()
+	}()
+	req, _ := http.NewRequest(http.MethodPost, "http://"+addr+"/customer/ticket/create", pr)
+	req.Header.Set("Content-Type", w.FormDataContentType())
+	req.AddCookie(owner)
+	client := &http.Client{CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
+	resp, err := client.Do(req)
+	if err != nil {
+		t.Fatalf("upload: %v", err)
+	}
+	defer resp.Body.Close()
+	answer, _ := io.ReadAll(resp.Body)
+	return resp.StatusCode, string(answer)
+}
+
+func TestASlowUploadOutlivesTheServersShortLimits(t *testing.T) {
+	s, _ := newDatabaseServer(t)
+	owner := customerCookieFor(t, s, "owner@example.com", "employee")
+	l, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	srv := &http.Server{Handler: s.Handler(), ReadTimeout: 300 * time.Millisecond, WriteTimeout: 300 * time.Millisecond}
+	go srv.Serve(l)
+	defer srv.Close()
+	defer func(d time.Duration) { ticketUploadTimeout = d }(ticketUploadTimeout)
+
+	ticketUploadTimeout = 10 * time.Second
+	if code, answer := slowTicketUpload(t, s, l.Addr().String(), owner, time.Second); code != http.StatusSeeOther {
+		t.Fatalf("an upload past the server's limits: %d %s", code, answer)
+	}
+
+	ticketUploadTimeout = 300 * time.Millisecond
+	code, answer := slowTicketUpload(t, s, l.Addr().String(), owner, time.Second)
+	if code != http.StatusRequestTimeout || !strings.Contains(answer, "上传超时") {
+		t.Fatalf("an upload past its own limit: %d %s", code, answer)
 	}
 }
