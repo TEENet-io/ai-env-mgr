@@ -3,7 +3,7 @@
 <div class="app">
 {{template "nav" .}}
 <main class="sheet">
-  <header class="pagehead"><h1>员工账号</h1></header>
+  <header class="pagehead"><h1>员工账号</h1>{{if .GatewayTeamID}}<p>组织：<strong>{{.GatewayTeamID}}</strong>，下面只列这个组织的员工。</p>{{end}}</header>
   {{template "tabs-users" .}}
   {{template "notices" .}}
   {{if .GatewayUnusable}}<p class="note note-err">{{.GatewayUnusable}}<br><span class="dim">额度与令牌列暂不可用；关户仍可执行。</span></p>{{end}}
@@ -74,7 +74,7 @@
   {{if and .GatewayEnabled (not .GatewayModels)}}<p class="note note-err">当前没有可用模型：所有模型渠道都已暂停，暂时不能开户。</p>{{end}}
   <form method="post" action="/users/onboard" class="form top">
     <input type="hidden" name="csrf" value="{{.CSRF}}">
-    {{if .GatewayTeamID}}<label>网关客户（team）<input value="{{.GatewayTeamID}}" readonly disabled><span class="field-hint">由部署配置决定，所有员工的令牌和用量都归在这个 team 下</span></label>{{end}}
+    {{if .GatewayTeamID}}<label>组织<input value="{{.GatewayTeamID}}" readonly disabled><span class="field-hint">新员工的令牌和用量都归在这个组织（LiteLLM team）下</span></label>{{end}}
     <label>Windows 用户<input name="windowsUser" required placeholder="work1"><span class="field-hint">按小写保存，机器上的账号大小写无关</span></label>
     <label>邮箱<input name="email" type="email" required placeholder="zhangsan@example.com"><span class="field-hint">员工用它接收云电脑的登录验证码</span></label>
     <label>姓名<input name="name" placeholder="张三"></label>

@@ -158,7 +158,7 @@ type pageData struct {
 
 	// Gateway panel: what the gateway offers.
 	GatewayURL     string
-	GatewayTeamID  string // shown on the onboarding form; "" on an unshared gateway
+	GatewayTeamID  string // the organization, shown on every page; "" on an unshared gateway
 	GatewayEnabled bool
 	GatewayModels  []litellm.Model
 	// ModelDelivery is the 模型下发 block (database mode, gateway readable).
@@ -204,6 +204,7 @@ func (s *Server) render(w http.ResponseWriter, name string, code int, data pageD
 	// flag that decides one of its entries should not be something a new
 	// handler can forget.
 	data.SLS = s.opts.SLSProject != ""
+	data.GatewayTeamID = s.teamID()
 	if data.DB {
 		data.OpenAlerts = s.openAlertCount()
 		if s.dbm != nil && s.dbm.db != nil {

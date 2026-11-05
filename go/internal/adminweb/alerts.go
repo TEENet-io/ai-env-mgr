@@ -329,7 +329,7 @@ func (s *Server) settingsExtras(r *http.Request, data *pageData) {
 			data.GatewayTeam.TeamID, data.GatewayTeam.FromToken = s.teamID(), true
 		}
 	} else {
-		data.Error = "读取网关客户设置失败：" + err.Error()
+		data.Error = "读取组织设置失败：" + err.Error()
 	}
 	if c, version, err := repo.LoadChannelSettings(ctx, s.dbm.store.Settings()); err == nil {
 		if c.Webhook.Format == "" {
@@ -405,7 +405,7 @@ type gatewayTeamView struct {
 // re-issued and changes nothing.
 func (s *Server) actionGatewayTeam(sess *session, r *http.Request) (string, error) {
 	if s.opts.GatewayAdminURL != "" {
-		return "", errors.New("网关客户由网关凭证决定，不能在这里修改")
+		return "", errors.New("组织由网关凭证决定，不能在这里修改")
 	}
 	ctx := r.Context()
 	before, version, err := repo.LoadGatewayTeamSettings(ctx, s.dbm.store.Settings())
@@ -447,9 +447,9 @@ func (s *Server) actionGatewayTeam(sess *session, r *http.Request) (string, erro
 		return "", fmt.Errorf("团队已保存，但迁移中断（已迁移 %d 人）：%w；再点一次保存可以继续", len(moved), err)
 	}
 	if len(moved) == 0 {
-		return "网关客户已设为 " + team + "，没有需要迁移的员工", nil
+		return "组织已设为 " + team + "，没有需要迁移的员工", nil
 	}
-	return fmt.Sprintf("网关客户已设为 %s，已为 %d 人重新签发令牌（%s），机器下次同步时换上新令牌", team, len(moved), strings.Join(moved, "、")), nil
+	return fmt.Sprintf("组织已设为 %s，已为 %d 人重新签发令牌（%s），机器下次同步时换上新令牌", team, len(moved), strings.Join(moved, "、")), nil
 }
 
 func (s *Server) actionAllowReenrol(sess *session, r *http.Request) (string, error) {

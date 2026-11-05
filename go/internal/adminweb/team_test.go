@@ -115,6 +115,28 @@ func TestTheTenantTokenNamesTheTeam(t *testing.T) {
 	}
 }
 
+func TestEveryPageNamesTheOrganization(t *testing.T) {
+	const chip = `<div class="rail-org"><span>组织</span><strong>acme</strong></div>`
+	s, _ := newDatabaseServer(t)
+	h := s.Handler()
+	cookie := signedIn(t, s)
+	if page := dbGet(t, h, "/users", cookie).Body.String(); strings.Contains(page, "rail-org") {
+		t.Fatal("a console with no organization shows one")
+	}
+	csrf := csrfFrom(t, s, cookie, "/settings")
+	if rec := dbPost(t, h, "/settings/gateway-team", url.Values{"csrf": {csrf}, "version": {"0"}, "team_id": {"acme"}}, cookie); strings.Contains(rec.Header().Get("Location"), "err=") {
+		t.Fatal(rec.Header().Get("Location"))
+	}
+	for _, path := range []string{"/users", "/settings", "/channels", "/audit", "/tickets/new"} {
+		if page := dbGet(t, h, path, cookie).Body.String(); !strings.Contains(page, chip) {
+			t.Errorf("%s does not name the organization", path)
+		}
+	}
+	if page := dbGet(t, h, "/users", cookie).Body.String(); !strings.Contains(page, "组织：<strong>acme</strong>") {
+		t.Error("the users page head does not name the organization")
+	}
+}
+
 func TestBehindTenantAdminTheTeamIsNotEditable(t *testing.T) {
 	ta := tenantAdmin(t, "acme")
 	s, _ := newDatabaseServerWith(t, func(o *Options) {

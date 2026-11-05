@@ -895,6 +895,32 @@ body {
   box-shadow: 0 0 0 5px rgba(117, 168, 255, .12), inset 0 -5px 0 rgba(255, 255, 255, .22);
 }
 
+/* The organization this console serves, under the wordmark. */
+.rail .rail-org {
+  display: flex;
+  flex: none;
+  align-items: baseline;
+  gap: 8px;
+  margin: 12px 9px 0;
+  padding: 7px 10px;
+  border: 1px solid var(--rule);
+  border-radius: 8px;
+  background: var(--panel-sunk);
+  color: var(--ink-soft);
+  font-size: 12px;
+  white-space: nowrap;
+}
+.rail .rail-org strong {
+  overflow: hidden;
+  color: var(--ink);
+  font-size: 13px;
+  text-overflow: ellipsis;
+}
+
+@media (max-width: 760px) {
+  .rail .rail-org { align-self: center; margin: 0; }
+}
+
 .rail a {
   min-height: 42px;
   padding: 9px 12px;

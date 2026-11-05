@@ -29,6 +29,7 @@ file stays out of it. */}}
 {{define "nav"}}
 <nav class="rail">
   <div class="wordmark"><span class="wordmark-mark">AI</span><span class="wordmark-copy"><strong>AI 环境管理</strong><small>设备与策略控制台</small></span></div>
+  {{if .GatewayTeamID}}<div class="rail-org"><span>组织</span><strong>{{.GatewayTeamID}}</strong></div>{{end}}
   {{/* Nine entries in database mode. The numbers are stable ordinals an operator learns;
   pages that used to be top-level entries (日志、任务、封禁策略、管理员) live
   as tabs inside their group and keep their old addresses. */}}

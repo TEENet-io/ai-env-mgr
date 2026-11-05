@@ -44,10 +44,10 @@
 
   {{if and (eq .Tab "general") .GatewayTeam}}
   {{with .GatewayTeam}}
-  <h2>网关客户（team）</h2>
+  <h2>组织（LiteLLM team）</h2>
   <p>当前：{{if .TeamID}}<code>{{.TeamID}}</code>{{else}}<span class="tag tag-warn">未设置</span>（网关只有我们一个客户）{{end}}</p>
   {{if .FromToken}}
-  <p class="hint">由网关凭证决定：本后台通过 tenant-admin 管理网关，只能操作这个团队。要换团队，需要网关运维签发新凭证。</p>
+  <p class="hint">由网关凭证决定：本后台通过 tenant-admin 管理网关，只能操作这个组织。要换组织，需要网关运维签发新凭证。</p>
   {{else}}
   <form method="post" action="/settings/gateway-team" class="form">
     <input type="hidden" name="csrf" value="{{$.CSRF}}">

@@ -772,7 +772,9 @@ func (s *Server) handleAdminTicketNew(w http.ResponseWriter, r *http.Request, se
 		http.Error(w, "无法读取员工名单", http.StatusInternalServerError)
 		return
 	}
-	s.tpl.ExecuteTemplate(w, "customer_portal.html", customerPage{AdminMode: true, AdminPage: newPage(sess, r, "tickets"), Manager: true, NewView: true, Name: sess.admin.Username, CSRF: sess.csrf, SubmitKey: key, Employees: employees})
+	adminPage := newPage(sess, r, "tickets")
+	adminPage.GatewayTeamID = s.teamID()
+	s.tpl.ExecuteTemplate(w, "customer_portal.html", customerPage{AdminMode: true, AdminPage: adminPage, Manager: true, NewView: true, Name: sess.admin.Username, CSRF: sess.csrf, SubmitKey: key, Employees: employees})
 }
 
 func (s *Server) handleAdminTicketCreate(w http.ResponseWriter, r *http.Request, sess *session) {
