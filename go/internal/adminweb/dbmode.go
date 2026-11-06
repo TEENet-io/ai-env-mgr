@@ -463,15 +463,15 @@ func (s *Server) dbLogin(w http.ResponseWriter, r *http.Request) {
 		_ = uri
 		http.Redirect(w, r, "/enrol", http.StatusSeeOther)
 	case errors.Is(err, authn.ErrLockedOut):
-		s.render(w, "login.html", http.StatusTooManyRequests, s.loginPage("尝试次数过多，请稍后再试"))
+		s.render(w, "login.html", http.StatusTooManyRequests, s.loginPage("嘗試次數過多，請稍後再試"))
 	case errors.Is(err, authn.ErrDisabled):
-		s.render(w, "login.html", http.StatusForbidden, s.loginPage("这个账号已停用"))
+		s.render(w, "login.html", http.StatusForbidden, s.loginPage("這個帳號已停用"))
 	case errors.Is(err, authn.ErrSignInFailed):
 		log.Printf("adminweb: sign-in from %s rejected", s.clientKey(r))
-		s.render(w, "login.html", http.StatusUnauthorized, s.loginPage("用户名、密码或验证码不正确"))
+		s.render(w, "login.html", http.StatusUnauthorized, s.loginPage("用戶名、密碼或驗證碼不正確"))
 	default:
 		log.Printf("adminweb: sign-in: %v", err)
-		s.render(w, "login.html", http.StatusServiceUnavailable, s.loginPage("登录暂时不可用，请稍后再试"))
+		s.render(w, "login.html", http.StatusServiceUnavailable, s.loginPage("登入暫時不可用，請稍後再試"))
 	}
 }
 
@@ -568,7 +568,7 @@ func (s *Server) handleEnrol(w http.ResponseWriter, r *http.Request) {
 	}
 	codes, err := s.dbm.auth.CompleteEnrolment(r.Context(), admin, secret, formValue(r, "code"))
 	if err != nil {
-		data.Error = "验证码不正确，请按应用当前显示的六位数字重试"
+		data.Error = "驗證碼不正確，請按應用當前顯示的六位數字重試"
 		s.render(w, "enrol.html", http.StatusUnauthorized, data)
 		return
 	}
@@ -596,13 +596,13 @@ func (s *Server) handleAccount(w http.ResponseWriter, r *http.Request, sess *ses
 	}
 	next := r.PostFormValue("new")
 	if next != r.PostFormValue("again") {
-		data.Error = "两次输入的新密码不一致"
+		data.Error = "兩次輸入的新密碼不一致"
 		s.render(w, "account.html", http.StatusBadRequest, data)
 		return
 	}
 	if err := s.dbm.auth.ChangePassword(r.Context(), *sess.admin, r.PostFormValue("current"), next); err != nil {
 		if errors.Is(err, authn.ErrSignInFailed) {
-			data.Error = "当前密码不正确"
+			data.Error = "當前密碼不正確"
 		} else {
 			data.Error = err.Error()
 		}
@@ -612,7 +612,7 @@ func (s *Server) handleAccount(w http.ResponseWriter, r *http.Request, sess *ses
 	// Every session of this account is now gone, this one included.
 	s.setSessionCookie(w, "", -1)
 	s.events.Audit("admin_password_changed", "administrator changed their password", map[string]any{"user": sess.actor})
-	http.Redirect(w, r, opsSignInPath+"?msg="+"密码已修改，请重新登录", http.StatusSeeOther)
+	http.Redirect(w, r, opsSignInPath+"?msg="+"密碼已修改，請重新登入", http.StatusSeeOther)
 }
 
 // --- administrators ---
@@ -678,7 +678,7 @@ func (s *Server) handleAdminCreate(w http.ResponseWriter, r *http.Request, sess 
 
 func (s *Server) actionAdminCreate(sess *session, r *http.Request) (repo.Admin, string, error) {
 	if sess.admin.Role != repo.RoleAdmin {
-		return repo.Admin{}, "", errors.New("只有 admin 角色可以添加管理员")
+		return repo.Admin{}, "", errors.New("只有 admin 角色可以添加管理員")
 	}
 	username := formValue(r, "username")
 	if username == "" {
@@ -688,10 +688,13 @@ func (s *Server) actionAdminCreate(sess *session, r *http.Request) (repo.Admin, 
 	if role == "" {
 		role = repo.RoleAdmin
 	}
+	if role != repo.RoleAdmin && role != repo.RoleViewer {
+		return repo.Admin{}, "", errors.New("只能建立 admin 或 viewer 帳號")
+	}
 	admin, password, err := s.dbm.auth.CreateAccount(r.Context(), username, formValue(r, "email"), role)
 	if err != nil {
 		if errors.Is(err, repo.ErrDuplicate) {
-			return repo.Admin{}, "", errors.New("这个用户名已经存在")
+			return repo.Admin{}, "", errors.New("這個用戶名已經存在")
 		}
 		return repo.Admin{}, "", err
 	}
@@ -704,7 +707,7 @@ func (s *Server) actionAdminCreate(sess *session, r *http.Request) (repo.Admin, 
 func (s *Server) actionAdminSetDisabled(disabled bool) func(*session, *http.Request) error {
 	return func(sess *session, r *http.Request) error {
 		if sess.admin.Role != repo.RoleAdmin {
-			return errors.New("只有 admin 角色可以停用或启用管理员")
+			return errors.New("只有 admin 角色可以停用或啟用管理員")
 		}
 		username := formValue(r, "username")
 		if username == sess.actor && disabled {
@@ -845,7 +848,7 @@ func (s *Server) handleTasks(w http.ResponseWriter, r *http.Request, sess *sessi
 			row := taskRow{
 				ID: job.ID, Kind: "admin_job", Detail: job.Kind + " · " + job.Version, Status: job.State,
 				Updated:   job.UpdatedAt.In(shanghai()).Format("01-02 15:04:05"),
-				LastError: job.LastError, Employee: "管理员操作",
+				LastError: job.LastError, Employee: "管理員操作",
 			}
 			if job.Step != "" {
 				row.Detail += " · " + job.Step
@@ -893,7 +896,7 @@ func (s *Server) handleTaskDetail(w http.ResponseWriter, r *http.Request, sess *
 	id := strings.TrimSpace(r.URL.Query().Get("id"))
 	if id == "" {
 		data := newPage(sess, r, "tasks")
-		data.Error = "缺少任务编号"
+		data.Error = "缺少任務編號"
 		s.render(w, "task_detail.html", http.StatusBadRequest, data)
 		return
 	}
@@ -919,13 +922,13 @@ func (s *Server) handleTaskDetail(w http.ResponseWriter, r *http.Request, sess *
 		if task.DeviceID != "" {
 			if d, derr := s.dbm.store.Devices().ByID(r.Context(), task.DeviceID); derr == nil {
 				view.Machine = d.Hostname
-				if view.Subject == "系统任务" {
+				if view.Subject == "系統任務" {
 					view.Subject = d.Hostname
 				}
 			}
 		}
 		if view.Subject == "" {
-			view.Subject = "系统任务"
+			view.Subject = "系統任務"
 		}
 		if attempts, aerr := s.dbm.store.Tasks().Attempts(r.Context(), id); aerr == nil {
 			for _, a := range attempts {
@@ -962,7 +965,7 @@ func (s *Server) handleTaskDetail(w http.ResponseWriter, r *http.Request, sess *
 			if job.ID != id {
 				continue
 			}
-			view.Kind, view.Status, view.Subject = job.Kind, job.State, "管理员操作"
+			view.Kind, view.Status, view.Subject = job.Kind, job.State, "管理員操作"
 			view.Detail = job.Version + " · " + job.Step
 			view.Error = job.LastError
 			view.Created = job.StartedAt.In(shanghai()).Format("2006-01-02 15:04:05")
@@ -975,7 +978,7 @@ func (s *Server) handleTaskDetail(w http.ResponseWriter, r *http.Request, sess *
 			return
 		}
 	}
-	data.Error = "找不到这个任务，可能已被清理"
+	data.Error = "找不到這個任務，可能已被清理"
 	s.render(w, "task_detail.html", http.StatusNotFound, data)
 }
 
@@ -986,7 +989,7 @@ func (s *Server) actionTaskRetry(_ *session, r *http.Request) error {
 	// worker queue.
 	if app, err := s.dbm.store.ApplicationTasks().ByID(r.Context(), id); err == nil {
 		if app.State != "failed" {
-			return fmt.Errorf("只有失败任务可以重试")
+			return fmt.Errorf("只有失敗任務可以重試")
 		}
 		_, err := s.dbm.store.ApplicationTasks().Create(r.Context(), app.DeviceID, app.AppID, app.Version, "admin-retry", app.AllowDowngrade)
 		return err
@@ -996,7 +999,7 @@ func (s *Server) actionTaskRetry(_ *session, r *http.Request) error {
 		return err
 	}
 	if t.Status != repo.TaskFailed {
-		return fmt.Errorf("只有失败任务可以重试")
+		return fmt.Errorf("只有失敗任務可以重試")
 	}
 	_, _, err = s.dbm.store.Tasks().Enqueue(r.Context(), repo.NewTask{Kind: t.Kind, IdempotencyKey: t.IdempotencyKey, Payload: t.Payload, TargetEpoch: t.TargetEpoch, EmployeeID: t.EmployeeID, DeviceID: t.DeviceID, MaxAttempts: t.MaxAttempts})
 	return err
@@ -1006,14 +1009,14 @@ func (s *Server) actionTaskCancel(_ *session, r *http.Request) error {
 	id := strings.TrimSpace(formValue(r, "id"))
 	if task, err := s.dbm.store.ApplicationTasks().ByID(r.Context(), id); err == nil {
 		if task.State != "pending" && task.State != "running" {
-			return fmt.Errorf("这个安装任务已经结束")
+			return fmt.Errorf("這個安裝任務已經結束")
 		}
 		_, err = s.dbm.store.ApplicationTasks().Cancel(r.Context(), id, task.DeviceID)
 		return err
 	}
 	if task, err := s.dbm.store.Tasks().ByID(r.Context(), id); err == nil {
 		if !task.Open() {
-			return fmt.Errorf("这个任务已经结束")
+			return fmt.Errorf("這個任務已經結束")
 		}
 		return s.dbm.store.Tasks().Supersede(r.Context(), id, "cancelled by administrator")
 	}
@@ -1024,7 +1027,7 @@ func (s *Server) actionReconcileNow(_ *session, r *http.Request) (string, error)
 	if err := worker.EnqueueReconcile(r.Context(), s.dbm.store, time.Now()); err != nil {
 		return "", err
 	}
-	return "已排队，Worker 会在几秒内开始对账", nil
+	return "已排隊，Worker 會在幾秒內開始對帳", nil
 }
 
 // actionReleaseScanNow queues a bucket scan for an administrator who knows
@@ -1033,7 +1036,7 @@ func (s *Server) actionReleaseScanNow(_ *session, r *http.Request) (string, erro
 	if err := worker.EnqueueReleaseScan(r.Context(), s.dbm.store, time.Now()); err != nil {
 		return "", err
 	}
-	return "已排队，Worker 几秒内开始扫描 OSS；新包算完 SHA-256 后出现在版本库里，刷新本页查看", nil
+	return "已排隊，Worker 幾秒內開始掃描 OSS；新包算完 SHA-256 後出現在版本庫裡，刷新本頁查看", nil
 }
 
 // handleHealthz answers the proxy and the service manager: the database is

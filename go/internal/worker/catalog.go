@@ -109,8 +109,8 @@ func OpenCatalogChangedAlert(ctx context.Context, store repo.Store, before, afte
 		Severity:    repo.SeverityWarn,
 		SubjectType: "settings",
 		SubjectID:   "model_catalog",
-		Title:       "LiteLLM 模型目录已变化",
-		Detail:      fmt.Sprintf("旧目录 %v；新目录 %v；已排队刷新 %d 位员工。", before, after, queued),
+		Title:       "LiteLLM 模型目錄已變化",
+		Detail:      fmt.Sprintf("舊目錄 %v；新目錄 %v；已排隊刷新 %d 位員工。", before, after, queued),
 	})
 	return err
 }

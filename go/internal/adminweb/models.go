@@ -123,13 +123,13 @@ func (s *Server) loadModelDelivery(ctx context.Context, data *pageData) {
 			row := deliveryHistoryRow{WindowsUser: target.WindowsUser, Hostname: target.Hostname}
 			task, err := s.dbm.store.Tasks().ByID(ctx, old.Tasks[target.EmployeeID])
 			if err != nil {
-				row.State = "任务不可读"
+				row.State = "任務不可讀"
 			} else {
 				switch task.Status {
 				case repo.TaskSucceeded:
 					row.State = "配置已生成"
 				case repo.TaskFailed, repo.TaskSuperseded:
-					row.State, row.Detail = "生成失败", task.LastError
+					row.State, row.Detail = "生成失敗", task.LastError
 				default:
 					row.State = "生成中"
 				}
@@ -172,14 +172,14 @@ func (s *Server) deliveryRows(ctx context.Context, last ops.LastDelivery) []deli
 		row := deliveryRow{EmployeeID: employeeID, DeviceID: target.DeviceID, WindowsUser: target.WindowsUser, Hostname: target.Hostname, Retries: last.Retries[employeeID]}
 		task, err := s.dbm.store.Tasks().ByID(ctx, taskID)
 		if err != nil {
-			row.State, row.Sev = "任务不见了", "bad"
+			row.State, row.Sev = "任務不見了", "bad"
 			rows = append(rows, row)
 			continue
 		}
 		switch task.Status {
 		case repo.TaskSucceeded:
 		case repo.TaskFailed, repo.TaskSuperseded:
-			row.State, row.Sev, row.Detail = "生成失败", "bad", task.LastError
+			row.State, row.Sev, row.Detail = "生成失敗", "bad", task.LastError
 			rows = append(rows, row)
 			continue
 		default:
@@ -188,13 +188,13 @@ func (s *Server) deliveryRows(ctx context.Context, last ops.LastDelivery) []deli
 			continue
 		}
 		if target.DeviceID == "" {
-			row.State, row.Sev, row.Detail = "未绑定机器", "muted", "配置已生成，绑定机器后送达"
+			row.State, row.Sev, row.Detail = "未綁定機器", "muted", "配置已生成，綁定機器後送達"
 			rows = append(rows, row)
 			continue
 		}
 		binding, err := s.dbm.store.Bindings().Open(ctx, target.DeviceID)
 		if err != nil || binding.EmployeeID != employeeID {
-			row.State, row.Sev, row.Detail = "目标已变更", "bad", "机器已解绑或转给其他员工；请重新下发"
+			row.State, row.Sev, row.Detail = "目標已變更", "bad", "機器已解綁或轉給其他員工；請重新下發"
 			rows = append(rows, row)
 			continue
 		}
@@ -213,43 +213,43 @@ func (s *Server) deliveryRows(ctx context.Context, last ops.LastDelivery) []deli
 func arrival(store repo.Store, ctx context.Context, deviceID, employeeID string, exported *time.Time) (state, sev, detail string) {
 	report, err := store.Reports().Get(ctx, deviceID)
 	if errors.Is(err, repo.ErrNotFound) || (err == nil && report.LastSyncAt == nil) {
-		return "等待同步", "warn", "机器从未上报"
+		return "等待同步", "warn", "機器從未上報"
 	}
 	if err != nil {
-		return "读不到机器状态", "bad", err.Error()
+		return "讀不到機器狀態", "bad", err.Error()
 	}
 	online := time.Since(*report.LastSyncAt) <= onlineWithin
 	if exported == nil || !report.LastSyncAt.After(*exported) {
 		if online {
-			return "等待同步", "warn", "在线，下一次同步会取到"
+			return "等待同步", "warn", "在線，下一次同步會取到"
 		}
-		return "等待同步", "warn", "离线，开机后取到；最后同步 " + report.LastSyncAt.Local().Format("01-02 15:04")
+		return "等待同步", "warn", "離線，開機後取到；最後同步 " + report.LastSyncAt.Local().Format("01-02 15:04")
 	}
 	var status model.Status
 	if err := json.Unmarshal(report.Report, &status); err != nil {
-		return "状态无效", "bad", "Agent 状态报告无法解析"
+		return "狀態無效", "bad", "Agent 狀態報告無法解析"
 	}
 	if e, err := store.Employees().ByID(ctx, employeeID); err == nil && !strings.EqualFold(status.BoundUser, e.WindowsUser) {
-		return "同步到错误用户", "bad", "Agent 上报的绑定用户与下发目标不同"
+		return "同步到錯誤用戶", "bad", "Agent 上報的綁定用戶與下發目標不同"
 	}
 	for _, e := range status.Errors {
 		if strings.HasPrefix(e, "credentials") {
-			return "同步出错", "bad", e
+			return "同步出錯", "bad", e
 		}
 	}
 	if device, err := store.Devices().ByID(ctx, deviceID); err == nil && device.Channel == repo.ChannelAPI {
 		etag, err := store.CredentialBundles().LiveETag(ctx, employeeID)
 		if err != nil {
-			return "读不到目标配置", "bad", err.Error()
+			return "讀不到目標配置", "bad", err.Error()
 		}
 		if !status.CredsApplied || status.CredsETag != etag {
-			return "未收到新配置", "bad", "Agent 已同步，但尚未确认新模型清单；可重试下发"
+			return "未收到新配置", "bad", "Agent 已同步，但尚未確認新模型清單；可重試下發"
 		}
 	}
 	if !status.CredsApplied {
-		return "未确认落盘", "bad", "Agent 未确认模型配置已写入用户目录"
+		return "未確認落盤", "bad", "Agent 未確認模型配置已寫入用戶目錄"
 	}
-	return "已收到", "ok", "同步于 " + report.LastSyncAt.Local().Format("01-02 15:04") + "；员工重启 Codex 后生效"
+	return "已收到", "ok", "同步於 " + report.LastSyncAt.Local().Format("01-02 15:04") + "；員工重啟 Codex 後生效"
 }
 
 // diffNames is what was added to and removed from a sorted list of names.
@@ -293,13 +293,13 @@ func (s *Server) actionModelsDeliver(sess *session, r *http.Request) (string, er
 	defer cancel()
 	models, err := gw.Models(ctx)
 	if err != nil {
-		return "", fmt.Errorf("读不到网关模型清单，没有下发：%w", err)
+		return "", fmt.Errorf("讀不到網關模型清單，沒有下發：%w", err)
 	}
 	if models, err = s.deliverableModels(r.Context(), models); err != nil {
 		return "", err
 	}
 	if len(models) == 0 {
-		return "", errors.New("网关没有可下发的模型（没有可展示的模型，或渠道全部暂停），没有下发")
+		return "", errors.New("網關沒有可下發的模型（沒有可展示的模型，或渠道全部暫停），沒有下發")
 	}
 	var n int
 	switch formValue(r, "scope") {
@@ -308,19 +308,19 @@ func (s *Server) actionModelsDeliver(sess *session, r *http.Request) (string, er
 	case "test":
 		employeeID := formValue(r, "employee")
 		if employeeID == "" {
-			return "", errors.New("先选一个测试员工")
+			return "", errors.New("先選一個測試員工")
 		}
 		n, err = s.dbm.ops.DeliverCatalog(r.Context(), ops.SnapshotOf(models), employeeID, formInt(r, "version"), sess.actor, s.clientKey(r))
 	case "batch":
 		n, err = s.dbm.ops.DeliverCatalogBatch(r.Context(), ops.SnapshotOf(models), r.PostForm["employees"], r.PostForm["devices"], formInt(r, "version"), sess.actor, s.clientKey(r))
 	default:
-		return "", errors.New("选择下发范围")
+		return "", errors.New("選擇下發範圍")
 	}
 	if err != nil {
 		return "", err
 	}
 	logAudit(s.clientKey(r), "delivered the model configuration to %d employee(s)", n)
-	return fmt.Sprintf("已给 %d 位员工重新生成模型配置；下面的表显示每台机器是否已收到，收到后通知员工重启 Codex", n), nil
+	return fmt.Sprintf("已給 %d 位員工重新生成模型配置；下面的表顯示每台機器是否已收到，收到後通知員工重啟 Codex", n), nil
 }
 
 func (s *Server) actionModelsRetry(sess *session, r *http.Request) (string, error) {
@@ -332,7 +332,7 @@ func (s *Server) actionModelsRetry(sess *session, r *http.Request) (string, erro
 	defer cancel()
 	models, err := gw.Models(ctx)
 	if err != nil {
-		return "", fmt.Errorf("读不到网关模型清单，没有重试：%w", err)
+		return "", fmt.Errorf("讀不到網關模型清單，沒有重試：%w", err)
 	}
 	models, err = s.deliverableModels(r.Context(), models)
 	if err != nil {
@@ -341,5 +341,5 @@ func (s *Server) actionModelsRetry(sess *session, r *http.Request) (string, erro
 	if err := s.dbm.ops.RetryCatalogDelivery(r.Context(), ops.SnapshotOf(models), formValue(r, "employee"), formInt(r, "version"), sess.actor, s.clientKey(r)); err != nil {
 		return "", err
 	}
-	return "已重新生成所选员工的模型配置；请在下方查看各设备的同步结果", nil
+	return "已重新生成所選員工的模型配置；請在下方查看各設備的同步結果", nil
 }

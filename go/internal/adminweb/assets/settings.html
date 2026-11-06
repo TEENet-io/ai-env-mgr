@@ -1,93 +1,93 @@
-{{define "settings.html"}}{{template "head" "设置"}}
+{{define "settings.html"}}{{template "head" "設定"}}
 <body>
 <div class="app">
 {{template "nav" .}}
 <main class="sheet">
-  <header class="pagehead"><h1>设置</h1></header>
+  <header class="pagehead"><h1>設定</h1></header>
   {{template "tabs-settings" .}}
   {{template "notices" .}}
-  {{if not (may .Role "/settings/interval")}}<p class="note note-info">只读：修改这里的设置需要管理员（admin）角色。</p>{{end}}
+  {{if not (may .Role "/settings/interval")}}<p class="note note-info">只讀：修改這裡的設定需要管理員（admin）角色。</p>{{end}}
   <fieldset class="bare"{{if not (may .Role "/settings/interval")}} disabled{{end}}>
 
   {{if eq .Tab "general"}}
   {{with .Policy}}
-  <h2>同步间隔</h2>
+  <h2>同步間隔</h2>
   <form method="post" action="/settings/interval" class="form">
     <input type="hidden" name="csrf" value="{{$.CSRF}}">
-    <label>分钟<input name="minutes" type="number" min="1" value="{{.SyncIntervalMinutes}}" required></label>
+    <label>分鐘<input name="minutes" type="number" min="1" value="{{.SyncIntervalMinutes}}" required></label>
     <button type="submit">保存</button>
   </form>
-  <p class="hint">agent 每隔这么久拉一次策略并上报状态。</p>
+  <p class="hint">agent 每隔這麼久拉一次策略並上報狀態。</p>
 
-  <h2>采集开关</h2>
-  <p>当前：{{if .CollectEnabled}}<span class="tag tag-ok">采集中</span>{{else}}<span class="tag tag-warn">未开启</span>{{end}}
-    采集覆盖机器上的所有用户，各自归档。</p>
+  <h2>採集開關</h2>
+  <p>當前：{{if .CollectEnabled}}<span class="tag tag-ok">採集中</span>{{else}}<span class="tag tag-warn">未開啟</span>{{end}}
+    採集覆蓋機器上的所有用戶，各自歸檔。</p>
   <form method="post" action="/settings/collect" class="form">
     <input type="hidden" name="csrf" value="{{$.CSRF}}">
     <input type="hidden" name="enabled" value="{{if .CollectEnabled}}0{{else}}1{{end}}">
     <label>起始日期<input name="since" placeholder="YYYY-MM-DD" value="{{.CollectSince}}"></label>
-    <label>静默秒数<input name="quiet" type="number" min="0" value="{{if .CollectQuietSeconds}}{{.CollectQuietSeconds}}{{end}}"></label>
+    <label>靜默秒數<input name="quiet" type="number" min="0" value="{{if .CollectQuietSeconds}}{{.CollectQuietSeconds}}{{end}}"></label>
     <button type="submit"{{if .CollectEnabled}} class="danger"{{end}}>
-      {{if .CollectEnabled}}关闭采集{{else}}开启采集{{end}}
+      {{if .CollectEnabled}}關閉採集{{else}}開啟採集{{end}}
     </button>
   </form>
   {{end}}
 
-  <h2>开户默认值</h2>
+  <h2>開戶預設值</h2>
   <form method="post" action="/settings/quota-defaults" class="form">
     <input type="hidden" name="csrf" value="{{.CSRF}}">
-    <label>月预算（美元）<input name="budget" type="number" step="0.01" min="0.01" value="{{.QuotaDefaults.MonthlyBudgetUSD}}" required></label>
+    <label>月預算（美元）<input name="budget" type="number" step="0.01" min="0.01" value="{{.QuotaDefaults.MonthlyBudgetUSD}}" required></label>
     <button type="submit">保存</button>
   </form>
-  <p class="hint">只影响之后新开的账号；已开账号在各自详情页调整。员工只受月预算限制，请求数、token 数和并发都不限。</p>
+  <p class="hint">隻影響之後新開的帳號；已開帳號在各自詳情頁調整。員工只受月預算限制，請求數、token 數和併發都不限。</p>
   {{end}}
 
   {{if and (eq .Tab "general") .GatewayTeam}}
   {{with .GatewayTeam}}
-  <h2>组织（LiteLLM team）</h2>
-  <p>当前：{{if .TeamID}}<code>{{.TeamID}}</code>{{else}}<span class="tag tag-warn">未设置</span>（网关只有我们一个客户）{{end}}</p>
+  <h2>組織（LiteLLM team）</h2>
+  <p>當前：{{if .TeamID}}<code>{{.TeamID}}</code>{{else}}<span class="tag tag-warn">未設定</span>（網關只有我們一個客戶）{{end}}</p>
   {{if .FromToken}}
-  <p class="hint">由网关凭证决定：本后台通过 tenant-admin 管理网关，只能操作这个组织。要换组织，需要网关运维签发新凭证。</p>
+  <p class="hint">由網關憑證決定：本後台通過 tenant-admin 管理網關，只能操作這個組織。要換組織，需要網關運維簽發新憑證。</p>
   {{else}}
   <form method="post" action="/settings/gateway-team" class="form">
     <input type="hidden" name="csrf" value="{{$.CSRF}}">
     <input type="hidden" name="version" value="{{.Version}}">
     <input type="hidden" name="preview" value="1">
-    <label>团队 ID<input name="team_id" value="{{.TeamID}}" pattern="[a-z0-9_]{2,32}" placeholder="teenet" required></label>
-    <button type="submit">预览影响</button>
+    <label>團隊 ID<input name="team_id" value="{{.TeamID}}" pattern="[a-z0-9_]{2,32}" placeholder="teenet" required></label>
+    <button type="submit">預覽影響</button>
   </form>
-  <form method="post" action="/settings/gateway-team" class="form" data-confirm="保存后会给所有不在这个团队里的员工重新签发令牌，旧令牌立即失效。确定吗？">
+  <form method="post" action="/settings/gateway-team" class="form" data-confirm="保存後會給所有不在這個團隊裡的員工重新簽發令牌，舊令牌立即失效。確定嗎？">
     <input type="hidden" name="csrf" value="{{$.CSRF}}">
     <input type="hidden" name="version" value="{{.Version}}">
-    <label>团队 ID<input name="team_id" value="{{.TeamID}}" pattern="[a-z0-9_]{2,32}" placeholder="teenet" required></label>
-    <button type="submit" class="danger">保存并迁移</button>
+    <label>團隊 ID<input name="team_id" value="{{.TeamID}}" pattern="[a-z0-9_]{2,32}" placeholder="teenet" required></label>
+    <button type="submit" class="danger">保存並遷移</button>
   </form>
-  <p class="hint">多个客户共用一个 LiteLLM 网关时，用 team 区分：之后开户、开密钥、查用户和日志都只在这个团队里进行。保存时会把现有员工迁到带团队前缀的新网关用户（<code>团队-emp-用户名</code>）并重新签发令牌，机器下次同步时自动换上；旧网关用户保留，用于查历史花费，但本月已用预算不会带过去。迁移中断时再点一次保存可以继续。设置后不能清空。</p>
+  <p class="hint">多個客戶共用一個 LiteLLM 網關時，用 team 區分：之後開戶、開密鑰、查用戶和日誌都只在這個團隊裡進行。保存時會把現有員工遷到帶團隊前綴的新網關用戶（<code>團隊-emp-用戶名</code>）並重新簽發令牌，機器下次同步時自動換上；舊網關用戶保留，用於查歷史花費，但本月已用預算不會帶過去。遷移中斷時再點一次保存可以繼續。設定後不能清空。</p>
   {{end}}
   {{end}}
   {{end}}
 
   {{if and (eq .Tab "general") .TicketTools}}
   {{with .TicketTools}}
-  <h2>工单工具清单</h2>
+  <h2>工單工具清單</h2>
   <form method="post" action="/settings/ticket-tools" class="form">
     <input type="hidden" name="csrf" value="{{$.CSRF}}">
     <input type="hidden" name="version" value="{{.Version}}">
-    <label class="wide">工具名称（每行一个，用客户熟悉的叫法）<textarea name="names" rows="4" placeholder="新闻监控&#10;销售报表助手">{{.Text}}</textarea></label>
+    <label class="wide">工具名稱（每行一個，用客戶熟悉的叫法）<textarea name="names" rows="4" placeholder="新聞監控&#10;銷售報表助手">{{.Text}}</textarea></label>
     <button type="submit">保存</button>
   </form>
-  <p class="hint">“工具使用遇到问题”工单从这里选工具，表单总会多一个“不确定”。目前全公司共用一份清单，不区分每个人能用哪些工具。</p>
+  <p class="hint">“工具使用遇到問題”工單從這裡選工具，表單總會多一個“不確定”。目前全公司共用一份清單，不區分每個人能用哪些工具。</p>
   {{end}}
   {{end}}
 
   {{if and (eq .Tab "general") .DB .DataRetention}}
-  <h2>采集数据自动保留</h2>
+  <h2>採集資料自動保留</h2>
   <form method="post" action="/settings/data-retention" class="form panel">
     <input type="hidden" name="csrf" value="{{$.CSRF}}"><input type="hidden" name="version" value="{{.DataRetention.Version}}">
-    <label>自动清理<select name="enabled"><option value="0"{{if not .DataRetention.Enabled}} selected{{end}}>关闭（推荐先确认）</option><option value="1"{{if .DataRetention.Enabled}} selected{{end}}>开启</option></select></label>
-    <label>保留天数<input name="days" type="number" min="1" max="3650" value="{{.DataRetention.Days}}" required></label><button type="submit" data-confirm="开启后，系统每天会删除超过保留期的采集文件，且无法恢复。确认保存吗？">保存自动清理策略</button>
+    <label>自動清理<select name="enabled"><option value="0"{{if not .DataRetention.Enabled}} selected{{end}}>關閉（推薦先確認）</option><option value="1"{{if .DataRetention.Enabled}} selected{{end}}>開啟</option></select></label>
+    <label>保留天數<input name="days" type="number" min="1" max="3650" value="{{.DataRetention.Days}}" required></label><button type="submit" data-confirm="開啟後，系統每天會刪除超過保留期的採集檔案，且無法恢復。確認保存嗎？">保存自動清理策略</button>
   </form>
-  <p class="hint">自动任务只删除 <span class="mono">data_collect/</span>，不影响策略、状态、凭据和安装包；每次执行可在任务中心查看。</p>
+  <p class="hint">自動任務只刪除 <span class="mono">data_collect/</span>，不影響策略、狀態、憑據和安裝包；每次執行可在任務中心查看。</p>
   {{end}}
 
   {{if eq .Tab "alerting"}}
@@ -96,27 +96,27 @@
   <form method="post" action="/settings/alerts" class="form">
     <input type="hidden" name="csrf" value="{{$.CSRF}}">
     <input type="hidden" name="version" value="{{.Version}}">
-    <label>开关<select name="enabled"><option value="1"{{if .Enabled}} selected{{end}}>开启</option><option value="0"{{if not .Enabled}} selected{{end}}>关闭</option></select></label>
-    <label>机器多少小时未上报算离线<input name="offline_hours" type="number" min="1" max="720" value="{{.OfflineAfterHours}}" required></label>
-    <label>预算用到百分之几提醒<input name="budget_warn" type="number" min="1" max="99" value="{{.BudgetWarnPercent}}" required></label>
-    <label>关户多少天后提醒清理<input name="cleanup_days" type="number" min="1" max="90" value="{{.CleanupAfterDays}}" required></label>
+    <label>開關<select name="enabled"><option value="1"{{if .Enabled}} selected{{end}}>開啟</option><option value="0"{{if not .Enabled}} selected{{end}}>關閉</option></select></label>
+    <label>機器多少小時未上報算離線<input name="offline_hours" type="number" min="1" max="720" value="{{.OfflineAfterHours}}" required></label>
+    <label>預算用到百分之幾提醒<input name="budget_warn" type="number" min="1" max="99" value="{{.BudgetWarnPercent}}" required></label>
+    <label>關戶多少天後提醒清理<input name="cleanup_days" type="number" min="1" max="90" value="{{.CleanupAfterDays}}" required></label>
     <button type="submit">保存</button>
   </form>
-  <p class="hint">"关户多少天后提醒清理"对应流程里的 7 天保留期：到期后员工名下还有机器，就提醒删除阿里云账号、释放实例，再到机器页「注销」；注销后提醒自动关闭。另外三条规则不需要阈值：发布目标失败、网关令牌与控制台记录不符、任务重试用尽。看<a href="/alerts">告警</a>页。</p>
+  <p class="hint">"關戶多少天後提醒清理"對應流程裡的 7 天保留期：到期後員工名下還有機器，就提醒刪除阿里雲帳號、釋放實例，再到機器頁「註銷」；註銷後提醒自動關閉。另外三條規則不需要閾值：發布目標失敗、網關令牌與控制台記錄不符、任務重試用盡。看<a href="/alerts">告警</a>頁。</p>
   {{end}}
 
   {{with .Rotation}}
-  <h2>令牌轮换</h2>
+  <h2>令牌輪換</h2>
   <form method="post" action="/settings/rotation" class="form">
     <input type="hidden" name="csrf" value="{{$.CSRF}}">
     <input type="hidden" name="version" value="{{.Version}}">
-    <label>开关<select name="enabled"><option value="1"{{if .Enabled}} selected{{end}}>开启</option><option value="0"{{if not .Enabled}} selected{{end}}>关闭</option></select></label>
-    <label>令牌最长使用天数<input name="max_age_days" type="number" min="7" max="730" value="{{.MaxAgeDays}}" required></label>
-    <label>每天最多轮换人数<input name="per_day" type="number" min="1" max="100" value="{{.PerDay}}" required></label>
-    <label>机器多少小时内同步过才轮换<input name="active_within_hours" type="number" min="1" max="336" value="{{.ActiveWithinHours}}" required></label>
+    <label>開關<select name="enabled"><option value="1"{{if .Enabled}} selected{{end}}>開啟</option><option value="0"{{if not .Enabled}} selected{{end}}>關閉</option></select></label>
+    <label>令牌最長使用天數<input name="max_age_days" type="number" min="7" max="730" value="{{.MaxAgeDays}}" required></label>
+    <label>每天最多輪換人數<input name="per_day" type="number" min="1" max="100" value="{{.PerDay}}" required></label>
+    <label>機器多少小時內同步過才輪換<input name="active_within_hours" type="number" min="1" max="336" value="{{.ActiveWithinHours}}" required></label>
     <button type="submit">保存</button>
   </form>
-  <p class="hint">到期的令牌每天 UTC 1:00 自动重发一次，和详情页的"重发"一样：旧令牌吊销、新令牌下发到机器，员工无感。机器最近没同步的跳过，等它回来再说；员工列表的"令牌"列标出待轮换的人。</p>
+  <p class="hint">到期的令牌每天 UTC 1:00 自動重發一次，和詳情頁的"重發"一樣：舊令牌吊銷、新令牌下發到機器，員工無感。機器最近沒同步的跳過，等它回來再說；員工列表的"令牌"列標出待輪換的人。</p>
   {{end}}
   {{end}}
 
@@ -126,47 +126,47 @@
   <form method="post" action="/settings/alert-channels" class="form">
     <input type="hidden" name="csrf" value="{{$.CSRF}}">
     <input type="hidden" name="version" value="{{.Version}}">
-    <label>Webhook<select name="webhook_enabled"><option value="1"{{if .Webhook.Enabled}} selected{{end}}>启用</option><option value="0"{{if not .Webhook.Enabled}} selected{{end}}>停用</option></select></label>
+    <label>Webhook<select name="webhook_enabled"><option value="1"{{if .Webhook.Enabled}} selected{{end}}>啟用</option><option value="0"{{if not .Webhook.Enabled}} selected{{end}}>停用</option></select></label>
     <label>地址<input name="webhook_url" value="{{.Webhook.URL}}" placeholder="https://oapi.dingtalk.com/robot/send?access_token=…"></label>
-    <label>格式<select name="webhook_format"><option value="generic"{{if eq .Webhook.Format "generic"}} selected{{end}}>通用 JSON</option><option value="dingtalk"{{if eq .Webhook.Format "dingtalk"}} selected{{end}}>钉钉机器人</option><option value="feishu"{{if eq .Webhook.Format "feishu"}} selected{{end}}>飞书机器人</option></select></label>
-    <label>签名密钥<input name="webhook_secret" type="password" autocomplete="new-password" placeholder="{{if .SecretSet}}已设置，留空不改{{else}}未设置{{end}}"></label>
-    {{if .SecretSet}}<label>清除签名密钥<select name="webhook_secret_clear"><option value="0">否</option><option value="1">是</option></select></label>{{end}}
-    <label>邮件<select name="smtp_enabled"><option value="1"{{if .SMTP.Enabled}} selected{{end}}>启用</option><option value="0"{{if not .SMTP.Enabled}} selected{{end}}>停用</option></select></label>
-    <label>SMTP 服务器<input name="smtp_host" value="{{.SMTP.Host}}" placeholder="smtp.example.com"></label>
+    <label>格式<select name="webhook_format"><option value="generic"{{if eq .Webhook.Format "generic"}} selected{{end}}>通用 JSON</option><option value="dingtalk"{{if eq .Webhook.Format "dingtalk"}} selected{{end}}>釘釘機器人</option><option value="feishu"{{if eq .Webhook.Format "feishu"}} selected{{end}}>飛書機器人</option></select></label>
+    <label>簽名密鑰<input name="webhook_secret" type="password" autocomplete="new-password" placeholder="{{if .SecretSet}}已設定，留空不改{{else}}未設定{{end}}"></label>
+    {{if .SecretSet}}<label>清除簽名密鑰<select name="webhook_secret_clear"><option value="0">否</option><option value="1">是</option></select></label>{{end}}
+    <label>郵件<select name="smtp_enabled"><option value="1"{{if .SMTP.Enabled}} selected{{end}}>啟用</option><option value="0"{{if not .SMTP.Enabled}} selected{{end}}>停用</option></select></label>
+    <label>SMTP 伺服器<input name="smtp_host" value="{{.SMTP.Host}}" placeholder="smtp.example.com"></label>
     <label>端口<input name="smtp_port" type="number" min="1" max="65535" value="{{.SMTP.Port}}"></label>
-    <label>用户名<input name="smtp_username" value="{{.SMTP.Username}}"></label>
-    <label>密码<input name="smtp_password" type="password" autocomplete="new-password" placeholder="{{if .PasswordSet}}已设置，留空不改{{else}}未设置{{end}}"></label>
-    {{if .PasswordSet}}<label>清除密码<select name="smtp_password_clear"><option value="0">否</option><option value="1">是</option></select></label>{{end}}
-    <label>发件人<input name="smtp_from" value="{{.SMTP.From}}" placeholder="console@example.com"></label>
-    <label>收件人<input name="smtp_to" value="{{.ToText}}" placeholder="逗号分隔"></label>
+    <label>用戶名<input name="smtp_username" value="{{.SMTP.Username}}"></label>
+    <label>密碼<input name="smtp_password" type="password" autocomplete="new-password" placeholder="{{if .PasswordSet}}已設定，留空不改{{else}}未設定{{end}}"></label>
+    {{if .PasswordSet}}<label>清除密碼<select name="smtp_password_clear"><option value="0">否</option><option value="1">是</option></select></label>{{end}}
+    <label>發件人<input name="smtp_from" value="{{.SMTP.From}}" placeholder="console@example.com"></label>
+    <label>收件人<input name="smtp_to" value="{{.ToText}}" placeholder="逗號分隔"></label>
     <button type="submit">保存</button>
   </form>
   <p class="hint">
-    密钥和密码用主密钥加密后入库，页面不回显。465 端口按 TLS 直连，其他端口用 STARTTLS；没有 TLS 的服务器不发密码。
-    <form method="post" action="/alerts/test" class="inline"><input type="hidden" name="csrf" value="{{$.CSRF}}"><input type="hidden" name="channel" value="webhook"><button class="link">发送 webhook 测试</button></form>
-    · <form method="post" action="/alerts/test" class="inline"><input type="hidden" name="csrf" value="{{$.CSRF}}"><input type="hidden" name="channel" value="smtp"><button class="link">发送邮件测试</button></form>
+    密鑰和密碼用主密鑰加密後入庫，頁面不回顯。465 端口按 TLS 直連，其他端口用 STARTTLS；沒有 TLS 的伺服器不發密碼。
+    <form method="post" action="/alerts/test" class="inline"><input type="hidden" name="csrf" value="{{$.CSRF}}"><input type="hidden" name="channel" value="webhook"><button class="link">發送 webhook 測試</button></form>
+    · <form method="post" action="/alerts/test" class="inline"><input type="hidden" name="csrf" value="{{$.CSRF}}"><input type="hidden" name="channel" value="smtp"><button class="link">發送郵件測試</button></form>
   </p>
   {{end}}
   {{end}}
 
   {{if eq .Tab "devices"}}
   {{with .DeviceChannel}}
-  <h2>设备通道</h2>
+  <h2>設備通道</h2>
   <form method="post" action="/settings/device-channel" class="form">
     <input type="hidden" name="csrf" value="{{$.CSRF}}">
     <input type="hidden" name="version" value="{{.Version}}">
-    <label class="wide">允许注册的 IP 段（每行一个，空为不限）<textarea name="enrol_cidrs" rows="3" placeholder="47.84.0.0/16">{{.CIDRsText}}</textarea></label>
+    <label class="wide">允許註冊的 IP 段（每行一個，空為不限）<textarea name="enrol_cidrs" rows="3" placeholder="47.84.0.0/16">{{.CIDRsText}}</textarea></label>
     <button type="submit">保存</button>
   </form>
-  <p class="hint">机器上的 agent 从 1.3.0 起直连控制台：启动时用主机名换一个设备令牌，之后策略、绑定、凭据都从这里拿，状态也报到这里。OSS 只存安装包、采集归档和备份，不再存策略、绑定和凭据。</p>
+  <p class="hint">機器上的 agent 從 1.3.0 起直連控制台：啟動時用主機名換一個設備令牌，之後策略、綁定、憑據都從這裡拿，狀態也報到這裡。OSS 只存安裝包、採集歸檔和備份，不再存策略、綁定和憑據。</p>
   {{end}}
   {{end}}
 
   {{if and (eq .Tab "general") .Stats}}
-  <h2>已采集</h2>
+  <h2>已採集</h2>
   <div class="panel scroll">
   <table>
-    <thead><tr><th>员工</th><th>CODEX</th><th>合计</th></tr></thead>
+    <thead><tr><th>員工</th><th>CODEX</th><th>合計</th></tr></thead>
     <tbody>
     {{range .Stats}}
       <tr><td class="id">{{.User}}</td><td class="num">{{.Codex}}</td><td class="num">{{.Total}}</td></tr>
@@ -174,13 +174,13 @@
     </tbody>
   </table>
   </div>
-  <form method="post" action="/settings/collect-cleanup" class="form panel" data-confirm="这会永久删除超过保留期的采集文件，且无法恢复。确认继续吗？">
+  <form method="post" action="/settings/collect-cleanup" class="form panel" data-confirm="這會永久刪除超過保留期的採集檔案，且無法恢復。確認繼續嗎？">
     <input type="hidden" name="csrf" value="{{$.CSRF}}">
-    <h3>清理过期采集数据</h3>
-    <p class="hint">只匹配 <span class="mono">data_collect/</span>，不会删除策略、状态、凭据或安装包。执行记录会出现在任务中心。</p>
+    <h3>清理過期採集資料</h3>
+    <p class="hint">只匹配 <span class="mono">data_collect/</span>，不會刪除策略、狀態、憑據或安裝包。執行記錄會出現在任務中心。</p>
     <label>保留最近多少天<input name="days" type="number" min="1" max="3650" value="30" required></label>
-    <label>确认输入<input name="confirm" placeholder="DELETE 30" required></label>
-    <button class="danger">删除过期采集文件</button>
+    <label>確認輸入<input name="confirm" placeholder="DELETE 30" required></label>
+    <button class="danger">刪除過期採集檔案</button>
   </form>
   {{end}}
   </fieldset>

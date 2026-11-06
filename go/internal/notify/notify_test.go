@@ -27,7 +27,7 @@ func TestWebhookFormats(t *testing.T) {
 	}))
 	defer srv.Close()
 	at := time.Date(2026, 9, 21, 8, 0, 0, 0, time.UTC)
-	m := Message{Title: "机器 PC-1 已 30 小时未上报", Severity: "warn", Subject: "PC-1", Detail: "最后上报 09-20", URL: "https://c/alerts", At: at}
+	m := Message{Title: "機器 PC-1 已 30 小時未上報", Severity: "warn", Subject: "PC-1", Detail: "最後上報 09-20", URL: "https://c/alerts", At: at}
 
 	if err := (Webhook{URL: srv.URL + "/hook", Format: FormatGeneric, Client: srv.Client()}).Send(context.Background(), m); err != nil {
 		t.Fatal(err)
@@ -134,7 +134,7 @@ func TestSMTPSendsOneMailPerMessage(t *testing.T) {
 		port = port*10 + int(c-'0')
 	}
 	s := SMTP{Host: host, Port: port, From: "console@example.com", To: []string{"ops@example.com", "boss@example.com"}}
-	m := Message{Title: "work1 本月已用预算 85%", Severity: "warn", Subject: "work1", Detail: "已用 $85.00 / $100.00"}
+	m := Message{Title: "work1 本月已用預算 85%", Severity: "warn", Subject: "work1", Detail: "已用 $85.00 / $100.00"}
 	if err := s.Send(context.Background(), m); err != nil {
 		t.Fatal(err)
 	}

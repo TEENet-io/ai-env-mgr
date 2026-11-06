@@ -13,7 +13,7 @@ func TestJobReportsProgress(t *testing.T) {
 	step := make(chan struct{})
 	done := make(chan struct{})
 	if err := r.start("codex", "26.810.52044-b1", func(setStep func(string), setProgress func(done, total int64)) error {
-		setStep("下载安装包")
+		setStep("下載安裝包")
 		setProgress(350<<20, 700<<20)
 		step <- struct{}{}
 		<-done
@@ -47,11 +47,11 @@ func TestJobProgressResetsBetweenSteps(t *testing.T) {
 	uploading := make(chan struct{})
 	release := make(chan struct{})
 	if err := r.start("codex", "1.0.0", func(setStep func(string), setProgress func(done, total int64)) error {
-		setStep("下载安装包")
+		setStep("下載安裝包")
 		setProgress(700<<20, 700<<20)
 		downloaded <- struct{}{}
 		<-checked
-		setStep("上传到 OSS")
+		setStep("上傳到 OSS")
 		uploading <- struct{}{}
 		<-release
 		return nil
@@ -95,7 +95,7 @@ func TestPublishPageDrawsProgressWithoutInlineStyle(t *testing.T) {
 	s := newTestServer(t, newFakeStore())
 	data := pageData{CSRF: "t", Nav: "rollout", Job: &job{
 		Kind: "codex", Version: "26.810.52044-b1", State: jobRunning,
-		Step: "下载安装包", Started: time.Now(), Done: 350 << 20, Total: 700 << 20,
+		Step: "下載安裝包", Started: time.Now(), Done: 350 << 20, Total: 700 << 20,
 	}}
 	var sb strings.Builder
 	if err := s.tpl.ExecuteTemplate(&sb, "rollout.html", data); err != nil {

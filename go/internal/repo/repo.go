@@ -841,10 +841,8 @@ type Credentials interface {
 // Admin roles, least to most. Phase 1 uses admin for everybody; the others
 // exist so that narrowing later is a change of one column, not a migration.
 const (
-	RoleViewer   = "viewer"
-	RoleOperator = "operator"
-	RoleSecurity = "security"
-	RoleAdmin    = "admin"
+	RoleViewer = "viewer"
+	RoleAdmin  = "admin"
 )
 
 // Admin is somebody who can sign in to the console.

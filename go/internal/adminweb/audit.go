@@ -247,7 +247,7 @@ func (s *Server) handleAuditCSV(w http.ResponseWriter, r *http.Request, _ *sessi
 	f = s.auditFilterForActor(r, f)
 	events, _, err := s.dbm.store.Audit().Search(r.Context(), f)
 	if err != nil {
-		http.Error(w, "导出失败："+err.Error(), http.StatusInternalServerError)
+		http.Error(w, "導出失敗："+err.Error(), http.StatusInternalServerError)
 		return
 	}
 	w.Header().Set("Content-Type", "text/csv; charset=utf-8")
@@ -265,7 +265,7 @@ func (s *Server) handleAuditCSV(w http.ResponseWriter, r *http.Request, _ *sessi
 			if err != nil {
 				// The status line is long gone; the file itself has to say
 				// it is not the whole story.
-				cw.Write([]string{"# 导出中断：" + err.Error() + "，以上不是完整结果"})
+				cw.Write([]string{"# 導出中斷：" + err.Error() + "，以上不是完整結果"})
 				break
 			}
 		}

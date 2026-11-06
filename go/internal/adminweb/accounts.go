@@ -76,10 +76,10 @@ type accountFlag struct {
 }
 
 var (
-	flagNoToken       = accountFlag{Label: "在职无令牌", Severity: "warn", Fix: "onboard"}
-	flagNoUser        = accountFlag{Label: "有令牌无网关用户", Severity: "warn", Fix: "onboard"}
-	flagDepartedToken = accountFlag{Label: "已离职仍有令牌", Severity: "bad", Fix: "offboard"}
-	flagDepartedBound = accountFlag{Label: "已离职仍有机器绑定", Severity: "bad", Fix: "offboard"}
+	flagNoToken       = accountFlag{Label: "在職無令牌", Severity: "warn", Fix: "onboard"}
+	flagNoUser        = accountFlag{Label: "有令牌無網關用戶", Severity: "warn", Fix: "onboard"}
+	flagDepartedToken = accountFlag{Label: "已離職仍有令牌", Severity: "bad", Fix: "offboard"}
+	flagDepartedBound = accountFlag{Label: "已離職仍有機器綁定", Severity: "bad", Fix: "offboard"}
 )
 
 // reconcileAccounts pairs the roster against gateway users, gateway tokens
@@ -223,7 +223,7 @@ func (s *Server) handleUsers(w http.ResponseWriter, r *http.Request, sess *sessi
 		data.QuotaDefaults = q
 	} else {
 		data.QuotaDefaults = admincore.DefaultQuota
-		data.Error = "读取开户默认额度失败，开户表单显示的是内置默认值：" + err.Error()
+		data.Error = "讀取開戶預設額度失敗，開戶表單顯示的是內置預設值：" + err.Error()
 		log.Printf("adminweb: LoadQuotaDefaults: %v", err)
 	}
 
@@ -239,7 +239,7 @@ func (s *Server) handleUsers(w http.ResponseWriter, r *http.Request, sess *sessi
 		// Each failure is reported once and the page still renders the
 		// roster: knowing the gateway is down is the point, not a blocker.
 		if data.GatewayModels, err = gw.Models(ctx); err != nil {
-			data.GatewayUnusable = "无法读取网关模型清单：" + err.Error()
+			data.GatewayUnusable = "無法讀取網關模型清單：" + err.Error()
 		}
 		// The gateway catalog is the source of truth, but a paused supplier is
 		// an administrative decision layered on top of it.  The account picker
@@ -247,14 +247,14 @@ func (s *Server) handleUsers(w http.ResponseWriter, r *http.Request, sess *sessi
 		// catalog (the 渠道 page intentionally keeps the raw list visible).
 		if data.GatewayUnusable == "" && s.dbm != nil {
 			if data.GatewayModels, err = s.deliverableModels(r.Context(), data.GatewayModels); err != nil {
-				data.GatewayUnusable = "无法读取渠道状态：" + err.Error()
+				data.GatewayUnusable = "無法讀取渠道狀態：" + err.Error()
 			}
 		}
 		if keys, err = gw.ListKeys(ctx); err != nil && data.GatewayUnusable == "" {
-			data.GatewayUnusable = "无法读取网关令牌清单：" + err.Error()
+			data.GatewayUnusable = "無法讀取網關令牌清單：" + err.Error()
 		}
 		if gwUsers, err = gw.ListUsers(ctx); err != nil && data.GatewayUnusable == "" {
-			data.GatewayUnusable = "无法读取网关用户清单：" + err.Error()
+			data.GatewayUnusable = "無法讀取網關用戶清單：" + err.Error()
 		}
 		if data.GatewayUnusable != "" {
 			log.Printf("adminweb: accounts: %s", data.GatewayUnusable)
@@ -340,20 +340,20 @@ func (s *Server) handleUserDetail(w http.ResponseWriter, r *http.Request, sess *
 		ctx, cancel := context.WithTimeout(r.Context(), gatewayTimeout)
 		defer cancel()
 		if data.GatewayModels, err = gw.Models(ctx); err != nil {
-			data.GatewayUnusable = "无法读取网关模型清单：" + err.Error()
+			data.GatewayUnusable = "無法讀取網關模型清單：" + err.Error()
 		}
 		if data.GatewayUnusable == "" && s.dbm != nil {
 			if data.GatewayModels, err = s.deliverableModels(r.Context(), data.GatewayModels); err != nil {
-				data.GatewayUnusable = "无法读取渠道状态：" + err.Error()
+				data.GatewayUnusable = "無法讀取渠道狀態：" + err.Error()
 			}
 		}
 		if k, found, err := gw.FindKeyByAlias(ctx, admincore.KeyAlias(user)); err != nil {
-			data.GatewayUnusable = "无法读取网关令牌：" + err.Error()
+			data.GatewayUnusable = "無法讀取網關令牌：" + err.Error()
 		} else if found {
 			keys = []litellm.Key{k}
 		}
 		if u, found, err := gw.UserInfo(ctx, s.gatewayUserID(user)); err != nil {
-			data.GatewayUnusable = "无法读取网关用户：" + err.Error()
+			data.GatewayUnusable = "無法讀取網關用戶：" + err.Error()
 		} else if found {
 			gwUsers = []litellm.User{u}
 		}
@@ -384,15 +384,15 @@ func (s *Server) handleUserDetail(w http.ResponseWriter, r *http.Request, sess *
 func parseQuotaForm(form url.Values) (litellm.Quota, error) {
 	budget := strings.TrimSpace(form.Get("budget"))
 	if budget == "" {
-		return litellm.Quota{}, fmt.Errorf("月预算不能为空")
+		return litellm.Quota{}, fmt.Errorf("月預算不能為空")
 	}
 	usd, err := strconv.ParseFloat(budget, 64)
 	if err != nil {
-		return litellm.Quota{}, fmt.Errorf("月预算需要是一个数字")
+		return litellm.Quota{}, fmt.Errorf("月預算需要是一個數字")
 	}
 	q := litellm.BudgetOnly(usd)
 	if err := q.Validate(); err != nil {
-		return q, fmt.Errorf("月预算必须大于 0")
+		return q, fmt.Errorf("月預算必須大於 0")
 	}
 	return q, nil
 }
@@ -620,12 +620,12 @@ func parseEmail(raw string, required bool) (string, error) {
 	email := strings.TrimSpace(raw)
 	if email == "" {
 		if required {
-			return "", fmt.Errorf("邮箱不能为空（员工用它接收云电脑的登录验证码）")
+			return "", fmt.Errorf("郵箱不能為空（員工用它接收雲電腦的登入驗證碼）")
 		}
 		return "", nil
 	}
 	if !emailPattern.MatchString(email) || len(email) > 254 {
-		return "", fmt.Errorf("邮箱格式不对：%s", email)
+		return "", fmt.Errorf("郵箱格式不對：%s", email)
 	}
 	return email, nil
 }

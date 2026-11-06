@@ -1,12 +1,12 @@
-{{define "overview.html"}}{{template "head" "总览"}}
+{{define "overview.html"}}{{template "head" "總覽"}}
 {{template "refresh-while-running" .}}
 <body>
 <div class="app">
 {{template "nav" .}}
 <main class="sheet">
   <header class="pagehead">
-    <h1>总览</h1>
-    <p>机队、策略、网关一眼看全。</p>
+    <h1>總覽</h1>
+    <p>機隊、策略、網關一眼看全。</p>
   </header>
   {{template "notices" .}}
   {{template "fleet" .}}
@@ -24,95 +24,95 @@
   </section>
   {{end}}
 
-  <h2>当前策略</h2>
+  <h2>當前策略</h2>
   {{if .PolicyError}}<p class="note note-err">{{.PolicyError}}</p>{{end}}
   {{with .Policy}}
   <section class="panel summary-row">
     <p>
-      <a href="/settings">同步间隔</a> <b class="mono">{{.SyncIntervalMinutes}}</b> 分钟
-      · <a href="/sites">网站拦截</a>
-        {{if .BlockEnabled}}<span class="tag tag-ok">开启</span>{{else}}<span class="tag tag-warn">关闭</span>{{end}}
-        <span class="muted">{{len .BlockedDomains}} 个域名</span>
-      · <a href="/settings">会话采集</a>
-        {{if .CollectEnabled}}<span class="tag tag-ok">开启</span>{{else}}<span class="muted">关闭</span>{{end}}
-      · <a href="/rollout">Agent 目标</a>
-        {{if .AgentUpdateVersion}}<span class="mono">{{.AgentUpdateVersion}}</span>{{else}}<span class="muted">未设置</span>{{end}}
-      · <a href="/rollout">Codex 目标</a>
-        {{if .CodexVersion}}<span class="mono">{{.CodexVersion}}</span>{{else}}<span class="muted">未设置</span>{{end}}
-      · <span class="muted">更新于</span> <span class="mono">{{stamp .UpdatedAt}}</span>
+      <a href="/settings">同步間隔</a> <b class="mono">{{.SyncIntervalMinutes}}</b> 分鐘
+      · <a href="/sites">網站攔截</a>
+        {{if .BlockEnabled}}<span class="tag tag-ok">開啟</span>{{else}}<span class="tag tag-warn">關閉</span>{{end}}
+        <span class="muted">{{len .BlockedDomains}} 個域名</span>
+      · <a href="/settings">會話採集</a>
+        {{if .CollectEnabled}}<span class="tag tag-ok">開啟</span>{{else}}<span class="muted">關閉</span>{{end}}
+      · <a href="/rollout">Agent 目標</a>
+        {{if .AgentUpdateVersion}}<span class="mono">{{.AgentUpdateVersion}}</span>{{else}}<span class="muted">未設定</span>{{end}}
+      · <a href="/rollout">Codex 目標</a>
+        {{if .CodexVersion}}<span class="mono">{{.CodexVersion}}</span>{{else}}<span class="muted">未設定</span>{{end}}
+      · <span class="muted">更新於</span> <span class="mono">{{stamp .UpdatedAt}}</span>
     </p>
-    <p class="hint">每台机器同步时读到的就是这一份。</p>
+    <p class="hint">每台機器同步時讀到的就是這一份。</p>
   </section>
   {{end}}
 
-  <h2>模型网关</h2>
+  <h2>模型網關</h2>
   <section class="panel summary-row">
     {{if .GatewayURL}}
-    <p>网关地址 <code>{{.GatewayURL}}</code>
+    <p>網關地址 <code>{{.GatewayURL}}</code>
       {{with .Probe}}
       · <span class="tag tag-{{.Sev}}">{{.Label}}</span>
-        <span class="muted">最近 60 分钟：成功 <b class="mono">{{.OKs}}</b> 次 · 失败 <b class="mono">{{.Fails}}</b> 次</span>
+        <span class="muted">最近 60 分鐘：成功 <b class="mono">{{.OKs}}</b> 次 · 失敗 <b class="mono">{{.Fails}}</b> 次</span>
       {{end}}
     </p>
     {{with .Probe}}
       {{if .Detail}}<p class="hint">{{.Detail}}</p>{{end}}
-      {{if .LastFailAt}}<p class="hint">最近一次失败 {{.LastFailAt}}{{if .LastFailMsg}} · {{.LastFailMsg}}{{end}}</p>{{end}}
+      {{if .LastFailAt}}<p class="hint">最近一次失敗 {{.LastFailAt}}{{if .LastFailMsg}} · {{.LastFailMsg}}{{end}}</p>{{end}}
     {{end}}
     {{/* Why there is no bar, or why the one above under-counts. Without these
     an unreachable SLS and a quiet hour look identical. */}}
-    {{if .ProbeNotice}}<p class="hint">探测状态读不到：{{.ProbeNotice}}</p>{{end}}
-    {{if .ProbeIncomplete}}<p class="hint muted">探测数据可能不完整</p>{{end}}
+    {{if .ProbeNotice}}<p class="hint">探測狀態讀不到：{{.ProbeNotice}}</p>{{end}}
+    {{if .ProbeIncomplete}}<p class="hint muted">探測資料可能不完整</p>{{end}}
 
     {{if .DB}}
-    <p>{{if not .GatewayEnabled}}{{.GatewayUnusable}}{{else if .GatewayUnusable}}<span class="tag tag-bad">网关不可达</span>{{else}}可用模型 <b>{{len .GatewayModels}}</b> 个{{range .GatewayChannels}}{{if .Paused}} · <span class="tag tag-bad">{{.Label}} 已暂停</span>{{end}}{{end}}{{end}}
-      · <a href="/channels">查看渠道 →</a> · <a href="/models">模型下发 →</a></p>
+    <p>{{if not .GatewayEnabled}}{{.GatewayUnusable}}{{else if .GatewayUnusable}}<span class="tag tag-bad">網關不可達</span>{{else}}可用模型 <b>{{len .GatewayModels}}</b> 個{{range .GatewayChannels}}{{if .Paused}} · <span class="tag tag-bad">{{.Label}} 已暫停</span>{{end}}{{end}}{{end}}
+      · <a href="/channels">查看渠道 →</a> · <a href="/models">模型下發 →</a></p>
     {{else}}
     <details>
       {{/* Three different states, and conflating the first two sends somebody
       to debug a network that is fine: the gateway is configured but this
       console cannot authenticate to it, the gateway is enabled but did not
       answer, or all is well. */}}
-      <summary>{{if not .GatewayEnabled}}{{.GatewayUnusable}}{{else if .GatewayUnusable}}网关不可达{{else}}可用模型 {{len .GatewayModels}} 个{{end}}</summary>
+      <summary>{{if not .GatewayEnabled}}{{.GatewayUnusable}}{{else if .GatewayUnusable}}網關不可達{{else}}可用模型 {{len .GatewayModels}} 個{{end}}</summary>
       {{if and .GatewayEnabled .GatewayUnusable}}<p class="note note-err">{{.GatewayUnusable}}</p>{{end}}
       {{if .GatewayEnabled}}
       <div class="scroll">
       <table>
-        <thead><tr><th>SLUG</th><th>显示名</th><th>渠道</th><th>上下文</th><th>推理档位</th></tr></thead>
+        <thead><tr><th>SLUG</th><th>顯示名</th><th>渠道</th><th>上下文</th><th>推理檔位</th></tr></thead>
         <tbody>
         {{range .GatewayModels}}
           <tr>
             <td class="id">{{.Name}}</td>
             <td>{{.Info.DisplayName}}</td>
-            <td class="dim nowrap">{{$ch := chof .}}{{chlabel $ch}}{{if index $.PausedChannels $ch}} <span class="tag tag-bad">已暂停</span>{{end}}</td>
+            <td class="dim nowrap">{{$ch := chof .}}{{chlabel $ch}}{{if index $.PausedChannels $ch}} <span class="tag tag-bad">已暫停</span>{{end}}</td>
             <td class="dim">{{ctxsize .Info.ContextWindow}}</td>
             <td class="dim">{{if .Info.ReasoningLevels}}{{range $i, $l := .Info.ReasoningLevels}}{{if $i}} / {{end}}{{$l}}{{end}}{{else}}—{{end}}</td>
           </tr>
         {{else}}
-          <tr><td colspan="5" class="empty">网关没有报告任何可展示的模型。</td></tr>
+          <tr><td colspan="5" class="empty">網關沒有報告任何可展示的模型。</td></tr>
         {{end}}
         </tbody>
       </table>
       </div>
       <p class="hint">
-        这张表来自网关自己（<code>/model/info</code>），控制台不维护任何模型清单。
-        在网关管理界面给模型的 <code>model_info</code> 标注 <code>catalog_visible: true</code>，
-        它就会出现在这里，也会出现在员工的模型选择器里（网关的模型存在它自己的数据库里，仓库里的 <code>config.yaml</code> 不是现状）。
+        這張表來自網關自己（<code>/model/info</code>），控制台不維護任何模型清單。
+        在網關管理界面給模型的 <code>model_info</code> 標註 <code>catalog_visible: true</code>，
+        它就會出現在這裡，也會出現在員工的模型選擇器裡（網關的模型存在它自己的資料庫裡，倉庫裡的 <code>config.yaml</code> 不是現狀）。
       </p>
       {{end}}
-      <p class="hint">发放、吊销令牌与额度管理在<a href="/users">员工账号</a>页。</p>
+      <p class="hint">發放、吊銷令牌與額度管理在<a href="/users">員工帳號</a>頁。</p>
     </details>
     {{end}}
     {{else}}
-    <p class="hint">未配置网关。配置好网关地址与管理密钥后，这里会显示可用模型。</p>
+    <p class="hint">未配置網關。配置好網關地址與管理密鑰後，這裡會顯示可用模型。</p>
     {{end}}
   </section>
 
-  <h2>机器</h2>
+  <h2>機器</h2>
   {{if .MachinesError}}<p class="note note-err">{{.MachinesError}}</p>{{end}}
   <div class="panel scroll">
   <table>
     <thead>
-      <tr><th>主机名</th><th>员工</th><th>状态</th><th>最后同步</th><th>AGENT</th><th>APPLOCKER</th><th>CODEX</th>{{if $.DB}}<th>通道</th>{{end}}<th></th></tr>
+      <tr><th>主機名</th><th>員工</th><th>狀態</th><th>最後同步</th><th>AGENT</th><th>APPLOCKER</th><th>CODEX</th>{{if $.DB}}<th>通道</th>{{end}}<th></th></tr>
     </thead>
     <tbody>
     {{$target := ""}}{{if .Policy}}{{$target = .Policy.CodexVersion}}{{end}}
@@ -124,15 +124,15 @@
         <td><span class="tag tag-{{classify .}}">{{state .}}</span></td>
         <td class="dim" title="{{.Status.LastSync}}">{{age .Status.LastSync}}</td>
         {{$want := ""}}{{if $.Policy}}{{$want = $.Policy.AgentUpdateVersion}}{{end}}{{with .Binding.AgentTarget}}{{if .Version}}{{$want = .Version}}{{end}}{{end}}
-        <td class="num dim">{{.Status.AgentVersion}}{{if and $want .Status.AgentVersion (ne $want .Status.AgentVersion)}} <span class="tag tag-warn" title="应装 {{$want}}">→ {{$want}}</span>{{end}}</td>
+        <td class="num dim">{{.Status.AgentVersion}}{{if and $want .Status.AgentVersion (ne $want .Status.AgentVersion)}} <span class="tag tag-warn" title="應裝 {{$want}}">→ {{$want}}</span>{{end}}</td>
         <td>{{$al := alsev .Status.AppLockerMode}}{{if $al}}<span class="tag tag-{{$al}}">{{.Status.AppLockerMode}}</span>{{else}}<span class="muted">—</span>{{end}}</td>
-        <td class="num dim" title="目标 {{if $target}}{{$target}}{{else}}未设置{{end}}">
+        <td class="num dim" title="目標 {{if $target}}{{$target}}{{else}}未設定{{end}}">
           {{if .Status.CodexVersion}}{{.Status.CodexVersion}}{{else}}<span class="muted">—</span>{{end}}
           {{$note := codex . $target}}{{if $note}}<span class="tag tag-{{codexsev $note}}">{{$note}}</span>{{end}}
         </td>
         {{if $.DB}}<td>{{if eq .Channel "api"}}<span class="tag tag-ok">API</span>{{else}}<span class="tag tag-muted">OSS</span>{{end}}</td>{{end}}
         <td class="actions">
-          <a href="/log?machine={{.Machine}}">日志</a>
+          <a href="/log?machine={{.Machine}}">日誌</a>
           {{if $.DB}}
           <form method="post" action="/machines/sync" class="inline">
             <input type="hidden" name="csrf" value="{{$.CSRF}}">
@@ -141,15 +141,15 @@
           </form>
           {{end}}
           {{if .Bound}}
-          <form method="post" action="/machines/unbind" class="inline" data-confirm="确认解绑 {{.Machine}}？解绑后该机器将停止接收当前员工的凭据配置。">
+          <form method="post" action="/machines/unbind" class="inline" data-confirm="確認解綁 {{.Machine}}？解綁後該機器將停止接收當前員工的憑據配置。">
             <input type="hidden" name="csrf" value="{{$.CSRF}}">
             <input type="hidden" name="machine" value="{{.Machine}}">
-            <button class="link">解绑</button>
+            <button class="link">解綁</button>
           </form>
-          <form method="post" action="/machines/restart-codex" class="inline" data-confirm="确认关闭 {{.Machine}} 上正在运行的 Codex？请先确认员工已保存工作。">
+          <form method="post" action="/machines/restart-codex" class="inline" data-confirm="確認關閉 {{.Machine}} 上正在運行的 Codex？請先確認員工已保存工作。">
             <input type="hidden" name="csrf" value="{{$.CSRF}}">
             <input type="hidden" name="machine" value="{{.Machine}}">
-            <button class="link">关闭 Codex</button>
+            <button class="link">關閉 Codex</button>
           </form>
           {{/* Nothing happens when the button is pressed: the request waits
           in the binding until the agent next reads it. The row says which of
@@ -157,49 +157,49 @@
           request still in flight from one that quietly did nothing. */}}
           {{with .Binding.RestartCodex}}
           {{if eq . $m.Status.CodexRestartNonce}}
-          <div class="rowsub">已关闭 {{age $m.Status.CodexRestartAt}}{{if $m.Status.CodexRestartNote}} · {{$m.Status.CodexRestartNote}}{{end}}</div>
+          <div class="rowsub">已關閉 {{age $m.Status.CodexRestartAt}}{{if $m.Status.CodexRestartNote}} · {{$m.Status.CodexRestartNote}}{{end}}</div>
           {{else}}
           {{/* The note belongs to the nonce it was recorded against. While a
           NEW request is pending, an old "killed 1 process" would read as this
           one's outcome -- so it is shown only when the agent reported a note
           without acting at all, which is the reason it could not. */}}
-          <div class="rowsub">关闭 Codex：待执行（下个同步周期）{{if and (not $m.Status.CodexRestartNonce) $m.Status.CodexRestartNote}} · {{$m.Status.CodexRestartNote}}{{end}}</div>
+          <div class="rowsub">關閉 Codex：待執行（下個同步週期）{{if and (not $m.Status.CodexRestartNonce) $m.Status.CodexRestartNote}} · {{$m.Status.CodexRestartNote}}{{end}}</div>
           {{end}}
           {{end}}
           {{end}}
         </td>
       </tr>
     {{else}}
-      <tr><td colspan="9" class="empty">还没有机器上报。</td></tr>
+      <tr><td colspan="9" class="empty">還沒有機器上報。</td></tr>
     {{end}}
     </tbody>
   </table>
   </div>
 
-  <h2>绑定机器</h2>
+  <h2>綁定機器</h2>
   <form method="post" action="/machines/bind" class="form">
     <input type="hidden" name="csrf" value="{{.CSRF}}">
-    <label>主机名<input name="machine" required></label>
-    <label>员工
+    <label>主機名<input name="machine" required></label>
+    <label>員工
       <select name="user" required>
-        <option value="">选择…</option>
+        <option value="">選擇…</option>
         {{range .Users}}{{if .Enabled}}<option value="{{.WindowsUser}}">{{.WindowsUser}}</option>{{end}}{{end}}
       </select>
     </label>
-    <label>备注<input name="note"></label>
-    <button type="submit">绑定</button>
+    <label>備註<input name="note"></label>
+    <button type="submit">綁定</button>
   </form>
-  <p class="hint">一台机器绑定一个员工：凭证只投放到这个人的用户目录。</p>
+  <p class="hint">一台機器綁定一個員工：憑證只投放到這個人的用戶目錄。</p>
 
-  <h2>注销机器</h2>
+  <h2>註銷機器</h2>
   <div class="caution">
-    注销会删除该机器的绑定和状态记录，<strong>不可撤销</strong>。请输入主机名确认。
+    註銷會刪除該機器的綁定和狀態記錄，<strong>不可撤銷</strong>。請輸入主機名確認。
   </div>
   <form method="post" action="/machines/forget" class="form">
     <input type="hidden" name="csrf" value="{{.CSRF}}">
-    <label>主机名<input name="machine" required></label>
-    <label>再次输入确认<input name="confirm" required></label>
-    <button type="submit" class="danger">注销</button>
+    <label>主機名<input name="machine" required></label>
+    <label>再次輸入確認<input name="confirm" required></label>
+    <button type="submit" class="danger">註銷</button>
   </form>
 </main>
 </div>

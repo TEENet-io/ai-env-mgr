@@ -52,7 +52,7 @@ func providerCatalog(t *testing.T) *httptest.Server {
 			}
 			w.Header().Set("x-litellm-model-id", body.Model)
 			_ = json.NewEncoder(w).Encode(map[string]any{
-				"choices": []map[string]any{{"message": map[string]string{"content": "回复：" + body.Messages[0].Content}, "finish_reason": "stop"}},
+				"choices": []map[string]any{{"message": map[string]string{"content": "回覆：" + body.Messages[0].Content}, "finish_reason": "stop"}},
 				"usage":   map[string]int{"prompt_tokens": 12, "completion_tokens": 5},
 			})
 			return
@@ -95,7 +95,7 @@ func TestChannelTrialAcceptsBrowserFormData(t *testing.T) {
 	form := multipart.NewWriter(&body)
 	for name, value := range map[string]string{
 		"csrf": csrfFrom(t, s, admin, "/channels"), "channel": "google",
-		"model_id": "google-1", "prompt": "测试",
+		"model_id": "google-1", "prompt": "測試",
 	} {
 		if err := form.WriteField(name, value); err != nil {
 			t.Fatal(err)
@@ -120,7 +120,7 @@ func TestParseChannelTrialFormData(t *testing.T) {
 	if err := form.WriteField("csrf", "form-token"); err != nil {
 		t.Fatal(err)
 	}
-	if err := form.WriteField("prompt", "测试"); err != nil {
+	if err := form.WriteField("prompt", "測試"); err != nil {
 		t.Fatal(err)
 	}
 	if err := form.Close(); err != nil {
@@ -134,7 +134,7 @@ func TestParseChannelTrialFormData(t *testing.T) {
 	if got := req.PostFormValue("csrf"); got != "form-token" {
 		t.Fatalf("CSRF from browser FormData = %q", got)
 	}
-	if got := req.PostFormValue("prompt"); got != "测试" {
+	if got := req.PostFormValue("prompt"); got != "測試" {
 		t.Fatalf("prompt from browser FormData = %q", got)
 	}
 }
@@ -177,10 +177,10 @@ func TestAnAdministratorPausesAndResumesAChannel(t *testing.T) {
 		t.Fatalf("paused = %+v v%d", state, version)
 	}
 	page = dbGet(t, h, "/channels", admin).Body.String()
-	if !strings.Contains(page, "已暂停") || !strings.Contains(page, "Vertex 403") {
+	if !strings.Contains(page, "已暫停") || !strings.Contains(page, "Vertex 403") {
 		t.Fatal("the channel page should show Google paused and why")
 	}
-	if modelsPage := dbGet(t, h, "/models", admin).Body.String(); !strings.Contains(modelsPage, "全部下发") {
+	if modelsPage := dbGet(t, h, "/models", admin).Body.String(); !strings.Contains(modelsPage, "全部下發") {
 		t.Fatal("the models page should keep the delivery controls")
 	}
 	// The raw gateway catalog remains visible on the channel page, but account
@@ -191,12 +191,12 @@ func TestAnAdministratorPausesAndResumesAChannel(t *testing.T) {
 	}
 
 	// The overview only says so, and points to the page.
-	if ov := dbGet(t, h, "/overview", admin).Body.String(); !strings.Contains(ov, "Google Vertex 已暂停") || !strings.Contains(ov, `href="/channels"`) || strings.Contains(ov, `action="/channels/pause"`) {
+	if ov := dbGet(t, h, "/overview", admin).Body.String(); !strings.Contains(ov, "Google Vertex 已暫停") || !strings.Contains(ov, `href="/channels"`) || strings.Contains(ov, `action="/channels/pause"`) {
 		t.Error("the overview should summarise the pause and link to channels, without the controls")
 	}
 
 	// An operator sees it and cannot touch it.
-	_, pw, _ := s.dbm.auth.CreateAccount(ctx, "olga", "", "operator")
+	_, pw, _ := s.dbm.auth.CreateAccount(ctx, "olga", "", "viewer")
 	op := signInAs(t, s, "olga", pw)
 	if page := dbGet(t, h, "/channels", op).Body.String(); strings.Contains(page, `action="/channels/pause"`) || strings.Contains(page, `action="/channels/test"`) || strings.Contains(page, "google-hidden") {
 		t.Error("an operator should not see admin controls or hidden deployments")
@@ -223,13 +223,13 @@ func TestChannelTrialShowsActualOutputWithoutAuditingContent(t *testing.T) {
 	h := s.Handler()
 	admin := signedIn(t, s)
 	csrf := csrfFrom(t, s, admin, "/channels")
-	prompt := "只回一句话"
+	prompt := "只回一句話"
 	rec := dbPost(t, h, "/channels/try", url.Values{"csrf": {csrf}, "channel": {"google"}, "model_id": {"google-1"}, "prompt": {prompt}}, admin)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("trial status %d: %s", rec.Code, rec.Body.String())
 	}
 	var trial channelTrialResponse
-	if err := json.NewDecoder(rec.Body).Decode(&trial); err != nil || !trial.OK || trial.Input != prompt || trial.Output != "回复："+prompt || trial.ModelID != "google-1" || trial.PromptTokens != 12 {
+	if err := json.NewDecoder(rec.Body).Decode(&trial); err != nil || !trial.OK || trial.Input != prompt || trial.Output != "回覆："+prompt || trial.ModelID != "google-1" || trial.PromptTokens != 12 {
 		t.Fatalf("trial result = %+v, err = %v", trial, err)
 	}
 	if cc := rec.Header().Get("Cache-Control"); cc != "no-store" {
@@ -243,7 +243,7 @@ func TestChannelTrialShowsActualOutputWithoutAuditingContent(t *testing.T) {
 	if rec.Code != http.StatusBadRequest {
 		t.Fatalf("cross-channel trial status = %d", rec.Code)
 	}
-	_, pw, _ := s.dbm.auth.CreateAccount(t.Context(), "olga", "", "operator")
+	_, pw, _ := s.dbm.auth.CreateAccount(t.Context(), "olga", "", "viewer")
 	op := signInAs(t, s, "olga", pw)
 	opCSRF := csrfFrom(t, s, op, "/channels")
 	rec = dbPost(t, h, "/channels/try", url.Values{"csrf": {opCSRF}, "channel": {"google"}, "model_id": {"google-1"}, "prompt": {prompt}}, op)
@@ -276,7 +276,7 @@ func TestChannelHealthCheckTargetsDeploymentAndRequiresAdmin(t *testing.T) {
 	if err != nil || len(events) != 2 || events[0].Result != "failed" || events[1].Result != "ok" {
 		t.Fatalf("channel test audit = %+v, err = %v", events, err)
 	}
-	_, pw, _ := s.dbm.auth.CreateAccount(t.Context(), "olga", "", "operator")
+	_, pw, _ := s.dbm.auth.CreateAccount(t.Context(), "olga", "", "viewer")
 	op := signInAs(t, s, "olga", pw)
 	opCSRF := csrfFrom(t, s, op, "/channels")
 	rec = dbPost(t, h, "/channels/test", url.Values{"csrf": {opCSRF}, "channel": {"google"}, "model_id": {"google-1"}}, op)

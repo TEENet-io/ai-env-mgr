@@ -24,7 +24,7 @@ func flagLabels(r accountRow) []string {
 }
 
 func TestReconcileAccountsJoinsAllThreeSources(t *testing.T) {
-	users := []model.UserEntry{{WindowsUser: "alice", Name: "Alice", Department: "研发", Enabled: true}}
+	users := []model.UserEntry{{WindowsUser: "alice", Name: "Alice", Department: "研發", Enabled: true}}
 	keys := []litellm.Key{{KeyAlias: "emp-alice", UserID: "emp-alice", Models: []string{"glm-5.2"}}}
 	gw := []litellm.User{{UserID: "emp-alice", Spend: 4.5, MaxBudget: f64(20), BudgetResetAt: "2026-10-01T00:00:00Z", Models: []string{"glm-5.2"}}}
 	bindings := map[string]model.Binding{"PC-1": {User: "Alice"}}
@@ -50,7 +50,7 @@ func TestReconcileAccountsJoinsAllThreeSources(t *testing.T) {
 
 func TestReconcileAccountsFlagsEmployedWithoutToken(t *testing.T) {
 	rows := reconcileAccounts([]model.UserEntry{{WindowsUser: "bob", Enabled: true}}, nil, nil, nil)
-	if got := flagLabels(rows[0]); len(got) != 1 || got[0] != "在职无令牌" || rows[0].Flags[0].Fix != "onboard" {
+	if got := flagLabels(rows[0]); len(got) != 1 || got[0] != "在職無令牌" || rows[0].Flags[0].Fix != "onboard" {
 		t.Errorf("flags: %+v", rows[0].Flags)
 	}
 }
@@ -61,7 +61,7 @@ func TestReconcileAccountsFlagsDepartedWithTokenOrMachines(t *testing.T) {
 	bindings := map[string]model.Binding{"PC-9": {User: "carol"}}
 	rows := reconcileAccounts(users, keys, nil, bindings)
 	got := flagLabels(rows[0])
-	if len(got) != 2 || got[0] != "已离职仍有令牌" || got[1] != "已离职仍有机器绑定" {
+	if len(got) != 2 || got[0] != "已離職仍有令牌" || got[1] != "已離職仍有機器綁定" {
 		t.Errorf("flags: %v", got)
 	}
 	for _, f := range rows[0].Flags {
@@ -77,7 +77,7 @@ func TestReconcileAccountsFlagsTokenWithoutUser(t *testing.T) {
 	keys := []litellm.Key{{KeyAlias: "emp-weipeng", Models: []string{"glm-5.2"}}}
 	rows := reconcileAccounts(users, keys, nil, nil)
 	got := flagLabels(rows[0])
-	if len(got) != 1 || got[0] != "有令牌无网关用户" || rows[0].Flags[0].Fix != "onboard" {
+	if len(got) != 1 || got[0] != "有令牌無網關用戶" || rows[0].Flags[0].Fix != "onboard" {
 		t.Errorf("flags: %+v", rows[0].Flags)
 	}
 	if len(rows[0].Models) != 1 {
@@ -90,7 +90,7 @@ func TestReconcileAccountsSurfacesTokensWithNoRosterEntry(t *testing.T) {
 	if len(rows) != 1 || rows[0].WindowsUser != "ghost" || rows[0].Enabled {
 		t.Fatalf("stray employee token must appear as a departed row; admin keys must not: %+v", rows)
 	}
-	if got := flagLabels(rows[0]); len(got) != 1 || got[0] != "已离职仍有令牌" {
+	if got := flagLabels(rows[0]); len(got) != 1 || got[0] != "已離職仍有令牌" {
 		t.Errorf("flags: %v", got)
 	}
 	if rows[0].OnRoster {
@@ -148,7 +148,7 @@ func TestUsageHelpers(t *testing.T) {
 
 func TestAccountPagesRender(t *testing.T) {
 	s := newTestServer(t, newFakeStore())
-	row := accountRow{WindowsUser: "alice", Name: "Alice Wang", Department: "研发", Enabled: true,
+	row := accountRow{WindowsUser: "alice", Name: "Alice Wang", Department: "研發", Enabled: true,
 		CodexAccount: "alice@codex.example",
 		HasUser:      true, HasToken: true, Models: []string{"glm-5.2"}, Spend: 17, Budget: 20,
 		BudgetResetAt: "2026-10-01T00:00:00Z", Quota: litellm.Quota{MonthlyBudgetUSD: 20, RPM: 60, TPM: 200000, Parallel: 4},
@@ -165,8 +165,8 @@ func TestAccountPagesRender(t *testing.T) {
 	if err := s.tpl.ExecuteTemplate(&list, "users.html", data); err != nil {
 		t.Fatalf("users.html: %v", err)
 	}
-	for _, want := range []string{"Alice", "研发", "17.00", "20.00", "s-warn w85", "已离职仍有令牌", "/users/offboard", "/users/onboard", `href="/users/detail?user=alice"`,
-		"按小写保存，机器上的账号大小写无关"} {
+	for _, want := range []string{"Alice", "研發", "17.00", "20.00", "s-warn w85", "已離職仍有令牌", "/users/offboard", "/users/onboard", `href="/users/detail?user=alice"`,
+		"按小寫保存，機器上的帳號大小寫無關"} {
 		if !strings.Contains(list.String(), want) {
 			t.Errorf("users.html missing %q", want)
 		}
@@ -178,7 +178,7 @@ func TestAccountPagesRender(t *testing.T) {
 		t.Errorf("users.html links a row that has no roster entry to a page that 404s")
 	}
 	if n := strings.Count(list.String(), `action="/users/offboard"`); n < 3 {
-		t.Errorf("users.html must keep the 修复 button on the stray-token row (%d offboard forms)", n)
+		t.Errorf("users.html must keep the 修復 button on the stray-token row (%d offboard forms)", n)
 	}
 
 	// carol is departed with a lingering token (Fix "offboard"): her row must
@@ -194,12 +194,12 @@ func TestAccountPagesRender(t *testing.T) {
 		t.Fatalf("user.html: %v", err)
 	}
 	for _, want := range []string{
-		"/users/quota", "/users/models", "/users/reissue", "/users/offboard", "onboard", "PC-1", "请求数、token 数和并发都不限",
+		"/users/quota", "/users/models", "/users/reissue", "/users/offboard", "onboard", "PC-1", "請求數、token 數和併發都不限",
 		"alice@codex.example",
 		// 基本信息 (spec 4.2): the form and its prefilled fields.
-		"/users/profile", "基本信息", `value="Alice Wang"`, `value="研发"`,
+		"/users/profile", "基本信息", `value="Alice Wang"`, `value="研發"`,
 		`name="codexAccount" value="alice@codex.example"`,
-		"修改姓名、部门或邮箱不影响令牌与额度",
+		"修改姓名、部門或郵箱不影響令牌與額度",
 	} {
 		if !strings.Contains(detail.String(), want) {
 			t.Errorf("user.html missing %q", want)
@@ -228,8 +228,8 @@ func TestAccountPagesRender(t *testing.T) {
 	if !strings.Contains(noGateway.String(), `action="/users/offboard"`) {
 		t.Errorf("users.html with no gateway lost the offboard form")
 	}
-	if !strings.Contains(noGateway.String(), `开户并下发配置</button>`) ||
-		!strings.Contains(noGateway.String(), `<button type="submit" disabled>开户并下发配置</button>`) {
+	if !strings.Contains(noGateway.String(), `開戶並下發配置</button>`) ||
+		!strings.Contains(noGateway.String(), `<button type="submit" disabled>開戶並下發配置</button>`) {
 		t.Errorf("users.html with no gateway must disable the onboard submit button")
 	}
 }
@@ -284,7 +284,7 @@ func TestQuotaDefaultsActionPersists(t *testing.T) {
 }
 
 func TestReopenSpec(t *testing.T) {
-	e := model.UserEntry{WindowsUser: "alice", Name: "Alice", Department: "研发"}
+	e := model.UserEntry{WindowsUser: "alice", Name: "Alice", Department: "研發"}
 	defaults := litellm.Quota{MonthlyBudgetUSD: 20, RPM: 60, TPM: 200000, Parallel: 4}
 	tuned := litellm.User{MaxBudget: f64(50), RPMLimit: i(120), TPMLimit: i(400000), MaxParallel: i(8),
 		Models: []string{"glm-5"}}
@@ -295,7 +295,7 @@ func TestReopenSpec(t *testing.T) {
 	if got.Quota != tuned.Quota() || len(got.Models) != 1 || got.Models[0] != "glm-5" {
 		t.Errorf("with a user: %+v", got)
 	}
-	if got.Name != "Alice" || got.Department != "研发" {
+	if got.Name != "Alice" || got.Department != "研發" {
 		t.Errorf("labels come from the roster: %+v", got)
 	}
 

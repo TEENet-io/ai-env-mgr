@@ -86,7 +86,7 @@ func containsCredential(text string) bool { return credentialPattern.MatchString
 func ticketSiteLabel(site string) string {
 	labels := map[string]string{
 		"chatgpt": "ChatGPT", "claude": "Claude", "gemini": "Gemini", "grok": "Grok", "perplexity": "Perplexity", "copilot": "Microsoft Copilot",
-		"deepseek": "DeepSeek", "qwen": "通义千问", "kimi": "Kimi", "doubao": "豆包", "ernie": "文心一言", "glm": "智谱清言", "minimax": "MiniMax", "yuanbao": "腾讯元宝", "spark": "讯飞星火",
+		"deepseek": "DeepSeek", "qwen": "通義千問", "kimi": "Kimi", "doubao": "豆包", "ernie": "文心一言", "glm": "智譜清言", "minimax": "MiniMax", "yuanbao": "騰訊元寶", "spark": "訊飛星火",
 	}
 	if label, ok := labels[site]; ok {
 		return label
@@ -97,13 +97,13 @@ func ticketSiteLabel(site string) string {
 func ticketOperationLabel(operation string) string {
 	switch operation {
 	case "onboard":
-		return "开通 / 入职"
+		return "開通 / 入職"
 	case "offboard":
-		return "停用 / 离职"
+		return "停用 / 離職"
 	case "change":
-		return "信息或权限调整"
+		return "信息或權限調整"
 	case "other":
-		return "其他员工操作"
+		return "其他員工操作"
 	}
 	return operation
 }
@@ -130,7 +130,7 @@ func ticketRequestDetails(r *http.Request, kind string) ([]byte, error) {
 		for _, field := range []string{"steps", "expected", "actual", "environment"} {
 			value := formValue(r, field)
 			if len(value) > 2000 || containsCredential(value) {
-				return nil, errors.New("Bug 信息过长或包含疑似密钥")
+				return nil, errors.New("Bug 信息過長或包含疑似密鑰")
 			}
 			details[field] = value
 		}
@@ -141,19 +141,19 @@ func ticketRequestDetails(r *http.Request, kind string) ([]byte, error) {
 	case "employee":
 		operation := formValue(r, "employee_operation")
 		if operation != "onboard" && operation != "offboard" && operation != "change" && operation != "other" {
-			return nil, errors.New("请选择员工操作类型")
+			return nil, errors.New("請選擇員工操作類型")
 		}
 		details["employee_operation"] = operation
 		for _, field := range []string{"company_department", "contact_name", "contact_signature"} {
 			value := formValue(r, field)
 			if len(value) > 100 || containsCredential(value) {
-				return nil, errors.New("联系人或公司信息无效")
+				return nil, errors.New("聯絡人或公司信息無效")
 			}
 			details[field] = value
 		}
 		if date := formValue(r, "filled_date"); date != "" {
 			if _, err := time.Parse("2006-01-02", date); err != nil {
-				return nil, errors.New("填写日期无效")
+				return nil, errors.New("填寫日期無效")
 			}
 			details["filled_date"] = date
 		}
@@ -169,47 +169,47 @@ func ticketRequestDetails(r *http.Request, kind string) ([]byte, error) {
 			}
 			addr, err := mail.ParseAddress(email)
 			if !validTicketText(name, 100) || err != nil || addr.Address != email || len(email) > 254 || len(number) > 100 || len(note) > 500 || containsCredential(number+" "+note) {
-				return nil, errors.New("员工名单第 " + index + " 行需要有效姓名和工作邮箱，且不得包含密钥")
+				return nil, errors.New("員工名單第 " + index + " 行需要有效姓名和工作郵箱，且不得包含密鑰")
 			}
 			rows = append(rows, map[string]string{"name": name, "email": email, "number": number, "note": note})
 		}
 		if len(rows) == 0 {
-			return nil, errors.New("请至少填写一名员工")
+			return nil, errors.New("請至少填寫一名員工")
 		}
 		details["employees"] = rows
 	case "website":
 		block := formValue(r, "block_websites")
 		if block != "yes" && block != "no" {
-			return nil, errors.New("请选择是否需要网站封禁")
+			return nil, errors.New("請選擇是否需要網站封禁")
 		}
 		details["block_websites"] = block
 		if block == "yes" {
 			llm := formValue(r, "block_llm")
 			if llm != "yes" && llm != "no" {
-				return nil, errors.New("请选择是否封禁大模型网站")
+				return nil, errors.New("請選擇是否封禁大模型網站")
 			}
 			details["block_llm"] = llm
 			if llm == "yes" {
 				allowed := map[string]bool{"chatgpt": true, "claude": true, "gemini": true, "grok": true, "perplexity": true, "copilot": true, "deepseek": true, "qwen": true, "kimi": true, "doubao": true, "ernie": true, "glm": true, "minimax": true, "yuanbao": true, "spark": true}
 				selected := r.PostForm["llm_site"]
 				if len(selected) > len(allowed) {
-					return nil, errors.New("大模型网站选择无效")
+					return nil, errors.New("大模型網站選擇無效")
 				}
 				for _, site := range selected {
 					if !allowed[site] {
-						return nil, errors.New("大模型网站选择无效")
+						return nil, errors.New("大模型網站選擇無效")
 					}
 				}
 				details["llm_sites"] = selected
 				for _, field := range []string{"other_international_llm_sites", "other_domestic_llm_sites"} {
 					other := formValue(r, field)
 					if len(other) > 300 || containsCredential(other) {
-						return nil, errors.New("其他大模型网站内容无效")
+						return nil, errors.New("其他大模型網站內容無效")
 					}
 					details[field] = other
 				}
 				if len(selected) == 0 && formValue(r, "other_international_llm_sites") == "" && formValue(r, "other_domestic_llm_sites") == "" {
-					return nil, errors.New("请至少勾选或填写一个大模型网站")
+					return nil, errors.New("請至少勾選或填寫一個大模型網站")
 				}
 			}
 			rows := make([]map[string]string, 0, 10)
@@ -220,30 +220,30 @@ func ticketRequestDetails(r *http.Request, kind string) ([]byte, error) {
 					continue
 				}
 				if !validTicketText(name, 200) || len(note) > 500 || containsCredential(note) {
-					return nil, errors.New("其他网站第 " + index + " 行需要网站名称或域名")
+					return nil, errors.New("其他網站第 " + index + " 行需要網站名稱或域名")
 				}
 				rows = append(rows, map[string]string{"name": name, "note": note})
 			}
 			if llm == "no" && len(rows) == 0 {
-				return nil, errors.New("请填写至少一个需要封禁的其他网站")
+				return nil, errors.New("請填寫至少一個需要封禁的其他網站")
 			}
 			details["websites"] = rows
 			value := formValue(r, "website_scope_note")
 			if len(value) > 500 || containsCredential(value) {
-				return nil, errors.New("网站封禁补充信息无效")
+				return nil, errors.New("網站封禁補充信息無效")
 			}
 			details["website_scope_note"] = value
 		}
 		for _, field := range []string{"company_department", "contact_name", "contact_signature"} {
 			value := formValue(r, field)
 			if len(value) > 100 || containsCredential(value) {
-				return nil, errors.New("网站封禁补充信息无效")
+				return nil, errors.New("網站封禁補充信息無效")
 			}
 			details[field] = value
 		}
 		if date := formValue(r, "filled_date"); date != "" {
 			if _, err := time.Parse("2006-01-02", date); err != nil {
-				return nil, errors.New("填写日期无效")
+				return nil, errors.New("填寫日期無效")
 			}
 			details["filled_date"] = date
 		}
@@ -256,7 +256,7 @@ func ticketRequestDetails(r *http.Request, kind string) ([]byte, error) {
 			return nil, err
 		}
 	default:
-		return nil, errors.New("请选择一般事务类型")
+		return nil, errors.New("請選擇一般事務類型")
 	}
 	details["subtype"] = subtype
 	return json.Marshal(details)
@@ -285,7 +285,7 @@ func (s *Server) handleTickets(w http.ResponseWriter, r *http.Request, sess *ses
 	}
 	rows, err := s.dbm.db.Tickets().List(r.Context(), "", tp.Status, 26, (tp.Page-1)*25)
 	if err != nil {
-		page.Error = "无法读取工单"
+		page.Error = "無法讀取工單"
 	} else {
 		tp.HasNext = len(rows) > 25
 		if tp.HasNext {
@@ -298,7 +298,7 @@ func (s *Server) handleTickets(w http.ResponseWriter, r *http.Request, sess *ses
 		if err == nil {
 			tp.Contacts = contacts
 		} else {
-			page.Error = "无法读取客户联系人"
+			page.Error = "無法讀取客戶聯絡人"
 		}
 	}
 	page.Tickets = tp
@@ -317,12 +317,12 @@ func (s *Server) handleTicketDetail(w http.ResponseWriter, r *http.Request, sess
 	}
 	events, err := s.dbm.db.Tickets().Events(r.Context(), t.ID, "")
 	if err != nil {
-		http.Error(w, "无法读取工单", 500)
+		http.Error(w, "無法讀取工單", 500)
 		return
 	}
 	tasks, err := s.dbm.db.Tickets().TaskIDs(r.Context(), t.ID)
 	if err != nil {
-		http.Error(w, "无法读取任务", 500)
+		http.Error(w, "無法讀取任務", 500)
 		return
 	}
 	page := newPage(sess, r, "tickets")
@@ -330,13 +330,13 @@ func (s *Server) handleTicketDetail(w http.ResponseWriter, r *http.Request, sess
 	if t.Details["request_kind"] != nil {
 		page.Tickets.Revisions, err = s.dbm.db.Tickets().RequestRevisions(r.Context(), t.ID, "")
 		if err != nil {
-			http.Error(w, "无法读取申请历史", 500)
+			http.Error(w, "無法讀取申請歷史", 500)
 			return
 		}
 		if requestKind := t.Details["request_kind"]; requestKind == "account-delete" || requestKind == "quota" {
 			page.Tickets.Proposal, err = s.dbm.db.Tickets().LatestProposal(r.Context(), t.ID)
 			if err != nil {
-				http.Error(w, "无法读取待确认方案", 500)
+				http.Error(w, "無法讀取待確認方案", 500)
 				return
 			}
 		}
@@ -344,12 +344,12 @@ func (s *Server) handleTicketDetail(w http.ResponseWriter, r *http.Request, sess
 	if t.Type == "general" && t.Details["subtype"] == "environment" {
 		workflow, err := s.dbm.db.Tickets().ChangeWorkflow(r.Context(), t.ID)
 		if err != nil {
-			http.Error(w, "无法读取变更执行记录", 500)
+			http.Error(w, "無法讀取變更執行記錄", 500)
 			return
 		}
 		page.Tickets.Workflow = workflow
 	}
-	if sess.admin.Role == repo.RoleOperator || sess.admin.Role == repo.RoleAdmin {
+	if sess.admin.Role == repo.RoleAdmin {
 		admins, err := s.dbm.store.Admins().List(r.Context())
 		if err == nil {
 			page.Tickets.Assignees = admins
@@ -365,7 +365,7 @@ func (s *Server) actionTicket(sess *session, r *http.Request) error {
 	id := ticketID(r)
 	version, err := strconv.Atoi(formValue(r, "version"))
 	if err != nil || version < 1 {
-		return errors.New("工单版本无效，请刷新")
+		return errors.New("工單版本無效，請刷新")
 	}
 	actor := sess.admin.ID
 	store := s.dbm.db.Tickets()
@@ -385,7 +385,7 @@ func (s *Server) actionTicket(sess *session, r *http.Request) error {
 	case "reply", "note", "status":
 		body := formValue(r, "body")
 		if !validTicketText(body, 4000) {
-			return errors.New("内容不能为空、超过 4000 字节，或包含疑似密钥")
+			return errors.New("內容不能為空、超過 4000 字節，或包含疑似密鑰")
 		}
 		kind, visibility, next := "comment", "public", ""
 		if formValue(r, "action") == "note" {
@@ -395,7 +395,7 @@ func (s *Server) actionTicket(sess *session, r *http.Request) error {
 			kind = "status"
 			next = formValue(r, "status")
 			if next == "" {
-				return errors.New("请选择状态")
+				return errors.New("請選擇狀態")
 			}
 		}
 		return store.AddEvent(r.Context(), id, "", "admin", actor, kind, visibility, body, next, version)
@@ -409,7 +409,7 @@ func (s *Server) actionTicket(sess *session, r *http.Request) error {
 		}
 		return store.LinkTask(r.Context(), id, formValue(r, "task_kind"), formValue(r, "task_id"), actor)
 	default:
-		return errors.New("未知工单操作")
+		return errors.New("未知工單操作")
 	}
 }
 
@@ -419,33 +419,33 @@ func (s *Server) handleCustomerContactCreate(w http.ResponseWriter, r *http.Requ
 		return
 	}
 	if err := r.ParseForm(); err != nil || subtle.ConstantTimeCompare([]byte(r.PostFormValue("csrf")), []byte(sess.csrf)) != 1 {
-		s.redirectWithError(w, r, "/tickets", "表单已过期，请刷新页面")
+		s.redirectWithError(w, r, "/tickets", "表單已過期，請刷新頁面")
 		return
 	}
 	email := strings.ToLower(formValue(r, "email"))
 	name := formValue(r, "name")
 	role := formValue(r, "role")
 	if role != "manager" && role != "employee" {
-		s.redirectWithError(w, r, "/tickets", "请选择客户联系人权限")
+		s.redirectWithError(w, r, "/tickets", "請選擇客戶聯絡人權限")
 		return
 	}
 	addr, err := mail.ParseAddress(email)
 	if err != nil || addr.Address != email || len(email) > 254 || len(name) < 1 || len(name) > 100 {
-		s.redirectWithError(w, r, "/tickets", "请填写有效邮箱和联系人姓名")
+		s.redirectWithError(w, r, "/tickets", "請填寫有效郵箱和聯絡人姓名")
 		return
 	}
 	password, err := authn.GeneratePassword(24)
 	if err != nil {
-		http.Error(w, "无法生成密码", 500)
+		http.Error(w, "無法生成密碼", 500)
 		return
 	}
 	hash, err := authn.HashPassword(password)
 	if err != nil {
-		http.Error(w, "无法生成密码", 500)
+		http.Error(w, "無法生成密碼", 500)
 		return
 	}
 	if _, err := s.dbm.db.Tickets().CreateContactWithRole(r.Context(), email, name, hash, role); err != nil {
-		s.redirectWithError(w, r, "/tickets", "创建联系人失败，邮箱可能已存在")
+		s.redirectWithError(w, r, "/tickets", "建立聯絡人失敗，郵箱可能已存在")
 		return
 	}
 	s.events.Audit("customer_contact_created", "customer contact created", map[string]any{"email": email, "by": sess.actor})
@@ -467,13 +467,13 @@ func (s *Server) handleCustomerContactReset(w http.ResponseWriter, r *http.Reque
 		return
 	}
 	if err := r.ParseForm(); err != nil || subtle.ConstantTimeCompare([]byte(r.PostFormValue("csrf")), []byte(sess.csrf)) != 1 {
-		s.redirectWithError(w, r, "/tickets", "表单已过期，请刷新页面")
+		s.redirectWithError(w, r, "/tickets", "表單已過期，請刷新頁面")
 		return
 	}
 	id := formValue(r, "id")
 	contacts, err := s.dbm.db.Tickets().ListContacts(r.Context())
 	if err != nil {
-		http.Error(w, "无法读取联系人", 500)
+		http.Error(w, "無法讀取聯絡人", 500)
 		return
 	}
 	var email string
@@ -489,16 +489,16 @@ func (s *Server) handleCustomerContactReset(w http.ResponseWriter, r *http.Reque
 	}
 	password, err := authn.GeneratePassword(24)
 	if err != nil {
-		http.Error(w, "无法生成密码", 500)
+		http.Error(w, "無法生成密碼", 500)
 		return
 	}
 	hash, err := authn.HashPassword(password)
 	if err != nil {
-		http.Error(w, "无法生成密码", 500)
+		http.Error(w, "無法生成密碼", 500)
 		return
 	}
 	if err := s.dbm.db.Tickets().SetContactPassword(r.Context(), id, "", hash); err != nil {
-		http.Error(w, "无法重置密码", 500)
+		http.Error(w, "無法重置密碼", 500)
 		return
 	}
 	s.events.Audit("customer_contact_password_reset", "customer contact password reset", map[string]any{"id": id, "by": sess.actor})
@@ -510,7 +510,7 @@ func (s *Server) renderContactPassword(w http.ResponseWriter, r *http.Request, s
 	contacts, contactErr := s.dbm.db.Tickets().ListContacts(r.Context())
 	rows, rowErr := s.dbm.db.Tickets().List(r.Context(), "", "", 26, 0)
 	if contactErr != nil || rowErr != nil {
-		page.Error = "账号已更新，但列表暂时无法读取"
+		page.Error = "帳號已更新，但列表暫時無法讀取"
 	}
 	hasNext := len(rows) > 25
 	if hasNext {
@@ -524,7 +524,7 @@ func (s *Server) actionCustomerContactDisabled(disable bool) func(*session, *htt
 	return func(sess *session, r *http.Request) error {
 		id := formValue(r, "id")
 		if id == "" {
-			return errors.New("缺少联系人 ID")
+			return errors.New("缺少聯絡人 ID")
 		}
 		if err := s.dbm.db.Tickets().SetContactDisabled(r.Context(), id, disable); err != nil {
 			return err
@@ -566,7 +566,7 @@ func (s *Server) customerPost(w http.ResponseWriter, r *http.Request) (dbstore.C
 	}
 	r.Body = http.MaxBytesReader(w, r.Body, 32<<10)
 	if err := r.ParseForm(); err != nil || subtle.ConstantTimeCompare([]byte(r.PostFormValue("csrf")), []byte(csrf)) != 1 {
-		http.Error(w, "表单已过期，请刷新页面", http.StatusForbidden)
+		http.Error(w, "表單已過期，請刷新頁面", http.StatusForbidden)
 		return c, csrf, false
 	}
 	return c, csrf, true
@@ -576,7 +576,7 @@ func (s *Server) handleCustomerLogin(w http.ResponseWriter, r *http.Request) {
 	if r.Method == http.MethodGet {
 		csrf, err := randomTicketKey()
 		if err != nil {
-			http.Error(w, "登录暂不可用", 500)
+			http.Error(w, "登入暫不可用", 500)
 			return
 		}
 		http.SetCookie(w, &http.Cookie{Name: customerLoginCSRFCookie, Value: csrf, Path: "/customer/login", HttpOnly: true, Secure: s.browserUsesTLS(), SameSite: http.SameSiteStrictMode, MaxAge: 600})
@@ -594,7 +594,7 @@ func (s *Server) handleCustomerLogin(w http.ResponseWriter, r *http.Request) {
 	}
 	csrfCookie, err := r.Cookie(customerLoginCSRFCookie)
 	if err != nil || subtle.ConstantTimeCompare([]byte(csrfCookie.Value), []byte(r.PostFormValue("csrf"))) != 1 {
-		http.Error(w, "登录表单已过期，请刷新页面", 403)
+		http.Error(w, "登入表單已過期，請刷新頁面", 403)
 		return
 	}
 	email := strings.ToLower(formValue(r, "email"))
@@ -611,7 +611,7 @@ func (s *Server) handleCustomerLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if !allowed {
-		http.Error(w, "尝试次数过多，请稍后再试", 429)
+		http.Error(w, "嘗試次數過多，請稍後再試", 429)
 		return
 	}
 	contact, err := store.ContactByEmail(r.Context(), email)
@@ -621,7 +621,7 @@ func (s *Server) handleCustomerLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if !valid {
-		http.Redirect(w, r, "/customer/login?err="+url.QueryEscape("邮箱或密码不正确"), 303)
+		http.Redirect(w, r, "/customer/login?err="+url.QueryEscape("郵箱或密碼不正確"), 303)
 		return
 	}
 	buf := make([]byte, 32)
@@ -664,24 +664,24 @@ func (s *Server) handleCustomerPassword(w http.ResponseWriter, r *http.Request) 
 	}
 	oldPassword, newPassword := r.PostFormValue("old_password"), r.PostFormValue("new_password")
 	if len(newPassword) < 16 || len(newPassword) > 128 {
-		http.Error(w, "新密码需为 16–128 个字符", 400)
+		http.Error(w, "新密碼需為 16–128 個字符", 400)
 		return
 	}
 	if authn.VerifyPassword(c.PasswordHash, oldPassword) != nil {
-		http.Error(w, "当前密码不正确", 403)
+		http.Error(w, "當前密碼不正確", 403)
 		return
 	}
 	hash, err := authn.HashPassword(newPassword)
 	if err != nil {
-		http.Error(w, "无法更新密码", 500)
+		http.Error(w, "無法更新密碼", 500)
 		return
 	}
 	if err := s.dbm.db.Tickets().SetContactPassword(r.Context(), c.ID, c.PasswordHash, hash); err != nil {
-		http.Error(w, "密码已变化，请重新登录", 409)
+		http.Error(w, "密碼已變化，請重新登入", 409)
 		return
 	}
 	http.SetCookie(w, &http.Cookie{Name: customerCookie, Value: "", Path: "/customer", MaxAge: -1, HttpOnly: true, Secure: s.browserUsesTLS(), SameSite: http.SameSiteStrictMode})
-	http.Redirect(w, r, "/customer/login?err="+url.QueryEscape("密码已更新，请重新登录"), 303)
+	http.Redirect(w, r, "/customer/login?err="+url.QueryEscape("密碼已更新，請重新登入"), 303)
 }
 
 func (s *Server) handleCustomerHome(w http.ResponseWriter, r *http.Request) {
@@ -703,7 +703,7 @@ func (s *Server) handleCustomerHome(w http.ResponseWriter, r *http.Request) {
 	}
 	rows, err := s.dbm.db.Tickets().List(r.Context(), c.ID, filter, 26, (page-1)*25)
 	if err != nil {
-		http.Error(w, "无法读取工单", 500)
+		http.Error(w, "無法讀取工單", 500)
 		return
 	}
 	hasNext := len(rows) > 25
@@ -712,12 +712,12 @@ func (s *Server) handleCustomerHome(w http.ResponseWriter, r *http.Request) {
 	}
 	counts, err := s.dbm.db.Tickets().Counts(r.Context(), c.ID)
 	if err != nil {
-		http.Error(w, "无法读取工单概览", 500)
+		http.Error(w, "無法讀取工單概覽", 500)
 		return
 	}
 	key, err := randomTicketKey()
 	if err != nil {
-		http.Error(w, "无法创建表单", 500)
+		http.Error(w, "無法建立表單", 500)
 		return
 	}
 	p := customerPage{Name: c.Name, Email: c.Email, CSRF: csrf, SubmitKey: key, Rows: rows, Page: page, HasNext: hasNext, Filter: filter, Manager: c.Role == "manager",
@@ -726,7 +726,7 @@ func (s *Server) handleCustomerHome(w http.ResponseWriter, r *http.Request) {
 	if p.Manager && !p.NewView {
 		p.Approvals, err = s.dbm.db.Tickets().PendingManagerApprovals(r.Context(), 20)
 		if err != nil {
-			http.Error(w, "无法读取待确认方案", 500)
+			http.Error(w, "無法讀取待確認方案", 500)
 			return
 		}
 	}
@@ -734,28 +734,28 @@ func (s *Server) handleCustomerHome(w http.ResponseWriter, r *http.Request) {
 		if editID := r.URL.Query().Get("edit"); editID != "" {
 			editTicket, err := s.dbm.db.Tickets().Get(r.Context(), editID, c.ID)
 			if err != nil || editTicket.Status != "new" || editTicket.Details["request_kind"] == nil {
-				http.Error(w, "这张工单不能修改，请返回工单详情查看最新状态", http.StatusConflict)
+				http.Error(w, "這張工單不能修改，請返回工單詳情查看最新狀態", http.StatusConflict)
 				return
 			}
 			if requestKind, _ := editTicket.Details["request_kind"].(string); dailyRequests[requestKind].Category == "account" && c.Role != "manager" {
-				http.Error(w, "只有账号管理联系人可以修改员工账号申请", 403)
+				http.Error(w, "只有客戶管理員可以修改員工帳號申請", 403)
 				return
 			}
 			payload, err := json.Marshal(map[string]any{"kind": editTicket.Details["request_kind"], "details": editTicket.Details})
 			if err != nil {
-				http.Error(w, "无法读取申请内容", 500)
+				http.Error(w, "無法讀取申請內容", 500)
 				return
 			}
 			p.EditTicket, p.EditPayload = &editTicket, string(payload)
 		}
 		p.Employees, err = s.dbm.store.Employees().List(r.Context(), repo.EmployeeFilter{IncludeOffboarded: true})
 		if err != nil {
-			http.Error(w, "无法读取员工名单", 500)
+			http.Error(w, "無法讀取員工名單", 500)
 			return
 		}
 		p.Employees = dailyAuthorizedEmployees(p.Employees, c)
 		if p.Tools, err = s.ticketTools(r.Context()); err != nil {
-			http.Error(w, "无法读取工具清单", 500)
+			http.Error(w, "無法讀取工具清單", 500)
 			return
 		}
 	}
@@ -769,17 +769,17 @@ func (s *Server) handleAdminTicketNew(w http.ResponseWriter, r *http.Request, se
 	}
 	key, err := randomTicketKey()
 	if err != nil {
-		http.Error(w, "无法创建表单", http.StatusInternalServerError)
+		http.Error(w, "無法建立表單", http.StatusInternalServerError)
 		return
 	}
 	employees, err := s.dbm.store.Employees().List(r.Context(), repo.EmployeeFilter{IncludeOffboarded: true})
 	if err != nil {
-		http.Error(w, "无法读取员工名单", http.StatusInternalServerError)
+		http.Error(w, "無法讀取員工名單", http.StatusInternalServerError)
 		return
 	}
 	tools, err := s.ticketTools(r.Context())
 	if err != nil {
-		http.Error(w, "无法读取工具清单", http.StatusInternalServerError)
+		http.Error(w, "無法讀取工具清單", http.StatusInternalServerError)
 		return
 	}
 	adminPage := newPage(sess, r, "tickets")
@@ -823,7 +823,7 @@ func (s *Server) handleAdminTicketCreate(w http.ResponseWriter, r *http.Request,
 	}
 	t, err := s.dbm.db.Tickets().CreateByAdmin(r.Context(), key, kind, title, description, priority, details, sess.admin.ID)
 	if err != nil {
-		http.Error(w, "创建工单失败", http.StatusInternalServerError)
+		http.Error(w, "建立工單失敗", http.StatusInternalServerError)
 		return
 	}
 	http.Redirect(w, r, "/tickets/detail?id="+url.QueryEscape(t.ID), http.StatusSeeOther)
@@ -836,12 +836,12 @@ func parseTicketSubmission(r *http.Request) (kind, title, description, priority,
 		priority = "normal"
 	}
 	if !validTicketType(kind) || !validTicketText(title, 160) || !validTicketText(description, 10000) {
-		err = errors.New("类型、标题或内容无效；不要填写密码或密钥")
+		err = errors.New("類型、標題或內容無效；不要填寫密碼或密鑰")
 		return
 	}
 	key = formValue(r, "request_key")
 	if len(key) != 32 {
-		err = errors.New("表单无效，请刷新")
+		err = errors.New("表單無效，請刷新")
 		return
 	}
 	details, err = ticketRequestDetails(r, kind)
@@ -878,8 +878,8 @@ func (s *Server) handleCustomerCreateTicket(w http.ResponseWriter, r *http.Reque
 	var details []byte
 	var err error
 	if requestKind := formValue(r, "request_kind"); requestKind != "" {
-		if dailyRequests[requestKind].Category == "account" && c.Role != "manager" {
-			http.Error(w, "只有账号管理联系人可以申请员工账号变更", 403)
+		if !contactMayRequest(c.Role, requestKind) {
+			http.Error(w, "當前帳號不能發起這類工單", 403)
 			return
 		}
 		var employees []repo.Employee
@@ -898,7 +898,7 @@ func (s *Server) handleCustomerCreateTicket(w http.ResponseWriter, r *http.Reque
 		}
 	} else {
 		if c.Role != "manager" {
-			http.Error(w, "当前账号不能提交旧版工单", 403)
+			http.Error(w, "當前帳號不能提交舊版工單", 403)
 			return
 		}
 		kind, title, description, priority, key, details, err = parseTicketSubmission(r)
@@ -909,7 +909,7 @@ func (s *Server) handleCustomerCreateTicket(w http.ResponseWriter, r *http.Reque
 	}
 	t, err := s.dbm.db.Tickets().Create(r.Context(), c.ID, key, kind, title, description, priority, details)
 	if err != nil {
-		http.Error(w, "创建工单失败", 500)
+		http.Error(w, "建立工單失敗", 500)
 		return
 	}
 	http.Redirect(w, r, "/customer/ticket?id="+url.QueryEscape(t.ID), 303)
@@ -924,18 +924,27 @@ func (s *Server) handleCustomerEditTicket(w http.ResponseWriter, r *http.Request
 	id := ticketID(r)
 	version, err := strconv.Atoi(formValue(r, "version"))
 	if err != nil || version < 1 {
-		http.Error(w, "表单版本无效，请刷新", 400)
+		http.Error(w, "表單版本無效，請刷新", 400)
 		return
 	}
 	employees, err := s.dbm.store.Employees().List(r.Context(), repo.EmployeeFilter{IncludeOffboarded: true})
 	if err != nil {
-		http.Error(w, "无法读取员工名单", 500)
+		http.Error(w, "無法讀取員工名單", 500)
 		return
 	}
 	requestKind := formValue(r, "request_kind")
 	if dailyRequests[requestKind].Category == "account" && c.Role != "manager" {
-		http.Error(w, "只有账号管理联系人可以修改员工账号申请", 403)
+		http.Error(w, "只有客戶管理員可以修改員工帳號申請", 403)
 		return
+	}
+	// A ticket raised before the limits keeps its kind; an edit cannot move
+	// to a kind this contact may not raise.
+	if !contactMayRequest(c.Role, requestKind) {
+		current, getErr := s.dbm.db.Tickets().GetForContact(r.Context(), id, c.ID, c.Role)
+		if getErr != nil || current.Details["request_kind"] != requestKind {
+			http.Error(w, "當前帳號不能發起這類工單", 403)
+			return
+		}
 	}
 	kind, title, description, _, _, details, err := parseDailyTicketSubmission(r, dailyAuthorizedEmployees(employees, c))
 	if err == nil {
@@ -961,9 +970,9 @@ func (s *Server) handleCustomerEditTicket(w http.ResponseWriter, r *http.Request
 	}
 	if err := s.dbm.db.Tickets().UpdateDailyRequest(r.Context(), id, c.ID, version, kind, title, description, details); err != nil {
 		if errors.Is(err, dbstore.ErrTicketConflict) {
-			http.Error(w, "工单已开始处理或有更新，请刷新后重试", 409)
+			http.Error(w, "工單已開始處理或有更新，請刷新後重試", 409)
 		} else {
-			http.Error(w, "修改工单失败", 400)
+			http.Error(w, "修改工單失敗", 400)
 		}
 		return
 	}
@@ -986,20 +995,20 @@ func (s *Server) handleCustomerTicket(w http.ResponseWriter, r *http.Request) {
 	}
 	events, err := s.dbm.db.Tickets().Events(r.Context(), t.ID, t.RequesterID)
 	if err != nil {
-		http.Error(w, "无法读取工单", 500)
+		http.Error(w, "無法讀取工單", 500)
 		return
 	}
 	page := customerPage{Name: c.Name, CSRF: csrf, Ticket: &t, Events: events, Manager: c.Role == "manager", Owner: t.RequesterID == c.ID, Notice: r.URL.Query().Get("msg")}
 	if t.Details["request_kind"] != nil {
 		page.Revisions, err = s.dbm.db.Tickets().RequestRevisions(r.Context(), t.ID, t.RequesterID)
 		if err != nil {
-			http.Error(w, "无法读取申请历史", 500)
+			http.Error(w, "無法讀取申請歷史", 500)
 			return
 		}
 		if requestKind := t.Details["request_kind"]; requestKind == "account-delete" || requestKind == "quota" {
 			page.Proposal, err = s.dbm.db.Tickets().LatestProposal(r.Context(), t.ID)
 			if err != nil {
-				http.Error(w, "无法读取待确认方案", 500)
+				http.Error(w, "無法讀取待確認方案", 500)
 				return
 			}
 		}
@@ -1007,7 +1016,7 @@ func (s *Server) handleCustomerTicket(w http.ResponseWriter, r *http.Request) {
 	if t.Type == "general" && t.Details["subtype"] == "environment" {
 		workflow, err := s.dbm.db.Tickets().ChangeWorkflow(r.Context(), t.ID)
 		if err != nil {
-			http.Error(w, "无法读取变更执行记录", 500)
+			http.Error(w, "無法讀取變更執行記錄", 500)
 			return
 		}
 		page.Workflow = workflow
@@ -1023,19 +1032,19 @@ func (s *Server) handleCustomerDecideProposal(w http.ResponseWriter, r *http.Req
 	id := ticketID(r)
 	version, err := strconv.Atoi(formValue(r, "version"))
 	if err != nil || version < 1 {
-		http.Error(w, "请刷新工单", 400)
+		http.Error(w, "請刷新工單", 400)
 		return
 	}
 	proposalID, err := strconv.ParseInt(formValue(r, "proposal_id"), 10, 64)
 	if err != nil || proposalID < 1 {
-		http.Error(w, "方案编号无效", 400)
+		http.Error(w, "方案編號無效", 400)
 		return
 	}
 	if err := s.dbm.db.Tickets().DecideProposal(r.Context(), id, c.ID, version, proposalID, formValue(r, "decision")); err != nil {
 		if errors.Is(err, dbstore.ErrTicketNotFound) {
 			http.NotFound(w, r)
 		} else {
-			http.Error(w, "方案已更新或当前不能确认，请刷新后重试", 409)
+			http.Error(w, "方案已更新或當前不能確認，請刷新後重試", 409)
 		}
 		return
 	}
@@ -1050,7 +1059,7 @@ func (s *Server) handleCustomerConfirmChange(w http.ResponseWriter, r *http.Requ
 	id := ticketID(r)
 	version, err := strconv.Atoi(formValue(r, "version"))
 	if err != nil || version < 1 {
-		http.Error(w, "请刷新工单", 400)
+		http.Error(w, "請刷新工單", 400)
 		return
 	}
 	if _, err := s.dbm.db.Tickets().Get(r.Context(), id, c.ID); err != nil {
@@ -1077,7 +1086,7 @@ func (s *Server) handleCustomerReply(w http.ResponseWriter, r *http.Request) {
 	id := ticketID(r)
 	version, err := strconv.Atoi(formValue(r, "version"))
 	if err != nil {
-		http.Error(w, "请刷新工单", 400)
+		http.Error(w, "請刷新工單", 400)
 		return
 	}
 	t, err := s.dbm.db.Tickets().Get(r.Context(), id, c.ID)
@@ -1087,11 +1096,11 @@ func (s *Server) handleCustomerReply(w http.ResponseWriter, r *http.Request) {
 	}
 	if formValue(r, "action") == "cancel" {
 		if t.Status != "new" {
-			http.Error(w, "工单已受理，请联系服务人员取消", 409)
+			http.Error(w, "工單已受理，請聯絡服務人員取消", 409)
 			return
 		}
-		if err := s.dbm.db.Tickets().AddEvent(r.Context(), id, c.ID, "customer", c.ID, "status", "public", "客户取消请求", "closed", version); err != nil {
-			http.Error(w, "无法取消工单，请刷新后重试", 409)
+		if err := s.dbm.db.Tickets().AddEvent(r.Context(), id, c.ID, "customer", c.ID, "status", "public", "客戶取消請求", "closed", version); err != nil {
+			http.Error(w, "無法取消工單，請刷新後重試", 409)
 			return
 		}
 		http.Redirect(w, r, "/customer/ticket?id="+url.QueryEscape(id), 303)
@@ -1099,20 +1108,20 @@ func (s *Server) handleCustomerReply(w http.ResponseWriter, r *http.Request) {
 	}
 	if formValue(r, "action") == "request_cancel" {
 		if t.Status != "working" && t.Status != "waiting_customer" {
-			http.Error(w, "当前状态不能申请撤销；已执行的操作不能自动恢复", 409)
+			http.Error(w, "當前狀態不能申請撤銷；已執行的操作不能自動恢復", 409)
 			return
 		}
 		reason := formValue(r, "body")
 		if len(reason) > 1000 || containsCredential(reason) {
-			http.Error(w, "撤销原因过长或包含疑似密钥", 400)
+			http.Error(w, "撤銷原因過長或包含疑似密鑰", 400)
 			return
 		}
-		body := "客户申请撤销；请确认已执行的部分和能否停止后续处理。"
+		body := "客戶申請撤銷；請確認已執行的部分和能否停止後續處理。"
 		if reason != "" {
 			body += "\n原因：" + reason
 		}
 		if err := s.dbm.db.Tickets().AddEvent(r.Context(), id, c.ID, "customer", c.ID, "comment", "public", body, "working", version); err != nil {
-			http.Error(w, "工单已更新，请刷新后重试", 409)
+			http.Error(w, "工單已更新，請刷新後重試", 409)
 			return
 		}
 		http.Redirect(w, r, "/customer/ticket?id="+url.QueryEscape(id), 303)
@@ -1120,15 +1129,15 @@ func (s *Server) handleCustomerReply(w http.ResponseWriter, r *http.Request) {
 	}
 	if formValue(r, "action") == "confirm_result" {
 		if t.Status != "done" || t.Details["request_kind"] == nil {
-			http.Error(w, "当前没有待确认的处理结果", 409)
+			http.Error(w, "當前沒有待確認的處理結果", 409)
 			return
 		}
-		body := "客户已确认处理结果符合申请，工单关闭。"
+		body := "客戶已確認處理結果符合申請，工單關閉。"
 		if t.Type == "bug" {
-			body = "客户已确认问题解决，工单关闭。"
+			body = "客戶已確認問題解決，工單關閉。"
 		}
 		if err := s.dbm.db.Tickets().AddEvent(r.Context(), id, c.ID, "customer", c.ID, "status", "public", body, "closed", version); err != nil {
-			http.Error(w, "工单已更新，请刷新后重试", 409)
+			http.Error(w, "工單已更新，請刷新後重試", 409)
 			return
 		}
 		http.Redirect(w, r, "/customer/ticket?id="+url.QueryEscape(id), 303)
@@ -1136,7 +1145,7 @@ func (s *Server) handleCustomerReply(w http.ResponseWriter, r *http.Request) {
 	}
 	body := formValue(r, "body")
 	if !validTicketText(body, 4000) {
-		http.Error(w, "回复不能为空、超过 4000 字节，或包含疑似密钥", 400)
+		http.Error(w, "回覆不能為空、超過 4000 字節，或包含疑似密鑰", 400)
 		return
 	}
 	next := ""
@@ -1148,9 +1157,9 @@ func (s *Server) handleCustomerReply(w http.ResponseWriter, r *http.Request) {
 	}
 	if err := s.dbm.db.Tickets().AddEvent(r.Context(), id, c.ID, "customer", c.ID, "comment", "public", body, next, version); err != nil {
 		if errors.Is(err, dbstore.ErrTicketConflict) {
-			http.Error(w, "工单已更新，请刷新后重试", 409)
+			http.Error(w, "工單已更新，請刷新後重試", 409)
 		} else {
-			http.Error(w, "无法保存回复", 400)
+			http.Error(w, "無法保存回覆", 400)
 		}
 		return
 	}

@@ -186,7 +186,7 @@ func drain(t *testing.T, ctx context.Context, w *Worker) {
 func onboard(t *testing.T, ctx context.Context, service *ops.Service, user string) repo.Employee {
 	t.Helper()
 	employee, err := service.Onboard(ctx, ops.OnboardSpec{
-		WindowsUser: user, Name: "张三", Department: "研发",
+		WindowsUser: user, Name: "張三", Department: "研發",
 		Quota:  repo.Quota{MonthlyBudget: "50", RPM: 60, TPM: 2000000, Parallel: 8},
 		Models: []string{"claude-4.5-sonnet"},
 		Actor:  "zhang",
@@ -208,7 +208,7 @@ func TestProvisioningIssuesOneTokenAndStoresItSealed(t *testing.T) {
 	if !ok {
 		t.Fatalf("no gateway user was created; users = %v", gateway.users)
 	}
-	if spec.Quota.MonthlyBudgetUSD != 50 || spec.Quota.TPM != 2000000 || spec.Alias != "张三" {
+	if spec.Quota.MonthlyBudgetUSD != 50 || spec.Quota.TPM != 2000000 || spec.Alias != "張三" {
 		t.Errorf("gateway user = %+v", spec)
 	}
 

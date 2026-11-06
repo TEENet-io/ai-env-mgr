@@ -59,16 +59,16 @@ func TestTicketFilesFollowTheDesign(t *testing.T) {
 	cookie := signedIn(t, s)
 	csrf := csrfFrom(t, s, cookie, "/settings")
 	problem := func(kind string) map[string]string {
-		fields := map[string]string{"request_kind": kind, "problem": "连不上"}
+		fields := map[string]string{"request_kind": kind, "problem": "連不上"}
 		if kind == "tool-problem" {
-			fields["tool"] = "不确定"
+			fields["tool"] = "不確定"
 		}
 		return fields
 	}
 
 	// An image on every problem kind, and it comes back as a download.
 	for _, kind := range []string{"desktop-problem", "ai-problem", "tool-problem", "other-problem"} {
-		if rec := createAdminTicket(t, h, cookie, csrf, problem(kind), testFile{"截图.png", testPNG}); rec.Code != http.StatusSeeOther {
+		if rec := createAdminTicket(t, h, cookie, csrf, problem(kind), testFile{"截圖.png", testPNG}); rec.Code != http.StatusSeeOther {
 			t.Fatalf("%s with an image: %d %s", kind, rec.Code, rec.Body)
 		}
 	}
@@ -95,13 +95,13 @@ func TestTicketFilesFollowTheDesign(t *testing.T) {
 		t.Fatalf("six files: %d", rec.Code)
 	}
 	// A change request takes no files.
-	if rec := createAdminTicket(t, h, cookie, csrf, map[string]string{"request_kind": "quota"}, testFile{"a.png", testPNG}); rec.Code != http.StatusBadRequest {
+	if rec := createAdminTicket(t, h, cookie, csrf, map[string]string{"request_kind": "website", "website_action": "block", "sites": "ChatGPT"}, testFile{"a.png", testPNG}); rec.Code != http.StatusBadRequest {
 		t.Fatalf("a file on a change request: %d", rec.Code)
 	}
 
 	page := dbGet(t, h, detail, cookie).Body.String()
 	if !strings.Contains(page, "report.pdf") || !strings.Contains(page, "/tickets/file?id=") {
-		t.Fatalf("the detail page lists no file: %s", firstLine(page, "文件"))
+		t.Fatalf("the detail page lists no file: %s", firstLine(page, "檔案"))
 	}
 	var fileID string
 	if i := strings.Index(page, "file="); i >= 0 {
@@ -134,26 +134,26 @@ func TestToolReportsChooseFromTheList(t *testing.T) {
 	cookie := signedIn(t, s)
 	csrf := csrfFrom(t, s, cookie, "/settings")
 	report := func(tool string) int {
-		return createAdminTicket(t, h, cookie, csrf, map[string]string{"request_kind": "tool-problem", "tool": tool, "problem": "打不开"}).Code
+		return createAdminTicket(t, h, cookie, csrf, map[string]string{"request_kind": "tool-problem", "tool": tool, "problem": "打不開"}).Code
 	}
-	if code := report("新闻监控"); code != http.StatusBadRequest {
+	if code := report("新聞監控"); code != http.StatusBadRequest {
 		t.Fatalf("a tool off the list: %d", code)
 	}
-	if code := report("不确定"); code != http.StatusSeeOther {
+	if code := report("不確定"); code != http.StatusSeeOther {
 		t.Fatalf("unsure: %d", code)
 	}
-	if rec := dbPost(t, h, "/settings/ticket-tools", url.Values{"csrf": {csrf}, "version": {"0"}, "names": {"新闻监控\n\n新闻监控\n 销售报表助手 \n不确定"}}, cookie); strings.Contains(rec.Header().Get("Location"), "err=") {
+	if rec := dbPost(t, h, "/settings/ticket-tools", url.Values{"csrf": {csrf}, "version": {"0"}, "names": {"新聞監控\n\n新聞監控\n 銷售報表助手 \n不確定"}}, cookie); strings.Contains(rec.Header().Get("Location"), "err=") {
 		t.Fatal(rec.Header().Get("Location"))
 	}
 	got, _, _ := repo.LoadTicketToolSettings(t.Context(), s.dbm.store.Settings())
-	if len(got.Names) != 2 || got.Names[1] != "销售报表助手" {
+	if len(got.Names) != 2 || got.Names[1] != "銷售報表助手" {
 		t.Fatalf("stored %v", got.Names)
 	}
-	if code := report("新闻监控"); code != http.StatusSeeOther {
+	if code := report("新聞監控"); code != http.StatusSeeOther {
 		t.Fatalf("a listed tool: %d", code)
 	}
 	form := dbGet(t, h, "/tickets/new", cookie).Body.String()
-	if !strings.Contains(form, `<option value="销售报表助手">`) || !strings.Contains(form, `<option value="不确定">`) {
+	if !strings.Contains(form, `<option value="銷售報表助手">`) || !strings.Contains(form, `<option value="不確定">`) {
 		t.Fatal("the form does not offer the list")
 	}
 }
@@ -163,7 +163,7 @@ func TestEveryEmployeeCanBeToldApart(t *testing.T) {
 		e           repo.Employee
 		name, label string
 	}{
-		{repo.Employee{Name: "张三", Email: "z@example.com", WindowsUser: "z", Status: repo.StatusActive}, "张三", "张三 · z@example.com"},
+		{repo.Employee{Name: "張三", Email: "z@example.com", WindowsUser: "z", Status: repo.StatusActive}, "張三", "張三 · z@example.com"},
 		{repo.Employee{Email: "z@example.com", WindowsUser: "z", Status: repo.StatusActive}, "z@example.com", "z@example.com"},
 		{repo.Employee{WindowsUser: "z", Status: repo.StatusActive}, "z", "z"},
 		{repo.Employee{WindowsUser: "z", Status: repo.StatusOffboarded}, "z", "z（已停用）"},
@@ -180,7 +180,7 @@ func TestEveryEmployeeCanBeToldApart(t *testing.T) {
 
 func TestProblemReportsTakeNoHandlingTime(t *testing.T) {
 	r := httptest.NewRequest(http.MethodPost, "/", strings.NewReader(url.Values{
-		"request_kind": {"desktop-problem"}, "request_key": {strings.Repeat("a", 32)}, "problem": {"连不上"},
+		"request_kind": {"desktop-problem"}, "request_key": {strings.Repeat("a", 32)}, "problem": {"連不上"},
 		"occurred_at": {"今天上午"}, "desired_at": {"2026-11-05 14:30"},
 	}.Encode()))
 	r.Header.Set("Content-Type", "application/x-www-form-urlencoded")
@@ -189,7 +189,7 @@ func TestProblemReportsTakeNoHandlingTime(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if strings.Contains(string(details), "desired_at") || !strings.Contains(description, "大约发生时间：今天上午") {
+	if strings.Contains(string(details), "desired_at") || !strings.Contains(description, "大約發生時間：今天上午") {
 		t.Fatalf("%s / %s", details, description)
 	}
 }
@@ -256,7 +256,7 @@ func TestATicketsFilesFollowWhoMaySeeIt(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	fields := map[string]string{"csrf": s.csrfFor(owner.Value), "request_key": key, "request_kind": "desktop-problem", "problem": "连不上"}
+	fields := map[string]string{"csrf": s.csrfFor(owner.Value), "request_key": key, "request_kind": "desktop-problem", "problem": "連不上"}
 	rec := postTicketForm(t, h, "/customer/ticket/create", owner, fields, testFile{"first.png", testPNG})
 	if rec.Code != http.StatusSeeOther {
 		t.Fatalf("create: %d %s", rec.Code, rec.Body)
@@ -280,7 +280,7 @@ func TestATicketsFilesFollowWhoMaySeeIt(t *testing.T) {
 	}
 
 	// Editing keeps the files already there and adds to them, up to the limit.
-	edit := map[string]string{"csrf": s.csrfFor(owner.Value), "id": strings.ReplaceAll(id, "%2D", "-"), "version": "1", "request_kind": "desktop-problem", "request_key": key, "problem": "还是连不上"}
+	edit := map[string]string{"csrf": s.csrfFor(owner.Value), "id": strings.ReplaceAll(id, "%2D", "-"), "version": "1", "request_kind": "desktop-problem", "request_key": key, "problem": "還是連不上"}
 	rec = postTicketForm(t, h, "/customer/ticket/edit", owner, edit, testFile{"second.png", testPNG})
 	if rec.Code != http.StatusSeeOther {
 		t.Fatalf("edit: %d %s", rec.Code, rec.Body)
@@ -304,7 +304,7 @@ func TestTheCurrentRequestNamesItsFilesOnce(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	fields := map[string]string{"csrf": s.csrfFor(owner.Value), "request_key": key, "request_kind": "desktop-problem", "problem": "连不上"}
+	fields := map[string]string{"csrf": s.csrfFor(owner.Value), "request_key": key, "request_kind": "desktop-problem", "problem": "連不上"}
 	rec := postTicketForm(t, h, "/customer/ticket/create", owner, fields, testFile{"first.png", testPNG})
 	if rec.Code != http.StatusSeeOther {
 		t.Fatalf("create: %d %s", rec.Code, rec.Body)
@@ -316,12 +316,12 @@ func TestTheCurrentRequestNamesItsFilesOnce(t *testing.T) {
 	}
 
 	// A later version still records what each version carried.
-	edit := map[string]string{"csrf": s.csrfFor(owner.Value), "id": strings.ReplaceAll(id, "%2D", "-"), "version": "1", "request_kind": "desktop-problem", "request_key": key, "problem": "还是连不上"}
+	edit := map[string]string{"csrf": s.csrfFor(owner.Value), "id": strings.ReplaceAll(id, "%2D", "-"), "version": "1", "request_kind": "desktop-problem", "request_key": key, "problem": "還是連不上"}
 	if rec := postTicketForm(t, h, "/customer/ticket/edit", owner, edit, testFile{"second.png", testPNG}); rec.Code != http.StatusSeeOther {
 		t.Fatalf("edit: %d %s", rec.Code, rec.Body)
 	}
 	page = dbGet(t, h, "/customer/ticket?id="+id, owner).Body.String()
-	if !strings.Contains(page, "文件：first.png、second.png") || !strings.Contains(page, "文件：first.png</p>") {
+	if !strings.Contains(page, "檔案：first.png、second.png") || !strings.Contains(page, "檔案：first.png</p>") {
 		t.Fatal("the revision history lost what its versions carried")
 	}
 }
@@ -329,6 +329,7 @@ func TestTheCurrentRequestNamesItsFilesOnce(t *testing.T) {
 func TestRequestTextLeavesACustomersOwnWordsAlone(t *testing.T) {
 	details := map[string]any{"attachments": []any{map[string]any{"name": "a.png"}}}
 	for in, want := range map[string]string{
+		"連不上\n檔案：a.png":      "連不上",
 		"连不上\n文件：a.png":      "连不上",
 		"文件：b.png 打不开":       "文件：b.png 打不开",
 		"连不上\n文件：a.png\n已重启": "连不上\n文件：a.png\n已重启",
@@ -352,7 +353,7 @@ func slowTicketUpload(t *testing.T, s *Server, addr string, owner *http.Cookie, 
 	}
 	var body bytes.Buffer
 	w := multipart.NewWriter(&body)
-	for k, v := range map[string]string{"csrf": s.csrfFor(owner.Value), "request_key": key, "request_kind": "desktop-problem", "problem": "连不上"} {
+	for k, v := range map[string]string{"csrf": s.csrfFor(owner.Value), "request_key": key, "request_kind": "desktop-problem", "problem": "連不上"} {
 		w.WriteField(k, v)
 	}
 	part, _ := w.CreateFormFile("files", "slow.png")
@@ -403,7 +404,7 @@ func TestASlowUploadOutlivesTheServersShortLimits(t *testing.T) {
 
 	ticketUploadTimeout = 300 * time.Millisecond
 	code, answer := slowTicketUpload(t, s, l.Addr().String(), owner, time.Second)
-	if code != http.StatusRequestTimeout || !strings.Contains(answer, "上传超时") {
+	if code != http.StatusRequestTimeout || !strings.Contains(answer, "上傳超時") {
 		t.Fatalf("an upload past its own limit: %d %s", code, answer)
 	}
 }

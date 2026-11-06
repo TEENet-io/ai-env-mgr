@@ -34,15 +34,15 @@
     button.addEventListener("click", function () {
       var expanded = list.classList.toggle("is-expanded");
       button.setAttribute("aria-expanded", expanded ? "true" : "false");
-      var isHistory = button.textContent.indexOf("历史") !== -1 || button.getAttribute("aria-controls") === "task-list-done";
-      button.textContent = expanded ? (isHistory ? "收起历史" : "收起其余任务") : (isHistory ? "展开其余历史" : "展开其余任务");
+      var isHistory = button.textContent.indexOf("歷史") !== -1 || button.getAttribute("aria-controls") === "task-list-done";
+      button.textContent = expanded ? (isHistory ? "收起歷史" : "收起其餘任務") : (isHistory ? "展開其餘歷史" : "展開其餘任務");
     });
   });
   document.querySelectorAll("[data-rollout-selection]").forEach(function (form) {
     var summary = form.querySelector("[data-rollout-summary]");
     var update = function () {
       var n = form.querySelectorAll('input[name="device"]:checked').length;
-      if (summary) summary.textContent = n ? ("已选择 " + n + " 台机器；提交后这些机器将不再跟随全局版本") : "尚未选择机器";
+      if (summary) summary.textContent = n ? ("已選擇 " + n + " 台機器；提交後這些機器將不再跟隨全局版本") : "尚未選擇機器";
     };
     form.addEventListener("change", update);
     update();
@@ -63,7 +63,7 @@
       result.hidden = false;
       transcript.hidden = true;
       result.classList.remove("is-error");
-      state.textContent = "正在向指定部署发送测试请求…";
+      state.textContent = "正在向指定部署發送測試請求…";
       meta.textContent = "";
       button.disabled = true;
       try {
@@ -75,7 +75,7 @@
         };
         var response = await sendTrial();
         var data = await response.json();
-        if (response.status === 403 && data.error === "表单已过期，请刷新页面重试") {
+        if (response.status === 403 && data.error === "表單已過期，請刷新頁面重試") {
           var fresh = await fetch("/channels", { credentials: "same-origin", cache: "no-store" });
           if (fresh.ok && new URL(fresh.url).pathname === "/channels") {
             var page = new DOMParser().parseFromString(await fresh.text(), "text/html");
@@ -89,23 +89,23 @@
         }
         var passed = response.ok && data.ok;
         result.classList.toggle("is-error", !passed);
-        state.textContent = passed ? "试调用成功" : (data.error || "试调用失败");
+        state.textContent = passed ? "試調用成功" : (data.error || "試調用失敗");
         input.textContent = data.input || entered;
-        output.textContent = passed ? (data.output || "模型未返回可显示文本") : "没有模型回复";
+        output.textContent = passed ? (data.output || "模型未返回可顯示文本") : "沒有模型回覆";
         transcript.hidden = false;
         var details = [];
         if (data.model_name) { details.push(data.model_name); }
         if (data.model_id) { details.push("部署 " + data.model_id); }
         if (data.elapsed_ms !== undefined) { details.push((data.elapsed_ms / 1000).toFixed(1) + " 秒"); }
-        if (passed || data.completion_tokens !== undefined) { details.push("输入 " + (data.prompt_tokens || 0) + " tokens · 输出 " + (data.completion_tokens || 0) + " tokens"); }
-        if (data.finish_reason) { details.push("结束原因 " + data.finish_reason); }
+        if (passed || data.completion_tokens !== undefined) { details.push("輸入 " + (data.prompt_tokens || 0) + " tokens · 輸出 " + (data.completion_tokens || 0) + " tokens"); }
+        if (data.finish_reason) { details.push("結束原因 " + data.finish_reason); }
         if (data.warning) { details.push(data.warning); }
         meta.textContent = details.join(" · ");
       } catch (_) {
         result.classList.add("is-error");
-        state.textContent = "无法读取测试结果，请检查登录状态和网络后重试";
+        state.textContent = "無法讀取測試結果，請檢查登入狀態和網絡後重試";
         input.textContent = entered;
-        output.textContent = "没有模型回复";
+        output.textContent = "沒有模型回覆";
         transcript.hidden = false;
         meta.textContent = "";
       } finally {

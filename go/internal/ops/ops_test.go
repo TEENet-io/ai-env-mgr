@@ -72,7 +72,7 @@ func TestOnboardWritesEverythingOrNothing(t *testing.T) {
 	svc, store, ctx := newService(t)
 
 	employee, err := svc.Onboard(ctx, OnboardSpec{
-		WindowsUser: "Work1", Name: "张三", Department: "研发",
+		WindowsUser: "Work1", Name: "張三", Department: "研發",
 		Quota: testQuota(), Models: []string{"claude-4.5-sonnet", "gemini-2.5-pro"},
 		Actor: "zhang", RequestID: "req-1",
 	})
@@ -137,7 +137,7 @@ func TestOnboardWritesEverythingOrNothing(t *testing.T) {
 func TestOnboardingTwiceRepairsRatherThanDuplicates(t *testing.T) {
 	svc, store, ctx := newService(t)
 	first, err := svc.Onboard(ctx, OnboardSpec{
-		WindowsUser: "work1", Name: "张三", Quota: testQuota(),
+		WindowsUser: "work1", Name: "張三", Quota: testQuota(),
 		Models: []string{"claude-4.5-sonnet"}, Actor: "zhang",
 	})
 	if err != nil {
@@ -147,7 +147,7 @@ func TestOnboardingTwiceRepairsRatherThanDuplicates(t *testing.T) {
 	// The same person again: one row, a new epoch, and the old work replaced
 	// rather than left racing against the new.
 	second, err := svc.Onboard(ctx, OnboardSpec{
-		WindowsUser: "WORK1", Department: "财务", Quota: testQuota(),
+		WindowsUser: "WORK1", Department: "財務", Quota: testQuota(),
 		Models: []string{"claude-4.5-sonnet", "gemini-2.5-pro"}, Actor: "li",
 	})
 	if err != nil {
@@ -161,7 +161,7 @@ func TestOnboardingTwiceRepairsRatherThanDuplicates(t *testing.T) {
 	}
 	// A field the second form left blank keeps what the roster had: reopening
 	// from a form nobody re-typed must not blank the notes.
-	if second.Name != "张三" || second.Department != "财务" {
+	if second.Name != "張三" || second.Department != "財務" {
 		t.Errorf("profile = %q/%q, want the name kept and the department updated", second.Name, second.Department)
 	}
 
@@ -379,7 +379,7 @@ func TestBindingAMachineMovesItInOnePiece(t *testing.T) {
 	}
 	// Handing the machine to somebody else is one transaction: a machine left
 	// half reassigned is how one employee's credentials reach another.
-	binding, err := svc.BindMachine(ctx, "desktop-01", bob.ID, "换人", "zhang", "")
+	binding, err := svc.BindMachine(ctx, "desktop-01", bob.ID, "換人", "zhang", "")
 	if err != nil {
 		t.Fatalf("rebind: %v", err)
 	}
@@ -442,7 +442,7 @@ func TestPublishingAPolicyQueuesItsDelivery(t *testing.T) {
 	svc, store, ctx := newService(t)
 
 	published, err := svc.PublishPolicy(ctx,
-		[]byte(`{"blockEnabled":true,"syncIntervalMinutes":30}`), "首个策略", "zhang", "req-6")
+		[]byte(`{"blockEnabled":true,"syncIntervalMinutes":30}`), "首個策略", "zhang", "req-6")
 	if err != nil {
 		t.Fatalf("publish: %v", err)
 	}
@@ -460,7 +460,7 @@ func TestPublishingAPolicyQueuesItsDelivery(t *testing.T) {
 	}
 	// Publishing twice queues two exports, one per version: the agents read
 	// one object, but the record of what was published is per version.
-	if _, err := svc.PublishPolicy(ctx, []byte(`{"blockEnabled":false}`), "关掉拦截", "zhang", ""); err != nil {
+	if _, err := svc.PublishPolicy(ctx, []byte(`{"blockEnabled":false}`), "關掉攔截", "zhang", ""); err != nil {
 		t.Fatalf("publish again: %v", err)
 	}
 	if tasks := openTasks(t, ctx, store); len(tasks) != 2 {

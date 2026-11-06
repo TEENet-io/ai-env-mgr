@@ -33,7 +33,7 @@ const (
 	ticketFilePrefix  = "agent_workdir/_tickets/"
 	// ticketToolUnsure is always on offer: the design lets somebody who cannot
 	// find their tool say so.
-	ticketToolUnsure = "不确定"
+	ticketToolUnsure = "不確定"
 )
 
 // ticketUploadTimeout replaces the server's short read limit while a signed-in
@@ -57,19 +57,19 @@ func parseTicketForm(w http.ResponseWriter, r *http.Request, csrf string) bool {
 	if err := parseUpload(r); err != nil {
 		var tooBig *http.MaxBytesError
 		if errors.As(err, &tooBig) {
-			http.Error(w, "文件太大：单个不超过 5 MB，最多 5 个", http.StatusRequestEntityTooLarge)
+			http.Error(w, "檔案太大：單個不超過 5 MB，最多 5 個", http.StatusRequestEntityTooLarge)
 			return false
 		}
 		var netErr net.Error
 		if errors.As(err, &netErr) && netErr.Timeout() {
-			http.Error(w, "上传超时，请换小一点的文件或稍后重试", http.StatusRequestTimeout)
+			http.Error(w, "上傳超時，請換小一點的檔案或稍後重試", http.StatusRequestTimeout)
 			return false
 		}
-		http.Error(w, "表单无法读取，请刷新页面", http.StatusBadRequest)
+		http.Error(w, "表單無法讀取，請刷新頁面", http.StatusBadRequest)
 		return false
 	}
 	if subtle.ConstantTimeCompare([]byte(r.PostFormValue("csrf")), []byte(csrf)) != 1 {
-		http.Error(w, "表单已过期，请刷新页面", http.StatusForbidden)
+		http.Error(w, "表單已過期，請刷新頁面", http.StatusForbidden)
 		return false
 	}
 	return true
@@ -104,35 +104,35 @@ func ticketUploads(r *http.Request, requestKind string) ([]ticketUpload, error) 
 		return nil, nil
 	}
 	if spec.Change {
-		return nil, errors.New("这类申请不能上传文件")
+		return nil, errors.New("這類申請不能上傳檔案")
 	}
 	if len(files) > maxTicketFiles {
-		return nil, fmt.Errorf("最多上传 %d 个文件", maxTicketFiles)
+		return nil, fmt.Errorf("最多上傳 %d 個檔案", maxTicketFiles)
 	}
 	out := make([]ticketUpload, 0, len(files))
 	for _, file := range files {
 		name := ticketFileName(file.Filename)
 		if file.Size > maxTicketFileSize {
-			return nil, fmt.Errorf("%s 超过 5 MB", name)
+			return nil, fmt.Errorf("%s 超過 5 MB", name)
 		}
 		f, err := file.Open()
 		if err != nil {
-			return nil, errors.New("无法读取上传的文件")
+			return nil, errors.New("無法讀取上傳的檔案")
 		}
 		data, err := io.ReadAll(io.LimitReader(f, maxTicketFileSize+1))
 		f.Close()
 		if err != nil || len(data) == 0 || len(data) > maxTicketFileSize {
-			return nil, fmt.Errorf("%s 无法读取、为空或超过 5 MB", name)
+			return nil, fmt.Errorf("%s 無法讀取、為空或超過 5 MB", name)
 		}
 		contentType := http.DetectContentType(data)
 		switch contentType {
 		case "image/png", "image/jpeg", "image/gif", "image/webp":
 		case "application/pdf":
 			if requestKind != "other-problem" {
-				return nil, fmt.Errorf("%s 不是图片：这类问题只能上传截图", name)
+				return nil, fmt.Errorf("%s 不是圖片：這類問題只能上傳截圖", name)
 			}
 		default:
-			return nil, fmt.Errorf("%s 不是支持的文件类型", name)
+			return nil, fmt.Errorf("%s 不是支持的檔案類型", name)
 		}
 		out = append(out, ticketUpload{name, contentType, data})
 	}
@@ -153,7 +153,7 @@ func ticketFileName(name string) string {
 		runes = runes[len(runes)-100:]
 	}
 	if len(runes) == 0 || string(runes) == "." || string(runes) == "/" {
-		return "文件"
+		return "檔案"
 	}
 	return string(runes)
 }
@@ -166,10 +166,10 @@ func (s *Server) attachTicketFiles(r *http.Request, uploads []ticketUpload, kept
 		return description, details, nil
 	}
 	if len(uploads)+len(kept) > maxTicketFiles {
-		return "", nil, fmt.Errorf("一张工单最多 %d 个文件，已有 %d 个", maxTicketFiles, len(kept))
+		return "", nil, fmt.Errorf("一張工單最多 %d 個檔案，已有 %d 個", maxTicketFiles, len(kept))
 	}
 	if s.dbm.objects == nil {
-		return "", nil, errors.New("文件存储不可用，请去掉文件后再提交")
+		return "", nil, errors.New("檔案存儲不可用，請去掉檔案後再提交")
 	}
 	var data map[string]any
 	if err := json.Unmarshal(details, &data); err != nil {
@@ -191,7 +191,7 @@ func (s *Server) attachTicketFiles(r *http.Request, uploads []ticketUpload, kept
 		fileID := hex.EncodeToString(id)
 		if err := s.dbm.objects.Put(ticketFilePrefix+fileID, upload.data); err != nil {
 			log.Printf("adminweb: store ticket file: %v", err)
-			return "", nil, errors.New("文件保存失败，请稍后重试")
+			return "", nil, errors.New("檔案保存失敗，請稍後重試")
 		}
 		all = append(all, map[string]any{"id": fileID, "name": upload.name, "type": upload.contentType, "size": len(upload.data)})
 		names = append(names, upload.name)
@@ -205,7 +205,7 @@ func (s *Server) attachTicketFiles(r *http.Request, uploads []ticketUpload, kept
 }
 
 func ticketFilesLine(names []string) string {
-	return "\n文件：" + strings.Join(names, "、")
+	return "\n檔案：" + strings.Join(names, "、")
 }
 
 // ticketRequestText is the description of the current version without the
@@ -222,7 +222,10 @@ func ticketRequestText(description string, details map[string]any) string {
 			names = append(names, name)
 		}
 	}
-	return strings.TrimSuffix(description, ticketFilesLine(names))
+	line := ticketFilesLine(names)
+	// Tickets filed before the text went Traditional carry the older line.
+	older := strings.Replace(line, "檔案：", "文件：", 1)
+	return strings.TrimSuffix(strings.TrimSuffix(description, line), older)
 }
 
 // serveTicketFile sends one of a ticket's files. Access has been decided by
@@ -241,7 +244,7 @@ func (s *Server) serveTicketFile(w http.ResponseWriter, r *http.Request, t dbsto
 		data, _, err := s.dbm.objects.Get(ticketFilePrefix + id)
 		if err != nil {
 			log.Printf("adminweb: read ticket file: %v", err)
-			http.Error(w, "文件暂时无法读取", http.StatusBadGateway)
+			http.Error(w, "檔案暫時無法讀取", http.StatusBadGateway)
 			return
 		}
 		contentType, _ := file["type"].(string)
@@ -302,14 +305,14 @@ func (s *Server) checkTicketTool(r *http.Request, previous string) error {
 	}
 	names, err := s.ticketTools(r.Context())
 	if err != nil {
-		return errors.New("无法读取工具清单")
+		return errors.New("無法讀取工具清單")
 	}
 	for _, name := range names {
 		if name == tool {
 			return nil
 		}
 	}
-	return errors.New("请从清单中选择工具；找不到时选“不确定”")
+	return errors.New("請從清單中選擇工具；找不到時選“不確定”")
 }
 
 func (s *Server) actionTicketTools(sess *session, r *http.Request) error {
@@ -318,7 +321,7 @@ func (s *Server) actionTicketTools(sess *session, r *http.Request) error {
 		return err
 	}
 	if v := formInt(r, "version"); v != version {
-		return errors.New("这页的设置在你打开后已被别人改过，请刷新后重试")
+		return errors.New("這頁的設定在你打開後已被別人改過，請刷新後重試")
 	}
 	seen := map[string]bool{ticketToolUnsure: true}
 	after := repo.TicketToolSettings{Names: []string{}}
@@ -328,7 +331,7 @@ func (s *Server) actionTicketTools(sess *session, r *http.Request) error {
 			continue
 		}
 		if !validTicketText(name, 200) {
-			return fmt.Errorf("工具名称无效或过长：%s", name)
+			return fmt.Errorf("工具名稱無效或過長：%s", name)
 		}
 		seen[name] = true
 		after.Names = append(after.Names, name)

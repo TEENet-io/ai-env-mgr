@@ -62,12 +62,12 @@ func (s *Server) actionReleaseRegister(sess *session, r *http.Request) error {
 	actor, requestID := sess.actor, s.clientKey(r)
 	ops := s.dbm.ops
 	return s.jobs.start(product, version, func(setStep func(string), setProgress func(done, total int64)) error {
-		setStep("校验 OSS 里的包")
+		setStep("校驗 OSS 裡的包")
 		sum, size, err := hasher.HashObject(key)
 		if err != nil {
 			return err
 		}
-		setStep("登记版本")
+		setStep("登記版本")
 		_, err = ops.RegisterArtifact(context.Background(), repo.NewArtifact{
 			Product: product, Version: version, SHA256: sum, SizeBytes: size,
 			ObjectKey: key, Notes: notes, Source: "oss:" + key, MinAgentVersion: minAgent, CreatedBy: actor,
@@ -146,13 +146,13 @@ func artifactSeverity(status repo.ArtifactStatus) string {
 func artifactLabel(severity string) string {
 	switch severity {
 	case "ok":
-		return "稳定"
+		return "穩定"
 	case "warn":
-		return "已验收"
+		return "已驗收"
 	case "bad":
 		return "已停用"
 	}
-	return "候选"
+	return "候選"
 }
 
 // artifactRow is one version in the library, as the page shows it.

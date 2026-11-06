@@ -1,103 +1,103 @@
-{{define "models.html"}}{{template "head" "模型下发"}}
+{{define "models.html"}}{{template "head" "模型下發"}}
 <body>
 <div class="app">
 {{template "nav" .}}
 <main class="sheet">
-  <header class="pagehead"><h1>模型下发</h1></header>
+  <header class="pagehead"><h1>模型下發</h1></header>
   {{template "tabs-users" .}}
   {{template "notices" .}}
 
-  <h2>员工模型清单</h2>
+  <h2>員工模型清單</h2>
   <section class="panel summary-row">
-    {{if .GatewayURL}}<p>网关地址 <code>{{.GatewayURL}}</code></p>{{end}}
+    {{if .GatewayURL}}<p>網關地址 <code>{{.GatewayURL}}</code></p>{{end}}
     <div>
       {{/* Three different states, and conflating the first two sends somebody
       to debug a network that is fine: the gateway is configured but this
       console cannot authenticate to it, the gateway is enabled but did not
       answer, or all is well. */}}
-      <p>{{if not .GatewayEnabled}}{{.GatewayUnusable}}{{else if not .GatewayUnusable}}员工可见的模型 {{len .GatewayModels}} 个{{end}}</p>
+      <p>{{if not .GatewayEnabled}}{{.GatewayUnusable}}{{else if not .GatewayUnusable}}員工可見的模型 {{len .GatewayModels}} 個{{end}}</p>
       {{if and .GatewayEnabled .GatewayUnusable}}<p class="note note-err">{{.GatewayUnusable}}</p>{{end}}
       {{if .GatewayEnabled}}
       <div class="scroll">
       <table>
-        <thead><tr><th>SLUG</th><th>显示名</th><th>渠道</th><th>上下文</th><th>推理档位</th></tr></thead>
+        <thead><tr><th>SLUG</th><th>顯示名</th><th>渠道</th><th>上下文</th><th>推理檔位</th></tr></thead>
         <tbody>
         {{range .GatewayModels}}
           <tr>
             <td class="id">{{.Name}}</td>
             <td>{{.Info.DisplayName}}</td>
-            <td class="dim nowrap">{{$ch := chof .}}{{chlabel $ch}}{{if index $.PausedChannels $ch}} <span class="tag tag-bad">已暂停</span>{{end}}</td>
+            <td class="dim nowrap">{{$ch := chof .}}{{chlabel $ch}}{{if index $.PausedChannels $ch}} <span class="tag tag-bad">已暫停</span>{{end}}</td>
             <td class="dim">{{ctxsize .Info.ContextWindow}}</td>
             <td class="dim">{{if .Info.ReasoningLevels}}{{range $i, $l := .Info.ReasoningLevels}}{{if $i}} / {{end}}{{$l}}{{end}}{{else}}—{{end}}</td>
           </tr>
         {{else}}
-          <tr><td colspan="5" class="empty">网关没有报告任何可展示的模型。</td></tr>
+          <tr><td colspan="5" class="empty">網關沒有報告任何可展示的模型。</td></tr>
         {{end}}
         </tbody>
       </table>
       </div>
       <p class="hint">
-        这张表来自网关自己（<code>/model/info</code>），控制台不维护任何模型清单。
-        在网关管理界面给模型的 <code>model_info</code> 标注 <code>catalog_visible: true</code>，
-        它就会出现在这里，也会出现在员工的模型选择器里（网关的模型存在它自己的数据库里，仓库里的 <code>config.yaml</code> 不是现状）。
+        這張表來自網關自己（<code>/model/info</code>），控制台不維護任何模型清單。
+        在網關管理界面給模型的 <code>model_info</code> 標註 <code>catalog_visible: true</code>，
+        它就會出現在這裡，也會出現在員工的模型選擇器裡（網關的模型存在它自己的資料庫裡，倉庫裡的 <code>config.yaml</code> 不是現狀）。
       </p>
       {{end}}
-      <p class="hint">渠道状态与逐部署检测已移至<a href="/channels">模型渠道</a>；令牌与额度管理在<a href="/users">员工</a>页签。</p>
+      <p class="hint">渠道狀態與逐部署檢測已移至<a href="/channels">模型渠道</a>；令牌與額度管理在<a href="/users">員工</a>頁籤。</p>
     </div>
   </section>
 
   {{with .ModelDelivery}}{{$md := .}}
-  <h2 id="models">模型下发</h2>
+  <h2 id="models">模型下發</h2>
   <section class="panel summary-row">
     <p>
-    {{if .NeverDelivered}}还没有从这里下发过模型配置。网关现在有 <b>{{len $.GatewayModels}}</b> 个模型。
-    {{else if .Changed}}<span class="tag tag-warn">有变化</span> 自上次全部下发（{{.FleetAt}} · {{.FleetBy}}）以来，网关上：
+    {{if .NeverDelivered}}還沒有從這裡下發過模型配置。網關現在有 <b>{{len $.GatewayModels}}</b> 個模型。
+    {{else if .Changed}}<span class="tag tag-warn">有變化</span> 自上次全部下發（{{.FleetAt}} · {{.FleetBy}}）以來，網關上：
       {{if .Added}}新增 {{range $i, $n := .Added}}{{if $i}}、{{end}}<span class="mono">{{$n}}</span>{{end}}{{end}}
       {{if .Removed}}{{if .Added}}；{{end}}下架 {{range $i, $n := .Removed}}{{if $i}}、{{end}}<span class="mono">{{$n}}</span>{{end}}{{end}}
-      {{if .MetaChanged}}模型信息（显示名、上下文、推理档位）有改动{{end}}
-    {{else}}<span class="tag tag-ok">已是最新</span> 与上次全部下发（{{.FleetAt}} · {{.FleetBy}}）一致。{{end}}
+      {{if .MetaChanged}}模型信息（顯示名、上下文、推理檔位）有改動{{end}}
+    {{else}}<span class="tag tag-ok">已是最新</span> 與上次全部下發（{{.FleetAt}} · {{.FleetBy}}）一致。{{end}}
     </p>
     {{if may $.Role "/models/deliver"}}
     <div class="deliver-bar">
       <form method="post" action="/models/deliver">
         <input type="hidden" name="csrf" value="{{$.CSRF}}"><input type="hidden" name="version" value="{{.Version}}"><input type="hidden" name="scope" value="test">
-        <select name="employee"><option value="">选一个测试员工…</option>{{range .Employees}}<option value="{{.ID}}">{{.WindowsUser}}</option>{{end}}</select>
-        <button class="link">先发给他</button>
+        <select name="employee"><option value="">選一個測試員工…</option>{{range .Employees}}<option value="{{.ID}}">{{.WindowsUser}}</option>{{end}}</select>
+        <button class="link">先發給他</button>
       </form>
       <span class="muted">或</span>
       <form method="post" action="/models/deliver">
         <input type="hidden" name="csrf" value="{{$.CSRF}}"><input type="hidden" name="version" value="{{.Version}}"><input type="hidden" name="scope" value="all">
-        <button data-confirm="确认向全部员工和机器下发当前模型清单？这可能创建大量同步任务，请确认现在执行。"{{if not .Changed}} class="link"{{end}}>全部下发</button>
+        <button data-confirm="確認向全部員工和機器下發當前模型清單？這可能建立大量同步任務，請確認現在執行。"{{if not .Changed}} class="link"{{end}}>全部下發</button>
       </form>
     </div>
     <details>
-      <summary>批量选择员工或设备</summary>
+      <summary>批量選擇員工或設備</summary>
       <form method="post" action="/models/deliver" class="form">
         <input type="hidden" name="csrf" value="{{$.CSRF}}"><input type="hidden" name="version" value="{{.Version}}"><input type="hidden" name="scope" value="batch">
-        <p class="hint">可同时勾选员工和设备；重复选择同一员工只生成一份配置。模型配置按员工保存，选择某台设备时，同员工绑定的其他设备也可能同步。</p>
-        <fieldset class="checks"><legend>员工</legend>{{range .Employees}}<label class="check"><input type="checkbox" name="employees" value="{{.ID}}"> {{.WindowsUser}}</label>{{else}}<span class="dim">没有可选员工</span>{{end}}</fieldset>
-        <fieldset class="checks"><legend>设备（按当前绑定员工下发）</legend>{{range .Devices}}<label class="check"><input type="checkbox" name="devices" value="{{.ID}}"> {{.Hostname}} <span class="dim">· {{.WindowsUser}}</span></label>{{else}}<span class="dim">没有已绑定设备</span>{{end}}</fieldset>
-        <button data-confirm="确认向所选员工或设备批量下发模型配置？">向所选目标下发</button>
+        <p class="hint">可同時勾選員工和設備；重複選擇同一員工只生成一份配置。模型配置按員工保存，選擇某台設備時，同員工綁定的其他設備也可能同步。</p>
+        <fieldset class="checks"><legend>員工</legend>{{range .Employees}}<label class="check"><input type="checkbox" name="employees" value="{{.ID}}"> {{.WindowsUser}}</label>{{else}}<span class="dim">沒有可選員工</span>{{end}}</fieldset>
+        <fieldset class="checks"><legend>設備（按當前綁定員工下發）</legend>{{range .Devices}}<label class="check"><input type="checkbox" name="devices" value="{{.ID}}"> {{.Hostname}} <span class="dim">· {{.WindowsUser}}</span></label>{{else}}<span class="dim">沒有已綁定設備</span>{{end}}</fieldset>
+        <button data-confirm="確認向所選員工或設備批量下發模型配置？">向所選目標下發</button>
       </form>
     </details>
     {{end}}
-    <p class="hint">下发会按网关现在的模型，给员工重新生成 Codex 配置和模型清单。机器同步后收到（1.3.0 起几秒内，旧版 agent 按同步间隔）；员工方便时<strong>重启 Codex</strong> 生效，员工自己选的模型会保留（除非它被下架）。<strong>agent 1.3.1 起下发不会打断正在运行的 Codex</strong>；更早的 agent 上，员工在 Codex 里切换过模型的，下发时 Codex 会被关闭，请挑员工不在干活时下发。</p>
+    <p class="hint">下發會按網關現在的模型，給員工重新生成 Codex 配置和模型清單。機器同步後收到（1.3.0 起幾秒內，舊版 agent 按同步間隔）；員工方便時<strong>重啟 Codex</strong> 生效，員工自己選的模型會保留（除非它被下架）。<strong>agent 1.3.1 起下發不會打斷正在運行的 Codex</strong>；更早的 agent 上，員工在 Codex 裡切換過模型的，下發時 Codex 會被關閉，請挑員工不在幹活時下發。</p>
     {{with .Last}}
-    <p>最近一次：{{if eq .Scope "all"}}全部下发{{else if eq .Scope "batch"}}批量下发{{else}}测试下发{{end}} · {{$md.LastAt}} · {{.By}} · 已收到 <b>{{$md.Received}}</b> / {{len $md.Rows}}</p>
+    <p>最近一次：{{if eq .Scope "all"}}全部下發{{else if eq .Scope "batch"}}批量下發{{else}}測試下發{{end}} · {{$md.LastAt}} · {{.By}} · 已收到 <b>{{$md.Received}}</b> / {{len $md.Rows}}</p>
     <div class="scroll"><table>
-      <thead><tr><th>员工</th><th>机器</th><th>状态</th><th>说明</th><th>操作</th></tr></thead>
+      <thead><tr><th>員工</th><th>機器</th><th>狀態</th><th>說明</th><th>操作</th></tr></thead>
       <tbody>{{range $md.Rows}}
         <tr><td class="id">{{.WindowsUser}}</td><td class="mono">{{orDash .Hostname}}</td>
-          <td><span class="tag tag-{{.Sev}}">{{.State}}</span>{{if .Retries}}<div class="rowsub">已重试 {{.Retries}} 次</div>{{end}}</td><td class="remark">{{.Detail}}</td>
-          <td>{{if and (eq .Sev "bad") (ne .State "目标已变更")}}{{if may $.Role "/models/retry"}}<form method="post" action="/models/retry"><input type="hidden" name="csrf" value="{{$.CSRF}}"><input type="hidden" name="version" value="{{$md.Version}}"><input type="hidden" name="employee" value="{{.EmployeeID}}"><button class="link">重试</button></form>{{end}}{{else}}—{{end}}</td></tr>
+          <td><span class="tag tag-{{.Sev}}">{{.State}}</span>{{if .Retries}}<div class="rowsub">已重試 {{.Retries}} 次</div>{{end}}</td><td class="remark">{{.Detail}}</td>
+          <td>{{if and (eq .Sev "bad") (ne .State "目標已變更")}}{{if may $.Role "/models/retry"}}<form method="post" action="/models/retry"><input type="hidden" name="csrf" value="{{$.CSRF}}"><input type="hidden" name="version" value="{{$md.Version}}"><input type="hidden" name="employee" value="{{.EmployeeID}}"><button class="link">重試</button></form>{{end}}{{else}}—{{end}}</td></tr>
       {{end}}</tbody>
     </table></div>
     {{end}}
     {{if .History}}<details>
-      <summary>查看最近 {{len .History}} 次历史下发</summary>
-      <p class="hint">历史记录保留所选目标及配置生成结果；机器是否持有当前配置，请看上面的最新一次回执。</p>
-      {{range .History}}<details><summary>{{.At}} · {{.By}} · {{if eq .Scope "all"}}全部{{else if eq .Scope "batch"}}批量{{else}}测试{{end}}下发 · {{len .Rows}} 个目标</summary>
-        <div class="scroll"><table><thead><tr><th>员工</th><th>设备</th><th>生成结果</th><th>错误</th></tr></thead><tbody>{{range .Rows}}<tr><td>{{.WindowsUser}}</td><td class="mono">{{orDash .Hostname}}</td><td>{{.State}}</td><td class="remark">{{.Detail}}</td></tr>{{end}}</tbody></table></div>
+      <summary>查看最近 {{len .History}} 次歷史下發</summary>
+      <p class="hint">歷史記錄保留所選目標及配置生成結果；機器是否持有當前配置，請看上面的最新一次回執。</p>
+      {{range .History}}<details><summary>{{.At}} · {{.By}} · {{if eq .Scope "all"}}全部{{else if eq .Scope "batch"}}批量{{else}}測試{{end}}下發 · {{len .Rows}} 個目標</summary>
+        <div class="scroll"><table><thead><tr><th>員工</th><th>設備</th><th>生成結果</th><th>錯誤</th></tr></thead><tbody>{{range .Rows}}<tr><td>{{.WindowsUser}}</td><td class="mono">{{orDash .Hostname}}</td><td>{{.State}}</td><td class="remark">{{.Detail}}</td></tr>{{end}}</tbody></table></div>
       </details>{{end}}
     </details>{{end}}
   </section>

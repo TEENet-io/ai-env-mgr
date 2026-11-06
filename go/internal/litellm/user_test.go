@@ -25,7 +25,7 @@ func TestUpsertUserCreatesWhenMissing(t *testing.T) {
 			t.Errorf("unexpected %s %s", r.Method, r.URL.Path)
 		}
 	})
-	spec := UserSpec{UserID: "emp-alice", Alias: "Alice", Department: "研发",
+	spec := UserSpec{UserID: "emp-alice", Alias: "Alice", Department: "研發",
 		Quota: Quota{MonthlyBudgetUSD: 20, RPM: 60, TPM: 200000, Parallel: 4}, Models: []string{"glm-5.2"}}
 	if err := c.UpsertUser(context.Background(), spec); err != nil {
 		t.Fatalf("upsert: %v", err)
@@ -41,7 +41,7 @@ func TestUpsertUserCreatesWhenMissing(t *testing.T) {
 			t.Errorf("%s = %v, want %v", k, created[k], v)
 		}
 	}
-	if md, _ := created["metadata"].(map[string]any); md["department"] != "研发" {
+	if md, _ := created["metadata"].(map[string]any); md["department"] != "研發" {
 		t.Errorf("department not sent: %v", created["metadata"])
 	}
 	if models, _ := created["models"].([]any); len(models) != 1 || models[0] != "glm-5.2" {
@@ -108,7 +108,7 @@ func TestUserInfoParsesLimitsAndSpend(t *testing.T) {
 		_, _ = io.WriteString(w, `{"user_id":"emp-alice","user_info":{"user_id":"emp-alice","user_alias":"Alice","spend":3.25,
 			"max_budget":20,"budget_duration":"1mo","budget_reset_at":"2026-10-01T00:00:00Z",
 			"rpm_limit":60,"tpm_limit":200000,"max_parallel_requests":4,"models":["glm-5.2"],
-			"metadata":{"department":"研发"}},"keys":[{"key_alias":"emp-alice","token":"abc"}]}`)
+			"metadata":{"department":"研發"}},"keys":[{"key_alias":"emp-alice","token":"abc"}]}`)
 	})
 	u, found, err := c.UserInfo(context.Background(), "emp-alice")
 	if err != nil || !found {
@@ -118,7 +118,7 @@ func TestUserInfoParsesLimitsAndSpend(t *testing.T) {
 	if q.MonthlyBudgetUSD != 20 || q.RPM != 60 || q.TPM != 200000 || q.Parallel != 4 {
 		t.Errorf("quota not parsed: %+v", q)
 	}
-	if u.Spend != 3.25 || u.BudgetResetAt != "2026-10-01T00:00:00Z" || u.Department() != "研发" || u.Alias != "Alice" {
+	if u.Spend != 3.25 || u.BudgetResetAt != "2026-10-01T00:00:00Z" || u.Department() != "研發" || u.Alias != "Alice" {
 		t.Errorf("fields not parsed: %+v", u)
 	}
 }

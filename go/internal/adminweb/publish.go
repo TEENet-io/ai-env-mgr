@@ -111,12 +111,12 @@ func (s *Server) actionAgentPublish(sess *session, r *http.Request) error {
 	}
 	be, client := sess.be, s.clientKey(r)
 	return s.jobs.start("agent", version, func(setStep func(string), setProgress func(done, total int64)) error {
-		setStep("获取二进制")
+		setStep("獲取二進制")
 		data, err := fetch(setProgress)
 		if err != nil {
 			return err
 		}
-		setStep("上传到 OSS")
+		setStep("上傳到 OSS")
 		// The job outlives the request, so it gets its own context.
 		sum, err := be.PublishAgentUpdate(context.Background(), version, data, setProgress)
 		if err != nil {
@@ -152,12 +152,12 @@ func (s *Server) actionCodexPublish(sess *session, r *http.Request) error {
 	}
 	be, client := sess.be, s.clientKey(r)
 	return s.jobs.start("codex", version, func(setStep func(string), setProgress func(done, total int64)) error {
-		setStep("下载安装包")
+		setStep("下載安裝包")
 		data, err := fetch(setProgress)
 		if err != nil {
 			return err
 		}
-		setStep("上传到 OSS")
+		setStep("上傳到 OSS")
 		sum, err := be.PublishCodexUpdate(context.Background(), version, data, setProgress)
 		if err != nil {
 			return err

@@ -1,19 +1,19 @@
-{{define "log.html"}}{{template "head" "日志"}}
+{{define "log.html"}}{{template "head" "日誌"}}
 <body>
 <div class="app">
 {{template "nav" .}}
 <main class="sheet">
   <header class="pagehead log-pagehead">
     <p class="log-eyebrow">AGENT LOG</p>
-    <h1>运行日志</h1>
-    <p><span class="log-machine"><span class="log-machine-dot"></span><span class="mono">{{.Machine}}</span></span> 最近上报的 Agent 日志</p>
-    <p class="hint">这里只显示 Agent 上传的日志尾部（约 64KB）。完整运行日志与调用记录在 SLS 项目 windows-control-logs（ops / audit）。</p>
+    <h1>運行日誌</h1>
+    <p><span class="log-machine"><span class="log-machine-dot"></span><span class="mono">{{.Machine}}</span></span> 最近上報的 Agent 日誌</p>
+    <p class="hint">這裡只顯示 Agent 上傳的日誌尾部（約 64KB）。完整運行日誌與調用記錄在 SLS 項目 windows-control-logs（ops / audit）。</p>
   </header>
   {{template "notices" .}}
   {{with .Notes}}
     {{if .Status.Errors}}
     <section class="log-note-section log-note-error">
-    <div class="log-section-head"><h2>错误</h2><span class="log-section-mark">需要处理</span></div>
+    <div class="log-section-head"><h2>錯誤</h2><span class="log-section-mark">需要處理</span></div>
     <div class="panel scroll log-note-list"><table><tbody>
       {{range .Status.Errors}}<tr class="r-bad"><td>{{.}}</td></tr>{{end}}
     </tbody></table></div>
@@ -21,21 +21,21 @@
     {{end}}
     {{if .Status.Warnings}}
     <section class="log-note-section log-note-warning">
-    <div class="log-section-head"><h2>提示</h2><span class="log-section-mark">状态说明</span></div>
+    <div class="log-section-head"><h2>提示</h2><span class="log-section-mark">狀態說明</span></div>
     <div class="panel scroll log-note-list"><table><tbody>
       {{range .Status.Warnings}}<tr class="r-warn"><td>{{.}}</td></tr>{{end}}
     </tbody></table></div>
-    <p class="hint">提示是状态说明，不是故障。</p>
+    <p class="hint">提示是狀態說明，不是故障。</p>
     </section>
     {{end}}
   {{end}}
   {{if .Log}}
   <section class="log-stream">
-    <div class="log-section-head"><h2>日志内容</h2><span class="log-section-mark">最近 64KB</span></div>
+    <div class="log-section-head"><h2>日誌內容</h2><span class="log-section-mark">最近 64KB</span></div>
     <div class="log-viewer-wrap"><pre class="log log-viewer">{{.Log}}</pre></div>
   </section>
   {{end}}
-  <p class="hint"><a href="/machines">← 返回机器列表</a></p>
+  <p class="hint"><a href="/machines">← 返回機器列表</a></p>
 </main>
 </div>
 </body>

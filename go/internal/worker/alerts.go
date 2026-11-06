@@ -144,11 +144,11 @@ func (h AlertEval) offlineMachines(ctx context.Context, now time.Time, s repo.Al
 		} else if !e.Active() {
 			continue
 		}
-		title := fmt.Sprintf("机器 %s 从未上报", d.Hostname)
+		title := fmt.Sprintf("機器 %s 從未上報", d.Hostname)
 		detail := ""
 		if d.LastSeenAt != nil {
-			title = fmt.Sprintf("机器 %s 已 %d 小时未上报", d.Hostname, int(now.Sub(*d.LastSeenAt).Hours()))
-			detail = "最后上报 " + d.LastSeenAt.Local().Format("2006-01-02 15:04")
+			title = fmt.Sprintf("機器 %s 已 %d 小時未上報", d.Hostname, int(now.Sub(*d.LastSeenAt).Hours()))
+			detail = "最後上報 " + d.LastSeenAt.Local().Format("2006-01-02 15:04")
 		}
 		out = append(out, repo.NewAlert{
 			Kind: repo.AlertMachineOffline, Fingerprint: repo.AlertMachineOffline + ":" + d.ID,
@@ -197,8 +197,8 @@ func (h AlertEval) offboardCleanup(ctx context.Context, now time.Time, s repo.Al
 		out = append(out, repo.NewAlert{
 			Kind: repo.AlertOffboardCleanup, Fingerprint: repo.AlertOffboardCleanup + ":" + e.ID,
 			Severity: repo.SeverityWarn, SubjectType: "employee", SubjectID: e.ID,
-			Title: fmt.Sprintf("%s 已离职 %d 天，待清理", e.WindowsUser, days),
-			Detail: fmt.Sprintf("关户于 %s。按流程删除阿里云账号、释放实例并删除数据，然后在机器页「注销」%s；注销后这条自动关闭。",
+			Title: fmt.Sprintf("%s 已離職 %d 天，待清理", e.WindowsUser, days),
+			Detail: fmt.Sprintf("關戶於 %s。按流程刪除阿里雲帳號、釋放實例並刪除資料，然後在機器頁「註銷」%s；註銷後這條自動關閉。",
 				e.OffboardedAt.Local().Format("2006-01-02"), strings.Join(machines, "、")),
 		})
 	}
@@ -235,7 +235,7 @@ func (h AlertEval) failedRollouts(ctx context.Context, now time.Time) ([]repo.Ne
 		out = append(out, repo.NewAlert{
 			Kind: repo.AlertRolloutFailed, Fingerprint: repo.AlertRolloutFailed + ":" + t.ID,
 			Severity: repo.SeverityWarn, SubjectType: "target", SubjectID: t.ID,
-			Title: fmt.Sprintf("机器 %s 安装 %s %s 失败", host, t.Product, version), Detail: t.ResultNote,
+			Title: fmt.Sprintf("機器 %s 安裝 %s %s 失敗", host, t.Product, version), Detail: t.ResultNote,
 		})
 	}
 	return out, nil
@@ -275,7 +275,7 @@ func (h AlertEval) budgets(ctx context.Context, s repo.AlertSettings) ([]repo.Ne
 		out = append(out, repo.NewAlert{
 			Kind: repo.AlertBudget, Fingerprint: fmt.Sprintf("%s:%s:%s", repo.AlertBudget, subject, level),
 			Severity: severity, SubjectType: "employee", SubjectID: subject,
-			Title:  fmt.Sprintf("%s 本月已用预算 %d%%", windowsUser, pct),
+			Title:  fmt.Sprintf("%s 本月已用預算 %d%%", windowsUser, pct),
 			Detail: fmt.Sprintf("已用 $%.2f / $%.2f", u.Spend, *u.MaxBudget),
 		})
 	}
@@ -350,8 +350,8 @@ func OpenDriftAlert(ctx context.Context, store repo.Store, grant repo.Grant, obs
 	_, _, err := store.Alerts().Open(ctx, repo.NewAlert{
 		Kind: repo.AlertGatewayDrift, Fingerprint: repo.AlertGatewayDrift + ":" + grant.KeyAlias,
 		Severity: repo.SeverityCrit, SubjectType: "grant", SubjectID: grant.KeyAlias,
-		Title:  fmt.Sprintf("网关令牌 %s 状态不符", grant.KeyAlias),
-		Detail: fmt.Sprintf("控制台认为 %s，网关实际 %s", grant.Desired, observed),
+		Title:  fmt.Sprintf("網關令牌 %s 狀態不符", grant.KeyAlias),
+		Detail: fmt.Sprintf("控制台認為 %s，網關實際 %s", grant.Desired, observed),
 	})
 	return err
 }
@@ -366,7 +366,7 @@ func OpenTaskFailedAlert(ctx context.Context, store repo.Store, task repo.Task, 
 	_, _, err := store.Alerts().Open(ctx, repo.NewAlert{
 		Kind: repo.AlertTaskFailed, Fingerprint: repo.AlertTaskFailed + ":" + task.ID,
 		Severity: repo.SeverityWarn, SubjectType: "task", SubjectID: task.ID,
-		Title:  fmt.Sprintf("任务 %s 已放弃（%d 次尝试）", task.Kind, task.Attempts),
+		Title:  fmt.Sprintf("任務 %s 已放棄（%d 次嘗試）", task.Kind, task.Attempts),
 		Detail: detail,
 	})
 	return err

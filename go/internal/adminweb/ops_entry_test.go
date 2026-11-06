@@ -13,7 +13,7 @@ import (
 	"github.com/pquerna/otp/totp"
 )
 
-var reNewAdminPassword = regexp.MustCompile(`初始密码：<code class="id">([^<]+)`)
+var reNewAdminPassword = regexp.MustCompile(`初始密碼：<code class="id">([^<]+)`)
 
 // createOperator opens an account through the page, the way it is really done.
 func createOperator(t *testing.T, s *Server, by *http.Cookie, username, email string) string {
@@ -57,7 +57,7 @@ func TestCustomersAndOperatorsComeInSeparately(t *testing.T) {
 	for _, path := range []string{"/customer", "/customer?view=new"} {
 		page += dbGet(t, h, path, customer).Body.String()
 	}
-	for _, leak := range []string{opsSignInPath, `action="/login"`, `href="/"`, "运维", "管理控制台", "用管理员账号登录"} {
+	for _, leak := range []string{opsSignInPath, `action="/login"`, `href="/"`, "運維", "管理控制台", "用管理員帳號登入"} {
 		if strings.Contains(page, leak) {
 			t.Errorf("a customer's page mentions %q", leak)
 		}
@@ -100,7 +100,7 @@ func TestNeitherKindOfAccountWorksAtTheOtherEntry(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := s.dbm.db.Tickets().CreateContactWithRole(t.Context(), "cust@example.com", "客户", hash, "employee"); err != nil {
+	if _, err := s.dbm.db.Tickets().CreateContactWithRole(t.Context(), "cust@example.com", "客戶", hash, "employee"); err != nil {
 		t.Fatal(err)
 	}
 	rec := dbPost(t, h, "/login", url.Values{"username": {"cust@example.com"}, "password": {"a-long-enough-password"}})
@@ -121,7 +121,7 @@ func TestAnOperatorNamedForThemselvesIsWhoTheRecordsShow(t *testing.T) {
 	const name = "peng wei 夢寒" // a space and any language; user names are kept in lower case
 	operator := signInAs(t, s, name, createOperator(t, s, root, name, "menghan@example.com"))
 
-	rec := createAdminTicket(t, h, operator, csrfFrom(t, s, operator, "/settings"), map[string]string{"request_kind": "other-problem", "problem": "处理人测试"})
+	rec := createAdminTicket(t, h, operator, csrfFrom(t, s, operator, "/settings"), map[string]string{"request_kind": "other-problem", "problem": "處理人測試"})
 	if rec.Code != http.StatusSeeOther {
 		t.Fatalf("create: %d %s", rec.Code, rec.Body)
 	}
@@ -148,7 +148,7 @@ func TestAnOperatorNamedForThemselvesIsWhoTheRecordsShow(t *testing.T) {
 }
 
 func TestAnEnrolmentLinkSurvivesAPersonsName(t *testing.T) {
-	uri := enrolmentURI("AI 环境管理", "TEENet 夢寒", "ABC")
+	uri := enrolmentURI("AI 環境管理", "TEENet 夢寒", "ABC")
 	if strings.ContainsAny(uri, " 夢") {
 		t.Fatalf("not escaped: %s", uri)
 	}
@@ -156,10 +156,27 @@ func TestAnEnrolmentLinkSurvivesAPersonsName(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if u.Path != "/AI 环境管理:TEENet 夢寒" && u.Host+u.Path != "totp/AI 环境管理:TEENet 夢寒" {
+	if u.Path != "/AI 環境管理:TEENet 夢寒" && u.Host+u.Path != "totp/AI 環境管理:TEENet 夢寒" {
 		t.Errorf("label %q %q", u.Host, u.Path)
 	}
-	if got := u.Query().Get("issuer"); got != "AI 环境管理" {
+	if got := u.Query().Get("issuer"); got != "AI 環境管理" {
 		t.Errorf("issuer %q", got)
+	}
+}
+
+func TestOnlyAdminAndViewerAccountsCanBeCreated(t *testing.T) {
+	s, _ := newDatabaseServer(t)
+	h := s.Handler()
+	root := signedIn(t, s)
+	for _, role := range []string{"operator", "security", "root"} {
+		username := "retired-" + role
+		dbPost(t, h, "/admins/create", url.Values{"csrf": {csrfFrom(t, s, root, "/admins")}, "username": {username}, "role": {role}}, root)
+		if _, err := s.dbm.store.Admins().ByUsername(t.Context(), username); err == nil {
+			t.Errorf("an account with role %s was created", role)
+		}
+	}
+	page := dbGet(t, h, "/admins", root).Body.String()
+	if strings.Contains(page, `value="operator"`) || strings.Contains(page, `value="security"`) {
+		t.Error("the form still offers a retired role")
 	}
 }

@@ -28,8 +28,8 @@ func (c *fakeChannel) Send(_ context.Context, m notify.Message) error {
 
 func TestAlertNotifyDeliversOnceAndRecordsFailures(t *testing.T) {
 	store, ctx := newWorkerStore(t)
-	a1, _, _ := store.Alerts().Open(ctx, repo.NewAlert{Kind: repo.AlertMachineOffline, Fingerprint: "m:1", Severity: "warn", SubjectType: "device", SubjectID: "d1", Title: "PC-1 未上报"})
-	a2, _, _ := store.Alerts().Open(ctx, repo.NewAlert{Kind: repo.AlertBudget, Fingerprint: "b:1", Severity: "crit", SubjectType: "employee", SubjectID: "e1", Title: "work1 超预算"})
+	a1, _, _ := store.Alerts().Open(ctx, repo.NewAlert{Kind: repo.AlertMachineOffline, Fingerprint: "m:1", Severity: "warn", SubjectType: "device", SubjectID: "d1", Title: "PC-1 未上報"})
+	a2, _, _ := store.Alerts().Open(ctx, repo.NewAlert{Kind: repo.AlertBudget, Fingerprint: "b:1", Severity: "crit", SubjectType: "employee", SubjectID: "e1", Title: "work1 超預算"})
 	hook := &fakeChannel{name: "webhook"}
 	mail := &fakeChannel{name: "smtp", fail: errors.New("connection refused")}
 	channels := []notify.Channel{hook, mail}
@@ -68,7 +68,7 @@ func TestAlertNotifyDeliversOnceAndRecordsFailures(t *testing.T) {
 	// A new alert with nowhere to go is marked seen rather than kept
 	// forever; a channel configured later does not replay it.
 	channels = nil
-	a3, _, _ := store.Alerts().Open(ctx, repo.NewAlert{Kind: repo.AlertTaskFailed, Fingerprint: "t:1", Severity: "warn", SubjectType: "task", SubjectID: "t1", Title: "任务失败"})
+	a3, _, _ := store.Alerts().Open(ctx, repo.NewAlert{Kind: repo.AlertTaskFailed, Fingerprint: "t:1", Severity: "warn", SubjectType: "task", SubjectID: "t1", Title: "任務失敗"})
 	if res, _ = h.Run(ctx, repo.Task{}); !strings.Contains(res.Note, "no channel configured; 1 alert") {
 		t.Fatalf("no channels: %q", res.Note)
 	}
@@ -79,7 +79,7 @@ func TestAlertNotifyDeliversOnceAndRecordsFailures(t *testing.T) {
 	// After MaxTries the alert is left with its error.
 	channels = []notify.Channel{&fakeChannel{name: "webhook", fail: errors.New("410 gone")}}
 	h.MaxTries = 2
-	a4, _, _ := store.Alerts().Open(ctx, repo.NewAlert{Kind: repo.AlertTaskFailed, Fingerprint: "t:2", Severity: "warn", SubjectType: "task", SubjectID: "t2", Title: "任务失败"})
+	a4, _, _ := store.Alerts().Open(ctx, repo.NewAlert{Kind: repo.AlertTaskFailed, Fingerprint: "t:2", Severity: "warn", SubjectType: "task", SubjectID: "t2", Title: "任務失敗"})
 	for range 5 {
 		h.Run(ctx, repo.Task{})
 	}

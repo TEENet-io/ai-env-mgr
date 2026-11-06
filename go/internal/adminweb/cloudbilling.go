@@ -138,15 +138,15 @@ func cloudBillingDecimal(value string, required bool) (*big.Rat, error) {
 		return nil, nil
 	}
 	if !cloudBillingMoneyRE.MatchString(value) {
-		return nil, errors.New("账单包含无效金额或用量")
+		return nil, errors.New("帳單包含無效金額或用量")
 	}
 	whole, fraction, _ := strings.Cut(strings.TrimPrefix(strings.TrimPrefix(value, "+"), "-"), ".")
 	if len(whole) > 50 || len(fraction) > 100 {
-		return nil, errors.New("账单金额或用量精度超限")
+		return nil, errors.New("帳單金額或用量精度超限")
 	}
 	n, ok := new(big.Rat).SetString(value)
 	if !ok {
-		return nil, errors.New("账单包含无效金额或用量")
+		return nil, errors.New("帳單包含無效金額或用量")
 	}
 	return n, nil
 }
@@ -233,16 +233,16 @@ func cloudBillingSourceBreakdowns(sources []cloudBillSource, groups []cloudBillG
 
 func cloudReadZipFile(file *zip.File, limit int64) ([]byte, error) {
 	if file.UncompressedSize64 == 0 || file.UncompressedSize64 > uint64(limit) {
-		return nil, errors.New("云账单压缩包内文件大小异常")
+		return nil, errors.New("雲帳單壓縮包內檔案大小異常")
 	}
 	reader, err := file.Open()
 	if err != nil {
-		return nil, errors.New("云账单压缩包内文件无法读取")
+		return nil, errors.New("雲帳單壓縮包內檔案無法讀取")
 	}
 	data, readErr := io.ReadAll(io.LimitReader(reader, limit+1))
 	closeErr := reader.Close()
 	if readErr != nil || closeErr != nil || len(data) == 0 || int64(len(data)) > limit || uint64(len(data)) != file.UncompressedSize64 {
-		return nil, errors.New("云账单压缩包内文件校验失败")
+		return nil, errors.New("雲帳單壓縮包內檔案校驗失敗")
 	}
 	return data, nil
 }
@@ -251,11 +251,11 @@ func cloudReadZipFile(file *zip.File, limit int64) ([]byte, error) {
 // manifest are checked together before any amount is shown or downloaded.
 func loadCloudBilling(objects cloudBillingObjects, requested string, now time.Time) (*cloudBillPage, []byte, error) {
 	if requested != "" && !cloudBillingMonth(requested) {
-		return nil, nil, errors.New("账期必须为 YYYY-MM")
+		return nil, nil, errors.New("帳期必須為 YYYY-MM")
 	}
 	infos, err := objects.ListInfo(cloudBillingPrefix)
 	if err != nil {
-		return nil, nil, fmt.Errorf("列出云账单失败: %w", err)
+		return nil, nil, fmt.Errorf("列出雲帳單失敗: %w", err)
 	}
 	monthSet := map[string]bool{}
 	byKey := make(map[string]ossclient.ObjectInfo, len(infos))
@@ -284,31 +284,31 @@ func loadCloudBilling(objects cloudBillingObjects, requested string, now time.Ti
 	objectKey := cloudBillingPrefix + month + "/bill.zip"
 	info := byKey[objectKey]
 	if info.Size <= 0 || info.Size > cloudBillingMaxArchive {
-		return page, nil, errors.New("云账单压缩包大小异常")
+		return page, nil, errors.New("雲帳單壓縮包大小異常")
 	}
 	archiveBytes, _, err := objects.Get(objectKey)
 	if err != nil {
-		return page, nil, fmt.Errorf("读取云账单压缩包失败: %w", err)
+		return page, nil, fmt.Errorf("讀取雲帳單壓縮包失敗: %w", err)
 	}
 	// A monthly overwrite can happen between ListInfo and Get. The two calls
 	// may legitimately describe different complete versions of the same ZIP;
 	// validate the fetched object itself instead of comparing their sizes.
 	if len(archiveBytes) == 0 || len(archiveBytes) > cloudBillingMaxArchive {
-		return page, nil, errors.New("云账单压缩包大小异常")
+		return page, nil, errors.New("雲帳單壓縮包大小異常")
 	}
 	archive, err := zip.NewReader(bytes.NewReader(archiveBytes), int64(len(archiveBytes)))
 	if err != nil || len(archive.File) != 2 {
-		return page, nil, errors.New("云账单压缩包格式错误")
+		return page, nil, errors.New("雲帳單壓縮包格式錯誤")
 	}
 	files := map[string]*zip.File{}
 	for _, file := range archive.File {
 		if file.Name != "manifest.json" && file.Name != "billing-lines.csv" {
-			return page, nil, errors.New("云账单压缩包含意外文件")
+			return page, nil, errors.New("雲帳單壓縮包含意外檔案")
 		}
 		files[file.Name] = file
 	}
 	if len(files) != 2 {
-		return page, nil, errors.New("云账单压缩包缺少文件")
+		return page, nil, errors.New("雲帳單壓縮包缺少檔案")
 	}
 	manifestBytes, err := cloudReadZipFile(files["manifest.json"], cloudBillingMaxManifest)
 	if err != nil {
@@ -316,18 +316,18 @@ func loadCloudBilling(objects cloudBillingObjects, requested string, now time.Ti
 	}
 	var manifest cloudBillManifest
 	if err := json.Unmarshal(manifestBytes, &manifest); err != nil {
-		return page, nil, errors.New("云账单 manifest 不是有效 JSON")
+		return page, nil, errors.New("雲帳單 manifest 不是有效 JSON")
 	}
 	if manifest.SchemaVersion != 2 || manifest.Period != month ||
 		manifest.CSV.Name != "billing-lines.csv" || !cloudBillingHashRE.MatchString(manifest.CSV.SHA256) ||
 		!cloudBillingHashRE.MatchString(manifest.BatchFingerprint) || manifest.CSV.Rows < 0 || manifest.CSV.Rows > cloudBillingMaxRows {
-		return page, nil, errors.New("云账单 manifest 版本或账期信息不匹配")
+		return page, nil, errors.New("雲帳單 manifest 版本或帳期信息不匹配")
 	}
 	if _, err := time.Parse(time.RFC3339Nano, manifest.GeneratedAt); err != nil {
-		return page, nil, errors.New("云账单生成时间无效")
+		return page, nil, errors.New("雲帳單生成時間無效")
 	}
 	if len(manifest.Providers) != 3 {
-		return page, nil, errors.New("云账单缺少三家供应商来源")
+		return page, nil, errors.New("雲帳單缺少三家供應商來源")
 	}
 	sources := map[string]int{}
 	bases := map[string]map[string]bool{}
@@ -335,14 +335,14 @@ func loadCloudBilling(objects cloudBillingObjects, requested string, now time.Ti
 	for _, source := range manifest.Providers {
 		if !slices.Contains([]string{"aws", "azure", "gcp"}, source.Provider) || sources[source.Provider] != 0 ||
 			source.SourceID == "" || source.Rows < 0 || !cloudBillingHashRE.MatchString(source.Fingerprint) {
-			return page, nil, errors.New("云账单供应商来源无效")
+			return page, nil, errors.New("雲帳單供應商來源無效")
 		}
 		if _, err := time.Parse(time.RFC3339Nano, source.FetchedAt); err != nil {
-			return page, nil, errors.New("云账单采集时间无效")
+			return page, nil, errors.New("雲帳單採集時間無效")
 		}
 		if source.SourceUpdatedAt != nil {
 			if _, err := time.Parse(time.RFC3339Nano, *source.SourceUpdatedAt); err != nil {
-				return page, nil, errors.New("云账单来源更新时间无效")
+				return page, nil, errors.New("雲帳單來源更新時間無效")
 			}
 		}
 		// -1 means seen; zero rows is still a valid source and must not be
@@ -363,29 +363,29 @@ func loadCloudBilling(objects cloudBillingObjects, requested string, now time.Ti
 		})
 	}
 	if len(sources) != 3 {
-		return page, nil, errors.New("云账单供应商来源重复")
+		return page, nil, errors.New("雲帳單供應商來源重複")
 	}
 	batchInput, _ := json.Marshal(map[string]any{"period": month, "schema_version": 2, "snapshots": fingerprints})
 	batchHash := sha256.Sum256(batchInput)
 	if hex.EncodeToString(batchHash[:]) != manifest.BatchFingerprint {
-		return page, nil, errors.New("云账单批次指纹不匹配")
+		return page, nil, errors.New("雲帳單批次指紋不匹配")
 	}
 	csvBytes, err := cloudReadZipFile(files["billing-lines.csv"], cloudBillingMaxCSV)
 	if err != nil {
 		return page, nil, err
 	}
 	if int64(len(csvBytes)) != manifest.CSV.Bytes {
-		return page, nil, errors.New("云账单 CSV 字节数不匹配")
+		return page, nil, errors.New("雲帳單 CSV 字節數不匹配")
 	}
 	hash := sha256.Sum256(csvBytes)
 	if hex.EncodeToString(hash[:]) != manifest.CSV.SHA256 {
-		return page, nil, errors.New("云账单 CSV SHA-256 不匹配")
+		return page, nil, errors.New("雲帳單 CSV SHA-256 不匹配")
 	}
 	reader := csv.NewReader(bytes.NewReader(csvBytes))
 	reader.FieldsPerRecord = len(cloudBillingColumns)
 	header, err := reader.Read()
 	if err != nil || !slices.Equal(header, cloudBillingColumns) {
-		return page, nil, errors.New("云账单 CSV 表头与版本不匹配")
+		return page, nil, errors.New("雲帳單 CSV 表頭與版本不匹配")
 	}
 	counts := map[string]int{}
 	allGroups := map[string]*cloudBillAggregate{}
@@ -397,17 +397,17 @@ func loadCloudBilling(objects cloudBillingObjects, requested string, now time.Ti
 			break
 		}
 		if err != nil {
-			return page, nil, errors.New("云账单 CSV 行格式错误")
+			return page, nil, errors.New("雲帳單 CSV 行格式錯誤")
 		}
 		page.Rows++
 		if page.Rows > cloudBillingMaxRows {
-			return page, nil, errors.New("云账单 CSV 行数超限")
+			return page, nil, errors.New("雲帳單 CSV 行數超限")
 		}
 		provider, basis, disposition := row[1], row[26], row[27]
 		if sources[provider] != -1 || row[2] != month || row[0] == "" || row[4] == "" || row[5] == "" ||
 			row[15] == "" || basis == "" || !bases[provider][basis] ||
 			!slices.Contains([]string{"comparable", "unmapped", "adjustment"}, disposition) {
-			return page, nil, errors.New("云账单 CSV 含不属于本批次的行")
+			return page, nil, errors.New("雲帳單 CSV 含不屬於本批次的行")
 		}
 		var sourceID string
 		for _, source := range manifest.Providers {
@@ -417,13 +417,13 @@ func loadCloudBilling(objects cloudBillingObjects, requested string, now time.Ti
 			}
 		}
 		if row[0] != sourceID {
-			return page, nil, errors.New("云账单 CSV 来源 ID 不匹配")
+			return page, nil, errors.New("雲帳單 CSV 來源 ID 不匹配")
 		}
 		if _, err := time.Parse(time.RFC3339Nano, row[10]); err != nil {
-			return page, nil, errors.New("云账单 CSV 用量时间无效")
+			return page, nil, errors.New("雲帳單 CSV 用量時間無效")
 		}
 		if _, err := time.Parse(time.RFC3339Nano, row[11]); err != nil {
-			return page, nil, errors.New("云账单 CSV 用量时间无效")
+			return page, nil, errors.New("雲帳單 CSV 用量時間無效")
 		}
 		if _, err := cloudBillingDecimal(row[22], true); err != nil {
 			return page, nil, err
@@ -440,7 +440,7 @@ func loadCloudBilling(objects cloudBillingObjects, requested string, now time.Ti
 		}
 		var components map[string]string
 		if err := json.Unmarshal([]byte(row[29]), &components); err != nil || components == nil {
-			return page, nil, errors.New("云账单 CSV 供应商字段不是有效 JSON")
+			return page, nil, errors.New("雲帳單 CSV 供應商字段不是有效 JSON")
 		}
 		counts[provider]++
 		cloudBillingAdd(allGroups, cloudBillGroup{
@@ -450,12 +450,12 @@ func loadCloudBilling(objects cloudBillingObjects, requested string, now time.Ti
 			Provider: provider, Scope: row[5], Currency: row[15], CostBasis: basis, Disposition: disposition,
 		}, cost)
 		if provider == "gcp" && disposition == "unmapped" {
-			status := "未识别"
+			status := "未識別"
 			switch components["candidate_status"] {
 			case "description_only":
-				status = "仅凭描述推断"
+				status = "僅憑描述推斷"
 			case "ambiguous":
-				status = "多个模型共用 SKU"
+				status = "多個模型共用 SKU"
 			}
 			candidate := cloudBillCandidate{
 				SKU: components["sku_id"], Description: components["sku_description"],
@@ -476,11 +476,11 @@ func loadCloudBilling(objects cloudBillingObjects, requested string, now time.Ti
 		}
 	}
 	if page.Rows != manifest.CSV.Rows {
-		return page, nil, errors.New("云账单 CSV 行数不匹配")
+		return page, nil, errors.New("雲帳單 CSV 行數不匹配")
 	}
 	for _, source := range manifest.Providers {
 		if counts[source.Provider] != source.Rows {
-			return page, nil, errors.New("云账单供应商行数不匹配")
+			return page, nil, errors.New("雲帳單供應商行數不匹配")
 		}
 	}
 	page.ObjectKey, page.GeneratedAt, page.BatchFingerprint = objectKey, manifest.GeneratedAt, manifest.BatchFingerprint
@@ -525,7 +525,7 @@ func (s *Server) handleCloudBilling(w http.ResponseWriter, r *http.Request, sess
 func (s *Server) handleCloudBillingCSV(w http.ResponseWriter, r *http.Request, _ *session) {
 	page, content, err := loadCloudBilling(s.dbm.objects, r.URL.Query().Get("month"), time.Now())
 	if err != nil {
-		http.Error(w, "云账单校验失败："+err.Error(), http.StatusBadGateway)
+		http.Error(w, "雲帳單校驗失敗："+err.Error(), http.StatusBadGateway)
 		return
 	}
 	if page.Empty {

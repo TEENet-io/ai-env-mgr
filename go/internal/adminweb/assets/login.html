@@ -1,19 +1,19 @@
-{{define "login.html"}}{{template "head" "登录"}}
+{{define "login.html"}}{{template "head" "登入"}}
 <body class="gate">
 <main class="card">
-  <h1>AI 环境管理</h1>
+  <h1>AI 環境管理</h1>
   {{if .DBLogin}}
-  <p class="lede">用管理员账号登录。第一次登录会引导绑定验证器。</p>
+  <p class="lede">用管理員帳號登入。第一次登入會引導綁定驗證器。</p>
   {{if .Error}}<p class="note note-err">{{.Error}}</p>{{end}}
   {{if .Notice}}<p class="note note-ok">{{.Notice}}</p>{{end}}
   <form method="post" action="/login" autocomplete="off">
-    <label>用户名<input name="username" required autocomplete="username" autofocus></label>
-    <label>密码<input name="password" type="password" required autocomplete="current-password"></label>
-    <label>验证码<input name="code" inputmode="numeric" autocomplete="one-time-code" placeholder="验证器里的六位数字；或一个恢复码"></label>
-    <button type="submit">登录</button>
+    <label>用戶名<input name="username" required autocomplete="username" autofocus></label>
+    <label>密碼<input name="password" type="password" required autocomplete="current-password"></label>
+    <label>驗證碼<input name="code" inputmode="numeric" autocomplete="one-time-code" placeholder="驗證器裡的六位數字；或一個恢復碼"></label>
+    <button type="submit">登入</button>
   </form>
   {{else}}
-  <p class="lede">用 OSS AccessKey 登录。凭证只保存在本次会话的内存中，不写入磁盘。</p>
+  <p class="lede">用 OSS AccessKey 登入。憑證只保存在本次會話的內存中，不寫入磁盤。</p>
   {{if .Error}}<p class="note note-err">{{.Error}}</p>{{end}}
   <form method="post" action="/login" autocomplete="off">
     {{if .Fixed}}{{/* Baked into this build; nothing here for an operator to
@@ -23,7 +23,7 @@
     {{end}}
     <label>AccessKey ID<input name="accessKeyId" required autocomplete="off" autofocus></label>
     <label>AccessKey Secret<input name="accessKeySecret" type="password" required autocomplete="off"></label>
-    <button type="submit">登录</button>
+    <button type="submit">登入</button>
   </form>
   {{end}}
 </main>

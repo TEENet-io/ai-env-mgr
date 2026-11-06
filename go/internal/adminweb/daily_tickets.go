@@ -25,18 +25,28 @@ type dailyRequestSpec struct {
 }
 
 var dailyRequests = map[string]dailyRequestSpec{
-	"account-add":     {"account", "新增员工账号", true},
-	"account-toggle":  {"account", "停用或恢复账号", true},
-	"account-delete":  {"account", "员工离职／删除账号", true},
-	"account-edit":    {"account", "修改员工信息", true},
-	"desktop-problem": {"desktop", "远程桌面使用问题", false},
-	"software-add":    {"desktop", "安装软件", true},
-	"software-change": {"desktop", "更新或卸载软件", true},
-	"website":         {"desktop", "调整网站访问限制", true},
-	"ai-problem":      {"ai", "AI 使用遇到问题", false},
-	"quota":           {"ai", "额度用完，申请增加", true},
-	"tool-problem":    {"tool", "工具使用遇到问题", false},
-	"other-problem":   {"other", "其他问题", false},
+	"account-add":     {"account", "新增員工帳號", true},
+	"account-toggle":  {"account", "停用或恢復帳號", true},
+	"account-delete":  {"account", "員工離職／刪除帳號", true},
+	"account-edit":    {"account", "修改員工信息", true},
+	"desktop-problem": {"desktop", "遠程桌面使用問題", false},
+	"software-add":    {"desktop", "安裝軟件", true},
+	"software-change": {"desktop", "更新或卸載軟件", true},
+	"website":         {"desktop", "調整網站訪問限制", true},
+	"ai-problem":      {"ai", "AI 使用遇到問題", false},
+	"quota":           {"ai", "額度用完，申請增加", true},
+	"tool-problem":    {"tool", "工具使用遇到問題", false},
+	"other-problem":   {"other", "其他問題", false},
+}
+
+// contactMayRequest reports whether a customer contact may raise this kind of
+// request. A manager may raise every kind; anyone else everything about using
+// the service, but nothing about accounts or quota.
+func contactMayRequest(role, requestKind string) bool {
+	if role == "manager" {
+		return true
+	}
+	return dailyRequests[requestKind].Category != "account" && requestKind != "quota"
 }
 
 var proposalDecimal = regexp.MustCompile(`^[0-9]{1,12}(\.[0-9]{1,4})?$`)
@@ -63,24 +73,24 @@ func parseDailyProposal(r *http.Request) (string, map[string]string, bool, error
 			payload[field] = value
 		}
 		if !proposalDecimal.MatchString(payload["amount"]) || !proposalDecimal.MatchString(payload["cost"]) || strings.Trim(payload["amount"], "0.") == "" {
-			return "", nil, false, errors.New("数量和费用应为有效的非负数，追加数量必须大于零")
+			return "", nil, false, errors.New("數量和費用應為有效的非負數，追加數量必須大於零")
 		}
 		if payload["currency"] != "USD" && payload["currency"] != "CNY" {
-			return "", nil, false, errors.New("请选择方案币种")
+			return "", nil, false, errors.New("請選擇方案幣種")
 		}
 		if _, err := time.Parse("2006-01-02", payload["valid_until"]); err != nil {
-			return "", nil, false, errors.New("请填写有效期结束日期")
+			return "", nil, false, errors.New("請填寫有效期結束日期")
 		}
 		return kind, payload, strings.Trim(payload["cost"], "0.") != "", nil
 	default:
-		return "", nil, false, errors.New("请选择账号删除或额度追加方案")
+		return "", nil, false, errors.New("請選擇帳號刪除或額度追加方案")
 	}
 }
 
 func dailyText(r *http.Request, name string, max int, required bool) (string, error) {
 	value := formValue(r, name)
 	if len(value) > max || containsCredential(value) || (required && value == "") {
-		return "", fmt.Errorf("%s 未填写、过长或包含疑似密钥", name)
+		return "", fmt.Errorf("%s 未填寫、過長或包含疑似密鑰", name)
 	}
 	return value, nil
 }
@@ -149,7 +159,7 @@ func dailyAuthorizedEmployees(employees []repo.Employee, contact dbstore.Custome
 func dailyEmployee(r *http.Request, options map[string]repo.Employee) (repo.Employee, error) {
 	employee, ok := options[formValue(r, "target_employee")]
 	if !ok {
-		return repo.Employee{}, errors.New("请选择当前员工名单中的人员")
+		return repo.Employee{}, errors.New("請選擇當前員工名單中的人員")
 	}
 	return employee, nil
 }
@@ -157,7 +167,7 @@ func dailyEmployee(r *http.Request, options map[string]repo.Employee) (repo.Empl
 func dailyTargets(r *http.Request, options map[string]repo.Employee) ([]map[string]string, string, error) {
 	ids := r.PostForm["employee_ids"]
 	if len(ids) == 0 || len(ids) > len(options) {
-		return nil, "", errors.New("请至少选择一位适用员工")
+		return nil, "", errors.New("請至少選擇一位適用員工")
 	}
 	seen := make(map[string]bool, len(ids))
 	targets := make([]map[string]string, 0, len(ids))
@@ -165,7 +175,7 @@ func dailyTargets(r *http.Request, options map[string]repo.Employee) ([]map[stri
 	for _, id := range ids {
 		employee, ok := options[id]
 		if !ok || seen[id] {
-			return nil, "", errors.New("适用员工无效或重复")
+			return nil, "", errors.New("適用員工無效或重複")
 		}
 		seen[id] = true
 		targets = append(targets, map[string]string{"id": id, "name": employeeName(employee), "email": employee.Email})
@@ -192,12 +202,12 @@ func parseDailyTicketSubmission(r *http.Request, employees []repo.Employee) (kin
 	requestKind := formValue(r, "request_kind")
 	spec, ok := dailyRequests[requestKind]
 	if !ok {
-		err = errors.New("请选择工单事项")
+		err = errors.New("請選擇工單事項")
 		return
 	}
 	key = formValue(r, "request_key")
 	if len(key) != 32 {
-		err = errors.New("表单无效，请刷新")
+		err = errors.New("表單無效，請刷新")
 		return
 	}
 	if spec.Change {
@@ -225,11 +235,11 @@ func parseDailyTicketSubmission(r *http.Request, employees []repo.Employee) (kin
 			}
 			address, parseErr := mail.ParseAddress(email)
 			if !validTicketText(name, 100) || parseErr != nil || address.Address != email || len(email) > 254 || len(number) > 100 || containsCredential(number) {
-				err = fmt.Errorf("第 %d 位员工需要有效姓名和工作邮箱", i)
+				err = fmt.Errorf("第 %d 位員工需要有效姓名和工作郵箱", i)
 				return
 			}
 			if seenEmail[email] {
-				err = fmt.Errorf("第 %d 位员工的工作邮箱重复", i)
+				err = fmt.Errorf("第 %d 位員工的工作郵箱重複", i)
 				return
 			}
 			seenEmail[email] = true
@@ -237,7 +247,7 @@ func parseDailyTicketSubmission(r *http.Request, employees []repo.Employee) (kin
 			lines = append(lines, name+" <"+email+">")
 		}
 		if len(rows) == 0 {
-			err = errors.New("请至少填写一位员工")
+			err = errors.New("請至少填寫一位員工")
 			return
 		}
 		data["employees"] = rows
@@ -250,15 +260,15 @@ func parseDailyTicketSubmission(r *http.Request, employees []repo.Employee) (kin
 		}
 		data["target_employee"] = map[string]string{"id": employee.ID, "name": employeeName(employee), "email": employee.Email}
 		title += " · " + employeeName(employee)
-		lines = append(lines, "员工："+employeeLabel(employee))
+		lines = append(lines, "員工："+employeeLabel(employee))
 		if requestKind == "account-toggle" {
 			action := formValue(r, "account_action")
 			if action != "disable" && action != "restore" {
-				err = errors.New("请选择停用或恢复")
+				err = errors.New("請選擇停用或恢復")
 				return
 			}
 			data["action"] = action
-			lines = append(lines, "操作："+map[string]string{"disable": "停用", "restore": "恢复"}[action])
+			lines = append(lines, "操作："+map[string]string{"disable": "停用", "restore": "恢復"}[action])
 		}
 		if requestKind == "account-edit" {
 			changes := map[string]string{}
@@ -276,7 +286,7 @@ func parseDailyTicketSubmission(r *http.Request, employees []repo.Employee) (kin
 					if field == "email" {
 						address, parseErr := mail.ParseAddress(value)
 						if parseErr != nil || address.Address != value {
-							err = errors.New("新工作邮箱无效")
+							err = errors.New("新工作郵箱無效")
 							return
 						}
 					}
@@ -285,7 +295,7 @@ func parseDailyTicketSubmission(r *http.Request, employees []repo.Employee) (kin
 				}
 			}
 			if len(changes) == 0 {
-				err = errors.New("请填写至少一项不同于现有值的修改")
+				err = errors.New("請填寫至少一項不同於現有值的修改")
 				return
 			}
 			data["changes"] = changes
@@ -298,7 +308,7 @@ func parseDailyTicketSubmission(r *http.Request, employees []repo.Employee) (kin
 			return
 		}
 		data["target_employees"] = targets
-		lines = append(lines, "适用员工："+names)
+		lines = append(lines, "適用員工："+names)
 		var software string
 		software, err = dailyText(r, "software", 200, true)
 		if err != nil {
@@ -306,15 +316,15 @@ func parseDailyTicketSubmission(r *http.Request, employees []repo.Employee) (kin
 		}
 		data["software"] = software
 		title += " · " + software
-		lines = append(lines, "软件："+software)
+		lines = append(lines, "軟件："+software)
 		if requestKind == "software-change" {
 			action := formValue(r, "software_action")
 			if action != "update" && action != "uninstall" {
-				err = errors.New("请选择更新或卸载")
+				err = errors.New("請選擇更新或卸載")
 				return
 			}
 			data["action"] = action
-			lines = append(lines, "操作："+map[string]string{"update": "更新", "uninstall": "卸载"}[action])
+			lines = append(lines, "操作："+map[string]string{"update": "更新", "uninstall": "卸載"}[action])
 		}
 		version, versionErr := dailyText(r, "min_version", 100, false)
 		if versionErr != nil {
@@ -328,16 +338,16 @@ func parseDailyTicketSubmission(r *http.Request, employees []repo.Employee) (kin
 	case "website":
 		action := formValue(r, "website_action")
 		if action != "block" && action != "unblock" && action != "temporary" {
-			err = errors.New("请选择封禁、解除封禁或临时放行")
+			err = errors.New("請選擇封禁、解除封禁或臨時放行")
 			return
 		}
 		data["action"] = action
 		selected := r.PostForm["sites"]
-		allowed := map[string]bool{"ChatGPT": true, "Claude": true, "Gemini": true, "Grok": true, "Perplexity": true, "Microsoft Copilot": true, "DeepSeek": true, "通义千问": true, "Kimi": true, "豆包": true, "文心一言": true, "智谱清言": true, "MiniMax": true, "腾讯元宝": true, "讯飞星火": true}
+		allowed := map[string]bool{"ChatGPT": true, "Claude": true, "Gemini": true, "Grok": true, "Perplexity": true, "Microsoft Copilot": true, "DeepSeek": true, "通義千問": true, "Kimi": true, "豆包": true, "文心一言": true, "智譜清言": true, "MiniMax": true, "騰訊元寶": true, "訊飛星火": true}
 		seen := map[string]bool{}
 		for _, site := range selected {
 			if !allowed[site] || seen[site] {
-				err = errors.New("网站选择无效或重复")
+				err = errors.New("網站選擇無效或重複")
 				return
 			}
 			seen[site] = true
@@ -348,7 +358,7 @@ func parseDailyTicketSubmission(r *http.Request, employees []repo.Employee) (kin
 			return
 		}
 		if len(selected) == 0 && other == "" {
-			err = errors.New("请至少选择或填写一个网站")
+			err = errors.New("請至少選擇或填寫一個網站")
 			return
 		}
 		data["sites"] = selected
@@ -356,18 +366,25 @@ func parseDailyTicketSubmission(r *http.Request, employees []repo.Employee) (kin
 			data["other_site"] = other
 			selected = append(selected, other)
 		}
-		lines = append(lines, "操作："+map[string]string{"block": "封禁", "unblock": "解除封禁", "temporary": "临时放行"}[action], "网站："+strings.Join(selected, "、"))
+		lines = append(lines, "操作："+map[string]string{"block": "封禁", "unblock": "解除封禁", "temporary": "臨時放行"}[action], "網站："+strings.Join(selected, "、"))
 		if action == "temporary" {
 			expires, ok := dailyDateTime(formValue(r, "expires"))
 			if !ok || expires == "" {
-				err = errors.New("临时放行需要有效的截止日期和时间，例如 2026-11-05 14:30")
+				err = errors.New("臨時放行需要有效的截止日期和時間，例如 2026-11-05 14:30")
 				return
 			}
 			data["expires"] = expires
 			lines = append(lines, "截止："+expires)
 		}
 	case "quota":
-		lines = append(lines, "申请追加当前登录人员的 AI 使用额度；具体数量、单位、有效期和费用待服务团队提出方案。")
+		var targets []map[string]string
+		var names string
+		targets, names, err = dailyTargets(r, options)
+		if err != nil {
+			return
+		}
+		data["target_employees"] = targets
+		lines = append(lines, "適用員工："+names, "申請追加以上員工的 AI 使用額度；具體數量、單位、有效期和費用待服務團隊提出方案。")
 	case "desktop-problem", "ai-problem", "tool-problem", "other-problem":
 		var problem string
 		problem, err = dailyText(r, "problem", 3000, true)
@@ -384,7 +401,7 @@ func parseDailyTicketSubmission(r *http.Request, employees []repo.Employee) (kin
 			}
 			if occurred != "" {
 				data["occurred_at"] = occurred
-				lines = append(lines, "大约发生时间："+occurred)
+				lines = append(lines, "大約發生時間："+occurred)
 			}
 		}
 		if requestKind == "tool-problem" {
@@ -415,18 +432,18 @@ func parseDailyTicketSubmission(r *http.Request, employees []repo.Employee) (kin
 			if field == "desired_at" {
 				normalized, ok := dailyDateTime(value)
 				if !ok {
-					err = errors.New("希望处理时间无效，例如 2026-11-05 14:30")
+					err = errors.New("希望處理時間無效，例如 2026-11-05 14:30")
 					return
 				}
 				value = normalized
 			}
 			data[field] = value
-			lines = append(lines, map[string]string{"note": "补充说明：", "desired_at": "希望处理时间："}[field]+value)
+			lines = append(lines, map[string]string{"note": "補充說明：", "desired_at": "希望處理時間："}[field]+value)
 		}
 	}
 	description = strings.Join(lines, "\n")
 	if !validTicketText(title, 160) || !validTicketText(description, 10000) {
-		err = errors.New("工单内容无效、过长或包含疑似密钥")
+		err = errors.New("工單內容無效、過長或包含疑似密鑰")
 		return
 	}
 	details, err = json.Marshal(data)

@@ -3,9 +3,12 @@ package adminweb
 import (
 	"bytes"
 	"encoding/json"
+	"net/http"
+	"net/http/httptest"
 	"net/url"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/TEENet-io/ai-env-mgr/internal/dbstore"
 	"github.com/TEENet-io/ai-env-mgr/internal/repo"
@@ -46,14 +49,14 @@ func TestDailyTicketKinds(t *testing.T) {
 		{"account-toggle", url.Values{"target_employee": {employees[0].ID}, "account_action": {"disable"}}, "general"},
 		{"account-delete", url.Values{"target_employee": {employees[0].ID}}, "general"},
 		{"account-edit", url.Values{"target_employee": {employees[0].ID}, "new_email": {"alice.new@example.com"}}, "general"},
-		{"desktop-problem", url.Values{"problem": {"远程桌面无法连接"}}, "bug"},
+		{"desktop-problem", url.Values{"problem": {"遠程桌面無法連接"}}, "bug"},
 		{"software-add", url.Values{"employee_ids": {employees[0].ID, employees[1].ID}, "software": {"VS Code"}}, "general"},
 		{"software-change", url.Values{"employee_ids": {employees[0].ID}, "software": {"VS Code"}, "software_action": {"update"}}, "general"},
 		{"website", url.Values{"website_action": {"temporary"}, "sites": {"ChatGPT"}, "expires": {"2026-11-01T09:00"}}, "general"},
-		{"ai-problem", url.Values{"problem": {"助手没有回复"}}, "bug"},
-		{"quota", url.Values{}, "general"},
-		{"tool-problem", url.Values{"tool": {"新闻监控"}, "problem": {"页面打不开"}}, "bug"},
-		{"other-problem", url.Values{"problem": {"我不知道该如何分类"}}, "bug"},
+		{"ai-problem", url.Values{"problem": {"助手沒有回覆"}}, "bug"},
+		{"quota", url.Values{"employee_ids": {employees[0].ID, employees[1].ID}}, "general"},
+		{"tool-problem", url.Values{"tool": {"新聞監控"}, "problem": {"頁面打不開"}}, "bug"},
+		{"other-problem", url.Values{"problem": {"我不知道該如何分類"}}, "bug"},
 	}
 	for _, tc := range tests {
 		t.Run(tc.kind, func(t *testing.T) {
@@ -107,7 +110,7 @@ func TestDailyProposalValidation(t *testing.T) {
 	if _, _, _, err := parseDailyProposal(ticketFormRequest(quota)); err == nil {
 		t.Fatal("accepted nonnumeric cost")
 	}
-	deletion := url.Values{"proposal_kind": {"account-delete"}, "deletion_scope": {"账号与设备绑定"}, "data_plan": {"资料留存 30 天"}}
+	deletion := url.Values{"proposal_kind": {"account-delete"}, "deletion_scope": {"帳號與設備綁定"}, "data_plan": {"資料留存 30 天"}}
 	_, _, manager, err = parseDailyProposal(ticketFormRequest(deletion))
 	if err != nil || !manager {
 		t.Fatalf("deletion plan did not require manager: %v", err)
@@ -136,5 +139,152 @@ func TestDailyTicketRejectsInvalidTargetAndFields(t *testing.T) {
 		if _, _, _, _, _, _, err := parseDailyTicketSubmission(ticketFormRequest(form), employees); err == nil {
 			t.Errorf("accepted invalid %s: %v", tc.kind, tc.fields)
 		}
+	}
+}
+
+func TestContactsRaiseOnlyTheKindsTheirRoleAllows(t *testing.T) {
+	s, _ := newDatabaseServer(t)
+	h := s.Handler()
+	employee := customerCookieFor(t, s, "staff@example.com", "employee")
+	manager := customerCookieFor(t, s, "lead@example.com", "manager")
+	raise := func(cookie *http.Cookie, kind string) *httptest.ResponseRecorder {
+		t.Helper()
+		key, err := randomTicketKey()
+		if err != nil {
+			t.Fatal(err)
+		}
+		return postTicketForm(t, h, "/customer/ticket/create", cookie, map[string]string{
+			"csrf": s.csrfFor(cookie.Value), "request_key": key, "request_kind": kind, "problem": "它打不開",
+		})
+	}
+	for kind, spec := range dailyRequests {
+		want := spec.Category != "account" && kind != "quota"
+		if got := contactMayRequest("employee", kind); got != want {
+			t.Errorf("employee may raise %s = %v, want %v", kind, got, want)
+		}
+		if !contactMayRequest("manager", kind) {
+			t.Errorf("manager may not raise %s", kind)
+		}
+	}
+	for _, kind := range []string{"quota", "account-add", "account-delete"} {
+		if rec := raise(employee, kind); rec.Code != http.StatusForbidden {
+			t.Errorf("employee raised %s: %d", kind, rec.Code)
+		}
+	}
+	for _, kind := range []string{"desktop-problem", "ai-problem"} {
+		if rec := raise(employee, kind); rec.Code != http.StatusSeeOther {
+			t.Errorf("employee raising %s: %d %s", kind, rec.Code, rec.Body)
+		}
+	}
+	if rec := raise(manager, "ai-problem"); rec.Code != http.StatusSeeOther {
+		t.Errorf("manager raising ai-problem: %d %s", rec.Code, rec.Body)
+	}
+
+	page := dbGet(t, h, "/customer?view=new", employee).Body.String()
+	for _, hidden := range []string{`data-tp-category="account"`, `data-tp-kind="quota"`} {
+		if strings.Contains(page, hidden) {
+			t.Errorf("employee's form offers %s", hidden)
+		}
+	}
+	for _, shown := range []string{`data-tp-category="desktop"`, `data-tp-category="ai"`, `data-tp-category="tool"`, `data-tp-category="other"`} {
+		if !strings.Contains(page, shown) {
+			t.Errorf("employee's form lacks %s", shown)
+		}
+	}
+	if home := dbGet(t, h, "/customer", employee).Body.String(); strings.Contains(home, "category=account") || !strings.Contains(home, "category=ai") {
+		t.Error("employee's home page offers a kind they cannot raise")
+	}
+}
+
+func TestAnEditCannotMoveToAKindTheContactMayNotRaise(t *testing.T) {
+	s, _ := newDatabaseServer(t)
+	h := s.Handler()
+	employee := customerCookieFor(t, s, "staff@example.com", "employee")
+	key, err := randomTicketKey()
+	if err != nil {
+		t.Fatal(err)
+	}
+	rec := postTicketForm(t, h, "/customer/ticket/create", employee, map[string]string{
+		"csrf": s.csrfFor(employee.Value), "request_key": key, "request_kind": "desktop-problem", "problem": "它打不開",
+	})
+	if rec.Code != http.StatusSeeOther {
+		t.Fatalf("create: %d %s", rec.Code, rec.Body)
+	}
+	id := strings.SplitN(rec.Header().Get("Location"), "id=", 2)[1]
+	rec = postTicketForm(t, h, "/customer/ticket/edit", employee, map[string]string{
+		"csrf": s.csrfFor(employee.Value), "id": id, "version": "1", "request_kind": "quota", "problem": "它打不開",
+	})
+	if rec.Code != http.StatusForbidden {
+		t.Errorf("edit into quota: %d %s", rec.Code, rec.Body)
+	}
+}
+
+func TestAManagerReadsUsageAndEmployeesOfThisCompanyOnly(t *testing.T) {
+	s, _ := newDatabaseServer(t)
+	h := s.Handler()
+	ctx := t.Context()
+	employee := customerCookieFor(t, s, "staff@example.com", "employee")
+	manager := customerCookieFor(t, s, "lead@example.com", "manager")
+	ours, err := s.dbm.store.Employees().Create(ctx, repo.NewEmployee{WindowsUser: "work1", Name: "張三", Email: "zhang@example.com"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	day := time.Now().UTC().Truncate(24 * time.Hour)
+	if err := s.dbm.store.Usage().UpsertDay(ctx, day, []repo.UsageRow{
+		{EmployeeID: ours.ID, KeyAlias: "bippo-emp-work1-e1", ModelGroup: "gpt-5.5", Calls: 3, CostUSD: "12.3456", PromptTokens: 100, CompletionTokens: 20},
+		{KeyAlias: "wewe-emp-other-e1", ModelGroup: "other-company-model", Calls: 900, CostUSD: "99", PromptTokens: 7777},
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	for _, path := range []string{"/customer/usage", "/customer/employees"} {
+		if rec := dbGet(t, h, path); rec.Code != http.StatusSeeOther {
+			t.Errorf("signed out %s: %d", path, rec.Code)
+		}
+		if rec := dbGet(t, h, path, employee); rec.Code != http.StatusForbidden {
+			t.Errorf("employee %s: %d", path, rec.Code)
+		}
+	}
+	if strings.Contains(dbGet(t, h, "/customer", employee).Body.String(), "/customer/usage") {
+		t.Error("an employee is offered the usage page")
+	}
+	if !strings.Contains(dbGet(t, h, "/customer", manager).Body.String(), "/customer/usage") {
+		t.Error("a manager is not offered the usage page")
+	}
+
+	usage := dbGet(t, h, "/customer/usage", manager)
+	if usage.Code != http.StatusOK {
+		t.Fatalf("manager usage: %d", usage.Code)
+	}
+	body := usage.Body.String()
+	for _, want := range []string{"張三", "gpt-5.5", "120"} {
+		if !strings.Contains(body, want) {
+			t.Errorf("usage lacks %q", want)
+		}
+	}
+	for _, leak := range []string{"other-company-model", "wewe-emp", "7777", "12.3456"} {
+		if strings.Contains(body, leak) {
+			t.Errorf("usage shows %q", leak)
+		}
+	}
+	people := dbGet(t, h, "/customer/employees", manager).Body.String()
+	if !strings.Contains(people, "zhang@example.com") || !strings.Contains(people, "work1") {
+		t.Error("the employee list lacks the employee")
+	}
+}
+
+func TestAQuotaRequestNamesItsEmployees(t *testing.T) {
+	employees := []repo.Employee{{ID: "11111111-1111-1111-1111-111111111111", Name: "Alice", Email: "alice@example.com"}}
+	form := url.Values{"request_kind": {"quota"}, "request_key": {strings.Repeat("a", 32)}}
+	if _, _, _, _, _, _, err := parseDailyTicketSubmission(ticketFormRequest(form), employees); err == nil {
+		t.Fatal("a quota request without an employee was accepted")
+	}
+	form.Set("employee_ids", employees[0].ID)
+	_, _, description, _, _, raw, err := parseDailyTicketSubmission(ticketFormRequest(form), employees)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(description, "Alice") || !strings.Contains(string(raw), employees[0].ID) {
+		t.Fatalf("the employee is not on the request: %s / %s", description, raw)
 	}
 }

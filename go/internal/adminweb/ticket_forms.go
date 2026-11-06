@@ -27,13 +27,13 @@ func addTicketContact(r *http.Request, details map[string]any) error {
 	for _, field := range []string{"company_department", "contact_name", "contact_signature"} {
 		value := formValue(r, field)
 		if !ticketOptionalText(value, 100) {
-			return errors.New("公司或联系人信息无效")
+			return errors.New("公司或聯絡人信息無效")
 		}
 		details[field] = value
 	}
 	if value := formValue(r, "filled_date"); value != "" {
 		if !ticketDate(value) {
-			return errors.New("填写日期无效")
+			return errors.New("填寫日期無效")
 		}
 		details["filled_date"] = value
 	}
@@ -51,17 +51,17 @@ func parseSoftwarePreinstall(r *http.Request, details map[string]any) error {
 			continue
 		}
 		if !validTicketText(name, 200) || !ticketOptionalText(version, 100) || !ticketOptionalText(note, 500) {
-			return errors.New("软件清单第 " + index + " 行需要软件名称，且不能包含密钥")
+			return errors.New("軟件清單第 " + index + " 行需要軟件名稱，且不能包含密鑰")
 		}
 		rows = append(rows, map[string]string{"name": name, "min_version": version, "note": note})
 	}
 	if len(rows) == 0 {
-		return errors.New("请填写至少一个软件；如果没有，请在第一行填写“无”")
+		return errors.New("請填寫至少一個軟件；如果沒有，請在第一行填寫“無”")
 	}
 	if len(rows) > 1 {
 		for _, row := range rows {
-			if row["name"] == "无" {
-				return errors.New("“无”不能与其他软件同时填写")
+			if row["name"] == "無" || row["name"] == "无" {
+				return errors.New("“無”不能與其他軟件同時填寫")
 			}
 		}
 	}
@@ -72,37 +72,37 @@ func parseSoftwarePreinstall(r *http.Request, details map[string]any) error {
 func parseEnvironmentChange(r *http.Request, details map[string]any) error {
 	date := formValue(r, "change_application_date")
 	if !ticketDate(date) {
-		return errors.New("请填写有效的申请日期")
+		return errors.New("請填寫有效的申請日期")
 	}
 	details["change_application_date"] = date
 	changeType := formValue(r, "change_type")
 	if changeType != "personnel" && changeType != "software" && changeType != "website" {
-		return errors.New("请选择人员、软件或网站变更类型")
+		return errors.New("請選擇人員、軟件或網站變更類型")
 	}
 	details["change_type"] = changeType
 	action := formValue(r, "change_action")
 	if action != "add" && action != "delete" && action != "modify" && action != "temporary_exception" {
-		return errors.New("请选择变更动作")
+		return errors.New("請選擇變更動作")
 	}
 	details["change_action"] = action
 	if desired := formValue(r, "change_desired_at"); desired != "" {
 		if _, err := time.Parse("2006-01-02T15:04", desired); err != nil {
-			return errors.New("期望生效时间无效")
+			return errors.New("期望生效時間無效")
 		}
 		details["change_desired_at"] = desired
 	}
 	urgent := formValue(r, "change_urgent")
 	if urgent != "yes" && urgent != "no" {
-		return errors.New("请选择是否紧急")
+		return errors.New("請選擇是否緊急")
 	}
 	reason := formValue(r, "change_urgent_reason")
 	if !ticketOptionalText(reason, 500) || (urgent == "yes" && reason == "") {
-		return errors.New("紧急变更请填写原因，且不要包含密钥")
+		return errors.New("緊急變更請填寫原因，且不要包含密鑰")
 	}
 	details["change_urgent"], details["change_urgent_reason"] = urgent, reason
 	note := formValue(r, "change_application_note")
 	if !validTicketText(note, 2000) {
-		return errors.New("请填写申请说明，且不要包含密钥")
+		return errors.New("請填寫申請說明，且不要包含密鑰")
 	}
 	details["change_application_note"] = note
 	rows := make([]map[string]string, 0, 10)
@@ -119,7 +119,7 @@ func parseEnvironmentChange(r *http.Request, details map[string]any) error {
 				continue
 			}
 			if !validTicketText(name, 100) || !ticketEmail(email) || !ticketOptionalText(number, 100) || !ticketOptionalText(note, 500) {
-				return errors.New("人员变更第 " + index + " 行需要姓名和工作邮箱")
+				return errors.New("人員變更第 " + index + " 行需要姓名和工作郵箱")
 			}
 			row = map[string]string{"name": name, "email": email, "number": number, "note": note}
 		case "software":
@@ -131,7 +131,7 @@ func parseEnvironmentChange(r *http.Request, details map[string]any) error {
 				continue
 			}
 			if !validTicketText(name, 200) || !ticketOptionalText(version, 100) || !ticketOptionalText(target, 300) || !ticketOptionalText(note, 500) {
-				return errors.New("软件变更第 " + index + " 行需要软件名称")
+				return errors.New("軟件變更第 " + index + " 行需要軟件名稱")
 			}
 			row = map[string]string{"name": name, "min_version": version, "target": target, "note": note}
 		case "website":
@@ -143,26 +143,26 @@ func parseEnvironmentChange(r *http.Request, details map[string]any) error {
 				continue
 			}
 			if !validTicketText(name, 200) || !ticketOptionalText(target, 300) || !ticketOptionalText(note, 500) || (cutoff != "" && !ticketDate(cutoff)) || (action == "temporary_exception" && cutoff == "") {
-				return errors.New("网站变更第 " + index + " 行需要网站名称；临时例外还需截止日期")
+				return errors.New("網站變更第 " + index + " 行需要網站名稱；臨時例外還需截止日期")
 			}
 			row = map[string]string{"name": name, "target": target, "cutoff": cutoff, "note": note}
 		}
 		rows = append(rows, row)
 	}
 	if len(rows) == 0 {
-		return errors.New("请至少填写一个变更对象")
+		return errors.New("請至少填寫一個變更對象")
 	}
 	details["change_items"] = rows
 	for _, field := range []string{"change_contact_name", "change_contact_signature"} {
 		value := formValue(r, field)
 		if !ticketOptionalText(value, 100) {
-			return errors.New("客户联系人或签名信息无效")
+			return errors.New("客戶聯絡人或簽名信息無效")
 		}
 		details[field] = value
 	}
 	if confirmed := formValue(r, "change_contact_date"); confirmed != "" {
 		if !ticketDate(confirmed) {
-			return errors.New("客户填写日期无效")
+			return errors.New("客戶填寫日期無效")
 		}
 		details["change_contact_date"] = confirmed
 	}
@@ -171,7 +171,7 @@ func parseEnvironmentChange(r *http.Request, details map[string]any) error {
 
 func ticketChangeStageLabel(stage string) string {
 	labels := map[string]string{
-		"need_info": "待补信息", "assessing": "评估中", "waiting_customer_approval": "待客户确认", "scheduled": "已排期", "executing": "执行中", "verifying": "待验证", "waiting_customer_result": "待客户确认结果", "closed": "已关闭", "cancelled": "已取消", "not_executing": "不执行",
+		"need_info": "待補信息", "assessing": "評估中", "waiting_customer_approval": "待客戶確認", "scheduled": "已排期", "executing": "執行中", "verifying": "待驗證", "waiting_customer_result": "待客戶確認結果", "closed": "已關閉", "cancelled": "已取消", "not_executing": "不執行",
 	}
 	if label, ok := labels[stage]; ok {
 		return label
@@ -182,11 +182,11 @@ func ticketChangeStageLabel(stage string) string {
 func ticketChangeTypeLabel(value string) string {
 	switch value {
 	case "personnel":
-		return "人员"
+		return "人員"
 	case "software":
-		return "软件"
+		return "軟件"
 	case "website":
-		return "网站封禁／放行"
+		return "網站封禁／放行"
 	}
 	return value
 }
@@ -196,11 +196,11 @@ func ticketChangeActionLabel(value string) string {
 	case "add":
 		return "新增"
 	case "delete":
-		return "删除"
+		return "刪除"
 	case "modify":
 		return "修改"
 	case "temporary_exception":
-		return "临时例外"
+		return "臨時例外"
 	}
 	return value
 }
@@ -208,9 +208,9 @@ func ticketChangeActionLabel(value string) string {
 func ticketConfirmationLabel(value string) string {
 	switch value {
 	case "completed":
-		return "已按申请内容完成"
+		return "已按申請內容完成"
 	case "partial":
-		return "部分完成，遗留问题见实施记录"
+		return "部分完成，遺留問題見實施記錄"
 	case "not_completed":
 		return "未完成，需重新排期"
 	}
@@ -227,7 +227,7 @@ func ticketField(values map[string]any, key string) string {
 func parseChangeImplementation(r *http.Request) (map[string]string, error) {
 	stage := formValue(r, "result_stage")
 	if ticketChangeStageLabel(stage) == stage {
-		return nil, errors.New("请选择有效的实施状态")
+		return nil, errors.New("請選擇有效的實施狀態")
 	}
 	fields := map[string]int{
 		"result_missing": 2000, "result_impact": 2000, "result_executor": 100, "result_verifier": 100,
@@ -238,24 +238,24 @@ func parseChangeImplementation(r *http.Request) (map[string]string, error) {
 	for field, max := range fields {
 		value := formValue(r, field)
 		if !ticketOptionalText(value, max) {
-			return nil, errors.New("实施记录过长或包含疑似密钥")
+			return nil, errors.New("實施記錄過長或包含疑似密鑰")
 		}
 		result[field] = value
 	}
 	if planned := formValue(r, "result_planned_at"); planned != "" {
 		if _, err := time.Parse("2006-01-02T15:04", planned); err != nil {
-			return nil, errors.New("计划执行时间无效")
+			return nil, errors.New("計劃執行時間無效")
 		}
 		result["result_planned_at"] = planned
 	}
 	if date := formValue(r, "result_date"); date != "" {
 		if !ticketDate(date) {
-			return nil, errors.New("实施日期无效")
+			return nil, errors.New("實施日期無效")
 		}
 		result["result_date"] = date
 	}
 	if stage == "waiting_customer_result" && result["result_execution"] == "" {
-		return nil, errors.New("待客户确认结果时，请先填写执行结果")
+		return nil, errors.New("待客戶確認結果時，請先填寫執行結果")
 	}
 	return result, nil
 }
@@ -263,13 +263,13 @@ func parseChangeImplementation(r *http.Request) (map[string]string, error) {
 func parseChangeConfirmation(r *http.Request) (map[string]string, error) {
 	result := formValue(r, "confirmation_result")
 	if result != "completed" && result != "partial" && result != "not_completed" {
-		return nil, errors.New("请选择客户确认结果")
+		return nil, errors.New("請選擇客戶確認結果")
 	}
 	name := formValue(r, "confirmation_contact")
 	signature := formValue(r, "confirmation_signature")
 	date := formValue(r, "confirmation_date")
 	if !validTicketText(name, 100) || !validTicketText(signature, 100) || !ticketDate(date) {
-		return nil, errors.New("请填写联系人、签名和有效确认日期")
+		return nil, errors.New("請填寫聯絡人、簽名和有效確認日期")
 	}
 	return map[string]string{"result": result, "contact": name, "signature": signature, "date": date}, nil
 }

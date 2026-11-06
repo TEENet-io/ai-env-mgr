@@ -55,7 +55,7 @@
     noteInput.disabled = optional.hidden;
     desiredInput.disabled = problem;
     document.getElementById('tp-desired-field').hidden = problem;
-    document.getElementById('tp-optional-title').textContent = problem ? '补充说明' : '补充说明和希望处理时间';
+    document.getElementById('tp-optional-title').textContent = problem ? '補充說明' : '補充說明和希望處理時間';
     optional.open = hasNote || (!problem && Boolean(desiredInput.value.trim()));
   }
 
@@ -68,8 +68,8 @@
       fieldset.hidden = !active;
     });
     syncOptional(kind);
-    document.getElementById('tp-form-title').textContent = titles[kind] || '填写信息';
-    submit.textContent = problemKinds.has(kind) ? '提交工单' : '核对申请';
+    document.getElementById('tp-form-title').textContent = titles[kind] || '填寫信息';
+    submit.textContent = problemKinds.has(kind) ? '提交工單' : '核對申請';
     typePanel.hidden = true;
     formPanel.hidden = false;
     review.hidden = true;
@@ -152,6 +152,7 @@
       if (![...active.querySelectorAll('input[name=employee_ids]')].some(input => input.checked)) invalid = active.querySelector('input[name=employee_ids]');
       if (!named('software').value.trim()) invalid = named('software');
     }
+    if (kind === 'quota' && !active.querySelector('input[name=employee_ids]:checked')) invalid = active.querySelector('input[name=employee_ids]');
     if (kind === 'website' && !active.querySelector('input[name=sites]:checked') && !named('other_site').value.trim()) invalid = named('other_site');
     if (kind === 'tool-problem' && !named('tool').value.trim()) invalid = named('tool');
     if (problemKinds.has(kind) && !named('problem').value.trim()) invalid = named('problem');
@@ -159,18 +160,18 @@
     if (upload && upload.files.length) {
       const files = [...upload.files];
       const kept = Number(form.dataset.keptFiles || 0);
-      if (files.length + kept > maxFiles) { upload.setCustomValidity(`最多 ${maxFiles} 个文件${kept ? `，已有 ${kept} 个` : ''}`); invalid = upload; }
-      else if (files.some(file => file.size > maxFileSize)) { upload.setCustomValidity('单个文件不能超过 5 MB'); invalid = upload; }
+      if (files.length + kept > maxFiles) { upload.setCustomValidity(`最多 ${maxFiles} 個檔案${kept ? `，已有 ${kept} 個` : ''}`); invalid = upload; }
+      else if (files.some(file => file.size > maxFileSize)) { upload.setCustomValidity('單個檔案不能超過 5 MB'); invalid = upload; }
       else {
         // The browser's guess catches the wrong kind of file early. The server decides from the content.
         const wrong = files.find(file => file.type && !upload.accept.split(',').includes(file.type));
-        if (wrong) { upload.setCustomValidity(`${wrong.name} 不是支持的文件类型`); invalid = upload; }
+        if (wrong) { upload.setCustomValidity(`${wrong.name} 不是支持的檔案類型`); invalid = upload; }
       }
       if (invalid === upload) { upload.reportValidity(); upload.addEventListener('change', () => upload.setCustomValidity(''), {once:true}); return false; }
     }
     if (invalid) {
       invalid.focus();
-      invalid.setCustomValidity('请完成此项');
+      invalid.setCustomValidity('請完成此項');
       invalid.reportValidity();
       invalid.addEventListener('input', () => invalid.setCustomValidity(''), {once:true});
       invalid.addEventListener('change', () => invalid.setCustomValidity(''), {once:true});
@@ -186,30 +187,30 @@
       const dt = document.createElement('dt'); const dd = document.createElement('dd');
       dt.textContent = label; dd.textContent = value; list.append(dt, dd);
     };
-    add('事项', titles[kindInput.value]);
+    add('事項', titles[kindInput.value]);
     const active = fieldsets.find(item => !item.disabled);
     if (kindInput.value === 'account-add') {
-      add('新增员工', rows.filter(row => [...row.querySelectorAll('input')].some(input => input.value.trim())).map(row => {
+      add('新增員工', rows.filter(row => [...row.querySelectorAll('input')].some(input => input.value.trim())).map(row => {
         const inputs = row.querySelectorAll('input');
         return `${inputs[0].value.trim()} · ${inputs[1].value.trim()}${inputs[2].value.trim() ? ' · '+inputs[2].value.trim() : ''}`;
       }).join('\n'));
     } else {
       const select = active.querySelector('select[name=target_employee]');
-      if (select) add('员工', select.selectedOptions[0]?.textContent || '');
+      if (select) add('員工', select.selectedOptions[0]?.textContent || '');
     }
     const targets = [...active.querySelectorAll('input[name=employee_ids]:checked')];
-    if (targets.length) add('适用员工', targets.map(input => input.dataset.label).join('\n'));
+    if (targets.length) add('適用員工', targets.map(input => input.dataset.label).join('\n'));
     active.querySelectorAll('input:not([type=checkbox]),textarea,select').forEach(input => {
       if (input.name.startsWith('employee_') || input.name.startsWith('work_email_') || input.name === 'target_employee' || input.name === 'expires' && input.closest('label').hidden || !input.value.trim()) return;
       const label = input.closest('label')?.firstChild?.textContent.trim() || input.name;
       add(label, input.tagName === 'SELECT' ? input.selectedOptions[0]?.textContent || '' : input.value.trim());
     });
     const sites = [...active.querySelectorAll('input[name=sites]:checked')].map(input => input.value);
-    if (sites.length) add('网站', sites.join('、'));
+    if (sites.length) add('網站', sites.join('、'));
     const note = form.querySelector('[name=note]').value.trim();
-    if (note) add('补充说明', note);
+    if (note) add('補充說明', note);
     const desired = form.querySelector('[name=desired_at]').value;
-    if (desired) add('希望处理时间', desired);
+    if (desired) add('希望處理時間', desired);
     reviewContent.append(list);
     formPanel.hidden = true;
     review.hidden = false;
@@ -242,9 +243,9 @@
       const response = await fetch(form.getAttribute('action'), {method:'POST', body:new FormData(form)});
       if (response.ok || response.redirected) { location.href = response.url; return; }
       const plain = (response.headers.get('Content-Type') || '').startsWith('text/plain');
-      showFormError((plain && (await response.text()).trim()) || '提交失败，请稍后重试');
+      showFormError((plain && (await response.text()).trim()) || '提交失敗，請稍後重試');
     } catch {
-      showFormError('网络连接失败，已填内容还在，请重试');
+      showFormError('網絡連接失敗，已填內容還在，請重試');
     }
   }
 
@@ -320,7 +321,7 @@
       form.dataset.keptFiles = kept.length;
       const hint = document.createElement('p');
       hint.className = 'tp-hint';
-      hint.textContent = `已上传的文件会保留：${kept.map(file => file.name).join('、')}`;
+      hint.textContent = `已上傳的檔案會保留：${kept.map(file => file.name).join('、')}`;
       active.querySelector('[data-tp-upload]')?.closest('label').after(hint);
     }
   } else {

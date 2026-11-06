@@ -49,7 +49,7 @@ func TestRestartCodexPostWritesTheRequestAndSaysWhenItWillRun(t *testing.T) {
 		t.Fatal(err)
 	}
 	msg := u.Query().Get("msg")
-	if !strings.Contains(msg, "下个同步周期") || !strings.Contains(msg, "15") {
+	if !strings.Contains(msg, "下個同步週期") || !strings.Contains(msg, "15") {
 		t.Errorf("notice = %q, want it to name the wait and the interval", msg)
 	}
 
@@ -153,18 +153,18 @@ func TestOverviewShowsBothRestartStates(t *testing.T) {
 	if !strings.Contains(body, `action="/machines/restart-codex"`) {
 		t.Error("the overview offers no way to ask for a restart")
 	}
-	if !strings.Contains(body, "待执行") {
+	if !strings.Contains(body, "待執行") {
 		t.Error("a pending request is not shown as pending")
 	}
-	if !strings.Contains(body, "已关闭") || !strings.Contains(body, "killed 1 process") {
+	if !strings.Contains(body, "已關閉") || !strings.Contains(body, "killed 1 process") {
 		t.Error("a completed request does not report what it did")
 	}
 	// Three bound machines, three buttons, but only two rows have a state.
-	if n := strings.Count(body, "待执行"); n != 1 {
-		t.Errorf("待执行 appears %d times, want 1 -- only one machine is waiting", n)
+	if n := strings.Count(body, "待執行"); n != 1 {
+		t.Errorf("待執行 appears %d times, want 1 -- only one machine is waiting", n)
 	}
-	if n := strings.Count(body, "已关闭"); n != 1 {
-		t.Errorf("已关闭 appears %d times, want 1", n)
+	if n := strings.Count(body, "已關閉"); n != 1 {
+		t.Errorf("已關閉 appears %d times, want 1", n)
 	}
 }
 
@@ -228,12 +228,12 @@ func TestNoticeReplacesTheDefaultSavedLine(t *testing.T) {
 	s := newTestServer(t, newFakeStore())
 	var buf bytes.Buffer
 	if err := s.tpl.ExecuteTemplate(&buf, "overview.html", pageData{
-		CSRF: "t", Nav: "overview", OK: true, Notice: "已下发，Agent 下个同步周期执行（当前间隔 15 分钟）",
+		CSRF: "t", Nav: "overview", OK: true, Notice: "已下發，Agent 下個同步週期執行（當前間隔 15 分鐘）",
 	}); err != nil {
 		t.Fatalf("overview.html: %v", err)
 	}
 	body := buf.String()
-	if !strings.Contains(body, "已下发") {
+	if !strings.Contains(body, "已下發") {
 		t.Error("the notice was not rendered")
 	}
 	if strings.Contains(body, "已保存") {

@@ -185,7 +185,7 @@ func (s *Server) machineVersions(r *http.Request, device repo.Device, report *mo
 			}
 		}
 		if !model.AgentCanTakeTargets(device.AgentVersion) {
-			v.Why = fmt.Sprintf("agent %s 太旧,只能跟随全局;升到 %s 或更新后可单独指定", orDash(device.AgentVersion), model.MinTargetAgentVersion)
+			v.Why = fmt.Sprintf("agent %s 太舊,只能跟隨全局;升到 %s 或更新後可單獨指定", orDash(device.AgentVersion), model.MinTargetAgentVersion)
 		}
 		for _, a := range all {
 			if a.Product == product && a.Status != repo.ArtifactRetired {
@@ -215,7 +215,7 @@ func (s *Server) actionMachineVersion(sess *session, r *http.Request) error {
 	}
 	if _, err := s.dbm.ops.CreateRollout(ctx, ops.RolloutSpec{
 		Product: product, ArtifactID: artifactID, DeviceIDs: []string{device.ID},
-		Kind: repo.RolloutRelease, Note: "机器页指定", Actor: sess.actor, RequestID: s.clientKey(r),
+		Kind: repo.RolloutRelease, Note: "機器頁指定", Actor: sess.actor, RequestID: s.clientKey(r),
 	}); err != nil {
 		return err
 	}

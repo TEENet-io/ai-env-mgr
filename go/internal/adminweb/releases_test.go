@@ -26,7 +26,7 @@ func TestReleasesPageListsCandidatesAndAimsOnlyOnRequest(t *testing.T) {
 		t.Fatal(err)
 	}
 	page := dbGet(t, h, "/releases", cookie)
-	if page.Code != 200 || !strings.Contains(page.Body.String(), "0.42.0") || !strings.Contains(page.Body.String(), "未设置") {
+	if page.Code != 200 || !strings.Contains(page.Body.String(), "0.42.0") || !strings.Contains(page.Body.String(), "未設定") {
 		t.Fatalf("releases page: %d", page.Code)
 	}
 	csrf := csrfFrom(t, s, cookie, "/releases")
@@ -133,7 +133,7 @@ func TestThePageListsWhatCIUploadedUntilItIsRegistered(t *testing.T) {
 	page = dbGet(t, h, "/releases", cookie)
 	// The unregistered table is gone now; the version shows only in the
 	// library table (whose "set as fleet target" form also carries it).
-	if strings.Contains(page.Body.String(), "未能自动登记的包") {
+	if strings.Contains(page.Body.String(), "未能自動登記的包") {
 		t.Fatalf("a registered package must leave the unregistered list (redirect %s)", rec.Header().Get("Location"))
 	}
 	if !strings.Contains(page.Body.String(), `action="/releases/global"`) {
@@ -189,15 +189,15 @@ func TestAVersionsRemarkCanBeEdited(t *testing.T) {
 	a, _ := s.dbm.ops.RegisterArtifact(t.Context(), repo.NewArtifact{Product: repo.ProductAgent, Version: "1.3.0",
 		SHA256: strings.Repeat("e", 64), SizeBytes: 1, ObjectKey: "k", CreatedBy: "t"}, "t", "r")
 	csrf := csrfFrom(t, s, cookie, "/releases")
-	rec := dbPost(t, h, "/releases/notes", url.Values{"csrf": {csrf}, "id": {a.ID}, "notes": {"  直连控制台  "}}, cookie)
+	rec := dbPost(t, h, "/releases/notes", url.Values{"csrf": {csrf}, "id": {a.ID}, "notes": {"  直連控制台  "}}, cookie)
 	if loc := rec.Header().Get("Location"); strings.Contains(loc, "err=") {
 		t.Fatalf("save notes: %s", loc)
 	}
 	got, _ := s.dbm.store.Releases().ArtifactByID(t.Context(), a.ID)
-	if got.Notes != "直连控制台" {
+	if got.Notes != "直連控制台" {
 		t.Fatalf("notes = %q", got.Notes)
 	}
-	if !strings.Contains(dbGet(t, h, "/releases", cookie).Body.String(), `>直连控制台</textarea>`) {
+	if !strings.Contains(dbGet(t, h, "/releases", cookie).Body.String(), `>直連控制台</textarea>`) {
 		t.Fatal("the page should show the remark in its edit box")
 	}
 }

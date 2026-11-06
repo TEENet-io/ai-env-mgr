@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/TEENet-io/ai-env-mgr/db"
 	"github.com/TEENet-io/ai-env-mgr/internal/repo"
 )
 
@@ -284,5 +285,64 @@ func TestFailedAttemptsAreCountedTwoWays(t *testing.T) {
 	}
 	if byUser != 0 || byIP != 0 {
 		t.Errorf("failures = %d/%d after the window passed, want none", byUser, byIP)
+	}
+}
+
+func TestRetiringRolesDisablesTheirAccountsAndKeepsARecord(t *testing.T) {
+	database := testDB(t)
+	ctx := context.Background()
+	if err := database.Migrate(ctx); err != nil {
+		t.Fatalf("migrate: %v", err)
+	}
+	all, err := db.Migrations()
+	if err != nil {
+		t.Fatal(err)
+	}
+	var step db.Migration
+	for _, m := range all {
+		if m.Name == "retire_operator_security" {
+			step = m
+		}
+	}
+	if step.Up == "" {
+		t.Fatal("no retire_operator_security migration")
+	}
+	exec := func(sql string, args ...any) {
+		t.Helper()
+		if _, err := database.Pool().Exec(ctx, sql, args...); err != nil {
+			t.Fatalf("%s: %v", sql, err)
+		}
+	}
+	exec(step.Down)
+	for _, a := range [][2]string{{"olga", "operator"}, {"sam", "security"}, {"ann", "admin"}, {"vic", "viewer"}} {
+		exec(`insert into admin_principals (username, email, password_hash, role) values ($1, '', 'x', $2)`, a[0], a[1])
+	}
+	exec(`insert into admin_sessions (token_sha256, principal_id, expires_at, absolute_expires_at)
+	      select 'olga-session'::bytea, id, now() + interval '1 hour', now() + interval '1 hour'
+	        from admin_principals where username = 'olga'`)
+	exec(step.Up)
+
+	store := NewStore(database)
+	for username, want := range map[string]struct {
+		role     string
+		disabled bool
+	}{"olga": {"viewer", true}, "sam": {"viewer", true}, "ann": {"admin", false}, "vic": {"viewer", false}} {
+		a, err := store.Admins().ByUsername(ctx, username)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if a.Role != want.role || a.Enabled() == want.disabled {
+			t.Errorf("%s: role %s, enabled %v", username, a.Role, a.Enabled())
+		}
+	}
+	var sessions, audited, queued int
+	database.Pool().QueryRow(ctx, `select count(*) from admin_sessions`).Scan(&sessions)
+	database.Pool().QueryRow(ctx, `select count(*) from audit_events where action = 'admin_role_retired' and before->>'role' in ('operator','security')`).Scan(&audited)
+	database.Pool().QueryRow(ctx, `select count(*) from event_deliveries d join audit_events e using (event_id) where e.action = 'admin_role_retired'`).Scan(&queued)
+	if sessions != 0 || audited != 2 || queued != 2 {
+		t.Errorf("sessions %d, audited %d, queued %d", sessions, audited, queued)
+	}
+	if _, err := store.Admins().Create(ctx, repo.NewAdmin{Username: "new", PasswordHash: "x", Role: "operator"}); err == nil {
+		t.Error("an operator account can still be created")
 	}
 }

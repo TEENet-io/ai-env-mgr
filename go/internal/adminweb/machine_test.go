@@ -45,8 +45,8 @@ func TestMachinePageTellsTheMachinesStory(t *testing.T) {
 
 	page := dbGet(t, h, "/machines/detail?machine=PC-STORY", cookie)
 	body := page.Body.String()
-	for _, want := range []string{"PC-STORY", ">alice ", "账号已删除", ">bob<", "当前", "0.42.0", "失败", "codex: install: exit status 2",
-		"待执行", "machine.bind", "machine.sync", "release.target_retry", rollout.ID} {
+	for _, want := range []string{"PC-STORY", ">alice ", "帳號已刪除", ">bob<", "當前", "0.42.0", "失敗", "codex: install: exit status 2",
+		"待執行", "machine.bind", "machine.sync", "release.target_retry", rollout.ID} {
 		if !strings.Contains(body, want) {
 			t.Errorf("machine page lacks %q", want)
 		}
@@ -79,7 +79,7 @@ func TestUserDetailShowsTheEmployeesHistory(t *testing.T) {
 
 	page := dbGet(t, h, "/users/detail?user=carol", cookie)
 	body := page.Body.String()
-	for _, want := range []string{"PC-C1", "PC-C2", "desk 4", "当前", "account.onboard", "account.models", "account.offboard",
+	for _, want := range []string{"PC-C1", "PC-C2", "desk 4", "當前", "account.onboard", "account.models", "account.offboard",
 		`href="/machines/detail?machine=PC-C2"`, "target_type=employee&target=" + carol.ID} {
 		if !strings.Contains(body, want) {
 			t.Errorf("detail page lacks %q", want)
@@ -104,10 +104,10 @@ func TestTheMachinePageSetsTheMachinesVersion(t *testing.T) {
 		SHA256: strings.Repeat("d", 64), SizeBytes: 1, ObjectKey: "k", CreatedBy: "t"}, "t", "r")
 
 	page := dbGet(t, h, "/machines/detail?machine=PC-V", cookie).Body.String()
-	if !strings.Contains(page, "跟随全局") || !strings.Contains(page, `value="`+a.ID+`"`) {
-		t.Fatal("the machine page should offer 跟随全局 and the library's versions")
+	if !strings.Contains(page, "跟隨全局") || !strings.Contains(page, `value="`+a.ID+`"`) {
+		t.Fatal("the machine page should offer 跟隨全局 and the library's versions")
 	}
-	if page := dbGet(t, h, "/machines/detail?machine=PC-OLD", cookie).Body.String(); !strings.Contains(page, "太旧") {
+	if page := dbGet(t, h, "/machines/detail?machine=PC-OLD", cookie).Body.String(); !strings.Contains(page, "太舊") {
 		t.Fatal("an agent that cannot read a target of its own must be told so, not offered a choice")
 	}
 
@@ -119,7 +119,7 @@ func TestTheMachinePageSetsTheMachinesVersion(t *testing.T) {
 	if _, err := store.Releases().OpenTarget(ctx, device.ID, repo.ProductAgent); err != nil {
 		t.Fatalf("pinning must open a target: %v", err)
 	}
-	if page := dbGet(t, h, "/machines/detail?machine=PC-V", cookie).Body.String(); !strings.Contains(page, "单独指定") {
+	if page := dbGet(t, h, "/machines/detail?machine=PC-V", cookie).Body.String(); !strings.Contains(page, "單獨指定") {
 		t.Fatal("the page should say the machine has a version of its own")
 	}
 	rec = dbPost(t, h, "/machines/version", url.Values{"csrf": {csrf}, "machine": {"PC-V"}, "product": {"agent"}, "artifact": {""}}, cookie)
@@ -127,6 +127,6 @@ func TestTheMachinePageSetsTheMachinesVersion(t *testing.T) {
 		t.Fatalf("follow global: %s", loc)
 	}
 	if _, err := store.Releases().OpenTarget(ctx, device.ID, repo.ProductAgent); err == nil {
-		t.Fatal("跟随全局 must drop the machine's own target")
+		t.Fatal("跟隨全局 must drop the machine's own target")
 	}
 }

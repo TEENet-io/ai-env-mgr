@@ -14,7 +14,7 @@ func TestWaitBlocksUntilAPublishFinishes(t *testing.T) {
 	var r jobRunner
 	release := make(chan struct{})
 	if err := r.start("codex", "26.810.52044-b1", func(setStep func(string), _ func(done, total int64)) error {
-		setStep("上传")
+		setStep("上傳")
 		<-release
 		return nil
 	}); err != nil {

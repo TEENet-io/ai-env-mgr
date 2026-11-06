@@ -151,7 +151,7 @@ func (s *Server) actionMachineRestartCodex(sess *session, r *http.Request) (stri
 	if p, err := sess.be.Policy(r.Context()); err == nil {
 		minutes = model.ClampInterval(p.SyncIntervalMinutes, model.DefaultSyncInterval)
 	}
-	return fmt.Sprintf("已下发，Agent 下个同步周期执行（当前间隔 %d 分钟）", minutes), nil
+	return fmt.Sprintf("已下發，Agent 下個同步週期執行（當前間隔 %d 分鐘）", minutes), nil
 }
 
 func (s *Server) actionMachineSync(sess *session, r *http.Request) (string, error) {
@@ -162,7 +162,7 @@ func (s *Server) actionMachineSync(sess *session, r *http.Request) (string, erro
 	if err := sess.be.RequestSync(r.Context(), machine); err != nil {
 		return "", err
 	}
-	return "已请求；agent 1.2.16 起每分钟检查一次，一分钟内开始同步。更早的 agent 仍按同步间隔执行", nil
+	return "已請求；agent 1.2.16 起每分鐘檢查一次，一分鐘內開始同步。更早的 agent 仍按同步間隔執行", nil
 }
 
 func (s *Server) actionMachineUnbind(sess *session, r *http.Request) error {
@@ -272,11 +272,11 @@ func (s *Server) actionCollect(sess *session, r *http.Request) error {
 // are different prefixes and can never be touched by this operation.
 func (s *Server) actionCollectCleanup(sess *session, r *http.Request) error {
 	if s.dbm == nil {
-		return fmt.Errorf("采集数据清理需要数据库模式")
+		return fmt.Errorf("採集資料清理需要資料庫模式")
 	}
 	days, err := strconv.Atoi(formValue(r, "days"))
 	if err != nil || days < 1 || days > 3650 {
-		return fmt.Errorf("保留天数必须在 1 到 3650 天之间")
+		return fmt.Errorf("保留天數必須在 1 到 3650 天之間")
 	}
 	if err := confirmMatches(r, "confirm", fmt.Sprintf("DELETE %d", days)); err != nil {
 		return err
@@ -293,7 +293,7 @@ func (s *Server) actionCollectCleanup(sess *session, r *http.Request) error {
 				candidates = append(candidates, info)
 			}
 		}
-		setStep(fmt.Sprintf("删除 %d 个过期采集文件", len(candidates)))
+		setStep(fmt.Sprintf("刪除 %d 個過期採集檔案", len(candidates)))
 		setProgress(0, int64(len(candidates)))
 		for i, info := range candidates {
 			if err := s.dbm.objects.Delete(info.Key); err != nil {
@@ -308,7 +308,7 @@ func (s *Server) actionCollectCleanup(sess *session, r *http.Request) error {
 
 func (s *Server) actionDataRetention(sess *session, r *http.Request) error {
 	if s.dbm == nil {
-		return fmt.Errorf("数据保留策略需要数据库模式")
+		return fmt.Errorf("資料保留策略需要資料庫模式")
 	}
 	before, version, err := repo.LoadDataRetentionSettings(r.Context(), s.dbm.store.Settings())
 	if err != nil {
@@ -319,7 +319,7 @@ func (s *Server) actionDataRetention(sess *session, r *http.Request) error {
 		return err
 	}
 	if formInt(r, "version") != version {
-		return errors.New("这页的设置已被别人修改，请刷新后重试")
+		return errors.New("這頁的設定已被別人修改，請刷新後重試")
 	}
 	value, _ := json.Marshal(after)
 	return s.dbm.ops.SaveSetting(r.Context(), repo.SettingDataRetention, value, version, ops.ActionDataRetention, before, after, sess.actor, s.clientKey(r))

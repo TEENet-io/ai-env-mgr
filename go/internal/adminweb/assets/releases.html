@@ -1,36 +1,36 @@
-{{define "releases.html"}}{{template "head" "软件安装"}}
+{{define "releases.html"}}{{template "head" "軟件安裝"}}
 {{template "refresh-while-running" .}}
 <body>
 <div class="app">
 {{template "nav" .}}
 <main class="sheet">
-  <header class="pagehead"><h1>软件安装</h1></header>
-  <p class="dim"><a href="/applications">软件目录与安装 →</a>　<a href="/tasks">查看全局任务与安装进度 →</a></p>
+  <header class="pagehead"><h1>軟件安裝</h1></header>
+  <p class="dim"><a href="/applications">軟件目錄與安裝 →</a>　<a href="/tasks">查看全局任務與安裝進度 →</a></p>
   {{template "tabs-releases" .}}
-  <p class="lede">CI 传到 OSS 的 agent 和 Codex 安装包会自动出现在这里（每天扫描一次，刚传完可点「立即扫描」）。<b>设为全局</b>：所有跟随全局的机器一起更新。<b>指定给机器</b>：只更新选中的机器；在机器页可以改回「跟随全局」。
-    <form method="post" action="/releases/scan" class="inline"><input type="hidden" name="csrf" value="{{.CSRF}}"><button class="link">立即扫描 OSS</button></form></p>
+  <p class="lede">CI 傳到 OSS 的 agent 和 Codex 安裝包會自動出現在這裡（每天掃描一次，剛傳完可點「立即掃描」）。<b>設為全局</b>：所有跟隨全局的機器一起更新。<b>指定給機器</b>：只更新選中的機器；在機器頁可以改回「跟隨全局」。
+    <form method="post" action="/releases/scan" class="inline"><input type="hidden" name="csrf" value="{{.CSRF}}"><button class="link">立即掃描 OSS</button></form></p>
   {{template "notices" .}}
 
   {{with .Job}}
   <section class="panel job">
     {{if .Running}}
-      <h3>正在处理 {{.Kind}} <span class="mono">{{.Version}}</span></h3>
+      <h3>正在處理 {{.Kind}} <span class="mono">{{.Version}}</span></h3>
       <progress></progress>
-      <p>{{.Step}}——已用时 {{.Elapsed}}。可以离开本页。</p>
+      <p>{{.Step}}——已用時 {{.Elapsed}}。可以離開本頁。</p>
     {{else if eq (printf "%s" .State) "failed"}}
-      <h3 class="bad">登记失败：{{.Kind}} <span class="mono">{{.Version}}</span></h3>
+      <h3 class="bad">登記失敗：{{.Kind}} <span class="mono">{{.Version}}</span></h3>
       <p class="bad">{{.Err}}</p>
     {{else}}
-      <h3 class="ok">已登记候选：{{.Kind}} <span class="mono">{{.Version}}</span></h3>
-      <p class="muted">耗时 {{.Elapsed}}。没有任何机器被改变。</p>
+      <h3 class="ok">已登記候選：{{.Kind}} <span class="mono">{{.Version}}</span></h3>
+      <p class="muted">耗時 {{.Elapsed}}。沒有任何機器被改變。</p>
     {{end}}
   </section>
   {{end}}
 
   {{if .Unregistered}}
-  <h2>未能自动登记的包</h2>
+  <h2>未能自動登記的包</h2>
   <div class="panel scroll"><table>
-    <thead><tr><th>产品</th><th>版本</th><th>大小</th><th>上传时间</th><th>操作</th></tr></thead>
+    <thead><tr><th>產品</th><th>版本</th><th>大小</th><th>上傳時間</th><th>操作</th></tr></thead>
     <tbody>{{range .Unregistered}}
       <tr>
         <td>{{.Product}}</td>
@@ -40,9 +40,9 @@
         <td class="actions">
           <form method="post" action="/releases/register" class="inline">
             <input type="hidden" name="csrf" value="{{$.CSRF}}"><input type="hidden" name="product" value="{{.Product}}"><input type="hidden" name="version" value="{{.Version}}">
-            <button class="link">重新登记</button>
+            <button class="link">重新登記</button>
           </form>
-          {{if may $.Role "/releases/delete-unregistered"}}<form method="post" action="/releases/delete-unregistered" class="inline" data-confirm="确认删除 {{.Product}} {{.Version}} 的 OSS 文件吗？"><input type="hidden" name="csrf" value="{{$.CSRF}}"><input type="hidden" name="product" value="{{.Product}}"><input type="hidden" name="version" value="{{.Version}}"><input type="hidden" name="confirm" value="{{.Version}}"><button class="link danger-link" title="删除 OSS 文件" aria-label="删除 OSS 文件">×</button></form>{{end}}
+          {{if may $.Role "/releases/delete-unregistered"}}<form method="post" action="/releases/delete-unregistered" class="inline" data-confirm="確認刪除 {{.Product}} {{.Version}} 的 OSS 檔案嗎？"><input type="hidden" name="csrf" value="{{$.CSRF}}"><input type="hidden" name="product" value="{{.Product}}"><input type="hidden" name="version" value="{{.Version}}"><input type="hidden" name="confirm" value="{{.Version}}"><button class="link danger-link" title="刪除 OSS 檔案" aria-label="刪除 OSS 檔案">×</button></form>{{end}}
         </td>
       </tr>{{end}}
     </tbody></table></div>
@@ -50,37 +50,37 @@
 
   {{range $product := list "codex" "agent"}}
   <div class="sechead">
-    <h2>{{$product}} 版本库</h2>
+    <h2>{{$product}} 版本庫</h2>
     <span class="dim">全局：{{with index $.GlobalTargets $product}}<span class="mono">{{.}}</span>
-      {{if may $.Role "/releases/global-clear"}}<form method="post" action="/releases/global-clear" class="inline"><input type="hidden" name="csrf" value="{{$.CSRF}}"><input type="hidden" name="product" value="{{$product}}"><button class="link" title="尚未更新的机器停止尝试；已装上的不回退">清除全局</button></form>{{end}}
-      {{else}}未设置{{end}}</span>
+      {{if may $.Role "/releases/global-clear"}}<form method="post" action="/releases/global-clear" class="inline"><input type="hidden" name="csrf" value="{{$.CSRF}}"><input type="hidden" name="product" value="{{$product}}"><button class="link" title="尚未更新的機器停止嘗試；已裝上的不回退">清除全局</button></form>{{end}}
+      {{else}}未設定{{end}}</span>
   </div>
   <div class="panel scroll"><table class="library">
     <colgroup><col class="c-ver"><col class="c-size"><col class="c-time"><col class="c-note"><col class="c-act"></colgroup>
-    <thead><tr><th>版本</th><th>大小</th><th>上传</th><th>说明</th><th>操作</th></tr></thead>
+    <thead><tr><th>版本</th><th>大小</th><th>上傳</th><th>說明</th><th>操作</th></tr></thead>
     <tbody>{{range index $.Artifacts $product}}
       <tr>
         <td class="id" title="SHA-256 {{.SHA256}}">{{.Version}}{{if .IsGlobal}} <span class="tag tag-ok">全局</span>{{end}} <span class="tag tag-{{astatus .Status}}">{{alabel (astatus .Status)}}</span><div class="rowsub hash">sha256 {{.SHA256}}{{if .MinAgentVersion}} · 需 agent ≥ {{.MinAgentVersion}}{{end}}</div></td>
         <td class="num">{{.SizeMB}} MB</td>
         <td class="dim nowrap">{{.CreatedAt.Local.Format "01-02 15:04"}}</td>
         <td class="remark">{{if .Notes}}{{.Notes}}{{else}}<span class="muted">—</span>{{end}}
-          <details class="pop-edit"><summary title="编辑说明" aria-label="编辑说明"><svg viewBox="0 0 16 16" width="13" height="13" aria-hidden="true"><path d="M11.1 1.9a1.5 1.5 0 0 1 2.1 0l.9.9a1.5 1.5 0 0 1 0 2.1L5.6 13.4 2 14l.6-3.6 8.5-8.5Z" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/></svg></summary>
+          <details class="pop-edit"><summary title="編輯說明" aria-label="編輯說明"><svg viewBox="0 0 16 16" width="13" height="13" aria-hidden="true"><path d="M11.1 1.9a1.5 1.5 0 0 1 2.1 0l.9.9a1.5 1.5 0 0 1 0 2.1L5.6 13.4 2 14l.6-3.6 8.5-8.5Z" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/></svg></summary>
             <form method="post" action="/releases/notes"><input type="hidden" name="csrf" value="{{$.CSRF}}"><input type="hidden" name="id" value="{{.ID}}">
-              <textarea name="notes" rows="3" maxlength="500" placeholder="这个版本改了什么、有什么要注意的">{{.Notes}}</textarea>
+              <textarea name="notes" rows="3" maxlength="500" placeholder="這個版本改了什麼、有什麼要注意的">{{.Notes}}</textarea>
               <div class="pop-actions"><button>保存</button></div>
             </form>
           </details></td>
         <td class="actions">
           {{if ne (printf "%s" .Status) "retired"}}
-          {{if and (eq (printf "%s" .Status) "candidate") (may $.Role "/releases/status")}}<form method="post" action="/releases/status" class="inline" data-confirm="确认将 {{.Product}} {{.Version}} 标记为已验收？"><input type="hidden" name="csrf" value="{{$.CSRF}}"><input type="hidden" name="id" value="{{.ID}}"><input type="hidden" name="status" value="accepted"><button class="link">标记已验收</button></form>{{end}}
-          {{if and (eq (printf "%s" .Status) "accepted") (may $.Role "/releases/status")}}<form method="post" action="/releases/status" class="inline" data-confirm="确认批准 {{.Product}} {{.Version}} 为稳定版本？稳定版本才允许设为全局"><input type="hidden" name="csrf" value="{{$.CSRF}}"><input type="hidden" name="id" value="{{.ID}}"><input type="hidden" name="status" value="stable"><button class="link">批准稳定</button></form>{{end}}
-          {{if and (not .IsGlobal) (eq (printf "%s" .Status) "stable") (may $.Role "/releases/global")}}<form method="post" action="/releases/global" class="inline"><input type="hidden" name="csrf" value="{{$.CSRF}}"><input type="hidden" name="product" value="{{$product}}"><input type="hidden" name="version" value="{{.Version}}"><input name="confirm" placeholder="输入版本号确认" size="12" autocomplete="off"><button class="link danger-link">设为全局</button></form>{{end}}
-          <a href="/rollouts/new?artifact={{.ID}}">指定给机器…</a>
-          {{if not .IsGlobal}}<form method="post" action="/releases/status" class="inline" data-confirm="确认停用 {{.Product}} {{.Version}}？停用只会阻止后续发布，不会卸载已经安装的软件。"><input type="hidden" name="csrf" value="{{$.CSRF}}"><input type="hidden" name="id" value="{{.ID}}"><input type="hidden" name="status" value="retired"><button class="link">停用</button></form>{{end}}
-          {{else}}<form method="post" action="/releases/status" class="inline" data-confirm="确认恢复 {{.Product}} {{.Version}} 为候选版本？恢复后它可以再次被指定给机器。"><input type="hidden" name="csrf" value="{{$.CSRF}}"><input type="hidden" name="id" value="{{.ID}}"><input type="hidden" name="status" value="candidate"><button class="link">恢复</button></form>{{end}}
-          {{if and (eq (printf "%s" .Status) "retired") (not .IsGlobal) (may $.Role "/releases/delete")}}<form method="post" action="/releases/delete" class="inline" data-confirm="确认删除 {{.Product}} {{.Version}} 的 OSS 文件吗？数据库历史会保留。"><input type="hidden" name="csrf" value="{{$.CSRF}}"><input type="hidden" name="id" value="{{.ID}}"><input type="hidden" name="confirm" value="{{.Version}}"><button class="link danger-link" title="删除 OSS 文件" aria-label="删除 OSS 文件">×</button></form>{{end}}
+          {{if and (eq (printf "%s" .Status) "candidate") (may $.Role "/releases/status")}}<form method="post" action="/releases/status" class="inline" data-confirm="確認將 {{.Product}} {{.Version}} 標記為已驗收？"><input type="hidden" name="csrf" value="{{$.CSRF}}"><input type="hidden" name="id" value="{{.ID}}"><input type="hidden" name="status" value="accepted"><button class="link">標記已驗收</button></form>{{end}}
+          {{if and (eq (printf "%s" .Status) "accepted") (may $.Role "/releases/status")}}<form method="post" action="/releases/status" class="inline" data-confirm="確認批准 {{.Product}} {{.Version}} 為穩定版本？穩定版本才允許設為全局"><input type="hidden" name="csrf" value="{{$.CSRF}}"><input type="hidden" name="id" value="{{.ID}}"><input type="hidden" name="status" value="stable"><button class="link">批准穩定</button></form>{{end}}
+          {{if and (not .IsGlobal) (eq (printf "%s" .Status) "stable") (may $.Role "/releases/global")}}<form method="post" action="/releases/global" class="inline"><input type="hidden" name="csrf" value="{{$.CSRF}}"><input type="hidden" name="product" value="{{$product}}"><input type="hidden" name="version" value="{{.Version}}"><input name="confirm" placeholder="輸入版本號確認" size="12" autocomplete="off"><button class="link danger-link">設為全局</button></form>{{end}}
+          <a href="/rollouts/new?artifact={{.ID}}">指定給機器…</a>
+          {{if not .IsGlobal}}<form method="post" action="/releases/status" class="inline" data-confirm="確認停用 {{.Product}} {{.Version}}？停用只會阻止後續發布，不會卸載已經安裝的軟件。"><input type="hidden" name="csrf" value="{{$.CSRF}}"><input type="hidden" name="id" value="{{.ID}}"><input type="hidden" name="status" value="retired"><button class="link">停用</button></form>{{end}}
+          {{else}}<form method="post" action="/releases/status" class="inline" data-confirm="確認恢復 {{.Product}} {{.Version}} 為候選版本？恢復後它可以再次被指定給機器。"><input type="hidden" name="csrf" value="{{$.CSRF}}"><input type="hidden" name="id" value="{{.ID}}"><input type="hidden" name="status" value="candidate"><button class="link">恢復</button></form>{{end}}
+          {{if and (eq (printf "%s" .Status) "retired") (not .IsGlobal) (may $.Role "/releases/delete")}}<form method="post" action="/releases/delete" class="inline" data-confirm="確認刪除 {{.Product}} {{.Version}} 的 OSS 檔案嗎？資料庫歷史會保留。"><input type="hidden" name="csrf" value="{{$.CSRF}}"><input type="hidden" name="id" value="{{.ID}}"><input type="hidden" name="confirm" value="{{.Version}}"><button class="link danger-link" title="刪除 OSS 檔案" aria-label="刪除 OSS 檔案">×</button></form>{{end}}
         </td>
-      </tr>{{else}}<tr><td colspan="5" class="empty">还没有 {{$product}} 版本。CI 上传到 <span class="mono">{{if eq $product "agent"}}_agent/&lt;版本&gt;/agent.exe{{else}}_codex/codex-setup-&lt;版本&gt;.exe{{end}}</span> 后会自动出现。</td></tr>{{end}}
+      </tr>{{else}}<tr><td colspan="5" class="empty">還沒有 {{$product}} 版本。CI 上傳到 <span class="mono">{{if eq $product "agent"}}_agent/&lt;版本&gt;/agent.exe{{else}}_codex/codex-setup-&lt;版本&gt;.exe{{end}}</span> 後會自動出現。</td></tr>{{end}}
     </tbody></table></div>
   {{end}}
 

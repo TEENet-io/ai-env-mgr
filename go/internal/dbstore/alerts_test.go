@@ -10,7 +10,7 @@ import (
 func TestAlertsOpenOncePerFingerprintAndResolve(t *testing.T) {
 	s, ctx := newTestStore(t)
 	n := repo.NewAlert{Kind: repo.AlertMachineOffline, Fingerprint: "machine_offline:d1", Severity: repo.SeverityWarn,
-		SubjectType: "device", SubjectID: "d1", Title: "PC-1 已 26 小时未上报"}
+		SubjectType: "device", SubjectID: "d1", Title: "PC-1 已 26 小時未上報"}
 	first, created, err := s.Alerts().Open(ctx, n)
 	if err != nil || !created {
 		t.Fatalf("first open: created=%v err=%v", created, err)

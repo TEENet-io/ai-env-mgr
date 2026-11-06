@@ -156,7 +156,7 @@ func TestOneOpenBindingPerMachine(t *testing.T) {
 		if _, err := tx.Bindings().Unbind(ctx, d.ID, "admin"); err != nil {
 			return err
 		}
-		_, err := tx.Bindings().Bind(ctx, d.ID, bob.ID, "换人", "admin")
+		_, err := tx.Bindings().Bind(ctx, d.ID, bob.ID, "換人", "admin")
 		return err
 	})
 	if err != nil {

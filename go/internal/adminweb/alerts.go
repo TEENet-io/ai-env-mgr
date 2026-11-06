@@ -100,10 +100,10 @@ func (s *Server) alertRows(r *http.Request, alerts []repo.Alert, now time.Time) 
 			}
 		case "target":
 			if t, err := s.dbm.store.Releases().TargetByID(ctx, a.SubjectID); err == nil && t.RolloutID != "" {
-				row.Subject, row.Link = "发布任务", "/rollouts/detail?id="+url.QueryEscape(t.RolloutID)
+				row.Subject, row.Link = "發布任務", "/rollouts/detail?id="+url.QueryEscape(t.RolloutID)
 			}
 		case "task":
-			row.Subject, row.Link = "任务", "/tasks"
+			row.Subject, row.Link = "任務", "/tasks"
 		case "grant":
 			if g, err := s.dbm.store.Grants().ByKeyAlias(ctx, "", a.SubjectID); err == nil {
 				if e, err := s.dbm.store.Employees().ByID(ctx, g.EmployeeID); err == nil {
@@ -112,14 +112,14 @@ func (s *Server) alertRows(r *http.Request, alerts []repo.Alert, now time.Time) 
 			}
 		case "settings":
 			if a.SubjectID == "model_catalog" {
-				row.Subject, row.Link = "模型目录", "/models"
+				row.Subject, row.Link = "模型目錄", "/models"
 			}
 		}
 		switch {
 		case a.NotifiedAt != nil:
 			row.Notify = "已通知 " + a.NotifiedAt.Local().Format("01-02 15:04")
 		case a.NotifyError != "":
-			row.Notify = fmt.Sprintf("发送失败 %d 次：%s", a.NotifyTries, a.NotifyError)
+			row.Notify = fmt.Sprintf("發送失敗 %d 次：%s", a.NotifyTries, a.NotifyError)
 		default:
 			row.Notify = "待通知"
 		}
@@ -181,14 +181,14 @@ func (s *Server) actionAlertTest(sess *session, r *http.Request) (string, error)
 		}
 		ctx, cancel := context.WithTimeout(r.Context(), 20*time.Second)
 		defer cancel()
-		m := notify.Message{Title: "测试消息", Severity: repo.SeverityWarn, Subject: sess.actor,
-			Detail: "这是 windows-control 控制台发出的测试告警；收到即渠道可用。", URL: s.consoleURL() + "/alerts", At: time.Now()}
+		m := notify.Message{Title: "測試消息", Severity: repo.SeverityWarn, Subject: sess.actor,
+			Detail: "這是 windows-control 控制台發出的測試告警；收到即渠道可用。", URL: s.consoleURL() + "/alerts", At: time.Now()}
 		if err := ch.Send(ctx, m); err != nil {
-			return "", fmt.Errorf("%s 发送失败：%w", want, err)
+			return "", fmt.Errorf("%s 發送失敗：%w", want, err)
 		}
-		return want + " 已发送测试消息", nil
+		return want + " 已發送測試消息", nil
 	}
-	return "", errors.New("先填好并保存这个渠道，再发测试")
+	return "", errors.New("先填好並保存這個渠道，再發測試")
 }
 
 func (s *Server) actionAlertSettings(sess *session, r *http.Request) error {
@@ -210,7 +210,7 @@ func (s *Server) actionAlertSettings(sess *session, r *http.Request) error {
 		return err
 	}
 	if v := formInt(r, "version"); v != version {
-		return errors.New("这页的设置在你打开后已被别人改过，请刷新后重试")
+		return errors.New("這頁的設定在你打開後已被別人改過，請刷新後重試")
 	}
 	value, _ := json.Marshal(after)
 	if err := s.dbm.ops.SaveSetting(r.Context(), repo.SettingAlerts, value, version, ops.ActionAlertSettings, before, after, sess.actor, s.clientKey(r)); err != nil {
@@ -228,7 +228,7 @@ func (s *Server) actionAlertChannels(sess *session, r *http.Request) error {
 		return err
 	}
 	if v := formInt(r, "version"); v != version {
-		return errors.New("这页的设置在你打开后已被别人改过，请刷新后重试")
+		return errors.New("這頁的設定在你打開後已被別人改過，請刷新後重試")
 	}
 	after := before
 	after.Webhook.Enabled = formValue(r, "webhook_enabled") == "1"
@@ -237,7 +237,7 @@ func (s *Server) actionAlertChannels(sess *session, r *http.Request) error {
 	if after.Webhook.URL != "" {
 		u, err := url.Parse(after.Webhook.URL)
 		if err != nil || (u.Scheme != "https" && u.Scheme != "http") || u.Host == "" {
-			return errors.New("webhook 地址必须是 http(s) URL")
+			return errors.New("webhook 地址必須是 http(s) URL")
 		}
 	}
 	switch after.Webhook.Format {
@@ -269,10 +269,10 @@ func (s *Server) actionAlertChannels(sess *session, r *http.Request) error {
 		after.SMTP.Password = repo.Sealed{}
 	}
 	if after.Webhook.Enabled && after.Webhook.URL == "" {
-		return errors.New("要启用 webhook，先填地址")
+		return errors.New("要啟用 webhook，先填地址")
 	}
 	if after.SMTP.Enabled && (after.SMTP.Host == "" || after.SMTP.From == "" || len(after.SMTP.To) == 0) {
-		return errors.New("要启用邮件，先填服务器、发件人和收件人")
+		return errors.New("要啟用郵件，先填伺服器、發件人和收件人")
 	}
 	value, err := json.Marshal(after)
 	if err != nil {
@@ -311,17 +311,17 @@ func (s *Server) settingsExtras(r *http.Request, data *pageData) {
 	if a, version, err := repo.LoadAlertSettings(ctx, s.dbm.store.Settings()); err == nil {
 		data.AlertSettings = &alertSettingsView{AlertSettings: a, Version: version}
 	} else {
-		data.Error = "读取告警设置失败：" + err.Error()
+		data.Error = "讀取告警設定失敗：" + err.Error()
 	}
 	if rs, version, err := repo.LoadRotationSettings(ctx, s.dbm.store.Settings()); err == nil {
 		data.Rotation = &rotationView{RotationSettings: rs, Version: version}
 	} else {
-		data.Error = "读取轮换设置失败：" + err.Error()
+		data.Error = "讀取輪換設定失敗：" + err.Error()
 	}
 	if dc, version, err := repo.LoadDeviceChannelSettings(ctx, s.dbm.store.Settings()); err == nil {
 		data.DeviceChannel = &channelSettingsView{DeviceChannelSettings: dc, Version: version, CIDRsText: strings.Join(dc.EnrolCIDRs, "\n")}
 	} else {
-		data.Error = "读取设备通道设置失败：" + err.Error()
+		data.Error = "讀取設備通道設定失敗：" + err.Error()
 	}
 	if gt, version, err := repo.LoadGatewayTeamSettings(ctx, s.dbm.store.Settings()); err == nil {
 		data.GatewayTeam = &gatewayTeamView{GatewayTeamSettings: gt, Version: version}
@@ -329,12 +329,12 @@ func (s *Server) settingsExtras(r *http.Request, data *pageData) {
 			data.GatewayTeam.TeamID, data.GatewayTeam.FromToken = s.teamID(), true
 		}
 	} else {
-		data.Error = "读取组织设置失败：" + err.Error()
+		data.Error = "讀取組織設定失敗：" + err.Error()
 	}
 	if tools, version, err := repo.LoadTicketToolSettings(ctx, s.dbm.store.Settings()); err == nil {
 		data.TicketTools = &ticketToolsView{Text: strings.Join(tools.Names, "\n"), Version: version}
 	} else {
-		data.Error = "读取工单工具清单失败：" + err.Error()
+		data.Error = "讀取工單工具清單失敗：" + err.Error()
 	}
 	if c, version, err := repo.LoadChannelSettings(ctx, s.dbm.store.Settings()); err == nil {
 		if c.Webhook.Format == "" {
@@ -346,7 +346,7 @@ func (s *Server) settingsExtras(r *http.Request, data *pageData) {
 		data.Channels = &channelView{ChannelSettings: c, Version: version,
 			SecretSet: c.Webhook.Secret.IsSet(), PasswordSet: c.SMTP.Password.IsSet(), ToText: strings.Join(c.SMTP.To, ", ")}
 	} else {
-		data.Error = "读取告警渠道失败：" + err.Error()
+		data.Error = "讀取告警渠道失敗：" + err.Error()
 	}
 }
 
@@ -365,7 +365,7 @@ func (s *Server) actionRotationSettings(sess *session, r *http.Request) error {
 		return err
 	}
 	if v := formInt(r, "version"); v != version {
-		return errors.New("这页的设置在你打开后已被别人改过，请刷新后重试")
+		return errors.New("這頁的設定在你打開後已被別人改過，請刷新後重試")
 	}
 	value, _ := json.Marshal(after)
 	return s.dbm.ops.SaveSetting(r.Context(), repo.SettingRotation, value, version, ops.ActionRotationSettings, before, after, sess.actor, s.clientKey(r))
@@ -377,7 +377,7 @@ func (s *Server) actionDeviceChannel(sess *session, r *http.Request) error {
 		return err
 	}
 	if v := formInt(r, "version"); v != version {
-		return errors.New("这页的设置在你打开后已被别人改过，请刷新后重试")
+		return errors.New("這頁的設定在你打開後已被別人改過，請刷新後重試")
 	}
 	after := repo.DeviceChannelSettings{
 		EnrolCIDRs: splitRecipients(formValue(r, "enrol_cidrs")),
@@ -415,7 +415,7 @@ type gatewayTeamView struct {
 // re-issued and changes nothing.
 func (s *Server) actionGatewayTeam(sess *session, r *http.Request) (string, error) {
 	if s.opts.GatewayAdminURL != "" {
-		return "", errors.New("组织由网关凭证决定，不能在这里修改")
+		return "", errors.New("組織由網關憑證決定，不能在這裡修改")
 	}
 	ctx := r.Context()
 	before, version, err := repo.LoadGatewayTeamSettings(ctx, s.dbm.store.Settings())
@@ -423,15 +423,15 @@ func (s *Server) actionGatewayTeam(sess *session, r *http.Request) (string, erro
 		return "", err
 	}
 	if v := formInt(r, "version"); v != version {
-		return "", errors.New("这页的设置在你打开后已被别人改过，请刷新后重试")
+		return "", errors.New("這頁的設定在你打開後已被別人改過，請刷新後重試")
 	}
 	team := strings.TrimSpace(formValue(r, "team_id"))
 	if team == "" {
 		// Back to no team would need every employee moved out again.
-		return "", errors.New("请填写团队 ID；设置后不能清空")
+		return "", errors.New("請填寫團隊 ID；設定後不能清空")
 	}
 	if err := litellm.ValidateTeamID(team); err != nil {
-		return "", errors.New("团队 ID 只能用小写字母、数字和下划线，2–32 位")
+		return "", errors.New("團隊 ID 只能用小寫字母、數字和下劃線，2–32 位")
 	}
 	if formValue(r, "preview") == "1" {
 		moved, err := s.dbm.ops.MoveToTeam(ctx, team, true, sess.actor, s.clientKey(r))
@@ -439,9 +439,9 @@ func (s *Server) actionGatewayTeam(sess *session, r *http.Request) (string, erro
 			return "", err
 		}
 		if len(moved) == 0 {
-			return "预览：没有需要重新签发的员工", nil
+			return "預覽：沒有需要重新簽發的員工", nil
 		}
-		return fmt.Sprintf("预览：保存后将为 %d 人重新签发令牌（%s），旧令牌随即失效", len(moved), strings.Join(moved, "、")), nil
+		return fmt.Sprintf("預覽：保存後將為 %d 人重新簽發令牌（%s），舊令牌隨即失效", len(moved), strings.Join(moved, "、")), nil
 	}
 	if team != before.TeamID {
 		after := repo.GatewayTeamSettings{TeamID: team}
@@ -454,12 +454,12 @@ func (s *Server) actionGatewayTeam(sess *session, r *http.Request) (string, erro
 	}
 	moved, err := s.dbm.ops.MoveToTeam(ctx, team, false, sess.actor, s.clientKey(r))
 	if err != nil {
-		return "", fmt.Errorf("团队已保存，但迁移中断（已迁移 %d 人）：%w；再点一次保存可以继续", len(moved), err)
+		return "", fmt.Errorf("團隊已保存，但遷移中斷（已遷移 %d 人）：%w；再點一次保存可以繼續", len(moved), err)
 	}
 	if len(moved) == 0 {
-		return "组织已设为 " + team + "，没有需要迁移的员工", nil
+		return "組織已設為 " + team + "，沒有需要遷移的員工", nil
 	}
-	return fmt.Sprintf("组织已设为 %s，已为 %d 人重新签发令牌（%s），机器下次同步时换上新令牌", team, len(moved), strings.Join(moved, "、")), nil
+	return fmt.Sprintf("組織已設為 %s，已為 %d 人重新簽發令牌（%s），機器下次同步時換上新令牌", team, len(moved), strings.Join(moved, "、")), nil
 }
 
 func (s *Server) actionAllowReenrol(sess *session, r *http.Request) (string, error) {
@@ -467,12 +467,12 @@ func (s *Server) actionAllowReenrol(sess *session, r *http.Request) (string, err
 	if err != nil {
 		return "", err
 	}
-	return "这台机器在 " + until.Local().Format("01-02 15:04") + " 前可以注册", nil
+	return "這台機器在 " + until.Local().Format("01-02 15:04") + " 前可以註冊", nil
 }
 
 func (s *Server) actionRevokeToken(sess *session, r *http.Request) (string, error) {
 	if err := s.dbm.ops.RevokeDeviceToken(r.Context(), formValue(r, "machine"), sess.actor, s.clientKey(r)); err != nil {
 		return "", err
 	}
-	return "令牌已吊销；机器下一次请求会被拒，随后一小时内可以自己重新注册", nil
+	return "令牌已吊銷；機器下一次請求會被拒，隨後一小時內可以自己重新註冊", nil
 }

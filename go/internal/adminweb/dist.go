@@ -26,7 +26,7 @@ func fleetDistributions(machines []admincore.MachineState, now time.Time) []dist
 	agent, codex, applocker, silence := map[string]int{}, map[string]int{}, map[string]int{}, map[string]int{}
 	for _, m := range machines {
 		agent[orLabel(m.Status.AgentVersion, "未知")]++
-		codex[orLabel(m.Status.CodexVersion, "未安装")]++
+		codex[orLabel(m.Status.CodexVersion, "未安裝")]++
 		applocker[orLabel(m.Status.AppLockerMode, "未管理")]++
 		silence[silenceBucket(m.Status.LastSync, now)]++
 	}
@@ -59,29 +59,29 @@ func fleetDistributions(machines []admincore.MachineState, now time.Time) []dist
 		dist("agent 版本", agent, nil),
 		dist("Codex 版本", codex, nil),
 		dist("AppLocker", applocker, nil),
-		dist("多久没上报", silence, silenceOrder),
+		dist("多久沒上報", silence, silenceOrder),
 	}
 }
 
-var silenceOrder = []string{"15 分钟内", "1 小时内", "1 天内", "7 天内", "超过 7 天", "从未"}
+var silenceOrder = []string{"15 分鐘內", "1 小時內", "1 天內", "7 天內", "超過 7 天", "從未"}
 
 func silenceBucket(lastSync string, now time.Time) string {
 	t, err := time.Parse(time.RFC3339, lastSync)
 	if err != nil || lastSync == "" {
-		return "从未"
+		return "從未"
 	}
 	age := now.Sub(t)
 	switch {
 	case age <= 15*time.Minute:
-		return "15 分钟内"
+		return "15 分鐘內"
 	case age <= time.Hour:
-		return "1 小时内"
+		return "1 小時內"
 	case age <= 24*time.Hour:
-		return "1 天内"
+		return "1 天內"
 	case age <= 7*24*time.Hour:
-		return "7 天内"
+		return "7 天內"
 	}
-	return "超过 7 天"
+	return "超過 7 天"
 }
 
 func orLabel(s, empty string) string {

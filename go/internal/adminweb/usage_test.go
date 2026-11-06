@@ -59,7 +59,7 @@ func TestUsagePageSumsAndExports(t *testing.T) {
 	if page.Code != 200 {
 		t.Fatalf("usage page: %d", page.Code)
 	}
-	for _, want := range []string{">work1<", ">work2<", "sk-stray", "未关联到员工", "$5.0100", ">opus<", ">sonnet<", ">09-03<", ">09-05<", "调用 <b class=\"mono\">14</b>"} {
+	for _, want := range []string{">work1<", ">work2<", "sk-stray", "未關聯到員工", "$5.0100", ">opus<", ">sonnet<", ">09-03<", ">09-05<", "調用 <b class=\"mono\">14</b>"} {
 		if !strings.Contains(body, want) {
 			t.Errorf("page lacks %q", want)
 		}
@@ -69,7 +69,7 @@ func TestUsagePageSumsAndExports(t *testing.T) {
 	if keyPage.Code != 200 {
 		t.Fatalf("key billing page: %d", keyPage.Code)
 	}
-	for _, want := range []string{"API Key 账单", "a1", "a2", "sk-stray", "$2.0000", "本地快照"} {
+	for _, want := range []string{"API Key 帳單", "a1", "a2", "sk-stray", "$2.0000", "本地快照"} {
 		if !strings.Contains(keyBody, want) {
 			t.Errorf("key billing page lacks %q", want)
 		}
@@ -85,7 +85,7 @@ func TestUsagePageSumsAndExports(t *testing.T) {
 	if strings.Contains(one, ">sonnet<") || !strings.Contains(one, ">opus<") || !strings.Contains(one, "$3.0000") {
 		t.Fatalf("one employee's page shows other people's models")
 	}
-	if rec := dbGet(t, h, "/usage?month=2026-09&employee=nobody", cookie); rec.Code != 200 || !strings.Contains(rec.Body.String(), "没有这个员工") {
+	if rec := dbGet(t, h, "/usage?month=2026-09&employee=nobody", cookie); rec.Code != 200 || !strings.Contains(rec.Body.String(), "沒有這個員工") {
 		t.Fatalf("unknown employee: %d", rec.Code)
 	}
 

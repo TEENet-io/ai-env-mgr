@@ -119,7 +119,7 @@ func (s *Server) handleChannels(w http.ResponseWriter, r *http.Request, sess *se
 		defer cancel()
 		models, err := gw.AllModels(ctx)
 		if err != nil {
-			data.GatewayUnusable = "无法读取网关部署清单：" + err.Error()
+			data.GatewayUnusable = "無法讀取網關部署清單：" + err.Error()
 		} else {
 			if sess.admin.Role != repo.RoleAdmin {
 				visible := models[:0:0]
@@ -145,7 +145,7 @@ func (s *Server) actionChannelTest(sess *session, r *http.Request) (string, erro
 	channel := formValue(r, "channel")
 	modelID := formValue(r, "model_id")
 	if channel == "" || modelID == "" {
-		return "", fmt.Errorf("请选择要测试的部署")
+		return "", fmt.Errorf("請選擇要測試的部署")
 	}
 	gw, err := s.gateway()
 	if err != nil {
@@ -155,7 +155,7 @@ func (s *Server) actionChannelTest(sess *session, r *http.Request) (string, erro
 	models, err := gw.AllModels(ctx)
 	cancel()
 	if err != nil {
-		return "", fmt.Errorf("无法读取网关部署清单：%w", err)
+		return "", fmt.Errorf("無法讀取網關部署清單：%w", err)
 	}
 	var target *litellm.Model
 	for i := range models {
@@ -165,7 +165,7 @@ func (s *Server) actionChannelTest(sess *session, r *http.Request) (string, erro
 		}
 	}
 	if target == nil {
-		return "", fmt.Errorf("该部署不属于所选渠道，请刷新页面")
+		return "", fmt.Errorf("該部署不屬於所選渠道，請刷新頁面")
 	}
 	ctx, cancel = context.WithTimeout(r.Context(), 25*time.Second)
 	defer cancel()
@@ -180,25 +180,25 @@ func (s *Server) actionChannelTest(sess *session, r *http.Request) (string, erro
 			status = apiErr.Status
 		}
 		if auditErr := s.recordChannelTest(sess, r, channel, *target, "error", time.Since(started), status); auditErr != nil {
-			return "", fmt.Errorf("渠道检测失败，且无法保存审计记录：%w", auditErr)
+			return "", fmt.Errorf("渠道檢測失敗，且無法保存審計記錄：%w", auditErr)
 		}
 		if status != 0 {
-			return "", fmt.Errorf("%s 检测请求失败（HTTP %d）", label, apiErr.Status)
+			return "", fmt.Errorf("%s 檢測請求失敗（HTTP %d）", label, apiErr.Status)
 		}
-		return "", fmt.Errorf("%s 检测请求失败：%w", label, err)
+		return "", fmt.Errorf("%s 檢測請求失敗：%w", label, err)
 	}
 	if result.HealthyCount == 0 {
 		logAudit(s.clientKey(r), "channel test unhealthy %s %s", channel, modelID)
 		if err := s.recordChannelTest(sess, r, channel, *target, "failed", time.Since(started), 503); err != nil {
-			return "", fmt.Errorf("渠道检测未通过，且无法保存审计记录：%w", err)
+			return "", fmt.Errorf("渠道檢測未通過，且無法保存審計記錄：%w", err)
 		}
-		return "", fmt.Errorf("%s 检测未通过；请到 LiteLLM 查看该部署的错误详情", label)
+		return "", fmt.Errorf("%s 檢測未通過；請到 LiteLLM 查看該部署的錯誤詳情", label)
 	}
 	logAudit(s.clientKey(r), "channel test healthy %s %s", channel, modelID)
 	if err := s.recordChannelTest(sess, r, channel, *target, "ok", time.Since(started), 200); err != nil {
-		return "", fmt.Errorf("渠道检测通过，但无法保存审计记录：%w", err)
+		return "", fmt.Errorf("渠道檢測通過，但無法保存審計記錄：%w", err)
 	}
-	return fmt.Sprintf("%s 健康检查通过（%.1f 秒）；若网关启用后台检查，此结果可能来自缓存", label, time.Since(started).Seconds()), nil
+	return fmt.Sprintf("%s 健康檢查通過（%.1f 秒）；若網關啟用後台檢查，此結果可能來自緩存", label, time.Since(started).Seconds()), nil
 }
 
 type channelTrialResponse struct {
@@ -226,37 +226,37 @@ func writeChannelTrialJSON(w http.ResponseWriter, status int, out channelTrialRe
 // or responses in URLs, audit records, or the console log.
 func (s *Server) handleChannelTrial(w http.ResponseWriter, r *http.Request, sess *session) {
 	if r.Method != http.MethodPost {
-		writeChannelTrialJSON(w, http.StatusMethodNotAllowed, channelTrialResponse{Error: "仅支持 POST"})
+		writeChannelTrialJSON(w, http.StatusMethodNotAllowed, channelTrialResponse{Error: "僅支持 POST"})
 		return
 	}
 	r.Body = http.MaxBytesReader(w, r.Body, 16<<10)
 	if err := parseChannelTrialForm(r); err != nil {
-		writeChannelTrialJSON(w, http.StatusBadRequest, channelTrialResponse{Error: "无法读取请求"})
+		writeChannelTrialJSON(w, http.StatusBadRequest, channelTrialResponse{Error: "無法讀取請求"})
 		return
 	}
 	if subtle.ConstantTimeCompare([]byte(r.PostFormValue("csrf")), []byte(sess.csrf)) != 1 {
-		writeChannelTrialJSON(w, http.StatusForbidden, channelTrialResponse{Error: "表单已过期，请刷新页面重试"})
+		writeChannelTrialJSON(w, http.StatusForbidden, channelTrialResponse{Error: "表單已過期，請刷新頁面重試"})
 		return
 	}
 	channel, modelID, prompt := formValue(r, "channel"), formValue(r, "model_id"), formValue(r, "prompt")
 	if channel == "" || modelID == "" || prompt == "" {
-		writeChannelTrialJSON(w, http.StatusBadRequest, channelTrialResponse{Error: "请选择部署并输入测试内容"})
+		writeChannelTrialJSON(w, http.StatusBadRequest, channelTrialResponse{Error: "請選擇部署並輸入測試內容"})
 		return
 	}
 	if utf8.RuneCountInString(prompt) > 2000 {
-		writeChannelTrialJSON(w, http.StatusBadRequest, channelTrialResponse{Error: "测试内容不能超过 2000 个字符"})
+		writeChannelTrialJSON(w, http.StatusBadRequest, channelTrialResponse{Error: "測試內容不能超過 2000 個字符"})
 		return
 	}
 	gw, err := s.gateway()
 	if err != nil {
-		writeChannelTrialJSON(w, http.StatusServiceUnavailable, channelTrialResponse{Error: "网关未配置"})
+		writeChannelTrialJSON(w, http.StatusServiceUnavailable, channelTrialResponse{Error: "網關未配置"})
 		return
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), gatewayModelsTimeout)
 	models, err := gw.AllModels(ctx)
 	cancel()
 	if err != nil {
-		writeChannelTrialJSON(w, http.StatusBadGateway, channelTrialResponse{Error: "无法读取网关部署清单"})
+		writeChannelTrialJSON(w, http.StatusBadGateway, channelTrialResponse{Error: "無法讀取網關部署清單"})
 		return
 	}
 	var target *litellm.Model
@@ -267,11 +267,11 @@ func (s *Server) handleChannelTrial(w http.ResponseWriter, r *http.Request, sess
 		}
 	}
 	if target == nil {
-		writeChannelTrialJSON(w, http.StatusBadRequest, channelTrialResponse{Error: "部署与渠道不匹配，请刷新页面"})
+		writeChannelTrialJSON(w, http.StatusBadRequest, channelTrialResponse{Error: "部署與渠道不匹配，請刷新頁面"})
 		return
 	}
 	if target.Info.Mode != "" && !strings.EqualFold(target.Info.Mode, "chat") {
-		writeChannelTrialJSON(w, http.StatusBadRequest, channelTrialResponse{Error: "该部署不是聊天模型，不能使用文本试调用"})
+		writeChannelTrialJSON(w, http.StatusBadRequest, channelTrialResponse{Error: "該部署不是聊天模型，不能使用文本試調用"})
 		return
 	}
 	gw.HTTP.Timeout = 55 * time.Second
@@ -280,7 +280,7 @@ func (s *Server) handleChannelTrial(w http.ResponseWriter, r *http.Request, sess
 	disableThinking := channelTrialDisablesThinking(*target)
 	trialNote := ""
 	if disableThinking {
-		trialNote = "本次连通性测试已关闭 Gemini 思考；员工调用仍使用网关默认参数"
+		trialNote = "本次連通性測試已關閉 Gemini 思考；員工調用仍使用網關預設參數"
 	}
 	started := time.Now()
 	trial, trialErr := gw.TryChat(ctx, modelID, prompt, litellm.ChatTrialOptions{DisableThinking: disableThinking})
@@ -307,16 +307,16 @@ func (s *Server) handleChannelTrial(w http.ResponseWriter, r *http.Request, sess
 		RequestID: s.clientKey(r),
 	})
 	if trialErr != nil {
-		message := "试调用失败，请到 LiteLLM 查看该部署日志"
+		message := "試調用失敗，請到 LiteLLM 查看該部署日誌"
 		if errors.Is(trialErr, litellm.ErrNoVisibleOutput) {
-			message = "模型已响应，但未生成可显示文本"
+			message = "模型已響應，但未生成可顯示文本"
 			if trial.FinishReason == "length" {
-				message = "模型已响应，但输出额度耗尽，未生成正文"
+				message = "模型已響應，但輸出額度耗盡，未生成正文"
 			}
 		} else if errors.Is(trialErr, context.DeadlineExceeded) {
-			message = "试调用超时，请到 LiteLLM 查看该部署日志"
+			message = "試調用超時，請到 LiteLLM 查看該部署日誌"
 		} else if status >= 400 && status < 600 && status != http.StatusBadGateway {
-			message = fmt.Sprintf("试调用失败（HTTP %d），请到 LiteLLM 查看该部署日志", status)
+			message = fmt.Sprintf("試調用失敗（HTTP %d），請到 LiteLLM 查看該部署日誌", status)
 		}
 		out := channelTrialResponse{
 			Error: message, Input: prompt, ModelName: target.Name, ModelID: modelID,
@@ -328,7 +328,7 @@ func (s *Server) handleChannelTrial(w http.ResponseWriter, r *http.Request, sess
 			if out.Warning != "" {
 				out.Warning += "；"
 			}
-			out.Warning += "本次检测未能写入审计，请勿盲目重试，以免重复计费"
+			out.Warning += "本次檢測未能寫入審計，請勿盲目重試，以免重複計費"
 		}
 		writeChannelTrialJSON(w, http.StatusBadGateway, out)
 		return
@@ -343,7 +343,7 @@ func (s *Server) handleChannelTrial(w http.ResponseWriter, r *http.Request, sess
 		if out.Warning != "" {
 			out.Warning += "；"
 		}
-		out.Warning += "模型已返回，但本次检测未能写入审计"
+		out.Warning += "模型已返回，但本次檢測未能寫入審計"
 	}
 	writeChannelTrialJSON(w, http.StatusOK, out)
 }
@@ -412,31 +412,31 @@ func (s *Server) actionChannelPause(sess *session, r *http.Request) (string, err
 	label := litellm.ChannelLabel(channel)
 	if pause {
 		if err := confirmMatches(r, "confirm", channel); err != nil {
-			return "", fmt.Errorf("输入渠道代号 %s 确认暂停", channel)
+			return "", fmt.Errorf("輸入渠道代號 %s 確認暫停", channel)
 		}
 	}
 	queued, err := s.dbm.ops.SetChannelPaused(r.Context(), channel, pause, formValue(r, "reason"), formInt(r, "version"), sess.actor, s.clientKey(r))
 	if err != nil {
 		return "", err
 	}
-	verb := "已恢复"
+	verb := "已恢復"
 	if pause {
-		verb = "已暂停"
+		verb = "已暫停"
 	}
 	logAudit(s.clientKey(r), "%s channel %s", map[bool]string{true: "paused", false: "resumed"}[pause], channel)
-	notice := fmt.Sprintf("%s %s；%d 位\"全部模型\"员工的网关权限已排队更新", verb, label, queued)
+	notice := fmt.Sprintf("%s %s；%d 位\"全部模型\"員工的網關權限已排隊更新", verb, label, queued)
 
 	// Rewrite everybody's picker now. If the gateway cannot be read, the
 	// pause still stands (the exports read it when they run); say so.
 	gw, err := s.gateway()
 	if err != nil {
-		return notice + "。模型清单没有下发：" + err.Error() + "；稍后在\"模型下发\"点全部下发", nil
+		return notice + "。模型清單沒有下發：" + err.Error() + "；稍後在\"模型下發\"點全部下發", nil
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), gatewayModelsTimeout)
 	defer cancel()
 	models, err := gw.Models(ctx)
 	if err != nil {
-		return notice + "。模型清单没有下发（读不到网关）；稍后在\"模型下发\"点全部下发", nil
+		return notice + "。模型清單沒有下發（讀不到網關）；稍後在\"模型下發\"點全部下發", nil
 	}
 	models, err = s.deliverableModels(r.Context(), models)
 	if err != nil {
@@ -449,11 +449,11 @@ func (s *Server) actionChannelPause(sess *session, r *http.Request) (string, err
 	n, err := s.dbm.ops.DeliverCatalog(r.Context(), ops.SnapshotOf(models), "", version, sess.actor, s.clientKey(r))
 	if err != nil {
 		if errors.Is(err, repo.ErrConflict) || strings.Contains(err.Error(), "nothing to deliver") {
-			return notice + "。模型清单没有下发：" + err.Error(), nil
+			return notice + "。模型清單沒有下發：" + err.Error(), nil
 		}
 		return "", err
 	}
-	return fmt.Sprintf("%s；已给 %d 位员工重新生成模型清单，进度见\"模型下发\"", notice, n), nil
+	return fmt.Sprintf("%s；已給 %d 位員工重新生成模型清單，進度見\"模型下發\"", notice, n), nil
 }
 
 // handleModels is 员工账号 › 模型下发: the gateway's visible models and

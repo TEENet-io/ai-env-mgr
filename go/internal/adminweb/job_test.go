@@ -117,7 +117,7 @@ func TestJobProgressIsRaceFree(t *testing.T) {
 	_ = r.start("codex", "1.0.0", func(setStep func(string), _ func(done, total int64)) error {
 		close(started)
 		for i := 0; i < 200; i++ {
-			setStep("下载中")
+			setStep("下載中")
 		}
 		<-release
 		return nil

@@ -89,12 +89,12 @@ func TestRenderPreview(t *testing.T) {
 		{WindowsUser: "chen", Enabled: false},
 	}
 	accountRows := []accountRow{
-		{WindowsUser: "peter", Name: "Peter", Department: "研发", Enabled: true, OnRoster: true,
+		{WindowsUser: "peter", Name: "Peter", Department: "研發", Enabled: true, OnRoster: true,
 			HasUser: true, HasToken: true, Models: []string{"grok-4.6", "glm-5"},
 			Spend: 12.4, Budget: 20, BudgetResetAt: "2026-10-01T00:00:00Z",
 			Quota:    litellm.Quota{MonthlyBudgetUSD: 20, RPM: 60, TPM: 200000, Parallel: 4},
 			Machines: []string{"hv8uqpity23nkc7"}},
-		{WindowsUser: "work1", Name: "Work One", Department: "运营", Enabled: true, OnRoster: true,
+		{WindowsUser: "work1", Name: "Work One", Department: "運營", Enabled: true, OnRoster: true,
 			HasUser: true, HasToken: true, Models: []string{"deepseek-v3.2"},
 			Spend: 18.7, Budget: 20, BudgetResetAt: "2026-10-01T00:00:00Z",
 			Quota:    litellm.Quota{MonthlyBudgetUSD: 20, RPM: 60, TPM: 200000, Parallel: 4},
@@ -120,7 +120,7 @@ func TestRenderPreview(t *testing.T) {
 			"2026-08-16T01:35:54Z credentials: nothing new\n" +
 			"2026-08-16T01:35:55Z status uploaded",
 		Job: &job{Kind: "codex", Version: "26.810.52044-b1", State: jobRunning,
-			Step: "下载安装包", Started: time.Now().Add(-95 * time.Second),
+			Step: "下載安裝包", Started: time.Now().Add(-95 * time.Second),
 			Done: 412 << 20, Total: 700 << 20},
 		Fixed: true,
 
@@ -146,7 +146,7 @@ func TestRenderPreview(t *testing.T) {
 		GatewayModels: []litellm.Model{
 			{Name: "grok-4.6", Info: litellm.ModelInfo{DisplayName: "Grok 4.6", ContextWindow: 256000, ReasoningLevels: []string{"low", "high"}}},
 			{Name: "deepseek-v3.2", Info: litellm.ModelInfo{DisplayName: "DeepSeek V3.2", ContextWindow: 128000, ReasoningLevels: []string{"low", "high"}}},
-			{Name: "glm-5", Info: litellm.ModelInfo{DisplayName: "智谱 GLM-5", ContextWindow: 128000, ReasoningLevels: []string{"low", "high"}}},
+			{Name: "glm-5", Info: litellm.ModelInfo{DisplayName: "智譜 GLM-5", ContextWindow: 128000, ReasoningLevels: []string{"low", "high"}}},
 		},
 	}
 	for _, tplName := range []string{

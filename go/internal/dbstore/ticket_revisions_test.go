@@ -22,15 +22,15 @@ func TestDailyTicketRevisionAndProcessingBoundary(t *testing.T) {
 		t.Fatal(err)
 	}
 	first := []byte(`{"schema_version":4,"request_kind":"software-add","software":"VS Code"}`)
-	ticket, err := store.Create(ctx, owner.ID, "revision-test-key", "general", "安装软件 · VS Code", "软件：VS Code", "normal", first)
+	ticket, err := store.Create(ctx, owner.ID, "revision-test-key", "general", "安裝軟件 · VS Code", "軟件：VS Code", "normal", first)
 	if err != nil {
 		t.Fatal(err)
 	}
 	second := []byte(`{"schema_version":4,"request_kind":"software-add","software":"Python"}`)
-	if err := store.UpdateDailyRequest(ctx, ticket.ID, other.ID, 1, "general", "安装软件 · Python", "软件：Python", second); !errors.Is(err, ErrTicketNotFound) {
+	if err := store.UpdateDailyRequest(ctx, ticket.ID, other.ID, 1, "general", "安裝軟件 · Python", "軟件：Python", second); !errors.Is(err, ErrTicketNotFound) {
 		t.Fatalf("other contact updated request: %v", err)
 	}
-	if err := store.UpdateDailyRequest(ctx, ticket.ID, owner.ID, 1, "general", "安装软件 · Python", "软件：Python", second); err != nil {
+	if err := store.UpdateDailyRequest(ctx, ticket.ID, owner.ID, 1, "general", "安裝軟件 · Python", "軟件：Python", second); err != nil {
 		t.Fatal(err)
 	}
 	revisions, err := store.RequestRevisions(ctx, ticket.ID, owner.ID)
@@ -40,7 +40,7 @@ func TestDailyTicketRevisionAndProcessingBoundary(t *testing.T) {
 	if err := store.UpdateDailyRequest(ctx, ticket.ID, owner.ID, 1, "general", "stale", "stale", second); !errors.Is(err, ErrTicketConflict) {
 		t.Fatalf("stale request updated: %v", err)
 	}
-	if err := store.AddEvent(ctx, ticket.ID, "", "admin", owner.ID, "status", "public", "开始处理", "working", 2); err != nil {
+	if err := store.AddEvent(ctx, ticket.ID, "", "admin", owner.ID, "status", "public", "開始處理", "working", 2); err != nil {
 		t.Fatal(err)
 	}
 	if err := store.UpdateDailyRequest(ctx, ticket.ID, owner.ID, 3, "general", "late", "late", second); !errors.Is(err, ErrTicketConflict) {

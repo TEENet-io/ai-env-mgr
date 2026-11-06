@@ -418,6 +418,8 @@ func (s *Server) Handler() http.Handler {
 		mux.HandleFunc("/customer", s.handleCustomerHome)
 		mux.HandleFunc("/customer/login", s.handleCustomerLogin)
 		mux.HandleFunc("/customer/logout", s.handleCustomerLogout)
+		mux.HandleFunc("/customer/usage", s.handleCustomerUsage)
+		mux.HandleFunc("/customer/employees", s.handleCustomerEmployees)
 		mux.HandleFunc("/customer/password", s.handleCustomerPassword)
 		mux.HandleFunc("/customer/ticket", s.handleCustomerTicket)
 		mux.HandleFunc("/customer/ticket/create", s.handleCustomerCreateTicket)

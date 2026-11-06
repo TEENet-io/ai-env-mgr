@@ -97,7 +97,7 @@ func TestFleetDistributionsSplitTheFleet(t *testing.T) {
 		t.Fatalf("agent versions: %+v", agent.Rows)
 	}
 	codex := dists[1]
-	if len(codex.Rows) != 3 || codex.Rows[2].Label != "未安装" {
+	if len(codex.Rows) != 3 || codex.Rows[2].Label != "未安裝" {
 		t.Fatalf("codex versions: %+v", codex.Rows)
 	}
 	if dists[2].Rows[0].Label != "enforce" || dists[2].Rows[1].Label != "未管理" {
@@ -108,7 +108,7 @@ func TestFleetDistributionsSplitTheFleet(t *testing.T) {
 	for _, r := range silence.Rows {
 		labels = append(labels, r.Label)
 	}
-	if got := join(labels); got != "15 分钟内,1 天内,超过 7 天,从未" {
+	if got := join(labels); got != "15 分鐘內,1 天內,超過 7 天,從未" {
 		t.Fatalf("silence buckets in order: %s", got)
 	}
 }
@@ -139,11 +139,11 @@ func TestRolloutsAndOverviewShowTheReports(t *testing.T) {
 	store.Releases().FinishTarget(ctx, target.ID, repo.TargetSucceeded, "", "0.42.0")
 
 	page := dbGet(t, h, "/rollouts", cookie)
-	if page.Code != 200 || !strings.Contains(page.Body.String(), "版本报表") || !strings.Contains(page.Body.String(), "0.42.0") {
+	if page.Code != 200 || !strings.Contains(page.Body.String(), "版本報表") || !strings.Contains(page.Body.String(), "0.42.0") {
 		t.Fatalf("rollouts report: %d", page.Code)
 	}
 	ov := dbGet(t, h, "/overview", cookie)
-	if ov.Code != 200 || !strings.Contains(ov.Body.String(), "agent 版本") || !strings.Contains(ov.Body.String(), "多久没上报") {
+	if ov.Code != 200 || !strings.Contains(ov.Body.String(), "agent 版本") || !strings.Contains(ov.Body.String(), "多久沒上報") {
 		t.Fatalf("overview distributions: %d", ov.Code)
 	}
 }

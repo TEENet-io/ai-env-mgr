@@ -1,11 +1,11 @@
-{{define "logs.html"}}{{template "head" "调用明细"}}
+{{define "logs.html"}}{{template "head" "調用明細"}}
 <body>
 <div class="app">
 {{template "nav" .}}
 <main class="sheet">
-  <header class="pagehead"><h1>{{if .DB}}用量{{else}}日志{{end}}</h1></header>
+  <header class="pagehead"><h1>{{if .DB}}用量{{else}}日誌{{end}}</h1></header>
   {{template "tabs-usage" .}}
-  <p class="lede">逐条的模型调用记录 · SLS <code>{{with .Logs}}{{.Project}}{{end}}/audit</code></p>
+  <p class="lede">逐條的模型調用記錄 · SLS <code>{{with .Logs}}{{.Project}}{{end}}/audit</code></p>
   {{template "notices" .}}
 
 {{with .Logs}}
@@ -17,43 +17,43 @@
   {{with .Probe}}
   <section class="panel probe">
     <p><span class="tag tag-{{.Sev}}">{{.Label}}</span>
-      最近 60 分钟：成功 <b class="mono">{{.OKs}}</b> 次 · 失败 <b class="mono">{{.Fails}}</b> 次</p>
+      最近 60 分鐘：成功 <b class="mono">{{.OKs}}</b> 次 · 失敗 <b class="mono">{{.Fails}}</b> 次</p>
     {{if .Detail}}<p class="hint">{{.Detail}}</p>{{end}}
-    {{if .LastFailAt}}<p class="hint">最近一次失败 {{.LastFailAt}}{{if .LastFailMsg}} · {{.LastFailMsg}}{{end}}</p>{{end}}
+    {{if .LastFailAt}}<p class="hint">最近一次失敗 {{.LastFailAt}}{{if .LastFailMsg}} · {{.LastFailMsg}}{{end}}</p>{{end}}
   </section>
   {{end}}
 
   <form method="get" action="/logs" class="form">
-    <label>员工
+    <label>員工
       <select name="employee">
         <option value=""{{if not .Filter.Employee}} selected{{end}}>全部</option>
         {{range .Employees}}<option value="{{.}}"{{if eq . $.Logs.Filter.Employee}} selected{{end}}>{{.}}</option>{{end}}
       </select>
     </label>
-    <label>状态
+    <label>狀態
       <select name="status">
         {{range .Statuses}}<option value="{{.Value}}"{{if eq .Value $.Logs.Filter.Status}} selected{{end}}>{{.Label}}</option>{{end}}
       </select>
     </label>
     <label>模型<input name="model" value="{{.Filter.Model}}" placeholder="glm-5"></label>
-    <label class="wide">时间范围
+    <label class="wide">時間範圍
       <span class="choices">
         {{range .Ranges}}<label class="choice"><input type="radio" name="range" value="{{.Value}}"{{if eq .Value $.Logs.Filter.Range}} checked{{end}}>{{.Label}}</label>{{end}}
       </span>
     </label>
-    <label>自定义起<input type="date" name="from" value="{{.Filter.From}}"></label>
-    <label>自定义止<input type="date" name="to" value="{{.Filter.To}}"></label>
-    <button type="submit">查询</button>
+    <label>自定義起<input type="date" name="from" value="{{.Filter.From}}"></label>
+    <label>自定義止<input type="date" name="to" value="{{.Filter.To}}"></label>
+    <button type="submit">查詢</button>
   </form>
-  <p class="hint">自定义范围按 Asia/Shanghai 解释，起止都算在内，跨度上限 90 天；超出或填反了按「最近 7 天」处理。</p>
+  <p class="hint">自定義範圍按 Asia/Shanghai 解釋，起止都算在內，跨度上限 90 天；超出或填反了按「最近 7 天」處理。</p>
 
   {{with .Summary}}
-  <p class="tally">{{$.Logs.RangeLabel}}：调用 <b class="mono">{{.Calls}}</b> 次 ·
-    失败 <b class="mono">{{.Failures}}</b> · 取消 <b class="mono">{{.Cancelled}}</b> ·
-    费用 <b class="mono">${{.Cost}}</b></p>
+  <p class="tally">{{$.Logs.RangeLabel}}：調用 <b class="mono">{{.Calls}}</b> 次 ·
+    失敗 <b class="mono">{{.Failures}}</b> · 取消 <b class="mono">{{.Cancelled}}</b> ·
+    費用 <b class="mono">${{.Cost}}</b></p>
   {{end}}
 
-  {{if .Incomplete}}<p class="note note-err">结果可能不完整（SLS 索引仍在处理）。</p>{{end}}
+  {{if .Incomplete}}<p class="note note-err">結果可能不完整（SLS 索引仍在處理）。</p>{{end}}
 
   {{/* No table at all when its query failed: a header over an empty body
   reads as "nothing happened", which is the one thing the console does not
@@ -62,14 +62,14 @@
   <div class="panel scroll">
   <table class="logtable">
     <thead><tr>
-      <th>时间</th><th>员工</th><th>模型</th><th>状态</th>
-      <th class="num">耗时 ms</th><th class="num">Token</th><th class="num">费用 $</th><th>错误</th>
+      <th>時間</th><th>員工</th><th>模型</th><th>狀態</th>
+      <th class="num">耗時 ms</th><th class="num">Token</th><th class="num">費用 $</th><th>錯誤</th>
     </tr></thead>
     <tbody>
     {{range .Rows}}
       <tr>
         <td class="id">{{.Time}}</td>
-        <td>{{if .Employee}}{{if .OffRoster}}{{.Employee}} <span class="muted">不在名册</span>{{else}}<a href="/users/detail?user={{.Employee}}">{{.Employee}}</a>{{end}}{{else if .Master}}<span class="muted">主密钥</span>{{else if .EmployeeID}}{{.EmployeeID}}{{else}}—{{end}}</td>
+        <td>{{if .Employee}}{{if .OffRoster}}{{.Employee}} <span class="muted">不在名冊</span>{{else}}<a href="/users/detail?user={{.Employee}}">{{.Employee}}</a>{{end}}{{else if .Master}}<span class="muted">主密鑰</span>{{else if .EmployeeID}}{{.EmployeeID}}{{else}}—{{end}}</td>
         <td>{{.ModelGroup}}{{if .Model}}<br><span class="hint">{{.Model}}</span>{{end}}</td>
         <td><span class="tag tag-{{.StatusSev}}">{{.StatusLabel}}</span></td>
         <td class="num">{{.Latency}}</td>
@@ -78,7 +78,7 @@
         <td class="dim wrap">{{.Error}}</td>
       </tr>
     {{else}}
-      <tr><td colspan="8" class="empty">这段时间没有调用记录。</td></tr>
+      <tr><td colspan="8" class="empty">這段時間沒有調用記錄。</td></tr>
     {{end}}
     </tbody>
   </table>
@@ -87,15 +87,15 @@
 
   {{if or .PrevURL .NextURL}}
   <p class="pager">
-    {{if .PrevURL}}<a href="{{.PrevURL}}">← 上一页</a>{{else}}<span class="muted">← 上一页</span>{{end}}
-    <span class="muted">第 {{.Filter.Page}} 页</span>
-    {{if .NextURL}}<a href="{{.NextURL}}">下一页 →</a>{{else}}<span class="muted">下一页 →</span>{{end}}
+    {{if .PrevURL}}<a href="{{.PrevURL}}">← 上一頁</a>{{else}}<span class="muted">← 上一頁</span>{{end}}
+    <span class="muted">第 {{.Filter.Page}} 頁</span>
+    {{if .NextURL}}<a href="{{.NextURL}}">下一頁 →</a>{{else}}<span class="muted">下一頁 →</span>{{end}}
   </p>
   {{end}}
 
   <p class="hint">
-    这张表来自 SLS 自己，控制台不缓存任何调用记录。汇总按 <code>event_id</code> 去重，
-    所以采集重放不会把同一次调用算两遍。运维事件、请求原文与导出不在这里。
+    這張表來自 SLS 自己，控制台不緩存任何調用記錄。彙總按 <code>event_id</code> 去重，
+    所以採集重放不會把同一次調用算兩遍。運維事件、請求原文與導出不在這裡。
   </p>
 {{end}}
 </main>

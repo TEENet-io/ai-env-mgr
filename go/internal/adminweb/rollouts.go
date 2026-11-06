@@ -24,28 +24,28 @@ const onlineWithin = 15 * time.Minute
 func targetRowState(t repo.Target, artifact repo.Artifact, report *model.Status, lastSync *time.Time, now time.Time) (label, detail string) {
 	switch t.Status {
 	case repo.TargetSucceeded:
-		return "成功", "实际版本 " + t.ReportedVersion
+		return "成功", "實際版本 " + t.ReportedVersion
 	case repo.TargetFailed:
-		return "失败", t.ResultNote
+		return "失敗", t.ResultNote
 	case repo.TargetExcluded:
 		return "已排除", t.ExcludeReason
 	case repo.TargetCancelled:
 		return "已取消", ""
 	case repo.TargetSuperseded:
-		return "已取代", "已有更新的目标"
+		return "已取代", "已有更新的目標"
 	}
 	online := lastSync != nil && now.Sub(*lastSync) <= onlineWithin
-	waiting := "待执行(离线)"
+	waiting := "待執行(離線)"
 	if online {
-		waiting = "待执行(在线)"
+		waiting = "待執行(在線)"
 	}
 	if report == nil || lastSync == nil {
-		return waiting, "从未上报"
+		return waiting, "從未上報"
 	}
-	seen := "最后联系 " + lastSync.Format("01-02 15:04")
+	seen := "最後聯絡 " + lastSync.Format("01-02 15:04")
 	running, seenTarget, seenGen, state, reason := reportFor(t.Product, report)
 	if running == artifact.Version && lastSync.After(t.CreatedAt) {
-		return "待健康确认", "已是目标版本,等待结算"
+		return "待健康確認", "已是目標版本,等待結算"
 	}
 	if seenTarget != artifact.Version || seenGen != t.Generation {
 		return waiting, seen
@@ -54,18 +54,18 @@ func targetRowState(t repo.Target, artifact repo.Artifact, report *model.Status,
 	case "deferred":
 		switch reason {
 		case "in_use":
-			return "延后:正在使用", seen
+			return "延後:正在使用", seen
 		case "disk":
-			return "延后:磁盘不足", seen
+			return "延後:磁盤不足", seen
 		default:
-			return "延后", reason
+			return "延後", reason
 		}
 	case "downloading":
-		return "下载中", seen
+		return "下載中", seen
 	case "installing":
-		return "安装中", seen
+		return "安裝中", seen
 	case "pending":
-		return "下载中", "已校验,重启中"
+		return "下載中", "已校驗,重啟中"
 	}
 	return waiting, seen
 }
@@ -86,14 +86,14 @@ type targetSummary struct{ Total, Pending, Succeeded, Failed, Excluded, Cancelle
 func (s targetSummary) StatusLabel() string {
 	switch {
 	case s.Total == 0:
-		return "无目标"
+		return "無目標"
 	case s.Pending > 0:
-		return "进行中"
+		return "進行中"
 	case s.Failed > 0:
 		if s.Succeeded > 0 || s.Excluded > 0 {
-			return "部分失败"
+			return "部分失敗"
 		}
-		return "失败"
+		return "失敗"
 	case s.Cancelled > 0:
 		if s.Succeeded > 0 || s.Excluded > 0 {
 			return "部分取消"
@@ -113,9 +113,9 @@ func (s targetSummary) StatusTone() string {
 	switch s.StatusLabel() {
 	case "已完成":
 		return "ok"
-	case "失败", "部分失败":
+	case "失敗", "部分失敗":
 		return "bad"
-	case "无目标", "进行中", "部分取消":
+	case "無目標", "進行中", "部分取消":
 		return "warn"
 	default:
 		return "muted"
@@ -321,9 +321,9 @@ func (s *Server) handleRolloutNew(w http.ResponseWriter, r *http.Request, sess *
 		}
 		switch {
 		case !model.AgentCanTakeTargets(d.AgentVersion):
-			c.Why = fmt.Sprintf("agent %s 只读全局策略,需要 %s 或更新", orDash(d.AgentVersion), model.MinTargetAgentVersion)
+			c.Why = fmt.Sprintf("agent %s 只讀全局策略,需要 %s 或更新", orDash(d.AgentVersion), model.MinTargetAgentVersion)
 		case artifact.MinAgentVersion != "" && model.CompareVersions(d.AgentVersion, artifact.MinAgentVersion) < 0:
-			c.Why = fmt.Sprintf("agent %s 低于该版本要求的 %s", d.AgentVersion, artifact.MinAgentVersion)
+			c.Why = fmt.Sprintf("agent %s 低於該版本要求的 %s", d.AgentVersion, artifact.MinAgentVersion)
 		default:
 			c.Compatible = true
 		}
@@ -447,7 +447,7 @@ func (s *Server) actionRolloutRollback(sess *session, r *http.Request) error {
 	}
 	_, err = s.dbm.ops.CreateRollout(ctx, ops.RolloutSpec{
 		Product: rollout.Product, ArtifactID: artifact.ID, DeviceIDs: devices,
-		Kind: repo.RolloutRollback, RollbackOf: rollout.ID, Note: "回滚 " + formValue(r, "note"),
+		Kind: repo.RolloutRollback, RollbackOf: rollout.ID, Note: "回滾 " + formValue(r, "note"),
 		Actor: sess.actor, RequestID: s.clientKey(r),
 	})
 	if err != nil {

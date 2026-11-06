@@ -138,12 +138,12 @@ func (s *Server) actionApplicationPublish(sess *session, r *http.Request) error 
 	}
 	client := s.clientKey(r)
 	return s.jobs.start("application", app.AppID+"@"+app.Version, func(setStep func(string), setProgress func(done, total int64)) error {
-		setStep("获取安装包")
+		setStep("獲取安裝包")
 		data, err := fetch(setProgress)
 		if err != nil {
 			return err
 		}
-		setStep("上传并审核应用")
+		setStep("上傳並審核應用")
 		sum, err := s.appManager().PublishApplication(app, data, setProgress)
 		if err != nil {
 			return err
@@ -181,7 +181,7 @@ func (s *Server) actionApplicationInstall(sess *session, r *http.Request) error 
 	if open, err := s.dbm.store.ApplicationTasks().HasOpenForDevice(r.Context(), device.ID, appID); err != nil {
 		return err
 	} else if open && formValue(r, "replace") != "1" {
-		return fmt.Errorf("这台机器已有同一应用的未完成任务；如需替换，请重新确认 replace=1")
+		return fmt.Errorf("這台機器已有同一應用的未完成任務；如需替換，請重新確認 replace=1")
 	}
 	// A policy update normally wakes the Agent, but ask this target to sync
 	// explicitly so the rule is present before the install task reaches its

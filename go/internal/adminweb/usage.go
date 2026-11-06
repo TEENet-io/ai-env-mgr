@@ -95,7 +95,7 @@ func sumUsage(rows []repo.UsageRow) (usageLine, float64) {
 		c, _ := strconv.ParseFloat(r.CostUSD, 64)
 		cost += c
 	}
-	t.Label, t.Cost = "合计", strconv.FormatFloat(cost, 'f', 4, 64)
+	t.Label, t.Cost = "合計", strconv.FormatFloat(cost, 'f', 4, 64)
 	return t, cost
 }
 
@@ -131,7 +131,7 @@ func (s *Server) handleUsage(w http.ResponseWriter, r *http.Request, sess *sessi
 	data.Tab = "usage"
 	f, month, employee, err := s.usageFilter(r)
 	if err != nil {
-		data.Error = "没有这个员工：" + employee
+		data.Error = "沒有這個員工：" + employee
 		employee, f.EmployeeID = "", ""
 	}
 	page := &usagePage{Month: month, Employee: employee}
@@ -164,11 +164,11 @@ func (s *Server) handleUsage(w http.ResponseWriter, r *http.Request, sess *sessi
 			link := "/usage?" + url.Values{"month": {month}, "employee": {e.WindowsUser}}.Encode()
 			return e.WindowsUser, e.Department, link
 		}
-		return r.KeyAlias, "未关联到员工", ""
+		return r.KeyAlias, "未關聯到員工", ""
 	})
 	page.ByModel = usageLines(byModel, total, func(r repo.UsageRow) (string, string, string) {
 		if r.ModelGroup == "" {
-			return "（未记录模型）", "", ""
+			return "（未記錄模型）", "", ""
 		}
 		return r.ModelGroup, "", ""
 	})
@@ -216,12 +216,12 @@ func contains(list []string, s string) bool {
 func (s *Server) handleUsageCSV(w http.ResponseWriter, r *http.Request, _ *session) {
 	f, month, employee, err := s.usageFilter(r)
 	if err != nil {
-		http.Error(w, "没有这个员工："+employee, http.StatusNotFound)
+		http.Error(w, "沒有這個員工："+employee, http.StatusNotFound)
 		return
 	}
 	rows, err := s.dbm.store.Usage().Rows(r.Context(), f, csvLimit)
 	if err != nil {
-		http.Error(w, "导出失败："+err.Error(), http.StatusInternalServerError)
+		http.Error(w, "導出失敗："+err.Error(), http.StatusInternalServerError)
 		return
 	}
 	names := s.employeeNames(r)
@@ -251,7 +251,7 @@ func (s *Server) actionUsageSnapshotNow(_ *session, r *http.Request) (string, er
 	if err := worker.EnqueueUsageSnapshot(r.Context(), s.dbm.store, time.Now()); err != nil {
 		return "", err
 	}
-	return "已排队，Worker 几秒内开始从日志服务重算最近三天；完成后刷新本页", nil
+	return "已排隊，Worker 幾秒內開始從日誌服務重算最近三天；完成後刷新本頁", nil
 }
 
 // employeeUsage is the last 30 days for the detail page.

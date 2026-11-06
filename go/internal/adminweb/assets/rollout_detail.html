@@ -1,18 +1,18 @@
-{{define "rollout_detail.html"}}{{template "head" "发布任务"}}
+{{define "rollout_detail.html"}}{{template "head" "發布任務"}}
 <body>
 <div class="app">
 {{template "nav" .}}
 <main class="sheet">
   {{with .Rollout}}
-  <header class="pagehead"><h1>{{if eq (printf "%s" .Kind) "rollback"}}回滚{{else if eq (printf "%s" .Kind) "global"}}全局发布{{else}}发布{{end}}：{{.Product}} <span class="mono">{{.Artifact.Version}}</span></h1></header>
+  <header class="pagehead"><h1>{{if eq (printf "%s" .Kind) "rollback"}}回滾{{else if eq (printf "%s" .Kind) "global"}}全局發布{{else}}發布{{end}}：{{.Product}} <span class="mono">{{.Artifact.Version}}</span></h1></header>
   {{template "notices" $}}
-  <p class="dim"><a href="/rollouts">← 发布任务</a> · {{.CreatedBy}} 于 {{.CreatedAt.Format "2006-01-02 15:04"}}{{if .Note}} · {{.Note}}{{end}}{{if .RollbackOf}} · 回滚自 <a href="/rollouts/detail?id={{.RollbackOf}}">另一次发布</a>{{end}}</p>
+  <p class="dim"><a href="/rollouts">← 發布任務</a> · {{.CreatedBy}} 於 {{.CreatedAt.Format "2006-01-02 15:04"}}{{if .Note}} · {{.Note}}{{end}}{{if .RollbackOf}} · 回滾自 <a href="/rollouts/detail?id={{.RollbackOf}}">另一次發布</a>{{end}}</p>
   <p>
-    成功 <strong>{{.Summary.Succeeded}}</strong> · 失败 <strong>{{.Summary.Failed}}</strong> · 待执行 <strong>{{.Summary.Pending}}</strong> · 已排除 {{.Summary.Excluded}} · 已取消 {{.Summary.Cancelled}} · 已取代 {{.Summary.Superseded}}
-    {{if .Paused}}<span class="tag tag-warn">已暂停</span>{{else}}<span class="tag tag-{{.Summary.StatusTone}}">{{.Summary.StatusLabel}}</span>{{end}}
+    成功 <strong>{{.Summary.Succeeded}}</strong> · 失敗 <strong>{{.Summary.Failed}}</strong> · 待執行 <strong>{{.Summary.Pending}}</strong> · 已排除 {{.Summary.Excluded}} · 已取消 {{.Summary.Cancelled}} · 已取代 {{.Summary.Superseded}}
+    {{if .Paused}}<span class="tag tag-warn">已暫停</span>{{else}}<span class="tag tag-{{.Summary.StatusTone}}">{{.Summary.StatusLabel}}</span>{{end}}
   </p>
   <div class="panel scroll"><table>
-    <thead><tr><th>机器</th><th>状态</th><th>详情</th><th>代次</th><th>创建</th><th>结束</th><th></th></tr></thead>
+    <thead><tr><th>機器</th><th>狀態</th><th>詳情</th><th>代次</th><th>建立</th><th>結束</th><th></th></tr></thead>
     <tbody>{{range .Targets}}
       <tr>
         <td class="id">{{.Hostname}}</td>
@@ -23,13 +23,13 @@
         <td class="dim">{{if .FinishedAt}}{{.FinishedAt.Format "01-02 15:04"}}{{end}}</td>
         <td class="actions">
           {{if eq (printf "%s" .Status) "failed"}}
-          <form method="post" action="/rollouts/retry" class="inline"><input type="hidden" name="csrf" value="{{$.CSRF}}"><input type="hidden" name="id" value="{{.RolloutID}}"><input type="hidden" name="target" value="{{.ID}}"><button class="link">重试</button></form>
+          <form method="post" action="/rollouts/retry" class="inline"><input type="hidden" name="csrf" value="{{$.CSRF}}"><input type="hidden" name="id" value="{{.RolloutID}}"><input type="hidden" name="target" value="{{.ID}}"><button class="link">重試</button></form>
           {{end}}
           {{if eq (printf "%s" .Status) "pending"}}
           <form method="post" action="/rollouts/exclude" class="inline"><input type="hidden" name="csrf" value="{{$.CSRF}}"><input type="hidden" name="id" value="{{.RolloutID}}"><input type="hidden" name="target" value="{{.ID}}"><input name="reason" placeholder="排除原因（必填）" size="16"><button class="link">排除</button></form>
           {{end}}
           {{if or (eq (printf "%s" .Status) "pending") (eq (printf "%s" .Status) "succeeded") (eq (printf "%s" .Status) "failed")}}
-          <form method="post" action="/machines/version" class="inline"><input type="hidden" name="csrf" value="{{$.CSRF}}"><input type="hidden" name="machine" value="{{.Hostname}}"><input type="hidden" name="product" value="{{.Product}}"><input type="hidden" name="artifact" value=""><button class="link">改回跟随全局</button></form>
+          <form method="post" action="/machines/version" class="inline"><input type="hidden" name="csrf" value="{{$.CSRF}}"><input type="hidden" name="machine" value="{{.Hostname}}"><input type="hidden" name="product" value="{{.Product}}"><input type="hidden" name="artifact" value=""><button class="link">改回跟隨全局</button></form>
           {{end}}
         </td>
       </tr>{{end}}
@@ -37,24 +37,24 @@
 
   <div class="row">
     {{if .Paused}}
-    <form method="post" action="/rollouts/resume" class="inline"><input type="hidden" name="csrf" value="{{$.CSRF}}"><input type="hidden" name="id" value="{{.ID}}"><button>继续</button></form>
+    <form method="post" action="/rollouts/resume" class="inline"><input type="hidden" name="csrf" value="{{$.CSRF}}"><input type="hidden" name="id" value="{{.ID}}"><button>繼續</button></form>
     {{else if .Summary.Pending}}
-    <form method="post" action="/rollouts/pause" class="inline"><input type="hidden" name="csrf" value="{{$.CSRF}}"><input type="hidden" name="id" value="{{.ID}}"><button>暂停（拦住还没开始的机器）</button></form>
+    <form method="post" action="/rollouts/pause" class="inline"><input type="hidden" name="csrf" value="{{$.CSRF}}"><input type="hidden" name="id" value="{{.ID}}"><button>暫停（攔住還沒開始的機器）</button></form>
     {{end}}
     {{if .Summary.Pending}}
-    <form method="post" action="/rollouts/cancel" class="inline"><input type="hidden" name="csrf" value="{{$.CSRF}}"><input type="hidden" name="id" value="{{.ID}}"><button class="danger">取消未开始的目标</button></form>
+    <form method="post" action="/rollouts/cancel" class="inline"><input type="hidden" name="csrf" value="{{$.CSRF}}"><input type="hidden" name="id" value="{{.ID}}"><button class="danger">取消未開始的目標</button></form>
     {{end}}
   </div>
 
   {{if and .Summary.Succeeded .Rollbacks}}
-  <h2>回滚</h2>
-  <p class="hint">对已经装上 {{.Artifact.Version}} 的 {{.Summary.Succeeded}} 台机器建一个新任务，换成下面选的版本。原任务保留为历史。不是每个版本都能降级：以制品记录里的验收说明为准。</p>
+  <h2>回滾</h2>
+  <p class="hint">對已經裝上 {{.Artifact.Version}} 的 {{.Summary.Succeeded}} 台機器建一個新任務，換成下面選的版本。原任務保留為歷史。不是每個版本都能降級：以製品記錄裡的驗收說明為準。</p>
   <form method="post" action="/rollouts/rollback" class="form">
     <input type="hidden" name="csrf" value="{{$.CSRF}}"><input type="hidden" name="id" value="{{.ID}}">
     <label>回到<select name="artifact">{{range .Rollbacks}}<option value="{{.ID}}">{{.Version}}（{{.Status}}）</option>{{end}}</select></label>
-    <label>输入目标版本号确认<input name="confirm" autocomplete="off"></label>
-    <label>说明<input name="note"></label>
-    <button class="danger">创建回滚任务</button>
+    <label>輸入目標版本號確認<input name="confirm" autocomplete="off"></label>
+    <label>說明<input name="note"></label>
+    <button class="danger">建立回滾任務</button>
   </form>
   {{end}}
   {{end}}

@@ -1,19 +1,19 @@
 {{define "head"}}<!doctype html>
-<html lang="zh">
+<html lang="zh-HK">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>{{.}} · AI 环境管理</title>
+<title>{{.}} · AI 環境管理</title>
 <link rel="stylesheet" href="{{static "app.css"}}">
 <script src="{{static "app.js"}}" defer></script>
 </head>{{end}}
 
 {{define "ticket-admin-head"}}<!doctype html>
-<html lang="zh">
+<html lang="zh-HK">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>{{.}} · AI 环境管理</title>
+<title>{{.}} · AI 環境管理</title>
 <link rel="stylesheet" href="{{static "app.css"}}">
 <link rel="stylesheet" href="{{static "ticket-admin.css"}}">
 <script src="{{static "app.js"}}" defer></script>
@@ -28,41 +28,41 @@ file stays out of it. */}}
 
 {{define "nav"}}
 <nav class="rail">
-  <div class="wordmark"><span class="wordmark-mark">AI</span><span class="wordmark-copy"><strong>AI 环境管理</strong><small>设备与策略控制台</small></span></div>
-  {{if .GatewayTeamID}}<div class="rail-org"><span>组织</span><strong>{{.GatewayTeamID}}</strong></div>{{end}}
+  <div class="wordmark"><span class="wordmark-mark">AI</span><span class="wordmark-copy"><strong>AI 環境管理</strong><small>設備與策略控制台</small></span></div>
+  {{if .GatewayTeamID}}<div class="rail-org"><span>組織</span><strong>{{.GatewayTeamID}}</strong></div>{{end}}
   {{/* Nine entries in database mode. The numbers are stable ordinals an operator learns;
-  pages that used to be top-level entries (日志、任务、封禁策略、管理员) live
+  pages that used to be top-level entries (日誌、任務、封禁策略、管理員) live
   as tabs inside their group and keep their old addresses. */}}
   <div class="rail-section">
     <div class="rail-section-label">工作台</div>
-    <a href="/overview"{{if eq .Nav "overview"}} class="active"{{end}}><span class="n">1</span>总览</a>
-    <a href="/users"{{if eq .Nav "users"}} class="active"{{end}}><span class="n">2</span>员工账号</a>
+    <a href="/overview"{{if eq .Nav "overview"}} class="active"{{end}}><span class="n">1</span>總覽</a>
+    <a href="/users"{{if eq .Nav "users"}} class="active"{{end}}><span class="n">2</span>員工帳號</a>
     {{if .DB}}<a href="/channels"{{if eq .Nav "channels"}} class="active"{{end}}><span class="n">3</span>模型渠道</a>{{end}}
-    <a href="{{if .DB}}/releases{{else}}/rollout{{end}}"{{if or (eq .Nav "rollout") (eq .Nav "releases")}} class="active"{{end}}><span class="n">{{if .DB}}4{{else}}3{{end}}</span>软件安装</a>
+    <a href="{{if .DB}}/releases{{else}}/rollout{{end}}"{{if or (eq .Nav "rollout") (eq .Nav "releases")}} class="active"{{end}}><span class="n">{{if .DB}}4{{else}}3{{end}}</span>軟件安裝</a>
   </div>
   {{if .DB}}
   <div class="rail-section">
-    <div class="rail-section-label">运营</div>
+    <div class="rail-section-label">運營</div>
     <a href="/usage"{{if eq .Nav "usage"}} class="active"{{end}}><span class="n">5</span>用量</a>
     <a href="/alerts"{{if eq .Nav "alerts"}} class="active"{{end}}><span class="n">6</span>告警{{if .OpenAlerts}} <span class="tag tag-bad">{{.OpenAlerts}}</span>{{end}}</a>
-    <a href="/tasks"{{if eq .Nav "tasks"}} class="active"{{end}}><span class="n">7</span>任务中心</a>
-    <a href="/tickets?status=pending"{{if eq .Nav "tickets"}} class="active"{{end}}><span class="n">·</span>客户工单{{if .PendingTicketsError}} <span class="tag tag-warn" title="待处理数量暂不可用">待处理 ?</span>{{else if .PendingTickets}} <span class="tag tag-warn" title="待处理工单">{{.PendingTickets}} 待处理</span>{{end}}</a>
+    <a href="/tasks"{{if eq .Nav "tasks"}} class="active"{{end}}><span class="n">7</span>任務中心</a>
+    <a href="/tickets?status=pending"{{if eq .Nav "tickets"}} class="active"{{end}}><span class="n">·</span>客戶工單{{if .PendingTicketsError}} <span class="tag tag-warn" title="待處理數量暫不可用">待處理 ?</span>{{else if .PendingTickets}} <span class="tag tag-warn" title="待處理工單">{{.PendingTickets}} 待處理</span>{{end}}</a>
   </div>
   <div class="rail-section">
     <div class="rail-section-label">治理</div>
-    <a href="/audit"{{if eq .Nav "audit"}} class="active"{{end}}><span class="n">8</span>审计</a>
-    <a href="/settings"{{if eq .Nav "settings"}} class="active"{{end}}><span class="n">9</span>设置</a>
+    <a href="/audit"{{if eq .Nav "audit"}} class="active"{{end}}><span class="n">8</span>審計</a>
+    <a href="/settings"{{if eq .Nav "settings"}} class="active"{{end}}><span class="n">9</span>設定</a>
   </div>
   {{else}}
   <div class="rail-section">
-    <div class="rail-section-label">运营</div>
-    {{if .SLS}}<a href="/logs"{{if eq .Nav "usage"}} class="active"{{end}}><span class="n">4</span>日志</a>{{end}}
-    <a href="/settings"{{if eq .Nav "settings"}} class="active"{{end}}><span class="n">5</span>设置</a>
+    <div class="rail-section-label">運營</div>
+    {{if .SLS}}<a href="/logs"{{if eq .Nav "usage"}} class="active"{{end}}><span class="n">4</span>日誌</a>{{end}}
+    <a href="/settings"{{if eq .Nav "settings"}} class="active"{{end}}><span class="n">5</span>設定</a>
   </div>
   {{end}}
   <div class="foot">
     {{if .DB}}<a href="/account"{{if eq .Nav "account"}} class="active"{{end}}>{{.Admin}}</a>{{else}}{{.Bucket}}{{end}}
-    <form method="post" action="/logout"><button class="link">退出</button></form>
+    <form method="post" action="/logout"><button class="link">登出</button></form>
   </div>
 </nav>
 {{end}}
@@ -70,32 +70,32 @@ file stays out of it. */}}
 {{/* Second-level navigation inside a group. One strip per group; the page
 sets .Tab to the entry it is. */}}
 {{define "tabs-releases"}}{{if .DB}}<nav class="tabs">
-  <a href="/releases"{{if eq .Tab "releases"}} class="active"{{end}}>版本库与软件</a>
-  <a href="/applications"{{if eq .Tab "applications"}} class="active"{{end}}>软件目录与安装</a>
-  <a href="/rollouts"{{if eq .Tab "rollouts"}} class="active"{{end}}>发布任务</a>
-  <a href="/tasks">全部后台任务</a>
+  <a href="/releases"{{if eq .Tab "releases"}} class="active"{{end}}>版本庫與軟件</a>
+  <a href="/applications"{{if eq .Tab "applications"}} class="active"{{end}}>軟件目錄與安裝</a>
+  <a href="/rollouts"{{if eq .Tab "rollouts"}} class="active"{{end}}>發布任務</a>
+  <a href="/tasks">全部後台任務</a>
 </nav>{{end}}{{end}}
 {{define "tabs-users"}}{{if .DB}}<nav class="tabs">
-  <a href="/users"{{if eq .Tab ""}} class="active"{{end}}>员工</a>
-  <a href="/models"{{if eq .Tab "models"}} class="active"{{end}}>模型下发</a>
+  <a href="/users"{{if eq .Tab ""}} class="active"{{end}}>員工</a>
+  <a href="/models"{{if eq .Tab "models"}} class="active"{{end}}>模型下發</a>
 </nav>{{end}}{{end}}
 {{define "tabs-usage"}}<nav class="tabs">
-  {{if .DB}}<a href="/usage"{{if eq .Tab "usage"}} class="active"{{end}}>按月汇总</a>{{end}}
-  {{if .DB}}<a href="/usage/keys"{{if eq .Tab "keys"}} class="active"{{end}}>API Key 账单</a>{{end}}
-  {{if .DB}}<a href="/usage/cloud"{{if eq .Tab "cloud"}} class="active"{{end}}>云供应商账单</a>{{end}}
-  {{if .SLS}}<a href="/logs"{{if eq .Tab "logs"}} class="active"{{end}}>调用明细</a>{{end}}
+  {{if .DB}}<a href="/usage"{{if eq .Tab "usage"}} class="active"{{end}}>按月彙總</a>{{end}}
+  {{if .DB}}<a href="/usage/keys"{{if eq .Tab "keys"}} class="active"{{end}}>API Key 帳單</a>{{end}}
+  {{if .DB}}<a href="/usage/cloud"{{if eq .Tab "cloud"}} class="active"{{end}}>雲供應商帳單</a>{{end}}
+  {{if .SLS}}<a href="/logs"{{if eq .Tab "logs"}} class="active"{{end}}>調用明細</a>{{end}}
 </nav>{{end}}
 {{define "tabs-alerts"}}<nav class="tabs">
   <a href="/alerts"{{if eq .Tab "alerts"}} class="active"{{end}}>告警</a>
 </nav>{{end}}
 {{define "tabs-settings"}}<nav class="tabs">
-  <a href="/settings"{{if eq .Tab "general"}} class="active"{{end}}>常规</a>
+  <a href="/settings"{{if eq .Tab "general"}} class="active"{{end}}>常規</a>
   <a href="/sites"{{if eq .Tab "sites"}} class="active"{{end}}>封禁策略</a>
   {{if .DB}}
-  <a href="/settings/alerting"{{if eq .Tab "alerting"}} class="active"{{end}}>告警与轮换</a>
+  <a href="/settings/alerting"{{if eq .Tab "alerting"}} class="active"{{end}}>告警與輪換</a>
   <a href="/settings/channels"{{if eq .Tab "channels"}} class="active"{{end}}>通知渠道</a>
-  <a href="/settings/devices"{{if eq .Tab "devices"}} class="active"{{end}}>设备通道</a>
-  {{if eq .Role "admin"}}<a href="/admins"{{if eq .Tab "admins"}} class="active"{{end}}>管理员</a>{{end}}
+  <a href="/settings/devices"{{if eq .Tab "devices"}} class="active"{{end}}>設備通道</a>
+  {{if eq .Role "admin"}}<a href="/admins"{{if eq .Tab "admins"}} class="active"{{end}}>管理員</a>{{end}}
   {{end}}
 </nav>{{end}}
 
@@ -109,16 +109,16 @@ rows below use. Drawn only when there are machines to summarise. */}}
 {{define "fleet"}}
 {{with .Fleet}}
 <section class="fleet">
-  <div class="bar" role="img" aria-label="机队状态:正常 {{.OK}}，待处理 {{.Warn}}，异常 {{.Bad}}">
+  <div class="bar" role="img" aria-label="機隊狀態:正常 {{.OK}}，待處理 {{.Warn}}，異常 {{.Bad}}">
     {{if .OK}}<span class="s-ok w{{.PctOK}}"></span>{{end}}
     {{if .Warn}}<span class="s-warn w{{.PctWarn}}"></span>{{end}}
     {{if .Bad}}<span class="s-bad w{{.PctBad}}"></span>{{end}}
   </div>
   <div class="legend">
-    <span><b>{{.Total}}</b>台机器</span>
+    <span><b>{{.Total}}</b>台機器</span>
     <span class="k k-ok"><b>{{.OK}}</b>正常</span>
-    <span class="k k-warn"><b>{{.Warn}}</b>待处理</span>
-    <span class="k k-bad"><b>{{.Bad}}</b>异常</span>
+    <span class="k k-warn"><b>{{.Warn}}</b>待處理</span>
+    <span class="k k-bad"><b>{{.Bad}}</b>異常</span>
   </div>
 </section>
 {{end}}

@@ -15,11 +15,11 @@ func TestAdminJobsPersistProgressAndRecover(t *testing.T) {
 	if created.State != "running" || created.Kind != "agent" {
 		t.Fatalf("created job = %+v", created)
 	}
-	if err := jobs.Update(ctx, created.ID, "running", "上传到 OSS", 10, 20, "", nil); err != nil {
+	if err := jobs.Update(ctx, created.ID, "running", "上傳到 OSS", 10, 20, "", nil); err != nil {
 		t.Fatal(err)
 	}
 	latest, err := jobs.Latest(ctx)
-	if err != nil || latest.Step != "上传到 OSS" || latest.DoneBytes != 10 || latest.TotalBytes != 20 {
+	if err != nil || latest.Step != "上傳到 OSS" || latest.DoneBytes != 10 || latest.TotalBytes != 20 {
 		t.Fatalf("latest = %+v, err=%v", latest, err)
 	}
 	if n, err := jobs.RecoverRunning(ctx, "console restarted"); err != nil || n != 1 {

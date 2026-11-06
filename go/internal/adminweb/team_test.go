@@ -116,7 +116,7 @@ func TestTheTenantTokenNamesTheTeam(t *testing.T) {
 }
 
 func TestEveryPageNamesTheOrganization(t *testing.T) {
-	const chip = `<div class="rail-org"><span>组织</span><strong>acme</strong></div>`
+	const chip = `<div class="rail-org"><span>組織</span><strong>acme</strong></div>`
 	s, _ := newDatabaseServer(t)
 	h := s.Handler()
 	cookie := signedIn(t, s)
@@ -132,7 +132,7 @@ func TestEveryPageNamesTheOrganization(t *testing.T) {
 			t.Errorf("%s does not name the organization", path)
 		}
 	}
-	if page := dbGet(t, h, "/users", cookie).Body.String(); !strings.Contains(page, "组织：<strong>acme</strong>") {
+	if page := dbGet(t, h, "/users", cookie).Body.String(); !strings.Contains(page, "組織：<strong>acme</strong>") {
 		t.Error("the users page head does not name the organization")
 	}
 }

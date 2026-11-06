@@ -132,7 +132,7 @@ func cookieNamed(rec *httptest.ResponseRecorder, name string) *http.Cookie {
 }
 
 var (
-	reSecret = regexp.MustCompile(`密钥（手动输入用）：<code class="id">([A-Z2-7]+)</code>`)
+	reSecret = regexp.MustCompile(`密鑰（手動輸入用）：<code class="id">([A-Z2-7]+)</code>`)
 	reCSRF   = regexp.MustCompile(`name="csrf" value="([^"]+)"`)
 )
 
@@ -186,7 +186,7 @@ func TestDatabaseModeSignInEnrolsThenOpensASession(t *testing.T) {
 		t.Fatalf("totp: %v", err)
 	}
 	rec = dbPost(t, h, "/enrol", url.Values{"code": {code}}, enrol)
-	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), "恢复码") {
+	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), "恢復碼") {
 		t.Fatalf("enrolment = %d; body lacks the recovery codes", rec.Code)
 	}
 
@@ -283,7 +283,7 @@ func TestDatabaseModeOnboardingIsATransactionWithQueuedWork(t *testing.T) {
 	csrf := csrfFrom(t, s, session, "/users")
 
 	rec := dbPost(t, h, "/users/onboard", url.Values{
-		"csrf": {csrf}, "windowsUser": {"Work1"}, "name": {"张三"}, "department": {"研发"},
+		"csrf": {csrf}, "windowsUser": {"Work1"}, "name": {"張三"}, "department": {"研發"},
 		"email": {"t@example.com"}, "budget": {"50"}, "rpm": {"60"}, "tpm": {"2000000"}, "parallel": {"8"},
 		"models": {"claude-4.5-sonnet"},
 	}, session)
@@ -367,15 +367,15 @@ func TestDatabaseModePolicyEditsAndMachinesRender(t *testing.T) {
 	csrf = csrfFrom(t, s, session, "/admins")
 	// The password is shown in the response to the POST and never put in a
 	// URL, where history, proxy logs and the Referer would keep it.
-	rec = dbPost(t, h, "/admins/create", url.Values{"csrf": {csrf}, "username": {"Li"}, "role": {"operator"}}, session)
-	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), "初始密码") {
+	rec = dbPost(t, h, "/admins/create", url.Values{"csrf": {csrf}, "username": {"Li"}, "role": {"viewer"}}, session)
+	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), "初始密碼") {
 		t.Fatalf("admins/create = %d; the generated password is not shown", rec.Code)
 	}
 	if loc := rec.Header().Get("Location"); strings.Contains(loc, "pw=") {
 		t.Errorf("the password is in a redirect: %q", loc)
 	}
 	li, err := s.dbm.store.Admins().ByUsername(context.Background(), "li")
-	if err != nil || li.Role != repo.RoleOperator {
+	if err != nil || li.Role != repo.RoleViewer {
 		t.Errorf("li = %+v (%v)", li, err)
 	}
 }
@@ -417,7 +417,7 @@ func TestDeletedAccountsLeaveTheListUntilAskedFor(t *testing.T) {
 		t.Fatal("the deleted account is still on the default list")
 	}
 	deleted := dbGet(t, h, "/users?show=deleted", cookie)
-	if !strings.Contains(deleted.Body.String(), "work5") || !strings.Contains(deleted.Body.String(), "已删除") {
+	if !strings.Contains(deleted.Body.String(), "work5") || !strings.Contains(deleted.Body.String(), "已刪除") {
 		t.Fatal("the deleted filter does not show the account")
 	}
 	if strings.Contains(deleted.Body.String(), `href="/users/detail?user=work5"`) {

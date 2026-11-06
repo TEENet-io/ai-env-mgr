@@ -130,7 +130,7 @@ func alwaysDeferred(targets []repo.Target, artifacts map[string]repo.Artifact, h
 		case "in_use":
 			label = "正在使用"
 		case "disk":
-			label = "磁盘不足"
+			label = "磁盤不足"
 		}
 		host := hostnames[t.DeviceID]
 		if host == "" {
@@ -147,9 +147,9 @@ func alwaysDeferred(targets []repo.Target, artifacts map[string]repo.Artifact, h
 func humanDuration(d time.Duration) string {
 	switch {
 	case d < 2*time.Hour:
-		return itoa(int(d.Minutes())) + " 分钟"
+		return itoa(int(d.Minutes())) + " 分鐘"
 	case d < 48*time.Hour:
-		return itoa(int(d.Hours())) + " 小时"
+		return itoa(int(d.Hours())) + " 小時"
 	default:
 		return itoa(int(d.Hours()/24)) + " 天"
 	}

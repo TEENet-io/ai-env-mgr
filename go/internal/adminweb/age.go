@@ -23,13 +23,13 @@ func humanAge(stamp string) string {
 	case d < 0:
 		// A machine's clock can run ahead of ours; saying "just now" beats
 		// showing a negative age.
-		return "刚刚"
+		return "剛剛"
 	case d < time.Minute:
-		return "刚刚"
+		return "剛剛"
 	case d < time.Hour:
-		return fmt.Sprintf("%d 分钟前", int(d.Minutes()))
+		return fmt.Sprintf("%d 分鐘前", int(d.Minutes()))
 	case d < 24*time.Hour:
-		return fmt.Sprintf("%d 小时前", int(d.Hours()))
+		return fmt.Sprintf("%d 小時前", int(d.Hours()))
 	default:
 		return fmt.Sprintf("%d 天前", int(d.Hours()/24))
 	}

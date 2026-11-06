@@ -29,7 +29,7 @@ func ChannelLabel(id string) string {
 	case ChannelOpenAI:
 		return "OpenAI"
 	}
-	return "未标注"
+	return "未標註"
 }
 
 // ChannelOf says which supplier serves a deployment. An explicit

@@ -88,7 +88,7 @@ func TestARolloutAimsOnlyAtTheChosenMachines(t *testing.T) {
 	}
 
 	r, err := svc.CreateRollout(ctx, RolloutSpec{Product: repo.ProductCodex, ArtifactID: a.ID,
-		DeviceIDs: []string{win1.ID}, Kind: repo.RolloutRelease, Note: "试发", Actor: "admin", RequestID: "r3"})
+		DeviceIDs: []string{win1.ID}, Kind: repo.RolloutRelease, Note: "試發", Actor: "admin", RequestID: "r3"})
 	if err != nil {
 		t.Fatalf("create: %v", err)
 	}
@@ -131,11 +131,11 @@ func TestExcludeAndRetryAreExplicitAndRecorded(t *testing.T) {
 	if err := svc.ExcludeTarget(ctx, target.ID, "", "admin", "r3"); err == nil {
 		t.Fatal("excluding needs a reason")
 	}
-	if err := svc.ExcludeTarget(ctx, target.ID, "机器已停用", "admin", "r4"); err != nil {
+	if err := svc.ExcludeTarget(ctx, target.ID, "機器已停用", "admin", "r4"); err != nil {
 		t.Fatalf("exclude: %v", err)
 	}
 	got, _ := store.Releases().TargetByID(ctx, target.ID)
-	if got.Status != repo.TargetExcluded || got.ExcludeReason != "机器已停用" {
+	if got.Status != repo.TargetExcluded || got.ExcludeReason != "機器已停用" {
 		t.Fatalf("after exclude: %+v", got)
 	}
 
@@ -191,7 +191,7 @@ func TestFollowGlobalLetsGoOfTheMachinesOwnVersion(t *testing.T) {
 		t.Fatalf("follow global: %v", err)
 	}
 	if _, err := store.Releases().LastSucceededTarget(ctx, win.ID, repo.ProductAgent); !errors.Is(err, repo.ErrNotFound) {
-		t.Fatalf("after 跟随全局 nothing may hold the machine, err = %v", err)
+		t.Fatalf("after 跟隨全局 nothing may hold the machine, err = %v", err)
 	}
 
 	// A pin not yet installed is cancelled, not left pending.

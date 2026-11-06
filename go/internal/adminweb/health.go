@@ -19,15 +19,15 @@ import (
 func stateLabel(m admincore.MachineState) string {
 	switch m.Health() {
 	case admincore.HealthNoReport:
-		return "从未上报"
+		return "從未上報"
 	case admincore.HealthUnbound:
 		return "未分配"
 	case admincore.HealthDisabledUser:
-		return "已离职"
+		return "已離職"
 	case admincore.HealthUserMissing:
-		return "缺少用户"
+		return "缺少用戶"
 	case admincore.HealthCredsPending:
-		return "待代登录"
+		return "待代登入"
 	case admincore.HealthStopped:
 		return "Agent 已停止"
 	case admincore.HealthSleeping:
@@ -35,15 +35,15 @@ func stateLabel(m admincore.MachineState) string {
 	case admincore.HealthHibernated:
 		return "休眠中"
 	case admincore.HealthAgentDown:
-		return "agent 无响应"
+		return "agent 無響應"
 	case admincore.HealthCloudMissing:
-		return "云端已删除"
+		return "雲端已刪除"
 	case admincore.HealthStale:
-		return "长期失联"
+		return "長期失聯"
 	case admincore.HealthOffline:
-		return "离线"
+		return "離線"
 	case admincore.HealthErrors:
-		return "有报错"
+		return "有報錯"
 	default:
 		return "正常"
 	}
@@ -66,15 +66,15 @@ func stateSeverity(m admincore.MachineState) string {
 func codexNote(m admincore.MachineState, target string) string {
 	switch m.Status.CodexState {
 	case agentcore.CodexDownloading:
-		return "下载中"
+		return "下載中"
 	case agentcore.CodexInstalling:
-		return "安装中"
+		return "安裝中"
 	case agentcore.CodexDeferred:
 		// Not a fault: Codex was in use or the disk was full, and it will try
 		// again. Worth showing so a machine that never moves gets noticed.
-		return "已推迟"
+		return "已推遲"
 	case agentcore.CodexFailed:
-		return "安装失败"
+		return "安裝失敗"
 	}
 	if target == "" || m.Status.CodexVersion == target {
 		return ""
@@ -124,7 +124,7 @@ func appLockerSeverity(mode string) string {
 // rest are stages of an update that is still moving.
 func codexNoteSeverity(note string) string {
 	switch note {
-	case "安装失败":
+	case "安裝失敗":
 		return "err"
 	case "":
 		return ""

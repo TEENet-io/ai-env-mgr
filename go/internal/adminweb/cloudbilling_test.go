@@ -173,7 +173,7 @@ func TestCloudBillingReadsCompleteBatchAndGroupsSources(t *testing.T) {
 		t.Fatalf("wrong supplier summaries: %+v", page.Sources)
 	}
 	if len(page.Candidates) != 1 || page.Candidates[0].Model != "gemini-3-flash" ||
-		page.Candidates[0].Status != "仅凭描述推断" || page.Candidates[0].Amount != "0.080287" ||
+		page.Candidates[0].Status != "僅憑描述推斷" || page.Candidates[0].Amount != "0.080287" ||
 		page.Sources[2].Breakdowns[0].Unmapped != "0.080287" {
 		t.Fatalf("candidate must remain unconfirmed and preserve totals: %+v %+v", page.Candidates, page.Sources[2])
 	}

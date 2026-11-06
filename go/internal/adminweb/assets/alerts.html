@@ -5,41 +5,41 @@
 <main class="sheet">
   <header class="pagehead"><h1>告警</h1></header>
   {{template "tabs-alerts" .}}
-  <p class="lede">规则每 10 分钟跑一次：机器离线、发布失败、网关令牌不符、预算告急、任务放弃、离职待清理；LiteLLM 模型目录变化会在同步后通知。条件消失自动关闭；阈值在<a href="/settings/alerting">设置 › 告警与轮换</a>，渠道在<a href="/settings/channels">设置 › 通知渠道</a>。</p>
+  <p class="lede">規則每 10 分鐘跑一次：機器離線、發布失敗、網關令牌不符、預算告急、任務放棄、離職待清理；LiteLLM 模型目錄變化會在同步後通知。條件消失自動關閉；閾值在<a href="/settings/alerting">設定 › 告警與輪換</a>，渠道在<a href="/settings/channels">設定 › 通知渠道</a>。</p>
   {{template "notices" .}}
   {{with .AlertsPage}}
   <div class="sechead">
-    <h2>未关闭 <span class="dim">{{len .Open}}</span></h2>
-    <p class="dim">{{if .LastEval}}规则 {{.LastEval}}{{end}}{{if .LastNotify}} · 通知 {{.LastNotify}}{{end}}</p>
+    <h2>未關閉 <span class="dim">{{len .Open}}</span></h2>
+    <p class="dim">{{if .LastEval}}規則 {{.LastEval}}{{end}}{{if .LastNotify}} · 通知 {{.LastNotify}}{{end}}</p>
   </div>
   <div class="panel scroll"><table>
-    <thead><tr><th>级别</th><th>告警</th><th>对象</th><th>开始</th><th>通知</th><th></th></tr></thead>
+    <thead><tr><th>級別</th><th>告警</th><th>對象</th><th>開始</th><th>通知</th><th></th></tr></thead>
     <tbody>{{range .Open}}
       <tr>
-        <td><span class="tag tag-{{.Sev}}">{{if eq .Severity "crit"}}严重{{else}}提醒{{end}}</span></td>
-        <td class="wrap">{{.Title}}{{if .Detail}}<div class="rowsub">{{.Detail}}</div>{{end}}{{if .AckedAt}}<div class="rowsub">{{.AckedBy}} 已确认 {{.AckedAt.Local.Format "01-02 15:04"}}</div>{{end}}</td>
+        <td><span class="tag tag-{{.Sev}}">{{if eq .Severity "crit"}}嚴重{{else}}提醒{{end}}</span></td>
+        <td class="wrap">{{.Title}}{{if .Detail}}<div class="rowsub">{{.Detail}}</div>{{end}}{{if .AckedAt}}<div class="rowsub">{{.AckedBy}} 已確認 {{.AckedAt.Local.Format "01-02 15:04"}}</div>{{end}}</td>
         <td class="id">{{if .Link}}<a href="{{.Link}}">{{.Subject}}</a>{{else}}{{.Subject}}{{end}}</td>
         <td class="dim" title="{{.OpenedAt}}">{{.Age}}前</td>
         <td class="dim">{{.Notify}}</td>
         <td class="actions">
-          {{if not .AckedAt}}<form method="post" action="/alerts/ack" class="inline"><input type="hidden" name="csrf" value="{{$.CSRF}}"><input type="hidden" name="id" value="{{.ID}}"><button class="link">确认</button></form>{{end}}
-          <form method="post" action="/alerts/resolve" class="inline"><input type="hidden" name="csrf" value="{{$.CSRF}}"><input type="hidden" name="id" value="{{.ID}}"><button class="link">关闭</button></form>
+          {{if not .AckedAt}}<form method="post" action="/alerts/ack" class="inline"><input type="hidden" name="csrf" value="{{$.CSRF}}"><input type="hidden" name="id" value="{{.ID}}"><button class="link">確認</button></form>{{end}}
+          <form method="post" action="/alerts/resolve" class="inline"><input type="hidden" name="csrf" value="{{$.CSRF}}"><input type="hidden" name="id" value="{{.ID}}"><button class="link">關閉</button></form>
         </td>
-      </tr>{{else}}<tr><td colspan="6" class="empty">没有未关闭的告警。</td></tr>{{end}}
+      </tr>{{else}}<tr><td colspan="6" class="empty">沒有未關閉的告警。</td></tr>{{end}}
     </tbody></table></div>
 
   <details class="history-section">
-  <summary>最近关闭 <span class="dim">{{len .History}}</span></summary>
+  <summary>最近關閉 <span class="dim">{{len .History}}</span></summary>
   <div class="panel scroll"><table>
-    <thead><tr><th>级别</th><th>告警</th><th>对象</th><th>开始</th><th>关闭</th></tr></thead>
+    <thead><tr><th>級別</th><th>告警</th><th>對象</th><th>開始</th><th>關閉</th></tr></thead>
     <tbody>{{range .History}}
       <tr>
-        <td><span class="tag tag-muted">{{if eq .Severity "crit"}}严重{{else}}提醒{{end}}</span></td>
+        <td><span class="tag tag-muted">{{if eq .Severity "crit"}}嚴重{{else}}提醒{{end}}</span></td>
         <td class="wrap">{{.Title}}{{if .Detail}}<div class="rowsub">{{.Detail}}</div>{{end}}</td>
         <td class="id">{{if .Link}}<a href="{{.Link}}">{{.Subject}}</a>{{else}}{{.Subject}}{{end}}</td>
         <td class="dim">{{.OpenedAt.Local.Format "01-02 15:04"}}</td>
-        <td class="dim">{{.ResolvedAt.Local.Format "01-02 15:04"}} · {{if eq .ResolvedBy "rule"}}自动{{else}}{{.ResolvedBy}}{{end}}</td>
-      </tr>{{else}}<tr><td colspan="5" class="empty">还没有关闭过的告警。</td></tr>{{end}}
+        <td class="dim">{{.ResolvedAt.Local.Format "01-02 15:04"}} · {{if eq .ResolvedBy "rule"}}自動{{else}}{{.ResolvedBy}}{{end}}</td>
+      </tr>{{else}}<tr><td colspan="5" class="empty">還沒有關閉過的告警。</td></tr>{{end}}
   </tbody></table></div>
   </details>
   {{end}}

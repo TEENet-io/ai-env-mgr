@@ -1,28 +1,28 @@
-{{define "cloud_billing.html"}}{{template "head" "云供应商账单"}}
+{{define "cloud_billing.html"}}{{template "head" "雲供應商帳單"}}
 <body>
 <div class="app">
 {{template "nav" .}}
 <main class="sheet">
-  <header class="pagehead"><h1>云供应商账单</h1></header>
+  <header class="pagehead"><h1>雲供應商帳單</h1></header>
   {{template "tabs-usage" .}}
-  <p class="lede">AWS、Azure、Google 的同一账期账单。每月在 OSS 保存一份固定路径的 ZIP，包含 CSV 与校验信息；Admin 读取并核对文件哈希、行数和来源，不把不同币种或费用口径合计。</p>
+  <p class="lede">AWS、Azure、Google 的同一帳期帳單。每月在 OSS 保存一份固定路徑的 ZIP，包含 CSV 與校驗信息；Admin 讀取並核對檔案哈希、行數和來源，不把不同幣種或費用口徑合計。</p>
   {{template "notices" .}}
   {{with .CloudBillingPage}}
   <form method="get" action="/usage/cloud" class="form filter">
-    <label>账期<input type="month" name="month" value="{{.Month}}" required></label>
+    <label>帳期<input type="month" name="month" value="{{.Month}}" required></label>
     <button type="submit">查看</button>
-    {{if not .Empty}}<a class="button-link" href="/usage/cloud.csv?month={{.Month}}">下载已校验 CSV</a>{{end}}
+    {{if not .Empty}}<a class="button-link" href="/usage/cloud.csv?month={{.Month}}">下載已校驗 CSV</a>{{end}}
   </form>
-  {{if .Months}}<p class="dim small">已有账期：{{range .Months}}<a href="/usage/cloud?month={{.}}">{{.}}</a>　{{end}}</p>{{end}}
+  {{if .Months}}<p class="dim small">已有帳期：{{range .Months}}<a href="/usage/cloud?month={{.}}">{{.}}</a>　{{end}}</p>{{end}}
   {{if .Empty}}
-    <p class="note note-warn">{{.Month}} 尚无三云账单文件；需要上传该月的 bill.zip。</p>
+    <p class="note note-warn">{{.Month}} 尚無三雲帳單檔案；需要上傳該月的 bill.zip。</p>
   {{else}}
-    <div class="sechead"><p class="dim">{{.Month}} · {{.Rows}} 行 · 采集完成 {{.GeneratedAt}}</p></div>
-    <p class="dim small">来源快照指纹 <span class="mono">{{.BatchFingerprint}}</span></p>
-    <p class="note note-warn">Google 当前共享 View 仅提供列表价，不是实际应付金额。“模型待确认”表示费用已读取，但尚未确认它对应哪个 LiteLLM 模型。</p>
-    <h2>三家供应商账单</h2>
+    <div class="sechead"><p class="dim">{{.Month}} · {{.Rows}} 行 · 採集完成 {{.GeneratedAt}}</p></div>
+    <p class="dim small">來源快照指紋 <span class="mono">{{.BatchFingerprint}}</span></p>
+    <p class="note note-warn">Google 當前共享 View 僅提供列表價，不是實際應付金額。“模型待確認”表示費用已讀取，但尚未確認它對應哪個 LiteLLM 模型。</p>
+    <h2>三家供應商帳單</h2>
     <div class="panel scroll"><table>
-      <thead><tr><th>供应商</th><th>模型已识别</th><th>模型待确认</th><th>调整项</th><th>来源行数</th></tr></thead>
+      <thead><tr><th>供應商</th><th>模型已識別</th><th>模型待確認</th><th>調整項</th><th>來源行數</th></tr></thead>
       <tbody>{{range .Sources}}<tr>
         <td><strong>{{.DisplayName}}</strong><div class="rowsub mono">{{.SourceID}}</div><div class="rowsub">{{.CostBases}}</div></td>
         <td class="num mono">{{range .Breakdowns}}<div>{{.Currency}} {{.Comparable}}</div>{{else}}—{{end}}</td>
@@ -31,42 +31,42 @@
         <td class="num">{{.Rows}}</td>
       </tr>{{end}}</tbody>
     </table></div>
-    <p class="dim small">非目标服务（例如 AWS EC2）在 Python 发布 CSV 时已过滤。每个金额均保持原币和原费用口径，不跨币种相加。</p>
+    <p class="dim small">非目標服務（例如 AWS EC2）在 Python 發布 CSV 時已過濾。每個金額均保持原幣和原費用口徑，不跨幣種相加。</p>
     <details>
-    <summary>查看 Google 模型候选与 SKU（{{len .Candidates}} 组）</summary>
-    <p class="dim small">仅根据供应商 SKU 描述整理，仍属于“模型待确认”；不能据此认定 LiteLLM 实际调用模型，也不能把 count 当作 token。共用 SKU 会单独标明。旧账单需重新生成才能显示候选。</p>
+    <summary>查看 Google 模型候選與 SKU（{{len .Candidates}} 組）</summary>
+    <p class="dim small">僅根據供應商 SKU 描述整理，仍屬於“模型待確認”；不能據此認定 LiteLLM 實際調用模型，也不能把 count 當作 token。共用 SKU 會單獨標明。舊帳單需重新生成才能顯示候選。</p>
     <div class="panel scroll"><table>
-      <thead><tr><th>模型候选</th><th>判断</th><th>SKU ID / 原描述</th><th>费用口径</th><th>币种</th><th>行数</th><th>列表价金额</th></tr></thead>
+      <thead><tr><th>模型候選</th><th>判斷</th><th>SKU ID / 原描述</th><th>費用口徑</th><th>幣種</th><th>行數</th><th>列表價金額</th></tr></thead>
       <tbody>{{range .Candidates}}<tr>
-        <td>{{if .Model}}{{.Model}}{{else}}无法识别{{end}}</td><td>{{.Status}}</td>
+        <td>{{if .Model}}{{.Model}}{{else}}無法識別{{end}}</td><td>{{.Status}}</td>
         <td><span class="mono">{{.SKU}}</span><div class="rowsub">{{.Description}}</div></td>
         <td class="rowsub">{{.CostBasis}}</td><td>{{.Currency}}</td><td class="num">{{.Rows}}</td><td class="num mono">{{.Amount}}</td>
-      </tr>{{else}}<tr><td colspan="7" class="empty">本批次没有待确认的 Google SKU。</td></tr>{{end}}</tbody>
+      </tr>{{else}}<tr><td colspan="7" class="empty">本批次沒有待確認的 Google SKU。</td></tr>{{end}}</tbody>
     </table></div>
-    {{if .MoreCandidates}}<p class="dim small">另有 {{.MoreCandidates}} 组未展开；下载 CSV 查看全部。</p>{{end}}
+    {{if .MoreCandidates}}<p class="dim small">另有 {{.MoreCandidates}} 組未展開；下載 CSV 查看全部。</p>{{end}}
     </details>
     <details>
-    <summary>查看费用分类明细</summary>
+    <summary>查看費用分類明細</summary>
     <div class="panel scroll"><table>
-      <thead><tr><th>供应商</th><th>费用口径</th><th>分类</th><th>币种</th><th>行数</th><th>账单金额</th></tr></thead>
+      <thead><tr><th>供應商</th><th>費用口徑</th><th>分類</th><th>幣種</th><th>行數</th><th>帳單金額</th></tr></thead>
       <tbody>{{range .Groups}}<tr>
         <td>{{.Provider}}</td><td class="rowsub">{{.CostBasis}}</td><td>{{.Disposition}}</td>
         <td>{{.Currency}}</td><td class="num">{{.Rows}}</td><td class="num mono">{{.Amount}}</td>
-      </tr>{{else}}<tr><td colspan="6" class="empty">本批次没有费用行。</td></tr>{{end}}</tbody>
+      </tr>{{else}}<tr><td colspan="6" class="empty">本批次沒有費用行。</td></tr>{{end}}</tbody>
     </table></div>
     </details>
     <details>
-    <summary>查看云账号 / 项目 / 订阅明细</summary>
+    <summary>查看雲帳號 / 項目 / 訂閱明細</summary>
     <div class="panel scroll"><table>
-      <thead><tr><th>供应商</th><th>账号 / 项目 / 订阅</th><th>口径</th><th>分类</th><th>币种</th><th>行数</th><th>金额</th></tr></thead>
+      <thead><tr><th>供應商</th><th>帳號 / 項目 / 訂閱</th><th>口徑</th><th>分類</th><th>幣種</th><th>行數</th><th>金額</th></tr></thead>
       <tbody>{{range .Scopes}}<tr>
         <td>{{.Provider}}</td><td class="mono">{{.Scope}}</td><td class="rowsub">{{.CostBasis}}</td>
         <td>{{.Disposition}}</td><td>{{.Currency}}</td><td class="num">{{.Rows}}</td><td class="num mono">{{.Amount}}</td>
-      </tr>{{else}}<tr><td colspan="7" class="empty">没有可展示的账号数据。</td></tr>{{end}}</tbody>
+      </tr>{{else}}<tr><td colspan="7" class="empty">沒有可展示的帳號資料。</td></tr>{{end}}</tbody>
     </table></div>
-    {{if .MoreScopes}}<p class="dim small">另有 {{.MoreScopes}} 组未在页面展开；下载 CSV 查看全部。</p>{{end}}
+    {{if .MoreScopes}}<p class="dim small">另有 {{.MoreScopes}} 組未在頁面展開；下載 CSV 查看全部。</p>{{end}}
     </details>
-    <p class="dim small">“模型已识别／模型待确认”只表示账单费用能否归属到具体模型，不是对账结果；Admin 尚未计算与 LiteLLM 的差额。金额保持供应商原始口径，不是最终发票净额。</p>
+    <p class="dim small">“模型已識別／模型待確認”只表示帳單費用能否歸屬到具體模型，不是對帳結果；Admin 尚未計算與 LiteLLM 的差額。金額保持供應商原始口徑，不是最終發票淨額。</p>
   {{end}}
   {{end}}
 </main>

@@ -519,7 +519,7 @@ func (s *Server) renderSettings(w http.ResponseWriter, r *http.Request, sess *se
 		data.QuotaDefaults = q
 	} else {
 		data.QuotaDefaults = admincore.DefaultQuota
-		data.Error = "读取开户默认额度失败，下面显示的是内置默认值：" + err.Error()
+		data.Error = "讀取開戶預設額度失敗，下面顯示的是內置預設值：" + err.Error()
 		log.Printf("adminweb: LoadQuotaDefaults: %v", err)
 	}
 	s.settingsExtras(r, &data)

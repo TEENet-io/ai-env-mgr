@@ -12,17 +12,17 @@ func TestRequiredRoleReadsTheTableExactlyThenByPrefix(t *testing.T) {
 		"GET /overview":          "viewer",
 		"GET /users/detail":      "viewer",
 		"GET /rollouts/detail":   "viewer",
-		"POST /users/offboard":   "operator",
+		"POST /users/offboard":   "admin",
 		"POST /releases/global":  "admin",
 		"POST /apps/delete":      "admin",
-		"POST /releases/notes":   "operator",
+		"POST /releases/notes":   "admin",
 		"POST /sites/mutate":     "admin",
 		"POST /settings/collect": "admin",
 		"POST /users/delete":     "admin",
-		"POST /users/quota":      "operator",
-		"POST /rollouts/create":  "operator",
-		"POST /machines/version": "operator",
-		"POST /machines/sync":    "operator",
+		"POST /users/quota":      "admin",
+		"POST /rollouts/create":  "admin",
+		"POST /machines/version": "admin",
+		"POST /machines/sync":    "admin",
 		"GET /admins":            "admin",
 		"POST /admins/create":    "admin",
 		"POST /something/new":    "admin", // unknown: closed
@@ -36,8 +36,10 @@ func TestRequiredRoleReadsTheTableExactlyThenByPrefix(t *testing.T) {
 			t.Errorf("%s: %s, want %s", req, got, want)
 		}
 	}
-	if !allowed("security", "GET", "/audit") || allowed("security", "POST", "/users/offboard") {
-		t.Error("security reads everything and changes nothing")
+	for _, retired := range []string{"operator", "security"} {
+		if allowed(retired, "GET", "/overview") {
+			t.Errorf("the retired role %s is still allowed in", retired)
+		}
 	}
 	if allowed("", "GET", "/overview") || allowed("bogus", "GET", "/overview") {
 		t.Error("an unknown role is allowed nothing")
@@ -49,19 +51,13 @@ func TestRolesGateWrites(t *testing.T) {
 	h := s.Handler()
 	adminCookie := signedIn(t, s)
 	ctx := t.Context()
-	// The first administrator makes a viewer and an operator.
+	// The first administrator makes a viewer.
 	viewer, viewerPassword, err := s.dbm.auth.CreateAccount(ctx, "eve", "", "viewer")
 	if err != nil {
 		t.Fatal(err)
 	}
-	operator, operatorPassword, err := s.dbm.auth.CreateAccount(ctx, "olga", "", "operator")
-	if err != nil {
-		t.Fatal(err)
-	}
 	_ = viewer
-	_ = operator
 	viewerCookie := signInAs(t, s, "eve", viewerPassword)
-	operatorCookie := signInAs(t, s, "olga", operatorPassword)
 
 	if rec := dbGet(t, h, "/overview", viewerCookie); rec.Code != 200 {
 		t.Fatalf("viewer overview: %d", rec.Code)
@@ -78,13 +74,10 @@ func TestRolesGateWrites(t *testing.T) {
 		t.Fatalf("viewer admins: %d, want 403", rec.Code)
 	}
 
-	csrf = csrfFrom(t, s, operatorCookie, "/users")
+	csrf = csrfFrom(t, s, adminCookie, "/users")
 	onboard.Set("csrf", csrf)
-	if rec := dbPost(t, h, "/users/onboard", onboard, operatorCookie); rec.Code != http.StatusSeeOther || strings.Contains(rec.Header().Get("Location"), "err=") {
-		t.Fatalf("operator onboard: %d %s", rec.Code, rec.Header().Get("Location"))
-	}
-	if rec := dbPost(t, h, "/admins/create", url.Values{"csrf": {csrf}, "username": {"x"}}, operatorCookie); rec.Code != http.StatusForbidden {
-		t.Fatalf("operator creating an admin: %d, want 403", rec.Code)
+	if rec := dbPost(t, h, "/users/onboard", onboard, adminCookie); rec.Code != http.StatusSeeOther || strings.Contains(rec.Header().Get("Location"), "err=") {
+		t.Fatalf("admin onboard: %d %s", rec.Code, rec.Header().Get("Location"))
 	}
 	if rec := dbGet(t, h, "/admins", adminCookie); rec.Code != 200 {
 		t.Fatalf("admin admins: %d", rec.Code)
@@ -95,15 +88,14 @@ func TestRolesGateWrites(t *testing.T) {
 	}
 }
 
-// The operations process (ai工作间流程 §2) gives day-to-day work to 平台运营
-// and anything fleet-wide or irreversible to 平台管理员. An operator is
-// refused those on the server and does not see their buttons.
-func TestAnOperatorCannotChangeFleetWideThings(t *testing.T) {
+// A viewer is refused fleet-wide changes on the server and does not see
+// their buttons.
+func TestAViewerCannotChangeFleetWideThings(t *testing.T) {
 	s, _ := newDatabaseServer(t)
 	h := s.Handler()
 	ctx := t.Context()
 	admin := signedIn(t, s)
-	_, password, err := s.dbm.auth.CreateAccount(ctx, "olga", "", "operator")
+	_, password, err := s.dbm.auth.CreateAccount(ctx, "olga", "", "viewer")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -120,18 +112,18 @@ func TestAnOperatorCannotChangeFleetWideThings(t *testing.T) {
 	} {
 		form.Set("csrf", csrf)
 		if rec := dbPost(t, h, path, form, cookie); rec.Code != http.StatusForbidden {
-			t.Errorf("operator POST %s: %d, want 403", path, rec.Code)
+			t.Errorf("viewer POST %s: %d, want 403", path, rec.Code)
 		}
 	}
 	settings := dbGet(t, h, "/settings", cookie).Body.String()
-	if !strings.Contains(settings, "需要管理员") || !strings.Contains(settings, `<fieldset class="bare" disabled>`) {
-		t.Error("an operator's settings page should be read-only and say why")
+	if !strings.Contains(settings, "需要管理員") || !strings.Contains(settings, `<fieldset class="bare" disabled>`) {
+		t.Error("a viewer's settings page should be read-only and say why")
 	}
 	if strings.Contains(dbGet(t, h, "/releases", cookie).Body.String(), `action="/releases/global"`) {
-		t.Error("an operator should not be offered 设为全局")
+		t.Error("a viewer should not be offered 設為全局")
 	}
 	// The admin still has them.
-	if strings.Contains(dbGet(t, h, "/settings", admin).Body.String(), "需要管理员") {
+	if strings.Contains(dbGet(t, h, "/settings", admin).Body.String(), "需要管理員") {
 		t.Error("an admin's settings page must not be read-only")
 	}
 }

@@ -27,7 +27,7 @@ func (r adminJobRepo) Create(ctx context.Context, id, kind, version string) (rep
 	// background goroutine is created. Leaving it to PostgreSQL made every
 	// publish fail with a NOT NULL violation before the upload even started.
 	j, err := scanAdminJob(r.q.QueryRow(ctx, `insert into admin_jobs (id, kind, version, state, step)
-		values ($1, $2, $3, 'running', '准备中') returning `+adminJobColumns, id, kind, version))
+		values ($1, $2, $3, 'running', '準備中') returning `+adminJobColumns, id, kind, version))
 	if err != nil {
 		return repo.AdminJob{}, mapError(err, "create admin job")
 	}

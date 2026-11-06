@@ -92,11 +92,11 @@ func TestAlertEvalOpensAndClosesByRule(t *testing.T) {
 		t.Fatalf("note = %q; open = %+v", res.Note, open)
 	}
 	offline := openOf(t, ctx, store, repo.AlertMachineOffline)
-	if len(offline) != 1 || offline[0].SubjectID != pc1.ID || !strings.Contains(offline[0].Title, "PC-1 已 30 小时未上报") {
+	if len(offline) != 1 || offline[0].SubjectID != pc1.ID || !strings.Contains(offline[0].Title, "PC-1 已 30 小時未上報") {
 		t.Fatalf("offline = %+v", offline)
 	}
 	failed := openOf(t, ctx, store, repo.AlertRolloutFailed)
-	if len(failed) != 1 || failed[0].SubjectID != t1.ID || !strings.Contains(failed[0].Title, "PC-1 安装 codex 0.42.0 失败") {
+	if len(failed) != 1 || failed[0].SubjectID != t1.ID || !strings.Contains(failed[0].Title, "PC-1 安裝 codex 0.42.0 失敗") {
 		t.Fatalf("rollout failed = %+v", failed)
 	}
 	over := openOf(t, ctx, store, repo.AlertBudget)
@@ -236,7 +236,7 @@ func TestALeaverWithAMachineIsDueForCleanupAfterSevenDays(t *testing.T) {
 		t.Fatal(err)
 	}
 	due := openOf(t, ctx, store, repo.AlertOffboardCleanup)
-	if len(due) != 1 || due[0].SubjectID != left.ID || !strings.Contains(due[0].Title, "gone 已离职 8 天") || !strings.Contains(due[0].Detail, "PC-GONE") {
+	if len(due) != 1 || due[0].SubjectID != left.ID || !strings.Contains(due[0].Title, "gone 已離職 8 天") || !strings.Contains(due[0].Detail, "PC-GONE") {
 		t.Fatalf("after seven days the leaver with a machine is due, the one without is not: %+v", due)
 	}
 	// Forgetting the machine (机器页「注销」) closes it.

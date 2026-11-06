@@ -82,7 +82,7 @@ func (s TicketStore) UpdateDailyRequest(ctx context.Context, ticketID, requester
 			values($1,$2,$3,$4,$5,$6)`, ticketID, requestVersion+1, title, description, details, requesterID); err != nil {
 			return err
 		}
-		body := fmt.Sprintf("客户重新提交申请（第 %d 版）", requestVersion+1)
+		body := fmt.Sprintf("客戶重新提交申請（第 %d 版）", requestVersion+1)
 		if _, err := tx.Exec(ctx, `insert into ticket_events(ticket_id,actor_type,actor_id,kind,visibility,body)
 			values($1,'customer',$2,'comment','public',$3)`, ticketID, requesterID, body); err != nil {
 			return err

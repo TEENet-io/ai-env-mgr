@@ -1,21 +1,21 @@
-{{define "account.html"}}{{template "head" "我的账号"}}
+{{define "account.html"}}{{template "head" "我的帳號"}}
 <body>
 <div class="app">
 {{template "nav" .}}
 <main class="sheet">
-  <header class="pagehead"><h1>我的账号</h1></header>
+  <header class="pagehead"><h1>我的帳號</h1></header>
   {{template "notices" .}}
-  <p>当前登录：<b>{{.Admin}}</b>（{{.Role}}）</p>
+  <p>當前登入：<b>{{.Admin}}</b>（{{.Role}}）</p>
 
-  <h2>修改密码</h2>
+  <h2>修改密碼</h2>
   <form method="post" action="/account" class="form" autocomplete="off">
     <input type="hidden" name="csrf" value="{{.CSRF}}">
-    <label>当前密码<input name="current" type="password" required autocomplete="current-password"></label>
-    <label>新密码<input name="new" type="password" required minlength="12" autocomplete="new-password"></label>
-    <label>再输一次<input name="again" type="password" required minlength="12" autocomplete="new-password"></label>
+    <label>當前密碼<input name="current" type="password" required autocomplete="current-password"></label>
+    <label>新密碼<input name="new" type="password" required minlength="12" autocomplete="new-password"></label>
+    <label>再輸一次<input name="again" type="password" required minlength="12" autocomplete="new-password"></label>
     <button type="submit">修改</button>
   </form>
-  <p class="hint">至少 12 个字符。修改后这个账号的所有登录会话都会失效，需要重新登录。</p>
+  <p class="hint">至少 12 個字符。修改後這個帳號的所有登入會話都會失效，需要重新登入。</p>
 </main>
 </div>
 </body>

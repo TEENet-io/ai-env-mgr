@@ -50,3 +50,4 @@
 .tp-current-grid label{margin:0 0 14px}
 .tp-form-error{margin:12px 0 0;padding:10px 12px;border:1px solid #e8c4bd;border-radius:8px;background:#fdf1ee;color:#a12f1c}
 .tp-body .ticket-files a{color:#1c7a4d;text-decoration:underline;text-underline-offset:2px}
+.tp-data-scroll{overflow-x:auto}.tp-data-table{width:100%;border-collapse:collapse;font-size:14px}.tp-data-table th,.tp-data-table td{padding:11px 16px;border-top:1px solid #e6ece7;text-align:left;white-space:nowrap}.tp-data-table th{color:#6c8271;font-weight:500}.tp-data-table td.num,.tp-data-table th.num{text-align:right}.tp-data-table small{display:block;color:#6c8271}.tp-data-total td{font-weight:600}.tp-data-note{margin:0 0 14px;color:#6c8271;font-size:14px}.tp-data-panel{margin-bottom:18px}.tp-data-panel h2{margin:0;padding:15px 16px;font-size:16px}.tp-data-empty{padding:20px 16px;color:#6c8271}

@@ -1,26 +1,26 @@
-{{define "enrol.html"}}{{template "head" "绑定验证器"}}
+{{define "enrol.html"}}{{template "head" "綁定驗證器"}}
 <body class="gate">
 <main class="card">
-  <h1>绑定验证器</h1>
+  <h1>綁定驗證器</h1>
   {{if .Error}}<p class="note note-err">{{.Error}}</p>{{end}}
   {{with .Enrol}}
   {{if .Codes}}
-  <p class="lede">验证器已绑定。下面是 {{len .Codes}} 个恢复码，<b>每个只能用一次</b>，请现在抄下来放到安全的地方——手机丢了它们是唯一的入口，这个页面关掉就不会再显示。</p>
+  <p class="lede">驗證器已綁定。下面是 {{len .Codes}} 個恢復碼，<b>每個只能用一次</b>，請現在抄下來放到安全的地方——手機丟了它們是唯一的入口，這個頁面關掉就不會再顯示。</p>
   <div class="panel">
     <table><tbody>
     {{range .Codes}}<tr><td class="id">{{.}}</td></tr>{{end}}
     </tbody></table>
   </div>
-  <p><a href="/ops/login">我已保存，去登录</a></p>
+  <p><a href="/ops/login">我已保存，去登入</a></p>
   {{else}}
-  <p class="lede">账号 <b>{{.Username}}</b> 还没有验证器。在手机的验证器应用（Google Authenticator、Microsoft Authenticator、1Password 等）里添加一个账号，手动输入下面的密钥，然后把它显示的六位数字填在这里。</p>
+  <p class="lede">帳號 <b>{{.Username}}</b> 還沒有驗證器。在手機的驗證器應用（Google Authenticator、Microsoft Authenticator、1Password 等）裡添加一個帳號，手動輸入下面的密鑰，然後把它顯示的六位數字填在這裡。</p>
   <div class="panel">
-    <p>密钥（手动输入用）：<code class="id">{{.Secret}}</code></p>
-    <p class="hint">支持链接的应用可以直接用：<code>{{.URI}}</code></p>
+    <p>密鑰（手動輸入用）：<code class="id">{{.Secret}}</code></p>
+    <p class="hint">支持鏈接的應用可以直接用：<code>{{.URI}}</code></p>
   </div>
   <form method="post" action="/enrol" autocomplete="off">
-    <label>验证器显示的六位数字<input name="code" inputmode="numeric" required autofocus autocomplete="one-time-code"></label>
-    <button type="submit">完成绑定</button>
+    <label>驗證器顯示的六位數字<input name="code" inputmode="numeric" required autofocus autocomplete="one-time-code"></label>
+    <button type="submit">完成綁定</button>
   </form>
   {{end}}
   {{end}}

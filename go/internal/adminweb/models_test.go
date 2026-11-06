@@ -50,7 +50,7 @@ func TestTheOverviewDeliversTheModelConfiguration(t *testing.T) {
 	store.Bindings().Bind(ctx, pc.ID, e.ID, "", "admin")
 
 	page := dbGet(t, h, "/models", cookie).Body.String()
-	if !strings.Contains(page, "还没有从这里下发过模型配置") || !strings.Contains(page, `action="/models/deliver"`) {
+	if !strings.Contains(page, "還沒有從這裡下發過模型配置") || !strings.Contains(page, `action="/models/deliver"`) {
 		t.Fatal("the overview should offer the first delivery")
 	}
 	csrf := csrfFrom(t, s, cookie, "/models")
@@ -60,7 +60,7 @@ func TestTheOverviewDeliversTheModelConfiguration(t *testing.T) {
 	}
 	page = dbGet(t, h, "/models", cookie).Body.String()
 	// No Worker in the test: the export is still queued.
-	if !strings.Contains(page, "已是最新") || !strings.Contains(page, "全部下发") || !strings.Contains(page, "生成中") {
+	if !strings.Contains(page, "已是最新") || !strings.Contains(page, "全部下發") || !strings.Contains(page, "生成中") {
 		t.Fatal("after delivering, the block should say it is current and follow the delivery")
 	}
 
@@ -81,7 +81,7 @@ func TestTheOverviewDeliversTheModelConfiguration(t *testing.T) {
 	// The gateway changes: the block says what.
 	gw.set("gpt-5", "gemini-3")
 	page = dbGet(t, h, "/models", cookie).Body.String()
-	if !strings.Contains(page, "有变化") || !strings.Contains(page, `新增 <span class="mono">gemini-3</span>`) || !strings.Contains(page, `下架 <span class="mono">claude-5</span>`) {
+	if !strings.Contains(page, "有變化") || !strings.Contains(page, `新增 <span class="mono">gemini-3</span>`) || !strings.Contains(page, `下架 <span class="mono">claude-5</span>`) {
 		t.Fatal("a changed gateway should be shown as added and removed models")
 	}
 	if !strings.Contains(page, `name="employees"`) || !strings.Contains(page, `name="devices"`) {

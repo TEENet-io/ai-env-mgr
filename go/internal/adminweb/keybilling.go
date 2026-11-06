@@ -156,7 +156,7 @@ func (s *Server) loadKeyBillingPage(r *http.Request) (*keyBillingPage, error) {
 		defer cancel()
 		keys, err := gw.ListKeys(ctx)
 		if err != nil {
-			page.GatewayError = "无法读取 LiteLLM API Key 清单：" + err.Error()
+			page.GatewayError = "無法讀取 LiteLLM API Key 清單：" + err.Error()
 		} else {
 			gatewayReady = true
 			employeesByGatewayID := map[string]repo.Employee{}
@@ -200,10 +200,10 @@ func (s *Server) loadKeyBillingPage(r *http.Request) (*keyBillingPage, error) {
 		}
 		status := "本地快照"
 		if gatewayReady {
-			status = "历史/已吊销"
+			status = "歷史/已吊銷"
 		}
 		if a.Live {
-			status = "当前 Key"
+			status = "當前 Key"
 		}
 		models := make([]string, 0, len(a.Models))
 		for model := range a.Models {
@@ -256,7 +256,7 @@ func (s *Server) handleKeyBilling(w http.ResponseWriter, r *http.Request, sess *
 func (s *Server) handleKeyBillingCSV(w http.ResponseWriter, r *http.Request, _ *session) {
 	page, err := s.loadKeyBillingPage(r)
 	if err != nil {
-		http.Error(w, "导出失败："+err.Error(), http.StatusInternalServerError)
+		http.Error(w, "導出失敗："+err.Error(), http.StatusInternalServerError)
 		return
 	}
 	w.Header().Set("Content-Type", "text/csv; charset=utf-8")

@@ -1,30 +1,30 @@
-{{define "rollout_new.html"}}{{template "head" "指定给机器"}}
+{{define "rollout_new.html"}}{{template "head" "指定給機器"}}
 <body>
 <div class="app">
 {{template "nav" .}}
 <main class="sheet">
-  <header class="pagehead"><h1>指定给机器：{{.Artifact.Product}} <span class="mono">{{.Artifact.Version}}</span></h1></header>
+  <header class="pagehead"><h1>指定給機器：{{.Artifact.Product}} <span class="mono">{{.Artifact.Version}}</span></h1></header>
   {{template "notices" .}}
   {{if .Artifact.MinAgentVersion}}<p class="dim">最低 agent {{.Artifact.MinAgentVersion}}</p>{{end}}
-  <div class="caution">勾选的机器改为单独使用这个版本，不再跟随全局；已在线的 1.3.0 及以上机器几秒内开始更新。以后要改回，在机器页选「跟随全局」。</div>
-  <div class="panel rollout-preview"><strong>影响范围预览</strong><p>候选机器 {{.CandidateTotal}} 台 · 在线 {{.CandidateOnline}} · 离线 {{.CandidateOffline}} · 不兼容 {{.CandidateIncompatible}} · 已有目标 {{.CandidateOpen}}</p><p class="dim">最终影响范围以勾选结果为准；不兼容机器不会出现在可选项中。</p></div>
+  <div class="caution">勾選的機器改為單獨使用這個版本，不再跟隨全局；已在線的 1.3.0 及以上機器幾秒內開始更新。以後要改回，在機器頁選「跟隨全局」。</div>
+  <div class="panel rollout-preview"><strong>影響範圍預覽</strong><p>候選機器 {{.CandidateTotal}} 台 · 在線 {{.CandidateOnline}} · 離線 {{.CandidateOffline}} · 不兼容 {{.CandidateIncompatible}} · 已有目標 {{.CandidateOpen}}</p><p class="dim">最終影響範圍以勾選結果為準；不兼容機器不會出現在可選項中。</p></div>
   <form method="post" action="/rollouts/create" class="form" data-rollout-selection>
     <input type="hidden" name="csrf" value="{{.CSRF}}">
     <input type="hidden" name="product" value="{{.Artifact.Product}}">
     <input type="hidden" name="artifact" value="{{.Artifact.ID}}">
     <div class="panel scroll"><table>
-      <thead><tr><th></th><th>主机名</th><th>agent</th><th>codex</th><th>最后联系</th><th>能否下发</th></tr></thead>
+      <thead><tr><th></th><th>主機名</th><th>agent</th><th>codex</th><th>最後聯絡</th><th>能否下發</th></tr></thead>
       <tbody>{{range .Candidates}}
         <tr>
           <td>{{if .Compatible}}<input type="checkbox" name="device" value="{{.ID}}">{{end}}</td>
           <td class="id">{{.Hostname}}</td>
           <td class="mono">{{.AgentVersion}}</td>
           <td class="mono">{{.CodexVersion}}</td>
-          <td class="dim">{{if .LastSync}}{{.LastSync.Format "01-02 15:04"}} {{if .Online}}<span class="tag tag-ok">在线</span>{{else}}<span class="tag">离线</span>{{end}}{{else}}从未上报{{end}}</td>
-          <td class="dim">{{if .Compatible}}{{if .HasOpen}}<span class="tag tag-warn">已单独指定过，会被替换</span>{{else}}可以{{end}}{{else}}<span class="tag tag-bad">不能</span> {{.Why}}{{end}}</td>
-        </tr>{{else}}<tr><td colspan="6" class="dim">没有机器</td></tr>{{end}}
+          <td class="dim">{{if .LastSync}}{{.LastSync.Format "01-02 15:04"}} {{if .Online}}<span class="tag tag-ok">在線</span>{{else}}<span class="tag">離線</span>{{end}}{{else}}從未上報{{end}}</td>
+          <td class="dim">{{if .Compatible}}{{if .HasOpen}}<span class="tag tag-warn">已單獨指定過，會被替換</span>{{else}}可以{{end}}{{else}}<span class="tag tag-bad">不能</span> {{.Why}}{{end}}</td>
+        </tr>{{else}}<tr><td colspan="6" class="dim">沒有機器</td></tr>{{end}}
       </tbody></table></div>
-    <p class="task-filter-note" data-rollout-summary>尚未选择机器</p><button type="submit" class="danger" data-confirm="确认将选中的机器切换到这个版本吗？">对选中的机器指定</button>
+    <p class="task-filter-note" data-rollout-summary>尚未選擇機器</p><button type="submit" class="danger" data-confirm="確認將選中的機器切換到這個版本嗎？">對選中的機器指定</button>
   </form>
 </main>
 </div>

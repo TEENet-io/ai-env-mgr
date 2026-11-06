@@ -37,12 +37,12 @@ func TestOverviewCarriesAllThreeSections(t *testing.T) {
 	}
 	body := rec.Body.String()
 	for _, want := range []string{
-		"<h1>总览</h1>",
-		"<h2>当前策略</h2>",
-		"<h2>模型网关</h2>",
-		"<h2>机器</h2>",
-		"<th>主机名</th>", // the machine table itself, not just its heading
-		"绑定机器",
+		"<h1>總覽</h1>",
+		"<h2>當前策略</h2>",
+		"<h2>模型網關</h2>",
+		"<h2>機器</h2>",
+		"<th>主機名</th>", // the machine table itself, not just its heading
+		"綁定機器",
 	} {
 		if !strings.Contains(body, want) {
 			t.Errorf("the overview is missing %q", want)
@@ -94,10 +94,10 @@ func TestOverviewSurvivesAnUnreachableGateway(t *testing.T) {
 		t.Fatalf("/overview returned %d with the gateway down, want 200", rec.Code)
 	}
 	body := rec.Body.String()
-	if !strings.Contains(body, "网关不可达") {
+	if !strings.Contains(body, "網關不可達") {
 		t.Error("the gateway panel does not say the gateway is unreachable")
 	}
-	for _, want := range []string{"<h2>当前策略</h2>", "<h2>机器</h2>"} {
+	for _, want := range []string{"<h2>當前策略</h2>", "<h2>機器</h2>"} {
 		if !strings.Contains(body, want) {
 			t.Errorf("a dead gateway took %q down with it", want)
 		}
@@ -111,10 +111,10 @@ func TestOverviewSaysWhenNoGatewayIsConfigured(t *testing.T) {
 	s := newTestServer(t, newFakeStore())
 	cookie := signIn(t, s)
 	body := get(t, s, "/overview", cookie).Body.String()
-	if !strings.Contains(body, "未配置网关") {
+	if !strings.Contains(body, "未配置網關") {
 		t.Error("the gateway panel does not say the gateway is unconfigured")
 	}
-	if strings.Contains(body, "网关不可达") {
+	if strings.Contains(body, "網關不可達") {
 		t.Error("an unconfigured gateway must not read as an unreachable one")
 	}
 }
@@ -155,7 +155,7 @@ func TestOverviewRefreshesWhileAPublishRuns(t *testing.T) {
 	}
 
 	s.jobs.current = &job{Kind: "agent", Version: "1.2.8", State: jobRunning,
-		Step: "上传到 OSS", Started: time.Now()}
+		Step: "上傳到 OSS", Started: time.Now()}
 
 	body := get(t, s, "/overview", cookie).Body.String()
 	if !strings.Contains(body, `http-equiv="refresh"`) {
@@ -183,10 +183,10 @@ func TestOverviewSeparatesAMissingKeyFromAnUnreachableGateway(t *testing.T) {
 	cookie := signIn(t, s)
 
 	body := get(t, s, "/overview", cookie).Body.String()
-	if strings.Contains(body, "网关不可达") {
+	if strings.Contains(body, "網關不可達") {
 		t.Error("a missing admin key must not be reported as an unreachable gateway")
 	}
-	if !strings.Contains(body, "网关管理密钥未注入") {
+	if !strings.Contains(body, "網關管理密鑰未注入") {
 		t.Error("the panel does not say what is actually wrong with the configuration")
 	}
 }
@@ -223,22 +223,22 @@ func TestOverviewExplainsAMissingOrPartialProbe(t *testing.T) {
 		return buf.String()
 	}
 
-	notice := render(pageData{ProbeNotice: "这把 AccessKey 没有日志读取权限"})
-	if !strings.Contains(notice, "探测状态读不到") || !strings.Contains(notice, "没有日志读取权限") {
+	notice := render(pageData{ProbeNotice: "這把 AccessKey 沒有日誌讀取權限"})
+	if !strings.Contains(notice, "探測狀態讀不到") || !strings.Contains(notice, "沒有日誌讀取權限") {
 		t.Error("a failed probe query is not explained on the page")
 	}
 
 	partial := render(pageData{
-		Probe:           &probeHealth{OKs: 5, Sev: "ok", Label: "网关正常"},
+		Probe:           &probeHealth{OKs: 5, Sev: "ok", Label: "網關正常"},
 		ProbeIncomplete: true,
 	})
-	if !strings.Contains(partial, "探测数据可能不完整") {
+	if !strings.Contains(partial, "探測資料可能不完整") {
 		t.Error("an incomplete index is not disclosed, so a low count reads as the truth")
 	}
 
 	// A healthy, complete hour says neither.
-	clean := render(pageData{Probe: &probeHealth{OKs: 58, Sev: "ok", Label: "网关正常"}})
-	for _, unwanted := range []string{"探测状态读不到", "探测数据可能不完整"} {
+	clean := render(pageData{Probe: &probeHealth{OKs: 58, Sev: "ok", Label: "網關正常"}})
+	for _, unwanted := range []string{"探測狀態讀不到", "探測資料可能不完整"} {
 		if strings.Contains(clean, unwanted) {
 			t.Errorf("a healthy probe still shows %q", unwanted)
 		}

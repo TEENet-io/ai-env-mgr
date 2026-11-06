@@ -34,12 +34,12 @@ func TestCodexNote(t *testing.T) {
 		// target unless the published version is known, which is why the page
 		// loads the policy.
 		{"nothing published, something installed", "26.803.81509-b1", "", "", "", ""},
-		{"downloading", "", agentcore.CodexDownloading, target, "下载中", "warn"},
-		{"installing", "", agentcore.CodexInstalling, target, "安装中", "warn"},
-		{"deferred: Codex was open or the disk was full", "26.803.81509-b1", agentcore.CodexDeferred, target, "已推迟", "warn"},
+		{"downloading", "", agentcore.CodexDownloading, target, "下載中", "warn"},
+		{"installing", "", agentcore.CodexInstalling, target, "安裝中", "warn"},
+		{"deferred: Codex was open or the disk was full", "26.803.81509-b1", agentcore.CodexDeferred, target, "已推遲", "warn"},
 		// The only one that will not resolve itself: the agent tries a failed
 		// version once and then stops.
-		{"failed", "26.803.81509-b1", agentcore.CodexFailed, target, "安装失败", "err"},
+		{"failed", "26.803.81509-b1", agentcore.CodexFailed, target, "安裝失敗", "err"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			// Reporting normally: the tag is about an update, so the
@@ -111,7 +111,7 @@ func TestCodexNoteStaysQuietForUnreachableMachines(t *testing.T) {
 	asleepButFailed := admincore.MachineState{Machine: "pc2", Bound: true,
 		Status: model.Status{LastSync: hoursAgo(3), LastEvent: "suspend",
 			CodexState: agentcore.CodexFailed}}
-	if got := codexNote(asleepButFailed, target); got != "安装失败" {
+	if got := codexNote(asleepButFailed, target); got != "安裝失敗" {
 		t.Fatalf("a recorded failure was hidden by the machine's state: %q", got)
 	}
 }

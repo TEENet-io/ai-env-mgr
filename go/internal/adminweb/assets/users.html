@@ -1,22 +1,22 @@
-{{define "users.html"}}{{template "head" "员工账号"}}
+{{define "users.html"}}{{template "head" "員工帳號"}}
 <body>
 <div class="app">
 {{template "nav" .}}
 <main class="sheet">
-  <header class="pagehead"><h1>员工账号</h1>{{if .GatewayTeamID}}<p>组织：<strong>{{.GatewayTeamID}}</strong>，下面只列这个组织的员工。</p>{{end}}</header>
+  <header class="pagehead"><h1>員工帳號</h1>{{if .GatewayTeamID}}<p>組織：<strong>{{.GatewayTeamID}}</strong>，下面只列這個組織的員工。</p>{{end}}</header>
   {{template "tabs-users" .}}
   {{template "notices" .}}
-  {{if .GatewayUnusable}}<p class="note note-err">{{.GatewayUnusable}}<br><span class="dim">额度与令牌列暂不可用；关户仍可执行。</span></p>{{end}}
-  <p class="dim">显示：
-    <a href="/users"{{if eq .Show ""}} class="active"{{end}}>在册</a> ·
-    <a href="/users?show=active"{{if eq .Show "active"}} class="active"{{end}}>在职</a> ·
-    <a href="/users?show=offboarded"{{if eq .Show "offboarded"}} class="active"{{end}}>已离职</a>
-    {{if .DB}}· <a href="/users?show=deleted"{{if eq .Show "deleted"}} class="active"{{end}}>已删除</a>{{end}}
+  {{if .GatewayUnusable}}<p class="note note-err">{{.GatewayUnusable}}<br><span class="dim">額度與令牌列暫不可用；關戶仍可執行。</span></p>{{end}}
+  <p class="dim">顯示：
+    <a href="/users"{{if eq .Show ""}} class="active"{{end}}>在冊</a> ·
+    <a href="/users?show=active"{{if eq .Show "active"}} class="active"{{end}}>在職</a> ·
+    <a href="/users?show=offboarded"{{if eq .Show "offboarded"}} class="active"{{end}}>已離職</a>
+    {{if .DB}}· <a href="/users?show=deleted"{{if eq .Show "deleted"}} class="active"{{end}}>已刪除</a>{{end}}
   </p>
 
   <div class="panel scroll">
   <table>
-    <thead><tr><th>WINDOWS 用户</th><th>姓名</th><th>部门</th><th>状态</th><th>令牌</th><th>可用模型</th><th>本月花费 / 预算</th><th></th></tr></thead>
+    <thead><tr><th>WINDOWS 用戶</th><th>姓名</th><th>部門</th><th>狀態</th><th>令牌</th><th>可用模型</th><th>本月花費 / 預算</th><th></th></tr></thead>
     <tbody>
     {{range .Accounts}}
       <tr>
@@ -24,10 +24,10 @@
         <td>{{if .Name}}{{.Name}}{{else}}<span class="dim">—</span>{{end}}{{if .Email}}<div class="rowsub">{{.Email}}</div>{{end}}</td>
         <td class="dim">{{if .Department}}{{.Department}}{{else}}—{{end}}</td>
         <td>
-          {{if .Deleted}}<span class="tag">已删除 {{.DeletedAt}}</span>{{else if .Enabled}}<span class="tag tag-ok">在职</span>{{else}}<span class="tag tag-bad">已离职</span>{{end}}
+          {{if .Deleted}}<span class="tag">已刪除 {{.DeletedAt}}</span>{{else if .Enabled}}<span class="tag tag-ok">在職</span>{{else}}<span class="tag tag-bad">已離職</span>{{end}}
           {{range .Flags}}<span class="tag tag-{{.Severity}}">{{.Label}}</span>{{end}}
         </td>
-        <td>{{if .HasToken}}<span class="tag tag-ok">已发放</span>{{if .TokenIssued}}<div class="rowsub nowrap">{{.TokenIssued}} · {{.TokenAgeDays}} 天{{if .TokenDue}} <span class="tag tag-warn">待轮换</span>{{end}}</div>{{end}}{{else}}<span class="dim">—</span>{{end}}</td>
+        <td>{{if .HasToken}}<span class="tag tag-ok">已發放</span>{{if .TokenIssued}}<div class="rowsub nowrap">{{.TokenIssued}} · {{.TokenAgeDays}} 天{{if .TokenDue}} <span class="tag tag-warn">待輪換</span>{{end}}</div>{{end}}{{else}}<span class="dim">—</span>{{end}}</td>
         <td class="dim wrap" title="{{range $i, $m := .Models}}{{if $i}}, {{end}}{{$m}}{{end}}">{{if .Models}}{{range $i, $m := .Models}}{{if lt $i 3}}{{if $i}}, {{end}}{{$m}}{{end}}{{end}}{{if gt (len .Models) 3}} <span class="tag tag-muted">+{{sub (len .Models) 3}}</span>{{end}}{{else}}—{{end}}</td>
         <td>
           {{if .HasUser}}
@@ -39,60 +39,60 @@
           {{if .Enabled}}
           <form method="post" action="/users/offboard" class="inline">
             <input type="hidden" name="csrf" value="{{$.CSRF}}"><input type="hidden" name="windowsUser" value="{{.WindowsUser}}">
-            <button class="link danger">关户</button>
+            <button class="link danger">關戶</button>
           </form>
           {{else}}
           <form method="post" action="/users/reopen" class="inline">
             <input type="hidden" name="csrf" value="{{$.CSRF}}"><input type="hidden" name="windowsUser" value="{{.WindowsUser}}">
-            <button class="link"{{if not $.GatewayEnabled}} disabled{{end}}>重新开户</button>
+            <button class="link"{{if not $.GatewayEnabled}} disabled{{end}}>重新開戶</button>
           </form>
           {{end}}
           {{$u := .WindowsUser}}{{range .Flags}}
           {{if and (eq .Fix "onboard") $.GatewayEnabled}}
           <form method="post" action="/users/reopen" class="inline">
             <input type="hidden" name="csrf" value="{{$.CSRF}}"><input type="hidden" name="windowsUser" value="{{$u}}">
-            <button class="link">修复</button>
+            <button class="link">修復</button>
           </form>
           {{end}}
           {{if eq .Fix "offboard"}}
           <form method="post" action="/users/offboard" class="inline">
             <input type="hidden" name="csrf" value="{{$.CSRF}}"><input type="hidden" name="windowsUser" value="{{$u}}">
-            <button class="link danger">修复</button>
+            <button class="link danger">修復</button>
           </form>
           {{end}}
           {{end}}
         {{end}}</td>
       </tr>
     {{else}}
-      <tr><td colspan="8" class="empty">还没有员工。</td></tr>
+      <tr><td colspan="8" class="empty">還沒有員工。</td></tr>
     {{end}}
     </tbody>
   </table>
   </div>
 
-  <h2>开户</h2>
-  {{if and .GatewayEnabled (not .GatewayModels)}}<p class="note note-err">当前没有可用模型：所有模型渠道都已暂停，暂时不能开户。</p>{{end}}
+  <h2>開戶</h2>
+  {{if and .GatewayEnabled (not .GatewayModels)}}<p class="note note-err">當前沒有可用模型：所有模型渠道都已暫停，暫時不能開戶。</p>{{end}}
   <form method="post" action="/users/onboard" class="form top">
     <input type="hidden" name="csrf" value="{{.CSRF}}">
-    {{if .GatewayTeamID}}<label>组织<input value="{{.GatewayTeamID}}" readonly disabled><span class="field-hint">新员工的令牌和用量都归在这个组织（LiteLLM team）下</span></label>{{end}}
-    <label>Windows 用户<input name="windowsUser" required placeholder="work1"><span class="field-hint">按小写保存，机器上的账号大小写无关</span></label>
-    <label>邮箱<input name="email" type="email" required placeholder="zhangsan@example.com"><span class="field-hint">员工用它接收云电脑的登录验证码</span></label>
-    <label>姓名<input name="name" placeholder="张三"></label>
-    <label>部门<input name="department" placeholder="研发"></label>
-    <label>月预算（美元）<input name="budget" type="number" step="0.01" min="0.01" value="{{.QuotaDefaults.MonthlyBudgetUSD}}" required></label>
+    {{if .GatewayTeamID}}<label>組織<input value="{{.GatewayTeamID}}" readonly disabled><span class="field-hint">新員工的令牌和用量都歸在這個組織（LiteLLM team）下</span></label>{{end}}
+    <label>Windows 用戶<input name="windowsUser" required placeholder="work1"><span class="field-hint">按小寫保存，機器上的帳號大小寫無關</span></label>
+    <label>郵箱<input name="email" type="email" required placeholder="zhangsan@example.com"><span class="field-hint">員工用它接收雲電腦的登入驗證碼</span></label>
+    <label>姓名<input name="name" placeholder="張三"></label>
+    <label>部門<input name="department" placeholder="研發"></label>
+    <label>月預算（美元）<input name="budget" type="number" step="0.01" min="0.01" value="{{.QuotaDefaults.MonthlyBudgetUSD}}" required></label>
     <fieldset class="checks">
       <legend>可用模型</legend>
-      <label class="check"><input type="checkbox" name="all" value="1"> <strong>全部</strong> <span class="dim">所有未暂停渠道的模型，含以后新增的；勾上后下面的选择不再生效</span></label>
+      <label class="check"><input type="checkbox" name="all" value="1"> <strong>全部</strong> <span class="dim">所有未暫停渠道的模型，含以後新增的；勾上後下面的選擇不再生效</span></label>
       {{range .GatewayModels}}
         <label class="check"><input type="checkbox" name="models" value="{{.Name}}"> {{.Info.DisplayName}} <span class="dim">{{.Name}}</span></label>
       {{end}}
     </fieldset>
-    <button type="submit"{{if or (not .GatewayEnabled) (not .GatewayModels)}} disabled{{end}}>开户并下发配置</button>
+    <button type="submit"{{if or (not .GatewayEnabled) (not .GatewayModels)}} disabled{{end}}>開戶並下發配置</button>
   </form>
   <p class="hint">
-    开户一次完成：入名册、在网关建用户与令牌、生成并下发 Codex 配置。机器绑定在<a href="/machines">机器</a>页。
-    <strong>员工需要完全退出所有 Codex 进程再重新打开</strong>——模型目录只在启动时加载一次。<br>
-    预算按自然月重置；超额后网关直接拒绝请求。关户会即时吊销令牌、撤回配置，机器下次同步时删掉本机凭据并关掉 Codex；机器保持绑定（吊销靠它送达，也不再报离线），实例释放后到机器页「注销」。名册与用量历史保留。
+    開戶一次完成：入名冊、在網關建用戶與令牌、生成並下發 Codex 配置。機器綁定在<a href="/machines">機器</a>頁。
+    <strong>員工需要完全退出所有 Codex 進程再重新打開</strong>——模型目錄只在啟動時加載一次。<br>
+    預算按自然月重置；超額後網關直接拒絕請求。關戶會即時吊銷令牌、撤回配置，機器下次同步時刪掉本機憑據並關掉 Codex；機器保持綁定（吊銷靠它送達，也不再報離線），實例釋放後到機器頁「註銷」。名冊與用量歷史保留。
   </p>
 </main>
 </div>

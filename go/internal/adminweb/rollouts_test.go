@@ -26,18 +26,18 @@ func TestTargetRowStateNamesEveryStageWithoutGuessing(t *testing.T) {
 		lastSync *time.Time
 		label    string
 	}{
-		{"never reported", pending, nil, nil, "待执行(离线)"},
-		{"online, not started", pending, &model.Status{CodexVersion: "0.41.0"}, &recent, "待执行(在线)"},
-		{"offline for hours", pending, &model.Status{CodexVersion: "0.41.0"}, &old, "待执行(离线)"},
-		{"deferred in use", pending, &model.Status{CodexTarget: "0.42.0", CodexTargetGeneration: 2, CodexState: "deferred", CodexDeferReason: "in_use"}, &recent, "延后:正在使用"},
-		{"deferred disk", pending, &model.Status{CodexTarget: "0.42.0", CodexTargetGeneration: 2, CodexState: "deferred", CodexDeferReason: "disk"}, &recent, "延后:磁盘不足"},
-		{"downloading", pending, &model.Status{CodexTarget: "0.42.0", CodexTargetGeneration: 2, CodexState: "downloading"}, &recent, "下载中"},
-		{"installing", pending, &model.Status{CodexTarget: "0.42.0", CodexTargetGeneration: 2, CodexState: "installing"}, &recent, "安装中"},
-		{"installed, not yet settled", pending, &model.Status{CodexVersion: "0.42.0"}, &recent, "待健康确认"},
-		{"old generation's failure", pending, &model.Status{CodexTarget: "0.42.0", CodexTargetGeneration: 1, CodexState: "failed"}, &recent, "待执行(在线)"},
+		{"never reported", pending, nil, nil, "待執行(離線)"},
+		{"online, not started", pending, &model.Status{CodexVersion: "0.41.0"}, &recent, "待執行(在線)"},
+		{"offline for hours", pending, &model.Status{CodexVersion: "0.41.0"}, &old, "待執行(離線)"},
+		{"deferred in use", pending, &model.Status{CodexTarget: "0.42.0", CodexTargetGeneration: 2, CodexState: "deferred", CodexDeferReason: "in_use"}, &recent, "延後:正在使用"},
+		{"deferred disk", pending, &model.Status{CodexTarget: "0.42.0", CodexTargetGeneration: 2, CodexState: "deferred", CodexDeferReason: "disk"}, &recent, "延後:磁盤不足"},
+		{"downloading", pending, &model.Status{CodexTarget: "0.42.0", CodexTargetGeneration: 2, CodexState: "downloading"}, &recent, "下載中"},
+		{"installing", pending, &model.Status{CodexTarget: "0.42.0", CodexTargetGeneration: 2, CodexState: "installing"}, &recent, "安裝中"},
+		{"installed, not yet settled", pending, &model.Status{CodexVersion: "0.42.0"}, &recent, "待健康確認"},
+		{"old generation's failure", pending, &model.Status{CodexTarget: "0.42.0", CodexTargetGeneration: 1, CodexState: "failed"}, &recent, "待執行(在線)"},
 		{"succeeded", repo.Target{Status: repo.TargetSucceeded, ReportedVersion: "0.42.0"}, nil, nil, "成功"},
-		{"failed", repo.Target{Status: repo.TargetFailed, ResultNote: "codex: install: exit status 2"}, nil, nil, "失败"},
-		{"excluded", repo.Target{Status: repo.TargetExcluded, ExcludeReason: "机器已停用"}, nil, nil, "已排除"},
+		{"failed", repo.Target{Status: repo.TargetFailed, ResultNote: "codex: install: exit status 2"}, nil, nil, "失敗"},
+		{"excluded", repo.Target{Status: repo.TargetExcluded, ExcludeReason: "機器已停用"}, nil, nil, "已排除"},
 		{"cancelled", repo.Target{Status: repo.TargetCancelled}, nil, nil, "已取消"},
 		{"superseded", repo.Target{Status: repo.TargetSuperseded}, nil, nil, "已取代"},
 	}
@@ -94,14 +94,14 @@ func TestRolloutSummaryLabelsTerminalOutcomes(t *testing.T) {
 		label   string
 		tone    string
 	}{
-		{"failed", []repo.Target{{DeviceID: "a", Generation: 1, Status: repo.TargetFailed}}, "失败", "bad"},
+		{"failed", []repo.Target{{DeviceID: "a", Generation: 1, Status: repo.TargetFailed}}, "失敗", "bad"},
 		{"superseded", []repo.Target{{DeviceID: "a", Generation: 1, Status: repo.TargetSuperseded}}, "已取代", "muted"},
 		{"cancelled", []repo.Target{{DeviceID: "a", Generation: 1, Status: repo.TargetCancelled}}, "已取消", "muted"},
-		{"empty", nil, "无目标", "warn"},
+		{"empty", nil, "無目標", "warn"},
 		{"partial failure", []repo.Target{
 			{DeviceID: "a", Generation: 1, Status: repo.TargetSucceeded},
 			{DeviceID: "b", Generation: 1, Status: repo.TargetFailed},
-		}, "部分失败", "bad"},
+		}, "部分失敗", "bad"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -138,7 +138,7 @@ func TestChoosingOneMachineLeavesTheOtherAlone(t *testing.T) {
 	}
 	csrf := csrfFrom(t, s, cookie, "/rollouts/new?artifact="+a.ID)
 	rec := dbPost(t, h, "/rollouts/create", url.Values{"csrf": {csrf}, "product": {"codex"}, "artifact": {a.ID},
-		"device": {pcA.ID}, "note": {"试发"}}, cookie)
+		"device": {pcA.ID}, "note": {"試發"}}, cookie)
 	if rec.Code != http.StatusSeeOther || strings.Contains(rec.Header().Get("Location"), "err=") {
 		t.Fatalf("create: %d %s", rec.Code, rec.Header().Get("Location"))
 	}
@@ -151,7 +151,7 @@ func TestChoosingOneMachineLeavesTheOtherAlone(t *testing.T) {
 	rollouts, _ := store.Releases().ListRollouts(ctx, 1)
 	detail := dbGet(t, h, "/rollouts/detail?id="+rollouts[0].ID, cookie)
 	body = detail.Body.String()
-	if detail.Code != 200 || !strings.Contains(body, "PC-A") || strings.Contains(body, "PC-B") || !strings.Contains(body, "待执行") {
+	if detail.Code != 200 || !strings.Contains(body, "PC-A") || strings.Contains(body, "PC-B") || !strings.Contains(body, "待執行") {
 		t.Fatalf("detail page: %d", detail.Code)
 	}
 	list := dbGet(t, h, "/rollouts", cookie)
@@ -169,9 +169,9 @@ func TestChoosingOneMachineLeavesTheOtherAlone(t *testing.T) {
 	if rec := dbPost(t, h, "/rollouts/exclude", url.Values{"csrf": {csrf}, "id": {rollouts[0].ID}, "target": {target.ID}}, cookie); !strings.Contains(rec.Header().Get("Location"), "err=") {
 		t.Fatal("excluding without a reason must be refused")
 	}
-	dbPost(t, h, "/rollouts/exclude", url.Values{"csrf": {csrf}, "id": {rollouts[0].ID}, "target": {target.ID}, "reason": {"机器已停用"}}, cookie)
+	dbPost(t, h, "/rollouts/exclude", url.Values{"csrf": {csrf}, "id": {rollouts[0].ID}, "target": {target.ID}, "reason": {"機器已停用"}}, cookie)
 	detail = dbGet(t, h, "/rollouts/detail?id="+rollouts[0].ID, cookie)
-	if !strings.Contains(detail.Body.String(), "已排除") || !strings.Contains(detail.Body.String(), "机器已停用") {
+	if !strings.Contains(detail.Body.String(), "已排除") || !strings.Contains(detail.Body.String(), "機器已停用") {
 		t.Fatal("the exclusion and its reason must show on the page")
 	}
 }

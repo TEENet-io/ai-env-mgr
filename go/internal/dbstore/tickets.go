@@ -36,13 +36,13 @@ func ticketStatusLabel(status string) string {
 	case "new":
 		return "待受理"
 	case "working":
-		return "处理中"
+		return "處理中"
 	case "waiting_customer":
-		return "待客户补充"
+		return "待客戶補充"
 	case "done":
 		return "已完成"
 	case "closed":
-		return "已关闭"
+		return "已關閉"
 	default:
 		return status
 	}
@@ -51,22 +51,22 @@ func ticketStatusLabel(status string) string {
 func (t Ticket) StatusLabel() string {
 	if t.Status == "waiting_customer" && t.ProposalPending {
 		if t.ProposalRequiresManager {
-			return "待联系人确认方案"
+			return "待聯絡人確認方案"
 		}
-		return "待确认方案"
+		return "待確認方案"
 	}
 	if t.Status == "done" && t.Details["request_kind"] != nil {
-		return "待确认结果"
+		return "待確認結果"
 	}
 	return ticketStatusLabel(t.Status)
 }
 func (t Ticket) TypeLabel() string {
 	if requestKind, ok := t.Details["request_kind"].(string); ok {
 		if label, found := map[string]string{
-			"account-add": "员工账号 · 新增员工", "account-toggle": "员工账号 · 停用或恢复", "account-delete": "员工账号 · 离职／删除",
-			"account-edit": "员工账号 · 修改信息", "desktop-problem": "远程桌面 · 使用问题", "software-add": "远程桌面 · 安装软件",
-			"software-change": "远程桌面 · 更新或卸载", "website": "远程桌面 · 网站访问", "ai-problem": "AI 模型与使用额度 · 使用问题",
-			"quota": "AI 模型与使用额度 · 额度追加", "tool-problem": "定制工具 · 使用问题", "other-problem": "其他问题",
+			"account-add": "員工帳號 · 新增員工", "account-toggle": "員工帳號 · 停用或恢復", "account-delete": "員工帳號 · 離職／刪除",
+			"account-edit": "員工帳號 · 修改信息", "desktop-problem": "遠程桌面 · 使用問題", "software-add": "遠程桌面 · 安裝軟件",
+			"software-change": "遠程桌面 · 更新或卸載", "website": "遠程桌面 · 網站訪問", "ai-problem": "AI 模型與使用額度 · 使用問題",
+			"quota": "AI 模型與使用額度 · 額度追加", "tool-problem": "定製工具 · 使用問題", "other-problem": "其他問題",
 		}[requestKind]; found {
 			return label
 		}
@@ -75,25 +75,25 @@ func (t Ticket) TypeLabel() string {
 	case "general":
 		switch t.Details["subtype"] {
 		case "employee":
-			return "一般事务 · 员工操作"
+			return "一般事務 · 員工操作"
 		case "website":
-			return "一般事务 · 网站封禁"
+			return "一般事務 · 網站封禁"
 		case "software":
-			return "一般事务 · 软件预装"
+			return "一般事務 · 軟件預裝"
 		case "environment":
-			return "一般事务 · 客户环境变更"
+			return "一般事務 · 客戶環境變更"
 		}
-		return "一般事务"
+		return "一般事務"
 	case "bug":
 		return "Bug 提交"
 	case "onboarding":
-		return "新员工开户"
+		return "新員工開戶"
 	case "offboarding":
-		return "员工离职"
+		return "員工離職"
 	case "access":
-		return "权限或额度调整"
+		return "權限或額度調整"
 	case "other":
-		return "故障与其他"
+		return "故障與其他"
 	default:
 		return t.Type
 	}
@@ -110,15 +110,15 @@ func (e TicketEvent) ToStatusLabel() string   { return ticketStatusLabel(e.ToSta
 func (e TicketEvent) KindLabel() string {
 	switch e.Kind {
 	case "created":
-		return "创建工单"
+		return "建立工單"
 	case "comment":
-		return "回复"
+		return "回覆"
 	case "status":
-		return "状态更新"
+		return "狀態更新"
 	case "assignment":
 		return "分派"
 	case "link":
-		return "关联记录"
+		return "關聯記錄"
 	default:
 		return e.Kind
 	}
@@ -352,7 +352,7 @@ const ticketNeedsActionSQL = `(t.status='new' or (t.status='working' and t.reque
 		and te.visibility='public' and te.kind in ('created','comment','status')
 		order by te.id desc limit 1),'')='customer'))`
 
-const ticketSelect = `select t.id,t.number,coalesce(t.requester_id::text,''),coalesce(c.name,'内部工单'),t.type,t.title,t.description,t.status,t.priority,
+const ticketSelect = `select t.id,t.number,coalesce(t.requester_id::text,''),coalesce(c.name,'內部工單'),t.type,t.title,t.description,t.status,t.priority,
 	coalesce(t.assignee_id::text,''),coalesce(a.username,''),coalesce(t.employee_id::text,''),coalesce(e.windows_user,''),
 	coalesce(t.device_id::text,''),coalesce(d.hostname,''),t.version,t.created_at,t.updated_at,t.details,` + ticketNeedsActionSQL + ` as needs_action,
 	coalesce((select d.id is null from ticket_proposals p left join ticket_proposal_decisions d on d.proposal_id=p.id
@@ -427,7 +427,7 @@ func (s TicketStore) ActionRequiredCount(ctx context.Context) (int, error) {
 }
 
 func (s TicketStore) Events(ctx context.Context, id, requesterID string) ([]TicketEvent, error) {
-	query := `select e.id,e.actor_type,coalesce(c.name,a.username,'系统'),e.kind,e.visibility,e.body,
+	query := `select e.id,e.actor_type,coalesce(c.name,a.username,'系統'),e.kind,e.visibility,e.body,
 		coalesce(e.from_status,''),coalesce(e.to_status,''),e.created_at from ticket_events e
 		left join customer_contacts c on e.actor_type='customer' and e.actor_id=c.id
 		left join admin_principals a on e.actor_type='admin' and e.actor_id=a.id
@@ -493,7 +493,7 @@ func (s TicketStore) AddEvent(ctx context.Context, id, requesterID, actorType, a
 				return err
 			}
 			if !approved {
-				return errors.New("客户尚未确认账号删除或额度追加方案")
+				return errors.New("客戶尚未確認帳號刪除或額度追加方案")
 			}
 		}
 		if _, err := tx.Exec(ctx, `update tickets set status=$2,version=version+1,updated_at=now(),

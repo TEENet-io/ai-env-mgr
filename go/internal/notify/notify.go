@@ -29,13 +29,13 @@ func (m Message) Text() string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "[%s] %s\n", strings.ToUpper(m.Severity), m.Title)
 	if m.Subject != "" {
-		fmt.Fprintf(&b, "对象：%s\n", m.Subject)
+		fmt.Fprintf(&b, "對象：%s\n", m.Subject)
 	}
 	if m.Detail != "" {
 		fmt.Fprintf(&b, "%s\n", m.Detail)
 	}
 	if !m.At.IsZero() {
-		fmt.Fprintf(&b, "时间：%s\n", m.At.Local().Format("2006-01-02 15:04"))
+		fmt.Fprintf(&b, "時間：%s\n", m.At.Local().Format("2006-01-02 15:04"))
 	}
 	if m.URL != "" {
 		fmt.Fprintf(&b, "%s\n", m.URL)

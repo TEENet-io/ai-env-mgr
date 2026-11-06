@@ -557,7 +557,7 @@ func TestMachinesPageRendersCodexColumn(t *testing.T) {
 		"CODEX",
 		"26.810.52044-b1", // arrived
 		"26.803.81509-b1", // did not
-		"安装失败",            // and will not retry
+		"安裝失敗",            // and will not retry
 		"待更新",             // the 1.2.4 machine, which never will
 	} {
 		if !strings.Contains(body, want) {
@@ -591,9 +591,9 @@ func TestSitesPageRendersTheAppLockerModeSwitch(t *testing.T) {
 		mode           string
 		want, unwanted []string
 	}{
-		{"", []string{"未接管", "接管并强制", `value="enforce"`}, []string{"note-err", "关闭 AppLocker"}},
-		{model.AppLockerModeEnforce, []string{"强制中", `value="audit"`, `class="danger">关闭 AppLocker`}, []string{"note-err"}},
-		{model.AppLockerModeAudit, []string{"已关闭", "恢复强制", `value="enforce"`, "note note-err", "不再拦截"}, []string{"关闭 AppLocker"}},
+		{"", []string{"未接管", "接管並強制", `value="enforce"`}, []string{"note-err", "關閉 AppLocker"}},
+		{model.AppLockerModeEnforce, []string{"強制中", `value="audit"`, `class="danger">關閉 AppLocker`}, []string{"note-err"}},
+		{model.AppLockerModeAudit, []string{"已關閉", "恢復強制", `value="enforce"`, "note note-err", "不再攔截"}, []string{"關閉 AppLocker"}},
 	}
 	for _, c := range cases {
 		body := render(c.mode)
@@ -680,7 +680,7 @@ func TestSettingsPageSaysWhenQuotaDefaultsCannotBeRead(t *testing.T) {
 		t.Fatalf("settings returned %d, want 200", rec.Code)
 	}
 	body := rec.Body.String()
-	if !strings.Contains(body, "读取开户默认额度失败") {
+	if !strings.Contains(body, "讀取開戶預設額度失敗") {
 		t.Error("the page does not mention the failed read")
 	}
 	if strings.Contains(body, `value="0"`) {

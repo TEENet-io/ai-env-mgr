@@ -35,10 +35,10 @@ const gatewayModelsTimeout = 3 * time.Second
 // says what to set rather than merely refusing.
 func (s *Server) gateway() (*litellm.Client, error) {
 	if s.opts.GatewayURL == "" {
-		return nil, fmt.Errorf("网关地址未配置（构建时未设置 gatewayURL）")
+		return nil, fmt.Errorf("網關地址未配置（構建時未設定 gatewayURL）")
 	}
 	if s.opts.GatewayAdminKey == "" {
-		return nil, fmt.Errorf("网关管理密钥未注入（设置环境变量 AIENVMGR_GATEWAY_ADMIN_KEY）")
+		return nil, fmt.Errorf("網關管理密鑰未注入（設定環境變量 AIENVMGR_GATEWAY_ADMIN_KEY）")
 	}
 	return s.newGateway(), nil
 }
@@ -88,7 +88,7 @@ func (s *Server) loadGatewayPanel(ctx context.Context, data *pageData) {
 
 	models, err := gw.Models(mctx)
 	if err != nil {
-		data.GatewayUnusable = "无法读取网关模型清单：" + err.Error()
+		data.GatewayUnusable = "無法讀取網關模型清單：" + err.Error()
 		log.Printf("adminweb: gateway models: %v", err)
 	}
 	data.GatewayModels = models

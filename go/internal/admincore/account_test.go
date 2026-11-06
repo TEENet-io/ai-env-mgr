@@ -15,7 +15,7 @@ var testGW = GatewayConfig{BaseURL: "https://gw.example"}
 
 func aliceSpec() AccountSpec {
 	return AccountSpec{
-		WindowsUser: "Alice", Name: "Alice Wang", Department: "研发",
+		WindowsUser: "Alice", Name: "Alice Wang", Department: "研發",
 		Quota:  litellm.Quota{MonthlyBudgetUSD: 20, RPM: 60, TPM: 200000, Parallel: 4},
 		Models: []string{"glm-5"},
 	}
@@ -32,7 +32,7 @@ func TestOnboardOpensEverythingInOneStep(t *testing.T) {
 	// Roster: present, enabled, labelled.
 	us, _ := m.LoadUsers()
 	e := us.Find("alice")
-	if e == nil || !e.Enabled || e.Name != "Alice Wang" || e.Department != "研发" {
+	if e == nil || !e.Enabled || e.Name != "Alice Wang" || e.Department != "研發" {
 		t.Fatalf("roster entry wrong: %+v", e)
 	}
 	// Gateway user: quota and labels mirrored.
@@ -40,7 +40,7 @@ func TestOnboardOpensEverythingInOneStep(t *testing.T) {
 	if !ok {
 		t.Fatal("gateway user not created")
 	}
-	if u.Quota() != aliceSpec().Quota || u.Alias != "Alice Wang" || u.Department() != "研发" {
+	if u.Quota() != aliceSpec().Quota || u.Alias != "Alice Wang" || u.Department() != "研發" {
 		t.Errorf("gateway user not mirrored: %+v", u)
 	}
 	if len(u.Models) != 1 || u.Models[0] != "glm-5" {
@@ -476,17 +476,17 @@ func TestSetModelsLeavesTheTokenAloneWhenTheUserWriteFails(t *testing.T) {
 
 func TestUpdateProfileWritesRosterAndMirrorsTheGatewayUser(t *testing.T) {
 	m, _, gw := onboarded(t)
-	err := m.UpdateProfile(context.Background(), gw, "alice", "Alice Wong", "运营", "alice@codex.example", "")
+	err := m.UpdateProfile(context.Background(), gw, "alice", "Alice Wong", "運營", "alice@codex.example", "")
 	if err != nil {
 		t.Fatalf("profile: %v", err)
 	}
 	us, _ := m.LoadUsers()
 	e := us.Find("alice")
-	if e.Name != "Alice Wong" || e.Department != "运营" || e.CodexAccount != "alice@codex.example" {
+	if e.Name != "Alice Wong" || e.Department != "運營" || e.CodexAccount != "alice@codex.example" {
 		t.Fatalf("roster not updated: %+v", e)
 	}
 	u := gw.users["emp-alice"]
-	if u.Alias != "Alice Wong" || u.Department() != "运营" {
+	if u.Alias != "Alice Wong" || u.Department() != "運營" {
 		t.Errorf("gateway user not mirrored: %+v", u)
 	}
 	if u.Quota() != aliceSpec().Quota {
@@ -496,7 +496,7 @@ func TestUpdateProfileWritesRosterAndMirrorsTheGatewayUser(t *testing.T) {
 		t.Errorf("editing labels must not touch the allowlist: %v", u.Models)
 	}
 	entries, _ := m.ReadAudit("alice")
-	if entries[0].Action != AuditProfile || entries[0].Detail["department"] != "运营" {
+	if entries[0].Action != AuditProfile || entries[0].Detail["department"] != "運營" {
 		t.Errorf("audit: %+v", entries[0])
 	}
 }
@@ -505,7 +505,7 @@ func TestUpdateProfileWithoutAGatewayUserSavesTheRoster(t *testing.T) {
 	m, _ := newManager()
 	_ = m.SaveUsers(model.Users{Users: []model.UserEntry{{WindowsUser: "alice", Enabled: true}}})
 	gw := newFakeGateway()
-	if err := m.UpdateProfile(context.Background(), gw, "alice", "Alice Wang", "研发", "", ""); err != nil {
+	if err := m.UpdateProfile(context.Background(), gw, "alice", "Alice Wang", "研發", "", ""); err != nil {
 		t.Fatalf("profile: %v", err)
 	}
 	us, _ := m.LoadUsers()

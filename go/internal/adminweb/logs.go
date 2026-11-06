@@ -95,7 +95,7 @@ type logFilter struct {
 var logStatuses = []struct{ Value, Label string }{
 	{"", "全部"},
 	{"success", "成功"},
-	{"failure", "失败"},
+	{"failure", "失敗"},
 	{"cancelled", "取消"},
 }
 
@@ -103,7 +103,7 @@ var logRanges = []struct{ Value, Label string }{
 	{"today", "今天"},
 	{"7d", "最近 7 天"},
 	{"30d", "最近 30 天"},
-	{"custom", "自定义"},
+	{"custom", "自定義"},
 }
 
 // parseLogFilter reads the query string. It cannot fail: anything it does not
@@ -409,7 +409,7 @@ func statusLabel(status string) (string, string) {
 	case "success":
 		return "成功", "ok"
 	case "failure":
-		return "失败", "bad"
+		return "失敗", "bad"
 	case "cancelled":
 		return "取消", "warn"
 	case "":
@@ -505,12 +505,12 @@ func probeFrom(summary []slsclient.Log, lastFail []slsclient.Log) *probeHealth {
 	}
 	switch {
 	case p.Fails > 0:
-		p.Sev, p.Label = "bad", "网关有失败"
+		p.Sev, p.Label = "bad", "網關有失敗"
 	case p.OKs > 0:
-		p.Sev, p.Label = "ok", "网关正常"
+		p.Sev, p.Label = "ok", "網關正常"
 	default:
-		p.Sev, p.Label = "warn", "无探测数据"
-		p.Detail = "探测器或采集可能停了。"
+		p.Sev, p.Label = "warn", "無探測資料"
+		p.Detail = "探測器或採集可能停了。"
 	}
 	if len(lastFail) > 0 {
 		p.LastFailAt = displayTime(lastFail[0])
@@ -570,7 +570,7 @@ func (f logFilter) pageLinks(rowsOnPage int) (string, string) {
 // errorCode, which is what an Alibaba Cloud ticket will ask for.
 func slsNotice(err error) string {
 	if errors.Is(err, slsclient.ErrForbidden) {
-		hint := "这把 AccessKey 没有日志读取权限，请给它添加 AliyunLogReadOnlyAccess"
+		hint := "這把 AccessKey 沒有日誌讀取權限，請給它添加 AliyunLogReadOnlyAccess"
 		// The errorCode distinguishes the two things a 401/403 can mean. A
 		// missing policy says Unauthorized; a signing bug says
 		// SignatureNotMatch, and no amount of RAM policy will fix that one.
@@ -579,7 +579,7 @@ func slsNotice(err error) string {
 		}
 		return hint
 	}
-	return "查询 SLS 失败：" + err.Error()
+	return "查詢 SLS 失敗：" + err.Error()
 }
 
 func (s *Server) handleLogs(w http.ResponseWriter, r *http.Request, sess *session) {
@@ -606,7 +606,7 @@ func (s *Server) handleLogs(w http.ResponseWriter, r *http.Request, sess *sessio
 	})
 
 	if sess.sls == nil {
-		page.Notice = "本次登录没有建立 SLS 客户端，请重新登录。"
+		page.Notice = "本次登入沒有建立 SLS 客戶端，請重新登入。"
 		s.render(w, "logs.html", http.StatusOK, data)
 		return
 	}

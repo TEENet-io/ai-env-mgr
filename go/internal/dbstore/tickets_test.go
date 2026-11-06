@@ -74,7 +74,7 @@ func TestTicketOwnershipIdempotencyAndTimeline(t *testing.T) {
 		t.Fatalf("employee link=%+v, err=%v", got, err)
 	}
 	var adminID string
-	if err := db.Pool().QueryRow(ctx, `insert into admin_principals(username,password_hash,role) values('ticket_operator','hash','operator') returning id`).Scan(&adminID); err != nil {
+	if err := db.Pool().QueryRow(ctx, `insert into admin_principals(username,password_hash,role) values('ticket_operator','hash','admin') returning id`).Scan(&adminID); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := db.Pool().Exec(ctx, `insert into admin_jobs(id,kind,state) values('job-ticket-test','test','done')`); err != nil {
@@ -120,7 +120,7 @@ func TestAdminCreatedTicketAttributesActualAuthor(t *testing.T) {
 		t.Fatalf("admin retry created a different ticket: first=%+v again=%+v err=%v", ticket, again, err)
 	}
 	got, err := db.Tickets().Get(ctx, ticket.ID, "")
-	if err != nil || got.RequesterID != "" || got.RequesterName != "内部工单" {
+	if err != nil || got.RequesterID != "" || got.RequesterName != "內部工單" {
 		t.Fatalf("requester=%q name=%q, err=%v", got.RequesterID, got.RequesterName, err)
 	}
 	contact, err := db.Tickets().CreateContact(ctx, "requester@example.com", "Requester", "hash")
@@ -219,7 +219,7 @@ func TestTicketActionRequiredFollowsCustomerReplies(t *testing.T) {
 		t.Fatal(err)
 	}
 	var adminID string
-	if err := db.Pool().QueryRow(ctx, `insert into admin_principals(username,password_hash,role) values('pending_operator','hash','operator') returning id`).Scan(&adminID); err != nil {
+	if err := db.Pool().QueryRow(ctx, `insert into admin_principals(username,password_hash,role) values('pending_operator','hash','admin') returning id`).Scan(&adminID); err != nil {
 		t.Fatal(err)
 	}
 	ticket, err := s.Create(ctx, c.ID, "pending-key", "general", "Help", "Need help", "normal", []byte(`{}`))
@@ -284,7 +284,7 @@ func TestEnvironmentChangeWorkflow(t *testing.T) {
 		t.Fatal(err)
 	}
 	var adminID string
-	if err := db.Pool().QueryRow(ctx, `insert into admin_principals(username,password_hash,role) values('change_operator','hash','operator') returning id`).Scan(&adminID); err != nil {
+	if err := db.Pool().QueryRow(ctx, `insert into admin_principals(username,password_hash,role) values('change_operator','hash','admin') returning id`).Scan(&adminID); err != nil {
 		t.Fatal(err)
 	}
 	ticket, err := s.Create(ctx, owner.ID, "environment-change-key", "general", "Temporary exception", "Please allow example.com", "normal", []byte(`{"schema_version":3,"subtype":"environment"}`))

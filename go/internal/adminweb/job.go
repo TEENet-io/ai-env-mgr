@@ -101,7 +101,7 @@ type jobRunner struct {
 	persistent repo.AdminJobs
 }
 
-var errJobBusy = fmt.Errorf("上一个发布还在进行中，等它结束再发下一个")
+var errJobBusy = fmt.Errorf("上一個發布還在進行中，等它結束再發下一個")
 
 // start runs fn in the background, refusing if something is already running.
 func (r *jobRunner) start(kind, version string, fn func(setStep func(string), setProgress func(done, total int64)) error) error {
@@ -110,7 +110,7 @@ func (r *jobRunner) start(kind, version string, fn func(setStep func(string), se
 	if r.current != nil && r.current.Running() {
 		return errJobBusy
 	}
-	j := &job{Kind: kind, Version: version, State: jobRunning, Step: "准备中", Started: time.Now()}
+	j := &job{Kind: kind, Version: version, State: jobRunning, Step: "準備中", Started: time.Now()}
 	if r.persistent != nil {
 		id := fmt.Sprintf("admin-%d", j.Started.UnixNano())
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)

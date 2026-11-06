@@ -18,11 +18,11 @@ func TestAlertsPageListsAcksAndResolves(t *testing.T) {
 	ctx := t.Context()
 	device, _ := s.dbm.store.Devices().EnsureByHostname(ctx, "PC-1")
 	a1, _, _ := s.dbm.store.Alerts().Open(ctx, repo.NewAlert{Kind: repo.AlertMachineOffline, Fingerprint: "m:1", Severity: "warn",
-		SubjectType: "device", SubjectID: device.ID, Title: "机器 PC-1 已 30 小时未上报"})
+		SubjectType: "device", SubjectID: device.ID, Title: "機器 PC-1 已 30 小時未上報"})
 	a2, _, _ := s.dbm.store.Alerts().Open(ctx, repo.NewAlert{Kind: repo.AlertTaskFailed, Fingerprint: "t:1", Severity: "crit",
-		SubjectType: "task", SubjectID: "t1", Title: "任务 gateway_provision 已放弃（3 次尝试）"})
+		SubjectType: "task", SubjectID: "t1", Title: "任務 gateway_provision 已放棄（3 次嘗試）"})
 	old, _, _ := s.dbm.store.Alerts().Open(ctx, repo.NewAlert{Kind: repo.AlertBudget, Fingerprint: "b:1", Severity: "warn",
-		SubjectType: "employee", SubjectID: "nobody", Title: "旧告警"})
+		SubjectType: "employee", SubjectID: "nobody", Title: "舊告警"})
 	s.dbm.store.Alerts().Resolve(ctx, "b:1", "rule")
 	_ = old
 
@@ -31,11 +31,11 @@ func TestAlertsPageListsAcksAndResolves(t *testing.T) {
 	if page.Code != 200 {
 		t.Fatalf("alerts: %d", page.Code)
 	}
-	open := body[strings.Index(body, "未关闭"):strings.Index(body, "最近关闭")]
-	if !strings.Contains(open, "PC-1 已 30 小时未上报") || !strings.Contains(open, "machine=PC-1") || !strings.Contains(open, "已放弃") || strings.Contains(open, "旧告警") {
+	open := body[strings.Index(body, "未關閉"):strings.Index(body, "最近關閉")]
+	if !strings.Contains(open, "PC-1 已 30 小時未上報") || !strings.Contains(open, "machine=PC-1") || !strings.Contains(open, "已放棄") || strings.Contains(open, "舊告警") {
 		t.Fatalf("open section wrong:\n%s", open)
 	}
-	if history := body[strings.Index(body, "最近关闭"):]; !strings.Contains(history, "旧告警") || !strings.Contains(history, "自动") {
+	if history := body[strings.Index(body, "最近關閉"):]; !strings.Contains(history, "舊告警") || !strings.Contains(history, "自動") {
 		t.Fatal("the resolved alert is not in the history")
 	}
 	// Every page's nav carries the open count.
@@ -49,14 +49,14 @@ func TestAlertsPageListsAcksAndResolves(t *testing.T) {
 	}
 	body = dbGet(t, h, "/alerts", cookie).Body.String()
 	admins, _ := s.dbm.store.Admins().List(ctx)
-	if !strings.Contains(body, admins[0].Username+" 已确认") {
+	if !strings.Contains(body, admins[0].Username+" 已確認") {
 		t.Fatal("the acknowledgement is not shown")
 	}
 	if rec := dbPost(t, h, "/alerts/resolve", url.Values{"csrf": {csrf}, "id": {a2.ID}}, cookie); rec.Code != http.StatusSeeOther {
 		t.Fatalf("resolve: %d", rec.Code)
 	}
 	body = dbGet(t, h, "/alerts", cookie).Body.String()
-	if !strings.Contains(body, `告警 <span class="tag tag-bad">1</span>`) || !strings.Contains(body[strings.Index(body, "最近关闭"):], "已放弃") {
+	if !strings.Contains(body, `告警 <span class="tag tag-bad">1</span>`) || !strings.Contains(body[strings.Index(body, "最近關閉"):], "已放棄") {
 		t.Fatal("the resolved alert did not move to the history")
 	}
 	events, _, _ := s.dbm.store.Audit().Search(ctx, repo.AuditFilter{TargetType: "alert", Limit: 10})
@@ -84,7 +84,7 @@ func TestAlertSettingsKeepThePasswordWhenLeftBlank(t *testing.T) {
 	csrf := csrfFrom(t, s, cookie, "/settings")
 
 	page := dbGet(t, h, "/settings/channels", cookie).Body.String()
-	if !strings.Contains(page, "通知渠道") || !strings.Contains(page, "未设置") {
+	if !strings.Contains(page, "通知渠道") || !strings.Contains(page, "未設定") {
 		t.Fatal("the channels tab lacks its form")
 	}
 	if page := dbGet(t, h, "/settings/alerting", cookie).Body.String(); !strings.Contains(page, `name="offline_hours"`) {
@@ -115,7 +115,7 @@ func TestAlertSettingsKeepThePasswordWhenLeftBlank(t *testing.T) {
 
 	// Saving again with blank secret fields keeps them; the page says set.
 	page = dbGet(t, h, "/settings/channels", cookie).Body.String()
-	if !strings.Contains(page, "已设置，留空不改") || strings.Contains(page, "hunter2") {
+	if !strings.Contains(page, "已設定，留空不改") || strings.Contains(page, "hunter2") {
 		t.Fatal("the page must say the password is set without showing it")
 	}
 	form.Set("version", "1")
@@ -159,7 +159,7 @@ func TestRotationSettingsAndTheTokenColumn(t *testing.T) {
 	ctx := t.Context()
 	csrf := csrfFrom(t, s, cookie, "/settings")
 	page := dbGet(t, h, "/settings/alerting", cookie).Body.String()
-	if !strings.Contains(page, "令牌轮换") || !strings.Contains(page, `name="max_age_days"`) {
+	if !strings.Contains(page, "令牌輪換") || !strings.Contains(page, `name="max_age_days"`) {
 		t.Fatal("the alerting tab lacks the rotation section")
 	}
 	if rec := dbPost(t, h, "/settings/rotation", url.Values{"csrf": {csrf}, "version": {"0"}, "enabled": {"1"}, "max_age_days": {"30"}, "per_day": {"2"}, "active_within_hours": {"48"}}, cookie); strings.Contains(rec.Header().Get("Location"), "err=") {
@@ -180,15 +180,15 @@ func TestRotationSettingsAndTheTokenColumn(t *testing.T) {
 	grant, _ := s.dbm.store.Grants().Create(ctx, repo.NewGrant{EmployeeID: e.ID, Epoch: e.AuthEpoch, ExternalUser: "emp-work1", KeyAlias: "emp-work1-e1", CredentialID: cred.ID})
 	s.dbm.store.Grants().RecordActual(ctx, grant.ID, repo.ActualActive, "")
 	list := dbGet(t, h, "/users", cookie).Body.String()
-	if !strings.Contains(list, "已发放") || !strings.Contains(list, " · 0 天") || strings.Contains(list, "待轮换") {
-		t.Fatalf("a fresh token: %s", firstLine(list, "已发放"))
+	if !strings.Contains(list, "已發放") || !strings.Contains(list, " · 0 天") || strings.Contains(list, "待輪換") {
+		t.Fatalf("a fresh token: %s", firstLine(list, "已發放"))
 	}
 	if _, err := s.dbm.db.Pool().Exec(ctx, `update credential_versions set created_at = now() - interval '45 days'`); err != nil {
 		t.Fatal(err)
 	}
 	list = dbGet(t, h, "/users", cookie).Body.String()
-	if !strings.Contains(list, " · 45 天") || !strings.Contains(list, "待轮换") {
-		t.Fatalf("an old token: %s", firstLine(list, "已发放"))
+	if !strings.Contains(list, " · 45 天") || !strings.Contains(list, "待輪換") {
+		t.Fatalf("an old token: %s", firstLine(list, "已發放"))
 	}
 }
 
@@ -200,7 +200,7 @@ func TestDeviceChannelPageAndMachineControls(t *testing.T) {
 	csrf := csrfFrom(t, s, cookie, "/settings")
 
 	page := dbGet(t, h, "/settings/devices", cookie).Body.String()
-	if !strings.Contains(page, "设备通道") || !strings.Contains(page, `name="enrol_cidrs"`) {
+	if !strings.Contains(page, "設備通道") || !strings.Contains(page, `name="enrol_cidrs"`) {
 		t.Fatal("the devices tab lacks its form")
 	}
 	if strings.Contains(page, `name="write_oss"`) || strings.Contains(page, `name="import_status"`) {
@@ -242,7 +242,7 @@ func TestDeviceChannelPageAndMachineControls(t *testing.T) {
 		t.Fatal("the overview lacks the channel column")
 	}
 	machine := dbGet(t, h, "/machines/detail?machine=PC-1", cookie).Body.String()
-	if !strings.Contains(machine, "直连控制台") || !strings.Contains(machine, "签发于") || !strings.Contains(machine, "203.0.113.9") || !strings.Contains(machine, "允许注册") {
+	if !strings.Contains(machine, "直連控制台") || !strings.Contains(machine, "簽發於") || !strings.Contains(machine, "203.0.113.9") || !strings.Contains(machine, "允許註冊") {
 		t.Fatal("the machine page lacks the channel section")
 	}
 	// The log tail the agent sent is what the log page shows.

@@ -33,7 +33,7 @@ func TestCreateAndReadEmployee(t *testing.T) {
 	s, ctx := newTestStore(t)
 
 	created, err := s.Employees().Create(ctx, repo.NewEmployee{
-		WindowsUser: "Work1", Name: "张三", Department: "研发",
+		WindowsUser: "Work1", Name: "張三", Department: "研發",
 		CodexAccount: "work1@example.com", ExternalID: "E-0042",
 	})
 	if err != nil {
@@ -65,7 +65,7 @@ func TestCreateAndReadEmployee(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ByID: %v", err)
 	}
-	if byID.Name != "张三" || byID.Department != "研发" || byID.ExternalID != "E-0042" {
+	if byID.Name != "張三" || byID.Department != "研發" || byID.ExternalID != "E-0042" {
 		t.Errorf("ByID = %+v, want the fields as created", byID)
 	}
 }
@@ -136,7 +136,7 @@ func TestUpdateProfileRefusesAStaleVersion(t *testing.T) {
 	e := mustCreate(t, ctx, s, "work1")
 
 	updated, err := s.Employees().UpdateProfile(ctx, e.ID, e.Version, repo.Profile{
-		Name: "李四", Department: "财务", CodexAccount: "l@example.com",
+		Name: "李四", Department: "財務", CodexAccount: "l@example.com",
 	})
 	if err != nil {
 		t.Fatalf("update: %v", err)

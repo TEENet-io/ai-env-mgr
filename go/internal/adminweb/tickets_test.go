@@ -93,13 +93,13 @@ func TestSoftwarePreinstallRows(t *testing.T) {
 	}
 	form.Set("software_min_version_1", "")
 	form.Set("software_note_1", "")
-	form.Set("software_name_1", "无")
+	form.Set("software_name_1", "無")
 	if _, err := ticketRequestDetails(ticketFormRequest(form), "general"); err != nil {
 		t.Fatalf("rejected no-software declaration: %v", err)
 	}
 	form.Set("software_name_2", "Python")
 	if _, err := ticketRequestDetails(ticketFormRequest(form), "general"); err == nil {
-		t.Fatal("accepted 无 alongside another package")
+		t.Fatal("accepted 無 alongside another package")
 	}
 }
 
@@ -208,8 +208,8 @@ func TestEnvironmentWorkflowRendersForAdminAndCustomer(t *testing.T) {
 		data any
 		want string
 	}{
-		{"ticket_detail.html", pageData{DB: true, Role: "admin", Tickets: &ticketPage{Ticket: &ticket, Workflow: workflow}}, "实施方填写"},
-		{"customer_ticket.html", customerPage{Ticket: &ticket, Workflow: workflow, Owner: true}, "客户结果确认"},
+		{"ticket_detail.html", pageData{DB: true, Role: "admin", Tickets: &ticketPage{Ticket: &ticket, Workflow: workflow}}, "實施方填寫"},
+		{"customer_ticket.html", customerPage{Ticket: &ticket, Workflow: workflow, Owner: true}, "客戶結果確認"},
 	} {
 		var out bytes.Buffer
 		if err := s.tpl.ExecuteTemplate(&out, tc.name, tc.data); err != nil {
@@ -229,7 +229,7 @@ func TestTicketConversationSeparatesPublicAndInternalActions(t *testing.T) {
 	if err := s.tpl.ExecuteTemplate(&out, "ticket_detail.html", pageData{DB: true, Role: "admin", Tickets: &ticketPage{Ticket: &ticket, Events: events}}); err != nil {
 		t.Fatal(err)
 	}
-	for _, want := range []string{`class="ticket-conversation`, `class="ticket-tools-title">内部备注与状态更新`, `class="ticket-tools-title">分派与关联`, `name="action" value="reply"`, `name="action" value="note"`, `客户可见`, `客户不可见`, `仅内部可见`, `Please help`, `Investigating`} {
+	for _, want := range []string{`class="ticket-conversation`, `class="ticket-tools-title">內部備註與狀態更新`, `class="ticket-tools-title">分派與關聯`, `name="action" value="reply"`, `name="action" value="note"`, `客戶可見`, `客戶不可見`, `僅內部可見`, `Please help`, `Investigating`} {
 		if !strings.Contains(out.String(), want) {
 			t.Errorf("admin conversation missing %q", want)
 		}
@@ -245,7 +245,7 @@ func TestTicketConversationSeparatesPublicAndInternalActions(t *testing.T) {
 
 func TestProposalConfirmationRendersForManager(t *testing.T) {
 	s := newTestServer(t, newFakeStore())
-	ticket := dbstore.Ticket{ID: "11111111-1111-1111-1111-111111111111", Type: "general", Title: "额度追加", Status: "waiting_customer", Version: 3,
+	ticket := dbstore.Ticket{ID: "11111111-1111-1111-1111-111111111111", Type: "general", Title: "額度追加", Status: "waiting_customer", Version: 3,
 		Details: map[string]any{"request_kind": "quota"}}
 	proposal := &dbstore.TicketProposal{ID: 7, Kind: "quota", RequiresManager: true,
 		Payload: map[string]any{"amount": "100000", "unit": "tokens", "valid_until": "2026-11-30", "cost": "12.50", "currency": "USD"}}
@@ -273,7 +273,7 @@ func TestTicketPendingBadgeAndFilterRender(t *testing.T) {
 	if err := s.tpl.ExecuteTemplate(&out, "tickets.html", data); err != nil {
 		t.Fatal(err)
 	}
-	for _, want := range []string{`href="/tickets?status=pending" class="active"`, `2 待处理`, `ticket-admin-card`, `待处理</span>`} {
+	for _, want := range []string{`href="/tickets?status=pending" class="active"`, `2 待處理`, `ticket-admin-card`, `待處理</span>`} {
 		if !strings.Contains(out.String(), want) {
 			t.Errorf("ticket queue missing %q", want)
 		}
@@ -300,16 +300,16 @@ func TestTicketRoles(t *testing.T) {
 	if allowed("viewer", "POST", "/tickets/action") {
 		t.Fatal("viewer can mutate tickets")
 	}
-	if !allowed("operator", "POST", "/tickets/action") {
-		t.Fatal("operator cannot process tickets")
+	if !allowed("admin", "POST", "/tickets/action") {
+		t.Fatal("admin cannot process tickets")
 	}
-	if allowed("operator", "POST", "/tickets/contacts/create") {
-		t.Fatal("operator can create customer identity")
+	if allowed("viewer", "POST", "/tickets/contacts/create") {
+		t.Fatal("viewer can create customer identity")
 	}
 	if !allowed("admin", "POST", "/tickets/contacts/reset") {
 		t.Fatal("admin cannot reset customer password")
 	}
-	if allowed("operator", "POST", "/tickets/create") || allowed("viewer", "GET", "/tickets/new") {
+	if allowed("viewer", "POST", "/tickets/create") || allowed("viewer", "GET", "/tickets/new") {
 		t.Fatal("non-admin can create a ticket on behalf of a customer")
 	}
 	if !allowed("admin", "POST", "/tickets/create") || !allowed("admin", "GET", "/tickets/new") {

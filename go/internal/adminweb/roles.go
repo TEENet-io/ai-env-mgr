@@ -7,26 +7,18 @@ import (
 	"github.com/TEENet-io/ai-env-mgr/internal/repo"
 )
 
-// Roles, least to most. security reads everything, including the audit
-// trail, and changes nothing; it ranks with viewer until it needs more.
+// Roles, least to most: a viewer reads, an admin does everything else.
 var roleRank = map[string]int{
-	repo.RoleViewer:   1,
-	repo.RoleSecurity: 1,
-	repo.RoleOperator: 2,
-	repo.RoleAdmin:    3,
+	repo.RoleViewer: 1,
+	repo.RoleAdmin:  2,
 }
 
 // minRole is the least role a request needs, by method and path. A path is
 // matched exactly first, then by the longest prefix ending in "/". Anything
 // not listed needs admin: a new route forgotten here is closed, not open.
 //
-// Reads are for everybody who can sign in. Day-to-day writes -- employees,
-// machines, their budgets and models, a version pinned to chosen machines --
-// are for operators. What changes every machine or cannot be undone is for
-// admins, following the operations process (ai工作间流程 §2): the block
-// policy, the settings, the fleet-wide version, deleting an account, and
-// managing administrators. Signing out and one's own account are for
-// everybody.
+// Reads are for everybody who can sign in, and so are signing out and one's
+// own account. Every other write is for admins.
 var minRole = map[string]string{
 	"GET /overview":                      repo.RoleViewer,
 	"GET /users":                         repo.RoleViewer,
@@ -42,7 +34,7 @@ var minRole = map[string]string{
 	"POST /tickets/create":               repo.RoleAdmin,
 	"GET /tickets/detail":                repo.RoleViewer,
 	"GET /tickets/file":                  repo.RoleViewer,
-	"POST /tickets/action":               repo.RoleOperator,
+	"POST /tickets/action":               repo.RoleAdmin,
 	"POST /tickets/contacts/":            repo.RoleAdmin,
 	"GET /tasks/detail":                  repo.RoleViewer,
 	"GET /audit":                         repo.RoleViewer,
@@ -53,9 +45,9 @@ var minRole = map[string]string{
 	"GET /usage/keys.csv":                repo.RoleViewer,
 	"GET /usage/cloud":                   repo.RoleViewer,
 	"GET /usage/cloud.csv":               repo.RoleViewer,
-	"POST /usage/":                       repo.RoleOperator,
+	"POST /usage/":                       repo.RoleAdmin,
 	"GET /alerts":                        repo.RoleViewer,
-	"POST /alerts/":                      repo.RoleOperator,
+	"POST /alerts/":                      repo.RoleAdmin,
 	"POST /alerts/test":                  repo.RoleAdmin,
 	"POST /settings/alerts":              repo.RoleAdmin,
 	"POST /settings/alert-channels":      repo.RoleAdmin,
@@ -76,23 +68,23 @@ var minRole = map[string]string{
 	"GET /logout":                        repo.RoleViewer,
 	"GET /healthz":                       repo.RoleViewer,
 	"GET /static/":                       repo.RoleViewer,
-	"POST /users/":                       repo.RoleOperator,
+	"POST /users/":                       repo.RoleAdmin,
 	"POST /users/delete":                 repo.RoleAdmin,
-	"POST /machines/":                    repo.RoleOperator,
+	"POST /machines/":                    repo.RoleAdmin,
 	"GET /models":                        repo.RoleViewer,
 	"GET /channels":                      repo.RoleViewer,
-	"POST /models/":                      repo.RoleOperator,
+	"POST /models/":                      repo.RoleAdmin,
 	"POST /channels/":                    repo.RoleAdmin,
 	"POST /sites/":                       repo.RoleAdmin,
 	"POST /settings/":                    repo.RoleAdmin,
-	"POST /releases/":                    repo.RoleOperator,
+	"POST /releases/":                    repo.RoleAdmin,
 	"POST /releases/global":              repo.RoleAdmin,
 	"POST /releases/global-clear":        repo.RoleAdmin,
 	"POST /releases/delete":              repo.RoleAdmin,
 	"POST /releases/delete-unregistered": repo.RoleAdmin,
 	"POST /apps/delete":                  repo.RoleAdmin,
-	"POST /rollouts/":                    repo.RoleOperator,
-	"POST /tasks/":                       repo.RoleOperator,
+	"POST /rollouts/":                    repo.RoleAdmin,
+	"POST /tasks/":                       repo.RoleAdmin,
 	"GET /admins":                        repo.RoleAdmin,
 	"GET /admins/":                       repo.RoleAdmin,
 	"POST /admins/":                      repo.RoleAdmin,
@@ -133,7 +125,7 @@ func allowed(role, method, path string) bool {
 // their session is the problem.
 func (s *Server) forbid(w http.ResponseWriter, r *http.Request, sess *session) {
 	data := newPage(sess, r, "")
-	data.Error = "你的角色是 " + sess.admin.Role + "，这个操作需要 " + requiredRole(r.Method, r.URL.Path) + "。找 admin 角色的管理员来做，或让他们调整你的角色。"
+	data.Error = "你的角色是 " + sess.admin.Role + "，這個操作需要 " + requiredRole(r.Method, r.URL.Path) + "。找 admin 角色的管理員來做，或讓他們調整你的角色。"
 	s.render(w, "forbidden.html", http.StatusForbidden, data)
 }
 

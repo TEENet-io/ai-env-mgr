@@ -79,7 +79,7 @@ func (s *Service) SetArtifactStatus(ctx context.Context, id string, status repo.
 func (s *Service) SetArtifactNotes(ctx context.Context, id, notes, actor, requestID string) error {
 	notes = strings.TrimSpace(notes)
 	if len([]rune(notes)) > 500 {
-		return errors.New("说明最多 500 字")
+		return errors.New("說明最多 500 字")
 	}
 	err := s.store.InTx(ctx, func(tx repo.Store) error {
 		before, err := tx.Releases().ArtifactByID(ctx, id)
@@ -174,7 +174,7 @@ func (s *Service) createGlobalRollout(ctx context.Context, artifact repo.Artifac
 		}
 		rollout, err := tx.Releases().CreateRollout(ctx, repo.NewRollout{
 			Product: artifact.Product, ArtifactID: artifact.ID, Kind: repo.RolloutGlobal,
-			Note: "全局目标", CreatedBy: actor,
+			Note: "全局目標", CreatedBy: actor,
 		})
 		if err != nil {
 			return err
@@ -500,7 +500,7 @@ func (s *Service) FollowGlobal(ctx context.Context, deviceID, product, actor, re
 		open, err := tx.Releases().OpenTarget(ctx, device.ID, product)
 		switch {
 		case err == nil:
-			if _, err := tx.Releases().FinishTarget(ctx, open.ID, repo.TargetCancelled, "改为跟随全局", ""); err != nil {
+			if _, err := tx.Releases().FinishTarget(ctx, open.ID, repo.TargetCancelled, "改為跟隨全局", ""); err != nil {
 				return err
 			}
 			change["cancelled"] = open.ID

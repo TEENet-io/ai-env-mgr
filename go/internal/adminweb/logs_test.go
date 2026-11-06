@@ -183,9 +183,9 @@ func TestProbeHealthStates(t *testing.T) {
 		wantLabel   string
 		wantsDetail bool
 	}{
-		{"all good", "58", "0", "ok", "网关正常", false},
-		{"some failures", "40", "2", "bad", "网关有失败", false},
-		{"nothing at all", "0", "0", "warn", "无探测数据", true},
+		{"all good", "58", "0", "ok", "網關正常", false},
+		{"some failures", "40", "2", "bad", "網關有失敗", false},
+		{"nothing at all", "0", "0", "warn", "無探測資料", true},
 	} {
 		p := probeFrom([]slsclient.Log{{"oks": tc.oks, "fails": tc.fails}}, nil)
 		if p.Sev != tc.wantSev || p.Label != tc.wantLabel {
@@ -336,7 +336,7 @@ func TestLogsPageQueriesAndRenders(t *testing.T) {
 	body := rec.Body.String()
 
 	for _, want := range []string{
-		"网关正常", "调用 <b class=\"mono\">12</b>", "$0.4213",
+		"網關正常", "調用 <b class=\"mono\">12</b>", "$0.4213",
 		`<a href="/users/detail?user=peter">peter</a>`, "glm-5", "0.000421",
 	} {
 		if !strings.Contains(body, want) {
@@ -383,7 +383,7 @@ func TestLogsPageExplainsAForbiddenKey(t *testing.T) {
 		t.Error("the filter form was dropped")
 	}
 	// And nothing claims there were no calls: the console has no idea.
-	if strings.Contains(body, "这段时间没有调用记录") {
+	if strings.Contains(body, "這段時間沒有調用記錄") {
 		t.Error("a failed query was rendered as an empty week")
 	}
 }
@@ -413,7 +413,7 @@ func TestLogsPageWarnsWhenTheProbeIndexIsBehind(t *testing.T) {
 
 	s, cookie := logsServer(t, st)
 	body := getLogs(t, s, cookie, "").Body.String()
-	if !strings.Contains(body, "结果可能不完整") {
+	if !strings.Contains(body, "結果可能不完整") {
 		t.Fatal("a partial probe tally was presented as the hour's total")
 	}
 }
@@ -425,12 +425,12 @@ func TestLogsPageWarnsWhenTheIndexIsBehind(t *testing.T) {
 
 	s, cookie := logsServer(t, st)
 	body := getLogs(t, s, cookie, "").Body.String()
-	if !strings.Contains(body, "结果可能不完整") {
+	if !strings.Contains(body, "結果可能不完整") {
 		t.Error("an incomplete result was presented as a whole one")
 	}
 	// And with no probes at all, the bar says nobody is watching rather than
 	// showing green.
-	if !strings.Contains(body, "无探测数据") {
+	if !strings.Contains(body, "無探測資料") {
 		t.Error("an empty probe window did not read as a warning")
 	}
 }
@@ -457,7 +457,7 @@ func TestLogsPageEmptyResult(t *testing.T) {
 	st := newSLSStub(t)
 	s, cookie := logsServer(t, st)
 	body := getLogs(t, s, cookie, "").Body.String()
-	if !strings.Contains(body, "这段时间没有调用记录") {
+	if !strings.Contains(body, "這段時間沒有調用記錄") {
 		t.Error("an empty result did not say so")
 	}
 }
@@ -555,11 +555,11 @@ func TestLogsPageRendersMasterKeyAndOffRosterLabels(t *testing.T) {
 	if !strings.Contains(body, `<a href="/users/detail?user=peter">peter</a>`) {
 		t.Error("a roster member is not linked to their account page")
 	}
-	if !strings.Contains(body, "不在名册") || strings.Contains(body, `user=eventprobe`) {
-		t.Error("an off-roster id must be plain text marked 不在名册")
+	if !strings.Contains(body, "不在名冊") || strings.Contains(body, `user=eventprobe`) {
+		t.Error("an off-roster id must be plain text marked 不在名冊")
 	}
-	if !strings.Contains(body, "主密钥") || strings.Contains(body, "default_user_id") {
-		t.Error("a master-key call must read as 主密钥, never as the raw id")
+	if !strings.Contains(body, "主密鑰") || strings.Contains(body, "default_user_id") {
+		t.Error("a master-key call must read as 主密鑰, never as the raw id")
 	}
 }
 

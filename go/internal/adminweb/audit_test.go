@@ -36,7 +36,7 @@ func TestAuditPageFiltersAndExportsCSV(t *testing.T) {
 
 	page := dbGet(t, h, "/audit?action=account.quota", cookie)
 	body := page.Body.String()
-	if page.Code != 200 || !strings.Contains(body, "共 1 条") || !strings.Contains(body, "account.quota") || !strings.Contains(body, "MonthlyBudget: 20.000000 → 50.000000") {
+	if page.Code != 200 || !strings.Contains(body, "共 1 條") || !strings.Contains(body, "account.quota") || !strings.Contains(body, "MonthlyBudget: 20.000000 → 50.000000") {
 		t.Fatalf("filtered audit page: %d; count=%q rows=%q", page.Code, firstLine(body, "共 "), firstLine(body, "<tbody>"))
 	}
 	rows := body[strings.Index(body, "<tbody>"):strings.Index(body, "</tbody>")]
@@ -49,7 +49,7 @@ func TestAuditPageFiltersAndExportsCSV(t *testing.T) {
 		t.Fatal("the target must be the Windows user, not the uuid")
 	}
 	all := dbGet(t, h, "/audit", cookie)
-	if !strings.Contains(all.Body.String(), "共 3 条") {
+	if !strings.Contains(all.Body.String(), "共 3 條") {
 		t.Fatalf("unfiltered count missing; got %s", firstLine(all.Body.String(), "共 "))
 	}
 	admins, _ := s.dbm.store.Admins().List(t.Context())
@@ -83,7 +83,7 @@ func TestAuditCSVFailsLoudlyWhenTheSearchFails(t *testing.T) {
 	// session lookup) still works: the closest stand-in for a database that
 	// stops answering half-way through a request.
 	rec := dbGet(t, s.Handler(), "/audit.csv?actor=%00", cookie)
-	if rec.Code != http.StatusInternalServerError || !strings.Contains(rec.Body.String(), "导出失败") {
+	if rec.Code != http.StatusInternalServerError || !strings.Contains(rec.Body.String(), "導出失敗") {
 		t.Fatalf("a failed export must say so: %d %q", rec.Code, rec.Body.String())
 	}
 }
@@ -113,7 +113,7 @@ func TestAuditCSVNeutralisesFormulas(t *testing.T) {
 func TestCSVSafe(t *testing.T) {
 	cases := map[string]string{
 		"=1+1": "'=1+1", "+3": "'+3", "-2": "'-2", "@cmd": "'@cmd", "\tx": "'\tx", "\rx": "'\rx",
-		"plain": "plain", "": "", "工号 1": "工号 1", "2026-09-21T10:00:00+08:00": "2026-09-21T10:00:00+08:00",
+		"plain": "plain", "": "", "工號 1": "工號 1", "2026-09-21T10:00:00+08:00": "2026-09-21T10:00:00+08:00",
 	}
 	for in, want := range cases {
 		if got := csvSafe(in); got != want {

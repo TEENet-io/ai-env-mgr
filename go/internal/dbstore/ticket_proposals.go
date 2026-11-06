@@ -115,9 +115,9 @@ func (s TicketStore) SaveProposal(ctx context.Context, ticketID, adminID string,
 		if _, err := tx.Exec(ctx, `update tickets set status='waiting_customer',version=version+1,updated_at=now() where id=$1`, ticketID); err != nil {
 			return err
 		}
-		body := "服务团队已提交具体方案，等待客户确认；申请本身尚未执行。"
+		body := "服務團隊已提交具體方案，等待客戶確認；申請本身尚未執行。"
 		if requiresManager {
-			body = "服务团队已提交具体方案，等待账号管理联系人确认；申请本身尚未执行。"
+			body = "服務團隊已提交具體方案，等待帳號管理聯絡人確認；申請本身尚未執行。"
 		}
 		if _, err := tx.Exec(ctx, `insert into ticket_events(ticket_id,actor_type,actor_id,kind,visibility,body)
 			values($1,'admin',$2,'comment','public',$3)`, ticketID, adminID, body); err != nil {
@@ -173,9 +173,9 @@ func (s TicketStore) DecideProposal(ctx context.Context, ticketID, contactID str
 		if _, err := tx.Exec(ctx, `update tickets set status='working',version=version+1,updated_at=now() where id=$1`, ticketID); err != nil {
 			return err
 		}
-		body := "客户已确认具体方案；服务团队可以继续处理。"
+		body := "客戶已確認具體方案；服務團隊可以繼續處理。"
 		if decision == "rejected" {
-			body = "客户未同意具体方案；服务团队需重新评估，不能按此方案执行。"
+			body = "客戶未同意具體方案；服務團隊需重新評估，不能按此方案執行。"
 		}
 		if _, err := tx.Exec(ctx, `insert into ticket_events(ticket_id,actor_type,actor_id,kind,visibility,body)
 			values($1,'customer',$2,'comment','public',$3)`, ticketID, contactID, body); err != nil {

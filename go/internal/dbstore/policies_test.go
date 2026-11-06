@@ -20,7 +20,7 @@ func TestPublishedPoliciesAreImmutableAndRollBack(t *testing.T) {
 	}
 
 	first, err := s.Policies().Publish(ctx,
-		[]byte(`{"blockEnabled":true,"syncIntervalMinutes":30}`), "首个策略", "admin")
+		[]byte(`{"blockEnabled":true,"syncIntervalMinutes":30}`), "首個策略", "admin")
 	if err != nil {
 		t.Fatalf("publish: %v", err)
 	}
