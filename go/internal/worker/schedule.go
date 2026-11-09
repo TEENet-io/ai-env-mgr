@@ -31,6 +31,9 @@ const (
 	// TaskCatalogSync compares LiteLLM's current visible model catalog with
 	// the last fleet delivery and queues a refresh when the gateway changed.
 	TaskCatalogSync = "catalog_sync"
+	// TaskDirectorySync reads the customer's list of people from the custom
+	// tool. Queued only on a console that has one configured.
+	TaskDirectorySync = "directory_sync"
 
 	EveryReleaseScan   = 24 * time.Hour
 	EveryUsageSnapshot = 24 * time.Hour
@@ -40,6 +43,7 @@ const (
 	EveryDevicePrune   = 24 * time.Hour
 	EveryDataCleanup   = 24 * time.Hour
 	EveryCatalogSync   = time.Minute
+	EveryDirectorySync = 5 * time.Minute
 	// Rotation runs an hour into the day, after the usage snapshot and
 	// before anybody is at their desk in Asia.
 	AfterRotation = time.Hour
@@ -50,17 +54,27 @@ const (
 	EveryReconcile     = time.Hour
 )
 
+// Periodic is a job a particular console queues on top of the ones every
+// console does, because only it has what the job needs.
+type Periodic struct {
+	Kind        string
+	Every       time.Duration
+	After       time.Duration
+	MaxAttempts int
+}
+
 // Schedule queues the periodic jobs until ctx is done. Run it alongside
 // Worker.Run in the same process.
-func Schedule(ctx context.Context, store repo.Store, onError func(error)) {
+func Schedule(ctx context.Context, store repo.Store, onError func(error), extra ...Periodic) {
+	type job struct {
+		kind  string
+		every time.Duration
+		after time.Duration
+		max   int
+	}
 	tick := func() {
 		now := time.Now().UTC()
-		for _, job := range []struct {
-			kind  string
-			every time.Duration
-			after time.Duration
-			max   int
-		}{
+		jobs := []job{
 			{TaskReleaseScan, EveryReleaseScan, 0, 2},
 			{TaskUsageSnapshot, EveryUsageSnapshot, AfterUsageSnapshot, 2},
 			{TaskAlertEval, EveryAlertEval, 0, 1},
@@ -71,7 +85,11 @@ func Schedule(ctx context.Context, store repo.Store, onError func(error)) {
 			{TaskCatalogSync, EveryCatalogSync, 0, 2},
 			{repo.TaskAuditPublish, EveryAuditPublish, 0, 2},
 			{repo.TaskReconcile, EveryReconcile, 0, 3},
-		} {
+		}
+		for _, e := range extra {
+			jobs = append(jobs, job{e.Kind, e.Every, e.After, e.MaxAttempts})
+		}
+		for _, job := range jobs {
 			if ctx.Err() != nil {
 				// Stopping is not an error, and an enqueue cut off by the
 				// stop is not one either.

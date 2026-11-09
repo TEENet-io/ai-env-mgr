@@ -23,6 +23,17 @@ const (
 	// account and instance are due for deletion (ai工作间流程 §8), and the
 	// console still has a machine of theirs.
 	AlertOffboardCleanup = "offboard_cleanup"
+	// The customer's list of people (internal/directory). Sync: the list
+	// has not been read for a while. Held: a reading would have taken
+	// access from too many people at once and waits for a person. Missing:
+	// people the console knows were absent from the reply. FollowUp: a
+	// change the console does not act on by itself -- an AI workspace
+	// account whose owner was disabled, an ops role change -- and that a
+	// person has to.
+	AlertDirectorySync     = "directory_sync"
+	AlertDirectoryHeld     = "directory_held"
+	AlertDirectoryMissing  = "directory_missing"
+	AlertDirectoryFollowUp = "directory_follow_up"
 
 	SeverityWarn = "warn"
 	SeverityCrit = "crit"

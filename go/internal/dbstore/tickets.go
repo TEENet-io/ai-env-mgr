@@ -167,14 +167,14 @@ func (s TicketStore) CreateContactWithRole(ctx context.Context, email, name, has
 	}
 	var c CustomerContact
 	err := s.db.pool.QueryRow(ctx, `insert into customer_contacts(email,name,password_hash,role) values($1,$2,$3,$4)
-		returning id,email,name,password_hash,role,disabled_at`, email, name, hash, role).
+		returning id,email,name,coalesce(password_hash,''),role,disabled_at`, email, name, hash, role).
 		Scan(&c.ID, &c.Email, &c.Name, &c.PasswordHash, &c.Role, &c.DisabledAt)
 	return c, err
 }
 
 func (s TicketStore) ContactByEmail(ctx context.Context, email string) (CustomerContact, error) {
 	var c CustomerContact
-	err := s.db.pool.QueryRow(ctx, `select id,email,name,password_hash,role,disabled_at from customer_contacts where email=$1`, email).
+	err := s.db.pool.QueryRow(ctx, `select id,email,name,coalesce(password_hash,''),role,disabled_at from customer_contacts where email=$1`, email).
 		Scan(&c.ID, &c.Email, &c.Name, &c.PasswordHash, &c.Role, &c.DisabledAt)
 	return c, err
 }
@@ -185,7 +185,7 @@ func (s TicketStore) ContactBySession(ctx context.Context, hash []byte, idle tim
 		expires_at=least(cs.absolute_expires_at, now()+$2 * interval '1 second')
 		from customer_contacts cc where cs.contact_id=cc.id and cs.token_sha256=$1
 		and cs.expires_at>now() and cs.absolute_expires_at>now() and cc.disabled_at is null
-		returning cc.id,cc.email,cc.name,cc.password_hash,cc.role,cc.disabled_at`, hash, idle.Seconds()).
+		returning cc.id,cc.email,cc.name,coalesce(cc.password_hash,''),cc.role,cc.disabled_at`, hash, idle.Seconds()).
 		Scan(&c.ID, &c.Email, &c.Name, &c.PasswordHash, &c.Role, &c.DisabledAt)
 	return c, err
 }
@@ -202,7 +202,7 @@ func (s TicketStore) DeleteSession(ctx context.Context, hash []byte) error {
 }
 
 func (s TicketStore) ListContacts(ctx context.Context) ([]CustomerContact, error) {
-	rows, err := s.db.pool.Query(ctx, `select id,email,name,password_hash,role,disabled_at from customer_contacts order by name,email`)
+	rows, err := s.db.pool.Query(ctx, `select id,email,name,coalesce(password_hash,''),role,disabled_at from customer_contacts order by name,email`)
 	if err != nil {
 		return nil, err
 	}

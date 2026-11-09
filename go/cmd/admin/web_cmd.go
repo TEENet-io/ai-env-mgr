@@ -54,6 +54,11 @@ func cmdWeb(args []string) error {
 			// that started on its own would begin rewriting the objects those
 			// machines read.
 			Worker: os.Getenv("AIENVMGR_WORKER") == "on",
+			// The custom tool (AIC-206): how people sign in, and where the
+			// list of people is read from. The token never comes from a flag.
+			IdentityMode:   os.Getenv("AIENVMGR_IDENTITY_MODE"),
+			DirectoryURL:   os.Getenv("AIENVMGR_DIRECTORY_URL"),
+			DirectoryToken: os.Getenv("AIENVMGR_DIRECTORY_TOKEN"),
 		}
 	}
 	for i := 0; i < len(args); i++ {

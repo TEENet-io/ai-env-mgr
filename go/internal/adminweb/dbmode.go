@@ -24,6 +24,7 @@ import (
 	"github.com/TEENet-io/ai-env-mgr/internal/config"
 	"github.com/TEENet-io/ai-env-mgr/internal/dbstore"
 	"github.com/TEENet-io/ai-env-mgr/internal/deviceapi"
+	"github.com/TEENet-io/ai-env-mgr/internal/directory"
 	"github.com/TEENet-io/ai-env-mgr/internal/ecdclient"
 	"github.com/TEENet-io/ai-env-mgr/internal/litellm"
 	"github.com/TEENet-io/ai-env-mgr/internal/ops"
@@ -56,6 +57,38 @@ type DatabaseOptions struct {
 	// Worker runs the queue in this process. Off only for a second console
 	// instance that should serve pages and nothing else.
 	Worker bool
+
+	// IdentityMode is how people sign in (AIC-206). "local", the default,
+	// is the console's own accounts and passwords. "oidc" is the customer's
+	// custom tool; it is refused until the sign-in through it exists.
+	IdentityMode string
+	// DirectoryURL and DirectoryToken read the custom tool's list of people
+	// (GET /internal/directory/accounts). Set, the Worker reads it every
+	// five minutes, in either identity mode. The token comes from the
+	// environment only.
+	DirectoryURL   string
+	DirectoryToken string
+}
+
+const (
+	IdentityLocal = "local"
+	IdentityOIDC  = "oidc"
+)
+
+// checkIdentity refuses an identity configuration the console cannot honour,
+// rather than starting with a sign-in other than the one asked for.
+func (o DatabaseOptions) checkIdentity() error {
+	switch o.IdentityMode {
+	case "", IdentityLocal:
+	case IdentityOIDC:
+		return errors.New("AIENVMGR_IDENTITY_MODE=oidc: signing in through the custom tool is not available in this version")
+	default:
+		return fmt.Errorf("AIENVMGR_IDENTITY_MODE=%q: use local or oidc", o.IdentityMode)
+	}
+	if (o.DirectoryURL == "") != (o.DirectoryToken == "") {
+		return errors.New("AIENVMGR_DIRECTORY_URL and AIENVMGR_DIRECTORY_TOKEN are set together or not at all")
+	}
+	return nil
 }
 
 // dbState is everything the database mode adds to the server.
@@ -73,6 +106,9 @@ type dbState struct {
 	// else.
 	csrfKey []byte
 	worker  *worker.Worker
+	// directory reads the custom tool's list of people; nil when this
+	// console has none configured.
+	directory *directory.Client
 	// hub wakes agents long-polling the device API when their configuration
 	// changes; devices is that API.
 	hub     *deviceapi.Hub
@@ -127,6 +163,9 @@ func (s *Server) openDatabaseMode(ctx context.Context, opts DatabaseOptions) err
 	if opts.MasterKeyFile == "" {
 		return errors.New("database mode needs a master key file (AIENVMGR_MASTER_KEY_FILE)")
 	}
+	if err := opts.checkIdentity(); err != nil {
+		return err
+	}
 	if opts.OSSAccessKeyID == "" || opts.OSSAccessKeySecret == "" {
 		return errors.New("database mode needs the server's OSS identity (AIENVMGR_OSS_ACCESS_KEY_ID / _SECRET)")
 	}
@@ -176,6 +215,9 @@ func (s *Server) openDatabaseMode(ctx context.Context, opts DatabaseOptions) err
 		hub:     deviceapi.NewHub(),
 	}
 	st.ops.Notifier = st.hub
+	if opts.DirectoryURL != "" {
+		st.directory = &directory.Client{URL: opts.DirectoryURL, Token: opts.DirectoryToken}
+	}
 	st.devices = &deviceapi.Server{Store: store, Hub: st.hub, Events: s.events, BehindProxy: s.opts.BehindProxy, Bucket: objects}
 	if signer, ok := objects.(deviceapi.Presigner); ok {
 		st.devices.Objects = signer
@@ -339,6 +381,9 @@ func (s *Server) buildWorker(st *dbState) *worker.Worker {
 		})
 	}
 	w.Register(repo.TaskAuditPublish, audit)
+	if st.directory != nil {
+		w.Register(worker.TaskDirectorySync, worker.DirectorySync{Store: st.store, Directory: st.directory, Copy: st.db.Directory()})
+	}
 	return w
 }
 
@@ -355,9 +400,13 @@ func (s *Server) runWorker(ctx context.Context) func() {
 		done <- struct{}{}
 	}()
 	go func() {
+		var extra []worker.Periodic
+		if s.dbm.directory != nil {
+			extra = append(extra, worker.Periodic{Kind: worker.TaskDirectorySync, Every: worker.EveryDirectorySync, MaxAttempts: 1})
+		}
 		worker.Schedule(ctx, s.dbm.store, func(err error) {
 			log.Printf("adminweb: scheduler: %v", err)
-		})
+		}, extra...)
 		done <- struct{}{}
 	}()
 	return func() {

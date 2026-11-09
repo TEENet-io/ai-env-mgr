@@ -12,7 +12,7 @@ import (
 
 type adminRepo struct{ q querier }
 
-const adminColumns = `id, username, email, password_hash, password_set_at,
+const adminColumns = `id, username, email, coalesce(password_hash, ''), password_set_at,
 	totp_secret, totp_key_version, totp_enrolled_at, recovery_hashes,
 	role, created_at, updated_at, last_login_at, disabled_at`
 
@@ -305,7 +305,7 @@ func (r adminRepo) SessionByToken(ctx context.Context, token []byte) (repo.Sessi
 	return s, a, nil
 }
 
-const adminColumnsPrefixed = `a.id, a.username, a.email, a.password_hash, a.password_set_at,
+const adminColumnsPrefixed = `a.id, a.username, a.email, coalesce(a.password_hash, ''), a.password_set_at,
 	a.totp_secret, a.totp_key_version, a.totp_enrolled_at, a.recovery_hashes,
 	a.role, a.created_at, a.updated_at, a.last_login_at, a.disabled_at`
 
