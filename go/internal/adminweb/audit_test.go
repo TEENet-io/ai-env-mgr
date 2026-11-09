@@ -48,8 +48,9 @@ func TestAuditPageFiltersAndExportsCSV(t *testing.T) {
 	if !strings.Contains(body, ">work1<") || strings.Contains(body, ">"+e.ID+"<") {
 		t.Fatal("the target must be the Windows user, not the uuid")
 	}
+	// Three account operations, plus the administrator enrolling and signing in.
 	all := dbGet(t, h, "/audit", cookie)
-	if !strings.Contains(all.Body.String(), "共 3 條") {
+	if !strings.Contains(all.Body.String(), "共 5 條") {
 		t.Fatalf("unfiltered count missing; got %s", firstLine(all.Body.String(), "共 "))
 	}
 	admins, _ := s.dbm.store.Admins().List(t.Context())
@@ -58,7 +59,7 @@ func TestAuditPageFiltersAndExportsCSV(t *testing.T) {
 		t.Fatalf("csv: %d %s", csv.Code, csv.Header().Get("Content-Type"))
 	}
 	lines := strings.Split(strings.TrimSpace(csv.Body.String()), "\n")
-	if len(lines) != 4 || !strings.HasPrefix(lines[0], "\xEF\xBB\xBFoccurred_at,") {
+	if len(lines) != 6 || !strings.HasPrefix(lines[0], "\xEF\xBB\xBFoccurred_at,") {
 		t.Fatalf("csv has %d line(s); first %q", len(lines), lines[0])
 	}
 }

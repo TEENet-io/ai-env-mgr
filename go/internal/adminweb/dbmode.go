@@ -445,7 +445,7 @@ func (s *Server) dbLogin(w http.ResponseWriter, r *http.Request) {
 	switch {
 	case err == nil:
 		s.setSessionCookie(w, token, 0)
-		s.events.Audit("admin_signin", "administrator signed in", map[string]any{"user": admin.Username})
+		s.recordAccountEvent(r, admin.Username, "admin.signin", "admin", admin.ID, nil)
 		http.Redirect(w, r, "/overview", http.StatusSeeOther)
 	case errors.Is(err, authn.ErrEnrolmentRequired):
 		// The password was right; the account has no authenticator yet. A
@@ -575,7 +575,7 @@ func (s *Server) handleEnrol(w http.ResponseWriter, r *http.Request) {
 	// Enrolment is done: the cookie has served its purpose.
 	http.SetCookie(w, &http.Cookie{Name: enrolCookie, Value: "", Path: "/enrol", MaxAge: -1,
 		HttpOnly: true, SameSite: http.SameSiteStrictMode, Secure: s.browserUsesTLS()})
-	s.events.Audit("admin_enrolled", "administrator set up an authenticator", map[string]any{"user": admin.Username})
+	s.recordAccountEvent(r, admin.Username, "admin.enrol", "admin", admin.ID, nil)
 	data.Enrol.Codes = codes
 	data.Enrol.Secret, data.Enrol.URI = "", ""
 	s.render(w, "enrol.html", http.StatusOK, data)
@@ -611,7 +611,7 @@ func (s *Server) handleAccount(w http.ResponseWriter, r *http.Request, sess *ses
 	}
 	// Every session of this account is now gone, this one included.
 	s.setSessionCookie(w, "", -1)
-	s.events.Audit("admin_password_changed", "administrator changed their password", map[string]any{"user": sess.actor})
+	s.recordAccountEvent(r, sess.actor, "admin.password_change", "admin", sess.admin.ID, nil)
 	http.Redirect(w, r, opsSignInPath+"?msg="+"密碼已修改，請重新登入", http.StatusSeeOther)
 }
 
@@ -698,8 +698,8 @@ func (s *Server) actionAdminCreate(sess *session, r *http.Request) (repo.Admin, 
 		}
 		return repo.Admin{}, "", err
 	}
-	s.events.Audit("admin_created", "administrator account created", map[string]any{
-		"user": admin.Username, "role": admin.Role, "by": sess.actor,
+	s.recordAccountEvent(r, sess.actor, "admin.create", "admin", admin.ID, map[string]any{
+		"username": admin.Username, "email": admin.Email, "role": admin.Role,
 	})
 	return admin, password, nil
 }
@@ -750,9 +750,7 @@ func (s *Server) actionAdminReset(sess *session, r *http.Request) (repo.Admin, s
 	if err != nil {
 		return repo.Admin{}, "", err
 	}
-	s.events.Audit("admin_reset", "administrator sign-in reset", map[string]any{
-		"user": target.Username, "by": sess.actor,
-	})
+	s.recordAccountEvent(r, sess.actor, "admin.reset", "admin", target.ID, map[string]any{"username": target.Username})
 	return target, password, nil
 }
 
@@ -775,9 +773,11 @@ func (s *Server) actionAdminSetDisabled(disabled bool) func(*session, *http.Requ
 		if disabled {
 			_, _ = s.dbm.store.Admins().DeleteSessionsFor(r.Context(), target.ID)
 		}
-		s.events.Audit("admin_disabled", "administrator account toggled", map[string]any{
-			"user": target.Username, "disabled": disabled, "by": sess.actor,
-		})
+		action := "admin.enable"
+		if disabled {
+			action = "admin.disable"
+		}
+		s.recordAccountEvent(r, sess.actor, action, "admin", target.ID, map[string]any{"username": target.Username})
 		return nil
 	}
 }

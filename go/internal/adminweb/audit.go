@@ -187,20 +187,20 @@ func (s *Server) auditRows(r *http.Request, events []repo.AuditEvent) []auditRow
 	actors := s.actorNames(r)
 	rows := make([]auditRow, 0, len(events))
 	for _, ev := range events {
-		target := ev.TargetID
-		switch ev.TargetType {
-		case "employee":
-			if name, ok := employees[ev.TargetID]; ok {
-				target = name
-			}
-		case "device":
-			if name, ok := devices[ev.TargetID]; ok {
-				target = name
-			}
-		}
-		rows = append(rows, auditRow{AuditEvent: ev, Actor: actorName(actors, ev.ActorID), Target: target, Change: summariseChange(ev.Before, ev.After)})
+		rows = append(rows, auditRow{AuditEvent: ev, Actor: actorName(actors, ev.ActorID), Target: auditTargetName(ev, employees, devices, actors), Change: summariseChange(ev.Before, ev.After)})
 	}
 	return rows
+}
+
+// auditTargetName names what an event was done to: an employee by Windows
+// user, a machine by hostname, an account by its current name. Anything
+// else, or an id nobody answers to any more, is shown as recorded.
+func auditTargetName(ev repo.AuditEvent, employees, devices, accounts map[string]string) string {
+	names := map[string]map[string]string{"employee": employees, "device": devices, "admin": accounts, "customer_contact": accounts}[ev.TargetType]
+	if name := names[ev.TargetID]; name != "" {
+		return name
+	}
+	return ev.TargetID
 }
 
 // knownActions is what the action filter offers: every action the console
@@ -213,6 +213,34 @@ var knownActions = []string{
 	"release.artifact_register", "release.artifact_status", "release.global_target",
 	"release.rollout_create", "release.rollout_pause", "release.rollout_cancel",
 	"release.target_exclude", "release.target_retry",
+	"admin.signin", "admin.enrol", "admin.password_change", "admin.create", "admin.reset",
+	"admin.disable", "admin.enable",
+	"contact.create", "contact.role", "contact.password_reset", "contact.disable", "contact.enable",
+}
+
+// recordAccountEvent writes a change to a console or customer account into
+// the audit trail, which the audit page searches and the worker ships to the
+// log archive. The target is the account's id, so the record still names the
+// right account after it is renamed. If the database will not take the event
+// it goes straight to the log file instead: a sign-in or a reset that leaves
+// no trace at all is worse than one recorded in the wrong place.
+func (s *Server) recordAccountEvent(r *http.Request, actor, action, targetType, targetID string, detail map[string]any) {
+	var raw []byte
+	if len(detail) > 0 {
+		raw, _ = json.Marshal(detail)
+	}
+	_, err := s.dbm.store.Audit().Append(r.Context(), repo.AuditEvent{
+		ActorType: repo.ActorAdmin, ActorID: actor, Action: action,
+		TargetType: targetType, TargetID: targetID, Detail: raw, RequestID: s.clientKey(r),
+	})
+	if err == nil {
+		return
+	}
+	fields := map[string]any{"actor": actor, "target_type": targetType, "target": targetID, "audit_error": err.Error()}
+	for k, v := range detail {
+		fields[k] = v
+	}
+	s.events.Audit(action, action, fields)
 }
 
 func (s *Server) handleAudit(w http.ResponseWriter, r *http.Request, sess *session) {
@@ -273,12 +301,7 @@ func (s *Server) handleAuditCSV(w http.ResponseWriter, r *http.Request, _ *sessi
 			break
 		}
 		for _, ev := range events {
-			target := ev.TargetID
-			if n, ok := employees[ev.TargetID]; ok && ev.TargetType == "employee" {
-				target = n
-			} else if n, ok := devices[ev.TargetID]; ok && ev.TargetType == "device" {
-				target = n
-			}
+			target := auditTargetName(ev, employees, devices, actors)
 			cw.Write([]string{ev.OccurredAt.Local().Format(time.RFC3339), ev.ActorType, csvSafe(actorName(actors, ev.ActorID)), csvSafe(ev.Action),
 				ev.TargetType, csvSafe(target), csvSafe(ev.Result), csvSafe(ev.RequestID), csvSafe(summariseChange(ev.Before, ev.After)),
 				csvSafe(string(ev.Before)), csvSafe(string(ev.After))})

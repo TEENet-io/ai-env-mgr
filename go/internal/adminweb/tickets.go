@@ -444,11 +444,12 @@ func (s *Server) handleCustomerContactCreate(w http.ResponseWriter, r *http.Requ
 		http.Error(w, "無法生成密碼", 500)
 		return
 	}
-	if _, err := s.dbm.db.Tickets().CreateContactWithRole(r.Context(), email, name, hash, role); err != nil {
+	contact, err := s.dbm.db.Tickets().CreateContactWithRole(r.Context(), email, name, hash, role)
+	if err != nil {
 		s.redirectWithError(w, r, "/tickets", "建立聯絡人失敗，郵箱可能已存在")
 		return
 	}
-	s.events.Audit("customer_contact_created", "customer contact created", map[string]any{"email": email, "by": sess.actor})
+	s.recordAccountEvent(r, sess.actor, "contact.create", "customer_contact", contact.ID, map[string]any{"email": email, "role": role})
 	s.renderContactPassword(w, r, sess, email, password)
 }
 
@@ -457,7 +458,7 @@ func (s *Server) actionCustomerContactRole(sess *session, r *http.Request) error
 	if err := s.dbm.db.Tickets().SetContactRole(r.Context(), id, role); err != nil {
 		return err
 	}
-	s.events.Audit("customer_contact_role_changed", "customer contact role changed", map[string]any{"id": id, "role": role, "by": sess.actor})
+	s.recordAccountEvent(r, sess.actor, "contact.role", "customer_contact", id, map[string]any{"role": role})
 	return nil
 }
 
@@ -501,7 +502,7 @@ func (s *Server) handleCustomerContactReset(w http.ResponseWriter, r *http.Reque
 		http.Error(w, "無法重置密碼", 500)
 		return
 	}
-	s.events.Audit("customer_contact_password_reset", "customer contact password reset", map[string]any{"id": id, "by": sess.actor})
+	s.recordAccountEvent(r, sess.actor, "contact.password_reset", "customer_contact", id, map[string]any{"email": email})
 	s.renderContactPassword(w, r, sess, email, password)
 }
 
@@ -529,7 +530,11 @@ func (s *Server) actionCustomerContactDisabled(disable bool) func(*session, *htt
 		if err := s.dbm.db.Tickets().SetContactDisabled(r.Context(), id, disable); err != nil {
 			return err
 		}
-		s.events.Audit("customer_contact_access_changed", "customer contact access changed", map[string]any{"id": id, "disabled": disable, "by": sess.actor})
+		action := "contact.enable"
+		if disable {
+			action = "contact.disable"
+		}
+		s.recordAccountEvent(r, sess.actor, action, "customer_contact", id, nil)
 		return nil
 	}
 }
