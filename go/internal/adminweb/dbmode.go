@@ -704,6 +704,58 @@ func (s *Server) actionAdminCreate(sess *session, r *http.Request) (repo.Admin, 
 	return admin, password, nil
 }
 
+// handleAdminReset gives another administrator a new password and removes
+// their authenticator, for a forgotten password or a lost phone. Like
+// handleAdminCreate, the password is rendered straight from the POST.
+func (s *Server) handleAdminReset(w http.ResponseWriter, r *http.Request, sess *session) {
+	if r.Method != http.MethodPost {
+		http.Redirect(w, r, "/admins", http.StatusSeeOther)
+		return
+	}
+	if err := r.ParseForm(); err != nil || !hmac.Equal([]byte(r.PostFormValue("csrf")), []byte(sess.csrf)) {
+		s.redirectWithError(w, r, "/admins", "the form expired; reload the page and try again")
+		return
+	}
+	target, password, err := s.actionAdminReset(sess, r)
+	if err != nil {
+		s.redirectWithError(w, r, "/admins", err.Error())
+		return
+	}
+	data := s.adminsPage(r, sess)
+	data.NewUsername, data.NewPassword, data.NewIsReset = target.Username, password, true
+	s.render(w, "admins.html", http.StatusOK, data)
+}
+
+func (s *Server) actionAdminReset(sess *session, r *http.Request) (repo.Admin, string, error) {
+	if sess.admin.Role != repo.RoleAdmin {
+		return repo.Admin{}, "", errors.New("只有 admin 角色可以重置管理員的登入")
+	}
+	username := formValue(r, "username")
+	// Resetting oneself would trade the second factor for a password alone;
+	// one's own password is changed on /account, which asks for the old one.
+	if username == sess.actor {
+		return repo.Admin{}, "", errors.New("不能重置自己；修改自己的密碼請到「我的帳號」")
+	}
+	target, err := s.dbm.store.Admins().ByUsername(r.Context(), username)
+	if err != nil {
+		if errors.Is(err, repo.ErrNotFound) {
+			return repo.Admin{}, "", errors.New("找不到這個管理員")
+		}
+		return repo.Admin{}, "", err
+	}
+	if !strings.EqualFold(formValue(r, "confirm"), target.Username) {
+		return repo.Admin{}, "", errors.New("確認用戶名不一致，未重置")
+	}
+	password, err := s.dbm.auth.ResetAccount(r.Context(), target)
+	if err != nil {
+		return repo.Admin{}, "", err
+	}
+	s.events.Audit("admin_reset", "administrator sign-in reset", map[string]any{
+		"user": target.Username, "by": sess.actor,
+	})
+	return target, password, nil
+}
+
 func (s *Server) actionAdminSetDisabled(disabled bool) func(*session, *http.Request) error {
 	return func(sess *session, r *http.Request) error {
 		if sess.admin.Role != repo.RoleAdmin {

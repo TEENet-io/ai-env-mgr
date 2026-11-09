@@ -119,6 +119,25 @@ func (r adminRepo) SetPasswordHash(ctx context.Context, id, hash string) error {
 	return nil
 }
 
+func (r adminRepo) ResetSignIn(ctx context.Context, id, hash string) error {
+	if hash == "" {
+		return errors.New("reset sign-in: an empty hash would let anybody in")
+	}
+	tag, err := r.q.Exec(ctx,
+		`update admin_principals
+		    set password_hash = $2, password_set_at = now(),
+		        totp_secret = null, totp_key_version = '', totp_enrolled_at = null,
+		        recovery_hashes = '{}', updated_at = now()
+		  where id = $1`, id, hash)
+	if err != nil {
+		return mapError(err, "reset sign-in")
+	}
+	if tag.RowsAffected() == 0 {
+		return mapError(errNoRow, "reset sign-in")
+	}
+	return nil
+}
+
 // SetTOTP stores the sealed seed and the hashed recovery codes in one
 // statement. Enrolling a second factor without recovery codes is how somebody
 // locks themselves out of the console with a lost phone.

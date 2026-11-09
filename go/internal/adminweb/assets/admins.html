@@ -6,10 +6,13 @@
   <header class="pagehead"><h1>設定</h1></header>
   {{template "tabs-settings" .}}
   {{template "notices" .}}
-  {{if .NewPassword}}
+  {{if .NewPassword}}{{if .NewIsReset}}
+  <p class="note note-ok">已重置 <b>{{.NewUsername}}</b> 的登入，新密碼：<code class="id">{{.NewPassword}}</code><br>
+  <span class="dim">只顯示這一次。把它單獨交給對方；對方原來的驗證器和恢復碼已作廢，下次登入會引導重新綁定。</span></p>
+  {{else}}
   <p class="note note-ok">已建立 <b>{{.NewUsername}}</b>，初始密碼：<code class="id">{{.NewPassword}}</code><br>
   <span class="dim">只顯示這一次。把它交給對方，第一次登入會引導綁定驗證器。</span></p>
-  {{end}}
+  {{end}}{{end}}
 
   <div class="panel scroll">
   <table>
@@ -31,6 +34,7 @@
           {{else}}
           <form method="post" action="/admins/enable"><input type="hidden" name="csrf" value="{{$.CSRF}}"><input type="hidden" name="username" value="{{.Username}}"><button class="link">啟用</button></form>
           {{end}}
+          <form method="post" action="/admins/reset" class="inline" autocomplete="off"><input type="hidden" name="csrf" value="{{$.CSRF}}"><input type="hidden" name="username" value="{{.Username}}"><input name="confirm" placeholder="輸入用戶名確認" size="12" aria-label="輸入 {{.Username}} 確認重置"><button class="link danger">重置登入</button></form>
           {{end}}
         </td>
       </tr>
@@ -45,7 +49,7 @@
   <h2>添加管理員</h2>
   <form method="post" action="/admins/create" class="form" autocomplete="off">
     <input type="hidden" name="csrf" value="{{.CSRF}}">
-    <label>用戶名<input name="username" required placeholder="夢寒"></label>
+    <label>用戶名<input name="username" required></label>
     <label>郵箱<input name="email" type="email" placeholder="zhang@example.com"></label>
     <label>角色
       <select name="role">
@@ -55,7 +59,7 @@
     </label>
     <button type="submit">建立</button>
   </form>
-  <p class="hint">初始密碼隨機生成、只顯示一次；對方第一次登入時綁定驗證器。停用一個帳號會立即結束它的所有登入會話。</p>
+  <p class="hint">初始密碼隨機生成、只顯示一次；對方第一次登入時綁定驗證器。停用一個帳號會立即結束它的所有登入會話。忘記密碼或遺失驗證器時，由另一位 admin 點「重置登入」：生成新密碼、作廢原驗證器和恢復碼，並結束對方所有登入會話。</p>
   {{end}}
 </main>
 </div>

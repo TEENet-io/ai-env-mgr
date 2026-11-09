@@ -95,6 +95,16 @@ func (f *fakeAdmins) SetPasswordHash(_ context.Context, id, hash string) error {
 	return nil
 }
 
+func (f *fakeAdmins) ResetSignIn(_ context.Context, id, hash string) error {
+	a, ok := f.byID[id]
+	if !ok {
+		return repo.ErrNotFound
+	}
+	a.PasswordHash, a.TOTPSecret, a.TOTPKeyVersion, a.TOTPEnrolledAt, a.RecoveryHashes = hash, nil, "", nil, nil
+	f.byID[id] = a
+	return nil
+}
+
 func (f *fakeAdmins) ResealTOTP(_ context.Context, id string, sealed []byte, keyVersion string) error {
 	a, ok := f.byID[id]
 	if !ok {

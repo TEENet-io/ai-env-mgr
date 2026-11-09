@@ -25,6 +25,7 @@ func TestRequiredRoleReadsTheTableExactlyThenByPrefix(t *testing.T) {
 		"POST /machines/sync":    "admin",
 		"GET /admins":            "admin",
 		"POST /admins/create":    "admin",
+		"POST /admins/reset":     "admin",
 		"POST /something/new":    "admin", // unknown: closed
 		"GET /nowhere":           "admin",
 		"POST /account":          "viewer",

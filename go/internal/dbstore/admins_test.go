@@ -105,6 +105,30 @@ func TestEnrolmentStoresTheSealedSeedAndRecoveryCodes(t *testing.T) {
 	}
 }
 
+func TestResetSignInReplacesThePasswordAndRemovesTheSecondFactor(t *testing.T) {
+	s, ctx := newTestStore(t)
+	a := newAdmin(t, ctx, s, "zhang")
+	if err := s.Admins().SetTOTP(ctx, a.ID, []byte("sealed"), "k1", []string{"hash-1"}); err != nil {
+		t.Fatalf("set totp: %v", err)
+	}
+	if err := s.Admins().ResetSignIn(ctx, a.ID, ""); err == nil {
+		t.Error("a reset to an empty hash was accepted")
+	}
+	if err := s.Admins().ResetSignIn(ctx, a.ID, "new-hash"); err != nil {
+		t.Fatalf("reset: %v", err)
+	}
+	after, err := s.Admins().ByID(ctx, a.ID)
+	if err != nil {
+		t.Fatalf("ByID: %v", err)
+	}
+	if after.PasswordHash != "new-hash" || after.TOTPEnrolled() || len(after.TOTPSecret) != 0 || after.TOTPKeyVersion != "" || len(after.RecoveryHashes) != 0 {
+		t.Errorf("after reset = %+v, want the new hash and no second factor", after)
+	}
+	if err := s.Admins().ResetSignIn(ctx, "00000000-0000-0000-0000-000000000000", "h"); err == nil {
+		t.Error("resetting an account that does not exist succeeded")
+	}
+}
+
 func TestSessionsAreKeyedByAHashAndExpireTwoWays(t *testing.T) {
 	s, ctx := newTestStore(t)
 	a := newAdmin(t, ctx, s, "zhang")

@@ -937,6 +937,12 @@ type Admins interface {
 	Create(ctx context.Context, a NewAdmin) (Admin, error)
 	SetPasswordHash(ctx context.Context, id, hash string) error
 
+	// ResetSignIn replaces the password and removes the second factor and
+	// the recovery codes in one statement, so the account next signs in with
+	// the new password and enrols again. Half a reset -- a new password with
+	// the lost phone still required -- would not get anybody back in.
+	ResetSignIn(ctx context.Context, id, passwordHash string) error
+
 	// SetTOTP stores the sealed seed and the hashed recovery codes together:
 	// enrolling without recovery codes is how somebody locks themselves out
 	// with a lost phone.

@@ -65,10 +65,11 @@ type pageData struct {
 	Enrol   *enrolPage
 	Admins  []adminRow
 	// NewPassword and NewUsername are a freshly generated password, rendered
-	// straight from the POST that created the account and never carried in
-	// a URL: shown once.
+	// straight from the POST that created or reset the account and never
+	// carried in a URL: shown once. NewIsReset tells the two apart.
 	NewPassword      string
 	NewUsername      string
+	NewIsReset       bool
 	Tasks            []taskRow
 	Tickets          *ticketPage
 	ApplicationTasks []applicationTaskRow

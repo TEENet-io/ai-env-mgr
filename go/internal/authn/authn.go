@@ -347,6 +347,29 @@ func (s *Service) ChangePassword(ctx context.Context, admin repo.Admin, current,
 	return err
 }
 
+// ResetAccount is what another administrator does for somebody who has
+// forgotten their password or lost their authenticator: a generated password,
+// returned exactly once, and no second factor until they enrol again at the
+// next sign-in. Every session of the account is ended, since whoever is still
+// signed in as it may be the reason for the reset.
+func (s *Service) ResetAccount(ctx context.Context, admin repo.Admin) (string, error) {
+	password, err := GeneratePassword(20)
+	if err != nil {
+		return "", err
+	}
+	hash, err := HashPassword(password)
+	if err != nil {
+		return "", err
+	}
+	if err := s.admins.ResetSignIn(ctx, admin.ID, hash); err != nil {
+		return "", err
+	}
+	if _, err := s.admins.DeleteSessionsFor(ctx, admin.ID); err != nil {
+		return "", err
+	}
+	return password, nil
+}
+
 // Session returns the account behind a session cookie and refreshes its idle
 // timeout. ErrSignInFailed if the cookie is unknown, expired, or belongs to an
 // account that has since been disabled.
