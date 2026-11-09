@@ -82,6 +82,13 @@ func Schedule(ctx context.Context, store repo.Store, onError func(error)) {
 			}
 		}
 	}
+	// A start is most often a deploy, and a deploy is when CI has just put
+	// packages in the bucket -- or, after the database was rebuilt, when
+	// every package there is unknown. The daily scan may already have run
+	// today, so a start asks for one of its own.
+	if err := enqueueStartupScan(ctx, store, time.Now()); err != nil && onError != nil && ctx.Err() == nil {
+		onError(err)
+	}
 	tick()
 	ticker := time.NewTicker(30 * time.Second)
 	defer ticker.Stop()
@@ -114,6 +121,18 @@ func enqueuePeriodicAfter(ctx context.Context, store repo.Store, kind string, no
 		// retrying the old one for an hour would just double the load on
 		// whatever is broken.
 		MaxAttempts: maxAttempts,
+	})
+	return err
+}
+
+// enqueueStartupScan queues the scan a start asks for. It is keyed on the
+// moment, so every start gets one; a scan with nothing new to register only
+// lists the bucket.
+func enqueueStartupScan(ctx context.Context, store repo.Store, at time.Time) error {
+	_, _, err := store.Tasks().Enqueue(ctx, repo.NewTask{
+		Kind:           TaskReleaseScan,
+		IdempotencyKey: TaskReleaseScan + ":startup:" + at.UTC().Format(time.RFC3339Nano),
+		MaxAttempts:    2,
 	})
 	return err
 }

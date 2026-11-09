@@ -77,6 +77,40 @@ func TestScheduleStopsWithItsContext(t *testing.T) {
 	}
 }
 
+// Every start scans the bucket, even when today's daily scan has run: a
+// restart is usually a deploy, and the packages that came with it should be
+// on the releases page now, not tomorrow.
+func TestEveryStartQueuesAReleaseScan(t *testing.T) {
+	store, ctx := newWorkerStore(t)
+	if err := enqueuePeriodic(ctx, store, TaskReleaseScan, time.Now().UTC(), EveryReleaseScan, 2); err != nil {
+		t.Fatalf("daily scan: %v", err)
+	}
+	for range 2 {
+		runCtx, cancel := context.WithCancel(ctx)
+		done := make(chan struct{})
+		go func() {
+			Schedule(runCtx, store, func(err error) { t.Errorf("schedule: %v", err) })
+			close(done)
+		}()
+		time.Sleep(50 * time.Millisecond)
+		cancel()
+		<-done
+	}
+	tasks, err := store.Tasks().ListOpen(ctx, 0)
+	if err != nil {
+		t.Fatalf("list: %v", err)
+	}
+	scans := 0
+	for _, task := range tasks {
+		if task.Kind == TaskReleaseScan {
+			scans++
+		}
+	}
+	if scans != 3 {
+		t.Errorf("%d release scans queued, want the daily one and one per start", scans)
+	}
+}
+
 func mustJSON(t *testing.T, v any) []byte {
 	t.Helper()
 	data, err := json.Marshal(v)
