@@ -9,6 +9,7 @@ import (
 
 	"github.com/TEENet-io/ai-env-mgr/internal/admincore"
 	"github.com/TEENet-io/ai-env-mgr/internal/config"
+	"github.com/TEENet-io/ai-env-mgr/internal/dbstore"
 	"github.com/TEENet-io/ai-env-mgr/internal/ecdclient"
 	"github.com/TEENet-io/ai-env-mgr/internal/litellm"
 	"github.com/TEENet-io/ai-env-mgr/internal/model"
@@ -59,6 +60,10 @@ type pageData struct {
 	// Database mode. DBLogin switches the sign-in form to account and code;
 	// DB draws the extra nav entries; Admin is who is signed in.
 	DBLogin bool
+	// SSOTool names the custom tool when people sign in through it (the
+	// oidc identity mode); the sign-in pages then offer that instead of a
+	// password, except for the emergency account.
+	SSOTool string
 	DB      bool
 	Admin   string
 	Role    string
@@ -70,6 +75,7 @@ type pageData struct {
 	NewPassword      string
 	NewUsername      string
 	NewIsReset       bool
+	OpsAccounts      []dbstore.OpsAccount
 	Tasks            []taskRow
 	Tickets          *ticketPage
 	ApplicationTasks []applicationTaskRow
@@ -206,6 +212,7 @@ func (s *Server) render(w http.ResponseWriter, name string, code int, data pageD
 	// flag that decides one of its entries should not be something a new
 	// handler can forget.
 	data.SLS = s.opts.SLSProject != ""
+	data.SSOTool = s.ssoTool()
 	data.GatewayTeamID = s.teamID()
 	if data.DB {
 		data.OpenAlerts = s.openAlertCount()
@@ -277,6 +284,7 @@ func (s *Server) loginPage(errMsg string) pageData {
 		Fixed:    s.opts.Bucket != "" && s.opts.Endpoint != "",
 		Error:    errMsg,
 		DBLogin:  s.dbm != nil,
+		SSOTool:  s.ssoTool(),
 	}
 }
 

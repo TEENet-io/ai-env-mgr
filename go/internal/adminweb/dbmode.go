@@ -68,6 +68,19 @@ type DatabaseOptions struct {
 	// environment only.
 	DirectoryURL   string
 	DirectoryToken string
+
+	// The custom tool as an OpenID Connect provider, for IdentityMode oidc.
+	// RedirectURL is this console's /oidc/callback as the tool has it
+	// registered; empty means https://<PublicHost>/oidc/callback. ToolName
+	// is what the sign-in buttons call the tool. EmergencyAdmin is the one
+	// local account that may still sign in with a password, for when the
+	// tool is down; every use of it raises an alert.
+	OIDCIssuer       string
+	OIDCClientID     string
+	OIDCClientSecret string
+	OIDCRedirectURL  string
+	ToolName         string
+	EmergencyAdmin   string
 }
 
 const (
@@ -81,7 +94,14 @@ func (o DatabaseOptions) checkIdentity() error {
 	switch o.IdentityMode {
 	case "", IdentityLocal:
 	case IdentityOIDC:
-		return errors.New("AIENVMGR_IDENTITY_MODE=oidc: signing in through the custom tool is not available in this version")
+		if o.OIDCIssuer == "" || o.OIDCClientID == "" || o.OIDCClientSecret == "" {
+			return errors.New("AIENVMGR_IDENTITY_MODE=oidc needs AIENVMGR_OIDC_ISSUER, _CLIENT_ID and _CLIENT_SECRET")
+		}
+		// Without the list, somebody disabled in the tool keeps the sessions
+		// they already have here.
+		if o.DirectoryURL == "" {
+			return errors.New("AIENVMGR_IDENTITY_MODE=oidc needs the directory (AIENVMGR_DIRECTORY_URL and _TOKEN)")
+		}
 	default:
 		return fmt.Errorf("AIENVMGR_IDENTITY_MODE=%q: use local or oidc", o.IdentityMode)
 	}
@@ -109,6 +129,8 @@ type dbState struct {
 	// directory reads the custom tool's list of people; nil when this
 	// console has none configured.
 	directory *directory.Client
+	// identity is set when people sign in through the custom tool.
+	identity *oidcIdentity
 	// hub wakes agents long-polling the device API when their configuration
 	// changes; devices is that API.
 	hub     *deviceapi.Hub
@@ -217,6 +239,9 @@ func (s *Server) openDatabaseMode(ctx context.Context, opts DatabaseOptions) err
 	st.ops.Notifier = st.hub
 	if opts.DirectoryURL != "" {
 		st.directory = &directory.Client{URL: opts.DirectoryURL, Token: opts.DirectoryToken}
+	}
+	if opts.IdentityMode == IdentityOIDC {
+		st.identity = newOIDCIdentity(opts, s.consoleURL())
 	}
 	st.devices = &deviceapi.Server{Store: store, Hub: st.hub, Events: s.events, BehindProxy: s.opts.BehindProxy, Bucket: objects}
 	if signer, ok := objects.(deviceapi.Presigner); ok {
@@ -490,11 +515,24 @@ func (s *Server) dbLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Through the custom tool, a password opens only the emergency account.
+	emergency := false
+	if s.oidcMode() {
+		emergency = s.dbm.identity.emergency != "" && strings.EqualFold(username, s.dbm.identity.emergency)
+		if !emergency {
+			s.render(w, "login.html", http.StatusForbidden, s.loginPage("請使用"+s.dbm.identity.toolName+"帳號登入"))
+			return
+		}
+	}
+
 	token, admin, err := s.dbm.auth.SignIn(r.Context(), username, password, code, s.clientKey(r), r.UserAgent())
 	switch {
 	case err == nil:
 		s.setSessionCookie(w, token, 0)
-		s.recordAccountEvent(r, admin.Username, "admin.signin", "admin", admin.ID, nil)
+		s.recordAccountEvent(r, admin.Username, "admin.signin", "admin", admin.ID, map[string]any{"emergency": emergency})
+		if emergency {
+			s.alertEmergencySignIn(r, admin.Username)
+		}
 		http.Redirect(w, r, "/overview", http.StatusSeeOther)
 	case errors.Is(err, authn.ErrEnrolmentRequired):
 		// The password was right; the account has no authenticator yet. A
@@ -675,6 +713,10 @@ type adminRow struct {
 	LastLogin     string
 	Enabled       bool
 	Self          bool
+	ID            string
+	// Linked is the custom tool's ops account this console account is bound
+	// to, in the oidc mode: the whitelist of the ops entry.
+	Linked string
 }
 
 func (s *Server) handleAdmins(w http.ResponseWriter, r *http.Request, sess *session) {
@@ -689,10 +731,18 @@ func (s *Server) adminsPage(r *http.Request, sess *session) pageData {
 		data.Error = "could not list administrators"
 		return data
 	}
+	var links map[string]directory.Account
+	if s.oidcMode() {
+		links, _ = s.dbm.db.Directory().AdminLinks(r.Context())
+		data.OpsAccounts, _ = s.dbm.db.Directory().OpsAccounts(r.Context())
+	}
 	for _, a := range admins {
 		row := adminRow{
 			Username: a.Username, Email: a.Email, Role: a.Role, Enrolled: a.TOTPEnrolled(),
-			RecoveryCodes: len(a.RecoveryHashes), Enabled: a.Enabled(), Self: a.Username == sess.actor,
+			RecoveryCodes: len(a.RecoveryHashes), Enabled: a.Enabled(), Self: a.Username == sess.actor, ID: a.ID,
+		}
+		if d, ok := links[a.ID]; ok {
+			row.Linked = d.Username
 		}
 		if a.LastLoginAt != nil {
 			row.LastLogin = a.LastLoginAt.In(shanghai()).Format("2006-01-02 15:04")

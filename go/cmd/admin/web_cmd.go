@@ -56,9 +56,15 @@ func cmdWeb(args []string) error {
 			Worker: os.Getenv("AIENVMGR_WORKER") == "on",
 			// The custom tool (AIC-206): how people sign in, and where the
 			// list of people is read from. The token never comes from a flag.
-			IdentityMode:   os.Getenv("AIENVMGR_IDENTITY_MODE"),
-			DirectoryURL:   os.Getenv("AIENVMGR_DIRECTORY_URL"),
-			DirectoryToken: os.Getenv("AIENVMGR_DIRECTORY_TOKEN"),
+			IdentityMode:     os.Getenv("AIENVMGR_IDENTITY_MODE"),
+			DirectoryURL:     os.Getenv("AIENVMGR_DIRECTORY_URL"),
+			DirectoryToken:   os.Getenv("AIENVMGR_DIRECTORY_TOKEN"),
+			OIDCIssuer:       os.Getenv("AIENVMGR_OIDC_ISSUER"),
+			OIDCClientID:     os.Getenv("AIENVMGR_OIDC_CLIENT_ID"),
+			OIDCClientSecret: os.Getenv("AIENVMGR_OIDC_CLIENT_SECRET"),
+			OIDCRedirectURL:  os.Getenv("AIENVMGR_OIDC_REDIRECT_URL"),
+			ToolName:         os.Getenv("AIENVMGR_TOOL_NAME"),
+			EmergencyAdmin:   os.Getenv("AIENVMGR_EMERGENCY_ADMIN"),
 		}
 	}
 	for i := 0; i < len(args); i++ {

@@ -373,3 +373,132 @@ func (s DirectoryStore) ApplyReading(ctx context.Context, list directory.List, p
 	res, err := s.Apply(ctx, list, plan)
 	return res.String(), err
 }
+
+// ErrNotPermitted is a sign-in the list does not allow: the account is
+// disabled or deleted there, or has no usable contact here.
+var ErrNotPermitted = errors.New("this account may not sign in")
+
+// CustomerForSignIn is the contact a person signing in through the custom
+// tool becomes. A person new since the last reading is added to the copy and
+// given a contact on the spot, so a new employee can raise a ticket before
+// the next sync; one the copy knows as disabled or deleted is refused even
+// if the tool let them in. The copy is not updated from the token otherwise:
+// the sync owns it.
+func (s DirectoryStore) CustomerForSignIn(ctx context.Context, a directory.Account) (string, error) {
+	var contactID string
+	err := s.db.Tx(ctx, func(tx pgx.Tx) error {
+		var status string
+		err := tx.QueryRow(ctx, `select status from directory_accounts where id = $1`, a.ID).Scan(&status)
+		switch {
+		case errors.Is(err, pgx.ErrNoRows):
+			a.Status = directory.StatusActive
+			if _, err := tx.Exec(ctx, `insert into directory_accounts (id, username, name, email, role, status)
+				values ($1, $2, $3, $4, $5, 'active') on conflict (id) do nothing`,
+				a.ID, a.Username, a.Name, a.Email, a.Role); err != nil {
+				return err
+			}
+			if err := (directoryApply{ctx: ctx, tx: tx, res: &SyncResult{}}).audit(directory.Change{Kind: directory.ChangeAdded, After: a}); err != nil {
+				return err
+			}
+		case err != nil:
+			return err
+		case status != directory.StatusActive:
+			return ErrNotPermitted
+		}
+		if err := (directoryApply{ctx: ctx, tx: tx, res: &SyncResult{}}).ensureContact(a); err != nil {
+			return err
+		}
+		err = tx.QueryRow(ctx, `select id::text from customer_contacts where directory_id = $1 and disabled_at is null`, a.ID).Scan(&contactID)
+		if errors.Is(err, pgx.ErrNoRows) {
+			return ErrNotPermitted
+		}
+		return err
+	})
+	return contactID, err
+}
+
+// AdminForSignIn is the console account linked to a directory account, if
+// that link exists, the account is enabled, and the copy does not know the
+// person as disabled. The link is the whitelist: an ops role in the tool on
+// its own opens nothing here.
+func (s DirectoryStore) AdminForSignIn(ctx context.Context, directoryID string) (string, error) {
+	var username string
+	err := s.db.pool.QueryRow(ctx, `select a.username from admin_principals a
+		left join directory_accounts d on d.id = a.directory_id
+		where a.directory_id = $1 and a.disabled_at is null
+		  and (d.id is null or d.status = 'active')`, directoryID).Scan(&username)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return "", ErrNotPermitted
+	}
+	return username, err
+}
+
+// OpsAccount is a directory account with the ops role, and the console
+// account it is linked to, if any.
+type OpsAccount struct {
+	directory.Account
+	LinkedTo string // admin_principals.username
+}
+
+// OpsAccounts lists the tool's ops accounts for the linking form.
+func (s DirectoryStore) OpsAccounts(ctx context.Context) ([]OpsAccount, error) {
+	rows, err := s.db.pool.Query(ctx, `select d.id::text, d.username, d.name, d.email, d.role, d.status, coalesce(a.username, '')
+		from directory_accounts d left join admin_principals a on a.directory_id = d.id
+		where d.role = 'ops' order by d.username`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []OpsAccount
+	for rows.Next() {
+		var o OpsAccount
+		if err := rows.Scan(&o.ID, &o.Username, &o.Name, &o.Email, &o.Role, &o.Status, &o.LinkedTo); err != nil {
+			return nil, err
+		}
+		out = append(out, o)
+	}
+	return out, rows.Err()
+}
+
+// AdminLinks maps console account ids to the directory account each is
+// linked to.
+func (s DirectoryStore) AdminLinks(ctx context.Context) (map[string]directory.Account, error) {
+	rows, err := s.db.pool.Query(ctx, `select a.id::text, d.id::text, d.username, d.name, d.email, d.role, d.status
+		from admin_principals a join directory_accounts d on d.id = a.directory_id`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := map[string]directory.Account{}
+	for rows.Next() {
+		var adminID string
+		var d directory.Account
+		if err := rows.Scan(&adminID, &d.ID, &d.Username, &d.Name, &d.Email, &d.Role, &d.Status); err != nil {
+			return nil, err
+		}
+		out[adminID] = d
+	}
+	return out, rows.Err()
+}
+
+// LinkAdmin binds a console account to an ops account of the tool, or
+// unbinds it when directoryID is empty. Only an ops account can be bound,
+// and only to one console account.
+func (s DirectoryStore) LinkAdmin(ctx context.Context, adminID, directoryID string) error {
+	if directoryID == "" {
+		_, err := s.db.pool.Exec(ctx, `update admin_principals set directory_id = null, updated_at = now() where id = $1`, adminID)
+		return err
+	}
+	tag, err := s.db.pool.Exec(ctx, `update admin_principals set directory_id = $2, updated_at = now()
+		where id = $1 and exists (select 1 from directory_accounts where id = $2 and role = 'ops')`, adminID, directoryID)
+	if err != nil {
+		return mapError(err, "link account")
+	}
+	if tag.RowsAffected() == 0 {
+		return ErrNotPermitted
+	}
+	// A new link changes who this account is; whoever is signed in as it
+	// signs in again.
+	_, err = s.db.pool.Exec(ctx, `delete from admin_sessions where principal_id = $1`, adminID)
+	return err
+}

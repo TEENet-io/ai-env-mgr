@@ -10,16 +10,19 @@ func TestOnlyAnIdentityConfigurationTheConsoleCanHonourStarts(t *testing.T) {
 		"default":        {},
 		"local":          {IdentityMode: IdentityLocal},
 		"with directory": {IdentityMode: IdentityLocal, DirectoryURL: "https://tool.example.com/internal/directory/accounts", DirectoryToken: "t"},
+		"oidc": {IdentityMode: IdentityOIDC, OIDCIssuer: "https://tool.example.com", OIDCClientID: "c", OIDCClientSecret: "s",
+			DirectoryURL: "https://tool.example.com/internal/directory/accounts", DirectoryToken: "t"},
 	} {
 		if err := o.checkIdentity(); err != nil {
 			t.Errorf("%s: refused: %v", name, err)
 		}
 	}
 	for name, o := range map[string]DatabaseOptions{
-		"oidc, not built yet": {IdentityMode: IdentityOIDC},
-		"unknown mode":        {IdentityMode: "ldap"},
-		"url without token":   {DirectoryURL: "https://tool.example.com/x"},
-		"token without url":   {DirectoryToken: "t"},
+		"oidc without a client": {IdentityMode: IdentityOIDC, DirectoryURL: "https://tool.example.com/x", DirectoryToken: "t"},
+		"oidc without the list": {IdentityMode: IdentityOIDC, OIDCIssuer: "https://tool.example.com", OIDCClientID: "c", OIDCClientSecret: "s"},
+		"unknown mode":          {IdentityMode: "ldap"},
+		"url without token":     {DirectoryURL: "https://tool.example.com/x"},
+		"token without url":     {DirectoryToken: "t"},
 	} {
 		if err := o.checkIdentity(); err == nil {
 			t.Errorf("%s: accepted", name)

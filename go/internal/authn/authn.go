@@ -215,6 +215,35 @@ func (s *Service) SignIn(ctx context.Context, username, password, code, sourceIP
 	return token, admin, nil
 }
 
+// SignInVerified opens a session for an account whose identity was proved
+// elsewhere -- by the customer's custom tool, which checked the password and
+// the second factor and said who this is. The caller has already decided the
+// person may come in; this only refuses an account that is unknown or
+// disabled here, and records the sign-in as SignIn would.
+func (s *Service) SignInVerified(ctx context.Context, username, sourceIP, userAgent string) (string, repo.Admin, error) {
+	admin, err := s.admins.ByUsername(ctx, username)
+	if err != nil {
+		if errors.Is(err, repo.ErrNotFound) {
+			s.record(ctx, username, sourceIP, repo.LoginUnknownUser)
+			return "", repo.Admin{}, ErrSignInFailed
+		}
+		return "", repo.Admin{}, err
+	}
+	if !admin.Enabled() {
+		s.record(ctx, username, sourceIP, repo.LoginDisabled)
+		return "", repo.Admin{}, ErrDisabled
+	}
+	token, err := s.openSession(ctx, admin, sourceIP, userAgent)
+	if err != nil {
+		return "", repo.Admin{}, err
+	}
+	s.record(ctx, username, sourceIP, repo.LoginOK)
+	if err := s.admins.RecordLogin(ctx, admin.ID, s.now()); err != nil {
+		return "", repo.Admin{}, err
+	}
+	return token, admin, nil
+}
+
 // decoyHash is a well-formed Argon2id record whose digest matches nothing. It
 // is verified against when the account does not exist, purely so that the
 // answer costs the same as a real check -- an unknown user that comes back in

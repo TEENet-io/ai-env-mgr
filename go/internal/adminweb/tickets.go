@@ -42,6 +42,7 @@ type ticketPage struct {
 
 type customerPage struct {
 	CSRF, Name, Email, Error, Notice string
+	SSOTool                          string // the custom tool, when people sign in through it
 	SubmitKey                        string
 	AdminMode                        bool
 	AdminPage                        pageData
@@ -448,6 +449,10 @@ func (s *Server) handleCustomerContactCreate(w http.ResponseWriter, r *http.Requ
 		http.Redirect(w, r, "/tickets", http.StatusSeeOther)
 		return
 	}
+	if s.oidcMode() {
+		s.redirectWithError(w, r, "/tickets", errManagedByTool.Error())
+		return
+	}
 	if err := r.ParseForm(); err != nil || subtle.ConstantTimeCompare([]byte(r.PostFormValue("csrf")), []byte(sess.csrf)) != 1 {
 		s.redirectWithError(w, r, "/tickets", "表單已過期，請刷新頁面")
 		return
@@ -484,6 +489,9 @@ func (s *Server) handleCustomerContactCreate(w http.ResponseWriter, r *http.Requ
 }
 
 func (s *Server) actionCustomerContactRole(sess *session, r *http.Request) error {
+	if s.oidcMode() {
+		return errManagedByTool
+	}
 	id, role := formValue(r, "id"), formValue(r, "role")
 	if err := s.dbm.db.Tickets().SetContactRole(r.Context(), id, role); err != nil {
 		return err
@@ -495,6 +503,10 @@ func (s *Server) actionCustomerContactRole(sess *session, r *http.Request) error
 func (s *Server) handleCustomerContactReset(w http.ResponseWriter, r *http.Request, sess *session) {
 	if r.Method != http.MethodPost {
 		http.Redirect(w, r, "/tickets", 303)
+		return
+	}
+	if s.oidcMode() {
+		s.redirectWithError(w, r, "/tickets", errManagedByTool.Error())
 		return
 	}
 	if err := r.ParseForm(); err != nil || subtle.ConstantTimeCompare([]byte(r.PostFormValue("csrf")), []byte(sess.csrf)) != 1 {
@@ -553,6 +565,9 @@ func (s *Server) renderContactPassword(w http.ResponseWriter, r *http.Request, s
 
 func (s *Server) actionCustomerContactDisabled(disable bool) func(*session, *http.Request) error {
 	return func(sess *session, r *http.Request) error {
+		if s.oidcMode() {
+			return errManagedByTool
+		}
 		id := formValue(r, "id")
 		if id == "" {
 			return errors.New("缺少聯絡人 ID")
@@ -615,11 +630,15 @@ func (s *Server) handleCustomerLogin(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		http.SetCookie(w, &http.Cookie{Name: customerLoginCSRFCookie, Value: csrf, Path: "/customer/login", HttpOnly: true, Secure: s.browserUsesTLS(), SameSite: http.SameSiteStrictMode, MaxAge: 600})
-		s.tpl.ExecuteTemplate(w, "customer_login.html", customerPage{CSRF: csrf, Error: r.URL.Query().Get("err")})
+		s.tpl.ExecuteTemplate(w, "customer_login.html", customerPage{CSRF: csrf, Error: r.URL.Query().Get("err"), SSOTool: s.ssoTool()})
 		return
 	}
 	if r.Method != http.MethodPost {
 		http.Error(w, "method not allowed", 405)
+		return
+	}
+	if s.oidcMode() {
+		http.Redirect(w, r, "/customer/login", 303)
 		return
 	}
 	r.Body = http.MaxBytesReader(w, r.Body, 8<<10)
@@ -689,12 +708,25 @@ func (s *Server) handleCustomerLogout(w http.ResponseWriter, r *http.Request) {
 		_ = s.dbm.db.Tickets().DeleteSession(r.Context(), sum[:])
 	}
 	http.SetCookie(w, &http.Cookie{Name: customerCookie, Value: "", Path: "/customer", MaxAge: -1, HttpOnly: true, Secure: s.browserUsesTLS(), SameSite: http.SameSiteStrictMode})
+	// Signing out here signs out of the tool too; otherwise the next visit
+	// would sign straight back in through it.
+	// A page that moves on rather than a redirect: the console's CSP has
+	// form-action 'self', and a redirect at the end of a form post counts as
+	// the form's target, so a 303 to the tool is blocked by the browser.
+	if to := s.oidcLogoutURL(r, "/customer/login"); to != "" {
+		bounce(w, to)
+		return
+	}
 	http.Redirect(w, r, "/customer/login", 303)
 }
 
 func (s *Server) handleCustomerPassword(w http.ResponseWriter, r *http.Request) {
 	c, _, ok := s.customerPost(w, r)
 	if !ok {
+		return
+	}
+	if s.oidcMode() {
+		http.Error(w, errManagedByTool.Error(), http.StatusForbidden)
 		return
 	}
 	oldPassword, newPassword := r.PostFormValue("old_password"), r.PostFormValue("new_password")

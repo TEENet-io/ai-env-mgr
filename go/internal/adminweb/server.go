@@ -355,6 +355,8 @@ func (s *Server) Handler() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/login", s.handleLogin)
 	mux.HandleFunc("/logout", s.handleLogout)
+	mux.HandleFunc("/oidc/start", s.handleOIDCStart)
+	mux.HandleFunc("/oidc/callback", s.handleOIDCCallback)
 	mux.HandleFunc("/", s.handleIndex)
 	mux.HandleFunc("/overview", s.requireSession(s.handleOverview))
 	// The fleet, the policy and the gateway are one page now. The three old
@@ -452,6 +454,7 @@ func (s *Server) Handler() http.Handler {
 		mux.HandleFunc("/admins", s.requireSession(s.handleAdmins))
 		mux.HandleFunc("/admins/create", s.requireSession(s.handleAdminCreate))
 		mux.HandleFunc("/admins/reset", s.requireSession(s.handleAdminReset))
+		mux.HandleFunc("/admins/link", s.requirePost("/admins", s.actionAdminLink))
 		mux.HandleFunc("/admins/disable", s.requirePost("/admins", s.actionAdminSetDisabled(true)))
 		mux.HandleFunc("/admins/enable", s.requirePost("/admins", s.actionAdminSetDisabled(false)))
 		mux.HandleFunc("/tasks", s.requireSession(s.handleTasks))

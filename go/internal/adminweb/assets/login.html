@@ -2,7 +2,21 @@
 <body class="gate">
 <main class="card">
   <h1>AI 環境管理</h1>
-  {{if .DBLogin}}
+  {{if and .DBLogin .SSOTool}}
+  <p class="lede">運維人員用本人的{{.SSOTool}}帳號登入，每次都要輸入密碼和驗證碼。</p>
+  {{if .Error}}<p class="note note-err">{{.Error}}</p>{{end}}
+  {{if .Notice}}<p class="note note-ok">{{.Notice}}</p>{{end}}
+  <p><a class="button" href="/oidc/start?entry=ops">使用{{.SSOTool}}帳號登入</a></p>
+  <details><summary>緊急帳號</summary>
+  <p class="hint">只在{{.SSOTool}}無法使用時用。每次使用都會發出告警。</p>
+  <form method="post" action="/login" autocomplete="off">
+    <label>用戶名<input name="username" required autocomplete="username"></label>
+    <label>密碼<input name="password" type="password" required autocomplete="current-password"></label>
+    <label>驗證碼<input name="code" inputmode="numeric" autocomplete="one-time-code" placeholder="驗證器裡的六位數字；或一個恢復碼"></label>
+    <button type="submit">登入</button>
+  </form>
+  </details>
+  {{else if .DBLogin}}
   <p class="lede">用管理員帳號登入。第一次登入會引導綁定驗證器。</p>
   {{if .Error}}<p class="note note-err">{{.Error}}</p>{{end}}
   {{if .Notice}}<p class="note note-ok">{{.Notice}}</p>{{end}}

@@ -16,13 +16,14 @@
 
   <div class="panel scroll">
   <table>
-    <thead><tr><th>用戶名</th><th>郵箱</th><th>角色</th><th>驗證器</th><th>恢復碼</th><th>最近登入</th><th>狀態</th><th></th></tr></thead>
+    <thead><tr><th>用戶名</th><th>郵箱</th><th>角色</th>{{if .SSOTool}}<th>{{.SSOTool}}帳號</th>{{end}}<th>驗證器</th><th>恢復碼</th><th>最近登入</th><th>狀態</th><th></th></tr></thead>
     <tbody>
     {{range .Admins}}
       <tr>
         <td class="id">{{.Username}}{{if .Self}} <span class="dim">（我）</span>{{end}}</td>
         <td class="dim">{{if .Email}}{{.Email}}{{else}}—{{end}}</td>
         <td>{{.Role}}</td>
+        {{if $.SSOTool}}<td>{{if .Linked}}<span class="id">{{.Linked}}</span>{{else}}<span class="tag tag-warn">未綁定</span>{{end}}</td>{{end}}
         <td>{{if .Enrolled}}<span class="tag tag-ok">已綁定</span>{{else}}<span class="tag tag-warn">未綁定</span>{{end}}</td>
         <td class="num">{{.RecoveryCodes}}</td>
         <td class="dim">{{if .LastLogin}}{{.LastLogin}}{{else}}從未{{end}}</td>
@@ -39,11 +40,22 @@
         </td>
       </tr>
     {{else}}
-      <tr><td colspan="8" class="empty">還沒有管理員。</td></tr>
+      <tr><td colspan="9" class="empty">還沒有管理員。</td></tr>
     {{end}}
     </tbody>
   </table>
   </div>
+
+  {{if and .SSOTool (eq .Role "admin")}}
+  <h2>綁定{{.SSOTool}}帳號</h2>
+  <form method="post" action="/admins/link" class="form" autocomplete="off">
+    <input type="hidden" name="csrf" value="{{.CSRF}}">
+    <label>管理員<select name="username" required>{{range .Admins}}<option value="{{.Username}}">{{.Username}}</option>{{end}}</select></label>
+    <label>{{.SSOTool}}運維帳號<select name="directory_id"><option value="">不綁定</option>{{range .OpsAccounts}}<option value="{{.ID}}">{{.Username}}{{if .Name}}（{{.Name}}）{{end}}{{if .LinkedTo}} · 已綁定 {{.LinkedTo}}{{end}}</option>{{end}}</select></label>
+    <button type="submit">保存</button>
+  </form>
+  <p class="hint">運維人員用{{.SSOTool}}帳號登入運維後台，前提是這裡已綁定：綁定就是運維入口的白名單。只能綁定{{.SSOTool}}裡角色為運維的帳號；改綁定會讓這個管理員重新登入。</p>
+  {{end}}
 
   {{if eq .Role "admin"}}
   <h2>添加管理員</h2>
