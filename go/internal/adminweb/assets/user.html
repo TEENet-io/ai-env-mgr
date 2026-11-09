@@ -1,9 +1,9 @@
-{{define "user.html"}}{{template "head" "員工帳號"}}
+{{define "user.html"}}{{template "head" "AI 工作間帳號"}}
 <body>
 <div class="app">
 {{template "nav" .}}
 <main class="sheet">
-  <header class="pagehead"><h1><a href="/users" class="dim">員工帳號</a> / {{with .Account}}{{.WindowsUser}}{{end}}</h1></header>
+  <header class="pagehead"><h1><a href="/users" class="dim">AI 工作間帳號</a> / {{with .Account}}{{.WindowsUser}}{{end}}</h1></header>
   {{template "notices" .}}
   {{if .GatewayUnusable}}<p class="note note-err">{{.GatewayUnusable}}</p>{{end}}
 

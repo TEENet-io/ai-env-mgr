@@ -397,6 +397,11 @@ func (s *Server) actionTicket(sess *session, r *http.Request) error {
 			if next == "" {
 				return errors.New("請選擇狀態")
 			}
+			if next == "done" {
+				if body, err = s.withToolAccountResult(r, id, body); err != nil {
+					return err
+				}
+			}
 		}
 		return store.AddEvent(r.Context(), id, "", "admin", actor, kind, visibility, body, next, version)
 	case "assign":
@@ -411,6 +416,31 @@ func (s *Server) actionTicket(sess *session, r *http.Request) error {
 	default:
 		return errors.New("未知工單操作")
 	}
+}
+
+// withToolAccountResult adds what was done to the departing employee's
+// custom-tool account to the note that closes an offboarding ticket.
+//
+// The console cannot reach the custom tool yet, so an operator disables that
+// account by hand; a ticket that could be completed without saying so is how
+// a departed employee keeps a working login there. Other tickets pass
+// through unchanged.
+func (s *Server) withToolAccountResult(r *http.Request, id, body string) (string, error) {
+	t, err := s.dbm.db.Tickets().Get(r.Context(), id, "")
+	if err != nil {
+		return "", err
+	}
+	if t.Details["request_kind"] != "account-delete" {
+		return body, nil
+	}
+	result := formValue(r, "tool_account_result")
+	if result == "" {
+		return "", errors.New("離職工單完成前，請填寫定製工具帳號的處理結果")
+	}
+	if !validTicketText(result, 1000) {
+		return "", errors.New("定製工具帳號處理結果超過 1000 字節，或包含疑似密鑰")
+	}
+	return body + "\n\n定製工具帳號：" + result, nil
 }
 
 func (s *Server) handleCustomerContactCreate(w http.ResponseWriter, r *http.Request, sess *session) {
@@ -743,7 +773,7 @@ func (s *Server) handleCustomerHome(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 			if requestKind, _ := editTicket.Details["request_kind"].(string); dailyRequests[requestKind].Category == "account" && c.Role != "manager" {
-				http.Error(w, "只有客戶管理員可以修改員工帳號申請", 403)
+				http.Error(w, "只有客戶管理員可以修改 AI 工作間帳號申請", 403)
 				return
 			}
 			payload, err := json.Marshal(map[string]any{"kind": editTicket.Details["request_kind"], "details": editTicket.Details})
@@ -939,7 +969,7 @@ func (s *Server) handleCustomerEditTicket(w http.ResponseWriter, r *http.Request
 	}
 	requestKind := formValue(r, "request_kind")
 	if dailyRequests[requestKind].Category == "account" && c.Role != "manager" {
-		http.Error(w, "只有客戶管理員可以修改員工帳號申請", 403)
+		http.Error(w, "只有客戶管理員可以修改 AI 工作間帳號申請", 403)
 		return
 	}
 	// A ticket raised before the limits keeps its kind; an edit cannot move

@@ -1,9 +1,9 @@
-{{define "users.html"}}{{template "head" "員工帳號"}}
+{{define "users.html"}}{{template "head" "AI 工作間帳號"}}
 <body>
 <div class="app">
 {{template "nav" .}}
 <main class="sheet">
-  <header class="pagehead"><h1>員工帳號</h1>{{if .GatewayTeamID}}<p>組織：<strong>{{.GatewayTeamID}}</strong>，下面只列這個組織的員工。</p>{{end}}</header>
+  <header class="pagehead"><h1>AI 工作間帳號</h1>{{if .GatewayTeamID}}<p>組織：<strong>{{.GatewayTeamID}}</strong>，下面只列這個組織的員工。</p>{{end}}</header>
   {{template "tabs-users" .}}
   {{template "notices" .}}
   {{if .GatewayUnusable}}<p class="note note-err">{{.GatewayUnusable}}<br><span class="dim">額度與令牌列暫不可用；關戶仍可執行。</span></p>{{end}}

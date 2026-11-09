@@ -97,6 +97,12 @@ type Options struct {
 	// events so a log search can tell which binary produced a run.
 	Version string
 
+	// ToolURL is this customer's custom tool (PDF comparison, industry news
+	// and the rest), linked from the console's nav and the customer portal.
+	// It is only a link: the tool has its own accounts until the two are
+	// joined. Empty draws no link.
+	ToolURL string
+
 	// ECDRegion is where the cloud desktops live. Not a secret, and no key
 	// belongs here: the lookup uses the credentials the administrator signed
 	// in with, so nothing is stored and nothing ships inside the binary.
@@ -207,6 +213,7 @@ func New(opts Options) (*Server, error) {
 	}
 	tpl, err := template.New("").Funcs(template.FuncMap{
 		"static":            static.URL,
+		"toolURL":           func() string { return opts.ToolURL },
 		"requestText":       ticketRequestText,
 		"classify":          stateSeverity,
 		"state":             stateLabel,

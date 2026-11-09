@@ -25,7 +25,7 @@ type dailyRequestSpec struct {
 }
 
 var dailyRequests = map[string]dailyRequestSpec{
-	"account-add":     {"account", "新增員工帳號", true},
+	"account-add":     {"account", "新增 AI 工作間帳號", true},
 	"account-toggle":  {"account", "停用或恢復帳號", true},
 	"account-delete":  {"account", "員工離職／刪除帳號", true},
 	"account-edit":    {"account", "修改員工信息", true},

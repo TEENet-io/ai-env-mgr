@@ -37,6 +37,7 @@ func cmdWeb(args []string) error {
 		SLSProject:  os.Getenv("AIENVMGR_SLS_PROJECT"),
 		SLSEndpoint: envOr("AIENVMGR_SLS_ENDPOINT", slsclient.DefaultEndpoint),
 		PublicHost:  os.Getenv("AIENVMGR_PUBLIC_HOST"),
+		ToolURL:     os.Getenv("AIENVMGR_TOOL_URL"),
 	}
 	// The database mode is switched on by the connection string alone. The
 	// rest of its configuration is secrets, and all of it comes from the

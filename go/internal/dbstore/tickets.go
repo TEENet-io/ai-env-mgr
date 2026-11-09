@@ -63,8 +63,8 @@ func (t Ticket) StatusLabel() string {
 func (t Ticket) TypeLabel() string {
 	if requestKind, ok := t.Details["request_kind"].(string); ok {
 		if label, found := map[string]string{
-			"account-add": "員工帳號 · 新增員工", "account-toggle": "員工帳號 · 停用或恢復", "account-delete": "員工帳號 · 離職／刪除",
-			"account-edit": "員工帳號 · 修改信息", "desktop-problem": "遠程桌面 · 使用問題", "software-add": "遠程桌面 · 安裝軟件",
+			"account-add": "AI 工作間帳號 · 新增", "account-toggle": "AI 工作間帳號 · 停用或恢復", "account-delete": "AI 工作間帳號 · 離職／刪除",
+			"account-edit": "AI 工作間帳號 · 修改信息", "desktop-problem": "遠程桌面 · 使用問題", "software-add": "遠程桌面 · 安裝軟件",
 			"software-change": "遠程桌面 · 更新或卸載", "website": "遠程桌面 · 網站訪問", "ai-problem": "AI 模型與使用額度 · 使用問題",
 			"quota": "AI 模型與使用額度 · 額度追加", "tool-problem": "定製工具 · 使用問題", "other-problem": "其他問題",
 		}[requestKind]; found {

@@ -36,7 +36,7 @@ file stays out of it. */}}
   <div class="rail-section">
     <div class="rail-section-label">工作台</div>
     <a href="/overview"{{if eq .Nav "overview"}} class="active"{{end}}><span class="n">1</span>總覽</a>
-    <a href="/users"{{if eq .Nav "users"}} class="active"{{end}}><span class="n">2</span>員工帳號</a>
+    <a href="/users"{{if eq .Nav "users"}} class="active"{{end}}><span class="n">2</span>AI 工作間帳號</a>
     {{if .DB}}<a href="/channels"{{if eq .Nav "channels"}} class="active"{{end}}><span class="n">3</span>模型渠道</a>{{end}}
     <a href="{{if .DB}}/releases{{else}}/rollout{{end}}"{{if or (eq .Nav "rollout") (eq .Nav "releases")}} class="active"{{end}}><span class="n">{{if .DB}}4{{else}}3{{end}}</span>軟件安裝</a>
   </div>
@@ -46,6 +46,7 @@ file stays out of it. */}}
     <a href="/usage"{{if eq .Nav "usage"}} class="active"{{end}}><span class="n">5</span>用量</a>
     <a href="/alerts"{{if eq .Nav "alerts"}} class="active"{{end}}><span class="n">6</span>告警{{if .OpenAlerts}} <span class="tag tag-bad">{{.OpenAlerts}}</span>{{end}}</a>
     <a href="/tasks"{{if eq .Nav "tasks"}} class="active"{{end}}><span class="n">7</span>任務中心</a>
+    {{with toolURL}}<a href="{{.}}" target="_blank" rel="noopener"><span class="n">↗</span>定製工具</a>{{end}}
     <a href="/tickets?status=pending"{{if eq .Nav "tickets"}} class="active"{{end}}><span class="n">·</span>客戶工單{{if .PendingTicketsError}} <span class="tag tag-warn" title="待處理數量暫不可用">待處理 ?</span>{{else if .PendingTickets}} <span class="tag tag-warn" title="待處理工單">{{.PendingTickets}} 待處理</span>{{end}}</a>
   </div>
   <div class="rail-section">
