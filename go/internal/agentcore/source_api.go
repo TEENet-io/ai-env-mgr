@@ -35,6 +35,7 @@ type APISource struct {
 	cfg          *deviceconfig.Config // the latest seen (Wait replaces it)
 	cycle        *deviceconfig.Config // the one this cycle's Policy() returned
 	unauthorized bool
+	skillsReady  bool // a successful config fetch in this sync cycle
 }
 
 // NewAPISource builds a source over a client.
@@ -122,12 +123,16 @@ func etagOf(data []byte) string {
 }
 
 func (a *APISource) Policy() ([]byte, string, error) {
+	a.mu.Lock()
+	a.skillsReady = false
+	a.mu.Unlock()
 	cfg, err := a.refresh()
 	if err != nil {
 		return nil, "", err
 	}
 	a.mu.Lock()
 	a.cycle = cfg
+	a.skillsReady = true
 	a.mu.Unlock()
 	if cfg.Forgotten {
 		return nil, "", errors.New("the console has forgotten this machine")
@@ -140,6 +145,17 @@ func (a *APISource) Policy() ([]byte, string, error) {
 		return nil, "", err
 	}
 	return data, etagOf(data), nil
+}
+
+// ManagedSkills serves the same successful snapshot as this cycle's binding.
+// A network failure or an older server must not be mistaken for a revocation.
+func (a *APISource) ManagedSkills() (*model.ManagedSkills, error) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if !a.skillsReady || a.cycle == nil {
+		return nil, errors.New("no current device configuration for company skills")
+	}
+	return a.cycle.Skills, nil
 }
 
 // Binding serves the binding from the same document Policy returned this

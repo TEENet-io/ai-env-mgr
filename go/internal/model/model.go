@@ -315,19 +315,20 @@ type ReleaseTarget struct {
 
 // Status is written by the agent to agent_workdir/_status/{machine}.json
 type Status struct {
-	Machine             string   `json:"machine"`
-	BoundUser           string   `json:"boundUser"`
-	LocalUsers          []string `json:"localUsers"`
-	BoundUserExists     bool     `json:"boundUserExists"`
-	LastSync            string   `json:"lastSync"`
-	AgentVersion        string   `json:"agentVersion"`
-	PolicyETag          string   `json:"policyEtag"`
-	CredsETag           string   `json:"credsEtag"`
-	BlockEnabled        bool     `json:"blockEnabled"`
-	BlockedDomains      int      `json:"blockedDomains"`
-	SyncIntervalMinutes int      `json:"syncIntervalMinutes"`
-	CredsApplied        bool     `json:"credsApplied"`
-	AppLockerMode       string   `json:"appLockerMode"`
+	ManagedSkills       *ManagedSkillsStatus `json:"managedSkills,omitempty"`
+	Machine             string               `json:"machine"`
+	BoundUser           string               `json:"boundUser"`
+	LocalUsers          []string             `json:"localUsers"`
+	BoundUserExists     bool                 `json:"boundUserExists"`
+	LastSync            string               `json:"lastSync"`
+	AgentVersion        string               `json:"agentVersion"`
+	PolicyETag          string               `json:"policyEtag"`
+	CredsETag           string               `json:"credsEtag"`
+	BlockEnabled        bool                 `json:"blockEnabled"`
+	BlockedDomains      int                  `json:"blockedDomains"`
+	SyncIntervalMinutes int                  `json:"syncIntervalMinutes"`
+	CredsApplied        bool                 `json:"credsApplied"`
+	AppLockerMode       string               `json:"appLockerMode"`
 	// AppLockerManagedPathCount is the number of Agent-owned executable path
 	// rules read back from the local policy. It includes Codex sandbox rules.
 	AppLockerManagedPathCount int `json:"appLockerManagedPathCount,omitempty"`

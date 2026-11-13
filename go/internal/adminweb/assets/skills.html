@@ -1,0 +1,65 @@
+{{define "skills.html"}}{{template "head" "公司 Skill"}}
+<body class="skills-page"><link rel="stylesheet" href="/static/skills.css"><div class="app">
+{{if .AdminPage}}{{template "nav" .AdminPage}}{{else}}
+<nav class="rail"><div class="wordmark"><span class="wordmark-mark">AI</span><span class="wordmark-copy"><strong>TEENet 工作间</strong><small>公司 Skill 管理</small></span></div><div class="rail-section"><a href="/customer">工单中心</a><a href="/customer/skills" class="active">公司 Skill</a></div><div class="foot">{{.Name}}<form method="post" action="/customer/logout"><input type="hidden" name="csrf" value="{{.CSRF}}"><button class="link">退出</button></form></div></nav>
+{{end}}
+<main class="sheet">
+<header class="pagehead"><h1>公司 Skill</h1><p>把业务场景和模板派发给员工，在工作间 Codex 中使用。</p></header>
+{{if .Notice}}<p class="note note-ok" role="status">{{.Notice}}</p>{{end}}
+{{if .Error}}<p class="note note-err" role="alert">{{.Error}}</p>{{end}}
+{{if .Editable}}
+<section class="panel skill-card"><h2>{{if .Edit}}修改 {{.Edit.Title}}{{else}}新增 Skill{{end}}</h2>
+<form class="skill-form" method="post" action="{{.Base}}/change" enctype="multipart/form-data">
+<input type="hidden" name="csrf" value="{{.CSRF}}"><input type="hidden" name="version" value="{{.Version}}"><input type="hidden" name="action" value="save">
+<label>业务名称<input name="title" maxlength="200" required value="{{with .Edit}}{{.Title}}{{end}}" placeholder="例如：整理续保客户清单"></label>
+<label>一句话用途<textarea name="description" maxlength="1024" rows="2">{{.Description}}</textarea></label>
+<label>什么时候用<textarea name="when" rows="2">{{.When}}</textarea></label>
+<label>操作步骤<textarea name="steps" rows="8">{{.Steps}}</textarea></label>
+<label>附件模板<input type="file" name="templates" multiple accept=".md,.txt,.csv,.json,.yaml,.yml,.pdf,.docx,.xlsx,.pptx,.png,.jpg,.jpeg"></label>
+<p class="dim">支持说明、参考资料和模板。每个文件最多 1 MiB，每个 Skill 最多 4 MiB、64 个文件。</p>
+{{range .Attachments}}<label class="skill-choice"><input type="checkbox" name="remove_files" value="{{.}}">移除附件 {{.}}</label>{{end}}
+{{if not .Edit}}<label>先给谁试用<select name="trial"><option value="">先保存，稍后选择</option>{{range .Employees}}<option value="{{.Value}}">{{.Label}}</option>{{end}}</select></label>{{end}}
+<details><summary>导入 TEENet 已制作的 Skill</summary>
+<label>Skill 标识<input name="name" maxlength="64" placeholder="teenet-renewal-list" value="{{with .Edit}}{{.Name}}{{end}}" {{if .Edit}}readonly{{end}}></label>
+<p class="dim">手动制作时可留空，由系统生成。导入时须和 Skill 中的名称一致。</p>
+<label>Skill ZIP<input type="file" name="bundle" accept=".zip"></label><p class="dim">ZIP 内包含 SKILL.md，可附 references 等模板目录。选择 ZIP 后使用其中的完整内容。</p>
+</details>
+<button>{{if .Edit}}保存新版本{{else}}保存 Skill{{end}}</button>{{if .Edit}} <a href="{{.Base}}">取消修改</a>{{end}}
+</form></section>
+{{end}}
+
+<h2>Skill 清单</h2>
+{{range .Rows}}
+<section class="panel skill-card"><h3>{{.Title}} <small><code>{{.Name}}</code> · v{{.Current}}</small></h3>
+<p>{{if .TrialEmployee}}试用中：{{.TrialLabel}}{{else if or .Skill.Employees .Skill.Departments}}已设置派发{{else}}未派发{{end}} · 保留 {{len .Revisions}} 个版本</p>
+{{if $.Editable}}
+<p><a href="{{$.Base}}?edit={{.Name}}">修改说明和模板</a></p>
+<form class="skill-form" method="post" action="{{$.Base}}/change">
+<input type="hidden" name="csrf" value="{{$.CSRF}}"><input type="hidden" name="version" value="{{$.Version}}"><input type="hidden" name="name" value="{{.Name}}"><input type="hidden" name="action" value="trial">
+<label>试用员工<select name="trial" required><option value="">请选择</option>{{range .Employees}}<option value="{{.Value}}">{{.Label}}</option>{{end}}</select></label><button class="secondary">仅派发试用</button>
+</form>
+<form class="skill-form" method="post" action="{{$.Base}}/change">
+<input type="hidden" name="csrf" value="{{$.CSRF}}"><input type="hidden" name="version" value="{{$.Version}}"><input type="hidden" name="name" value="{{.Name}}"><input type="hidden" name="action" value="assign">
+<details open><summary>派发给员工或部门</summary>
+<fieldset class="skill-options"><legend>员工</legend>{{range .Employees}}<label class="skill-choice"><input type="checkbox" name="employees" value="{{.Value}}"{{if .Selected}} checked{{end}}> {{.Label}}</label>{{else}}<p>暂无在职员工</p>{{end}}</fieldset>
+<fieldset class="skill-options"><legend>部门（跟随在职员工的部门变化）</legend>{{range .Departments}}<label class="skill-choice"><input type="checkbox" name="departments" value="{{.Value}}"{{if .Selected}} checked{{end}}> {{.Label}}</label>{{else}}<p>暂无部门</p>{{end}}</fieldset>
+</details><button>保存派发范围</button>
+</form>
+<form method="post" action="{{$.Base}}/change" class="inline">
+<input type="hidden" name="csrf" value="{{$.CSRF}}"><input type="hidden" name="version" value="{{$.Version}}"><input type="hidden" name="name" value="{{.Name}}"><input type="hidden" name="action" value="rollback">
+<label>历史版本<select name="revision">{{range .Revisions}}<option value="{{.Bundle.Version}}">v{{.Bundle.Version}} · {{.At.Local.Format "01-02 15:04"}} · {{.By}}</option>{{end}}</select></label><button class="secondary">使用此版本</button></form>
+<form method="post" action="{{$.Base}}/change" class="inline">
+<input type="hidden" name="csrf" value="{{$.CSRF}}"><input type="hidden" name="version" value="{{$.Version}}"><input type="hidden" name="name" value="{{.Name}}"><input type="hidden" name="action" value="revoke"><button class="secondary">全部撤回（保留版本）</button></form>
+{{end}}
+</section>
+{{else}}<p class="empty">还没有公司 Skill。可以填写业务步骤，或导入 TEENet 已制作的 Skill。</p>{{end}}
+
+<h2>员工云电脑派发结果</h2>
+<div class="panel scroll"><table><thead><tr><th>员工 / 电脑</th><th>应有版本</th><th>最近上报版本</th><th>状态 / 上报时间</th></tr></thead><tbody>
+{{range .Deliveries}}<tr><td>{{.User}}<br><small>{{.Hostname}}</small></td><td>{{if .Expected}}{{.Expected}}{{else}}无{{end}}</td><td>{{if .Actual}}{{.Actual}}{{else}}无{{end}}</td><td>{{.State}}<br><small>{{.LastSync}}</small></td></tr>{{else}}<tr><td colspan="4">暂无绑定员工的电脑</td></tr>{{end}}
+</tbody></table></div>
+<h2>最近操作记录</h2>
+<div class="panel scroll"><table><thead><tr><th>时间</th><th>操作者</th><th>操作 / Skill</th><th>变化</th></tr></thead><tbody>
+{{range .Events}}<tr><td>{{.OccurredAt.Local.Format "2006-01-02 15:04"}}</td><td>{{.ActorName}}</td><td>{{.ActionLabel}}<br>{{.TargetID}}</td><td>{{.Change}}</td></tr>{{else}}<tr><td colspan="4">暂无操作</td></tr>{{end}}
+</tbody></table></div>
+</main></div></body></html>{{end}}

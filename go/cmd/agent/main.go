@@ -184,6 +184,7 @@ func newSyncer() (*agentcore.Syncer, error) {
 		return nil, err
 	}
 	s := &agentcore.Syncer{
+		Skills:           newManagedSkillsManager(),
 		Applier:          localApplier{},
 		Machine:          machine,
 		Version:          version,

@@ -9,6 +9,16 @@ on:
 jobs:
   check:
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready --health-interval 5s
+          --health-timeout 5s --health-retries 10
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
@@ -18,3 +28,23 @@ jobs:
       - name: make check
         working-directory: go
         run: make check
+      - name: Skill PostgreSQL integration tests
+        working-directory: go
+        env:
+          TEST_PG_DSN: postgres://postgres:postgres@127.0.0.1:5432/postgres?sslmode=disable
+        # Initial migrations create cluster-wide roles; serialize suites.
+        run: |
+          go test -p 1 ./internal/companyskills ./internal/deviceconfig ./internal/deviceapi
+          go test ./internal/adminweb -run 'TestCompanySkillTemplatesAndRoles|TestCustomerSkillLifecycleAndAuthorization'
+
+  windows-skills:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go/go.mod
+          cache-dependency-path: go/go.sum
+      - name: Native Agent skill and ACL regression tests
+        working-directory: go
+        run: go test -v ./internal/companyskills ./internal/managedskills ./internal/agentcore ./cmd/agent

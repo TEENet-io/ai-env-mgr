@@ -393,6 +393,10 @@ func (s *Server) Handler() http.Handler {
 	// Database mode only: accounts, the authenticator, the queue, health.
 	if s.dbm != nil {
 		mux.HandleFunc("/customer", s.handleCustomerHome)
+		mux.HandleFunc("/customer/skills", s.handleCustomerSkills)
+		mux.HandleFunc("/customer/skills/change", s.handleCustomerSkillChange)
+		mux.HandleFunc("/skills", s.requireSession(s.handleSkills))
+		mux.HandleFunc("/skills/change", s.requireSession(s.handleSkillChange))
 		mux.HandleFunc("/customer/login", s.handleCustomerLogin)
 		mux.HandleFunc("/customer/logout", s.handleCustomerLogout)
 		mux.HandleFunc("/customer/password", s.handleCustomerPassword)

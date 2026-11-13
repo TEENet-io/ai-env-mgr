@@ -1,0 +1,17 @@
+.skills-page .skill-card { padding: 24px; margin-bottom: 24px; }
+.skills-page .skill-card h2, .skills-page .skill-card h3 { margin-top: 0; }
+.skills-page .skill-card h3 small { font-size: 13px; font-weight: 400; }
+.skills-page .skill-form { display: grid; gap: 16px; margin-bottom: 24px; }
+.skills-page .skill-form > label, .skills-page details > label { display: grid; gap: 6px; }
+.skills-page .skill-form p { margin: 0; }
+.skills-page .skill-form button { justify-self: start; }
+.skills-page details > label { margin-top: 12px; }
+.skills-page .skill-options { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 10px; border: 1px solid #dedbd6; border-radius: 8px; padding: 14px; margin-top: 12px; }
+.skills-page .skill-choice { display: flex; align-items: center; gap: 8px; }
+.skills-page .skill-choice input[type="checkbox"] { flex: 0 0 18px; width: 18px; height: 18px; min-height: 18px; padding: 0; margin: 0; }
+.skills-page .skill-card .inline { margin: 12px 12px 0 0; }
+.skills-page summary { cursor: pointer; }
+@media (max-width: 640px) {
+  .skills-page .skill-card { padding: 16px; }
+  .skills-page .skill-options { grid-template-columns: 1fr; }
+}

@@ -9,6 +9,7 @@
     <div class="tp-workspace"><span class="tp-workspace-icon">▦</span><span><strong>工作间服务</strong><small>客户服务中心</small></span></div>
     <div class="tp-nav-label">服务中心</div>
     <nav class="tp-nav">
+      {{if .Manager}}<a href="/customer/skills">✧ <span>公司 Skill</span></a>{{end}}
       <a href="{{if .AdminMode}}/tickets{{else}}/customer{{end}}"{{if not .NewView}} class="active"{{end}}>▦ <span>{{if .AdminMode}}全部工单{{else}}我的工单{{end}}</span>{{if .Pending}}<b>{{.Pending}}</b>{{end}}</a>
       <a href="{{if .AdminMode}}/tickets/new{{else}}/customer?view=new{{end}}"{{if .NewView}} class="active"{{end}}>＋ <span>新建工单</span></a>
     </nav>

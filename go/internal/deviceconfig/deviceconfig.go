@@ -16,6 +16,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/TEENet-io/ai-env-mgr/internal/companyskills"
 	"github.com/TEENet-io/ai-env-mgr/internal/model"
 	"github.com/TEENet-io/ai-env-mgr/internal/repo"
 )
@@ -47,6 +48,9 @@ type Config struct {
 	// without reading _machines/* from OSS.
 	Applications *model.MachineApplications `json:"applications,omitempty"`
 
+	// Always present on supporting servers, including an empty revoke snapshot.
+	Skills *model.ManagedSkills `json:"skills,omitempty"`
+
 	// CredentialsETag identifies the credential bundle the machine should
 	// hold for its assignee: empty when unbound or when no token has been
 	// issued yet. A change here is what makes the agent fetch credentials.
@@ -67,6 +71,7 @@ type Config struct {
 // Build computes the configuration for one device.
 func Build(ctx context.Context, store repo.Store, deviceID string) (Config, error) {
 	var cfg Config
+	cfg.Skills = &model.ManagedSkills{Skills: []model.ManagedSkill{}}
 	device, err := store.Devices().ByID(ctx, deviceID)
 	if err != nil {
 		return cfg, err
@@ -118,6 +123,14 @@ func Build(ctx context.Context, store repo.Store, deviceID string) (Config, erro
 			}
 		}
 		if employee.Active() {
+			catalog, _, err := companyskills.Load(ctx, store.Settings())
+			if err != nil {
+				return cfg, err
+			}
+			cfg.Skills, err = catalog.Desired(employee)
+			if err != nil {
+				return cfg, err
+			}
 			credential, err := store.Credentials().Live(ctx, employee.ID, repo.PurposeCodexGateway)
 			switch {
 			case err == nil:

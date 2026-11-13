@@ -28,6 +28,8 @@ var roleRank = map[string]int{
 // managing administrators. Signing out and one's own account are for
 // everybody.
 var minRole = map[string]string{
+	"GET /skills":                        repo.RoleViewer,
+	"POST /skills/change":                repo.RoleOperator,
 	"GET /overview":                      repo.RoleViewer,
 	"GET /users":                         repo.RoleViewer,
 	"GET /users/detail":                  repo.RoleViewer,
