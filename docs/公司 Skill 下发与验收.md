@@ -1,6 +1,6 @@
 # 公司 Skill 下发与验收
 
-日期：2026-11-13。目标：2026 年 11 月内完成交付。当前状态：代码实现和本地验证完成，等待独立人员和 Windows 云电脑验收，未部署生产。
+日期：2026-11-13，更新：2026-11-16。目标：2026 年 11 月内完成交付。当前状态：代码实现和本地验证完成，完整数据库回归通过，等待独立人员和 Windows 云电脑验收，未部署生产。
 
 ## 依据与复用
 
@@ -60,18 +60,14 @@ Agent 将内容写到 `%ProgramData%\OpenAI\Codex\skills\<名称>`。顶层 Code
 
 已新增 Windows 原生 ACL 测试和 CI 作业；本机仅交叉编译测试程序，尚未执行 Windows 原生测试，也未在有 AppLocker/受限 PowerShell 的云电脑验证。
 
-完整 PostgreSQL 回归还有 6 个既有失败，在原 `main` 复现相同结果：
+2026-11-16 已修复此前 6 个既有数据库回归用例：
 
-| 包 | 测试 | 现有失败 |
-| --- | --- | --- |
-| adminweb | TestAnAdministratorPausesAndResumesAChannel | 渠道页没有 CSRF 表单 |
-| adminweb | TestChannelTrialShowsActualOutputWithoutAuditingContent | 同上 |
-| adminweb | TestChannelHealthCheckTargetsDeploymentAndRequiresAdmin | 同上 |
-| adminweb | TestReleasesPageListsCandidatesAndAimsOnlyOnRequest | 测试直接将 candidate 设为全局，当前规则要求先验收为 stable |
-| adminweb | TestThePageListsWhatCIUploadedUntilItIsRegistered | 测试的旧版本库按钮预期不符 |
-| ops | TestSettingTheGlobalTargetTakesTheArtifactsChecksum | candidate/stable 同上 |
+- 3 个渠道测试：Operator 的渠道页是只读页面，没有操作表单。改为从该操作员自己的账号页取得有效 CSRF，继续检查暂停、试调用、健康检测接口均拒绝越权请求。
+- 3 个版本库和发布测试：按候选、已验收、稳定的流程准备版本状态。新增检查确保 candidate 和 accepted 均不能设为全局、被拒绝时不修改策略或创建下发任务；只有 stable 才显示全局发布入口并能成功设置全局目标。
 
-没有修改这些无关断言，也不宣称完整数据库回归全绿。CI 保留原有开发检查，并增加本次 skill 的数据库验证及 Windows 原生验证。
+本轮 `make check` 和带 `TEST_PG_DSN` 的 `go test -p 1 -count=1 ./...` 均通过。完整数据库回归共 29 个测试包、1064 个测试及子用例通过，0 失败；4 个按运行条件跳过，分别为预览生成、真实 OSS 和两个真实网关测试。`-count=1` 保证本轮实际执行测试。
+
+CI 的 PostgreSQL 检查现已覆盖全仓测试，保留 Windows 原生 skill 和 ACL 验证作业。当前修复涉及测试、CI 和验收文档，Windows 云电脑验收与独立人员认可仍待完成。
 
 ## 独立人员验收与上线
 
