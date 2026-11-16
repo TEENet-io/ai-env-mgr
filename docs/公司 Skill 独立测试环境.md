@@ -155,3 +155,9 @@ systemctl --user stop ai-env-skills-test ai-env-skills-test-tunnel
 停用测试环境只操作上述用户服务；不要停止系统级 `ai-env-mgr-console.service`。
 
 本地已验证 HTTPS 登录页、设备接口入口、下载包摘要、测试绑定的管理员/CSRF 门禁，以及测试模式下未绑定、凭据撤回和收到新凭据时保留原登录。Windows 上已完成实际启动、b13 v1 调用、v2 更新读取、回退 v1 读取和撤回；普通员工权限及其他场景仍待现场验收。
+
+## 本次无感刷新验证记录
+
+2026-11-16：Agent Windows 原生测试 CI 43825288779 通过，包含公司文件与刷新清单 ACL；桌面 CI 43825935754 完整回归及真实 `0.153.4` 同进程更新、回退、撤回探测通过。本机最终 ZIP 自带依赖的真实 ASAR 安装、重复安装及精确回退验证通过。用户实际 b13 窗口保持打开时的 v3 指令读取及真实长任务仍待现场验证。
+
+当前 ZIP 源版本为 Agent `c72bb68`、桌面 `afb63f0`，后续提交仅补探测和文档，不影响包内运行时代码。`skill-live-refresh.zip` SHA256 为 `b28f5e89a0a3326c1c85fa87a7d9754c531097b1dbab8e9a5fda528eeb92037f`。v3 ZIP SHA256 为 `838378ec06acf3c2669b578a81bfebd90c5a5846dabac23fa49d3e55657bd9e5`。下载均在原独立测试后台；员工、派发和目录数据没有自动更改。
