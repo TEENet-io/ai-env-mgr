@@ -66,7 +66,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\setup-codex-skill-test.ps1
 
 本次接入包限定 `weipeng`，连接生产网关 `https://litellm.teenet.app/v1`，使用独立 Key `skill-test-weipeng-20261116`，模型 `gpt-6.1-sol`，7 天有效、总额度上限 5 美元。没有轮换既有员工 Key。模型目录由现有 `catalog.Build` 生成。安装后删除下载的 ZIP 和解压的 `connection.json`；测试完毕可撤销该 Key 并删除测试目录和快捷方式。
 
-本地验证包括模型真实 Responses 请求、独立目录写入及原配置保留、错误用户/过期/权限失败拒绝、PowerShell 语法和管理员下载权限。2026-11-16 用户已使用本包接入 b13，并完成下述 v1 首次读取、v2 更新读取和回退 v1 读取；Windows 普通员工权限、原生 ACL 自动化和其他下发场景仍待验证。
+本地验证包括模型真实 Responses 请求、独立目录写入及原配置保留、错误用户/过期/权限失败拒绝、PowerShell 语法和管理员下载权限。2026-11-16 用户已使用本包接入 b13，并完成下述 v1 首次读取、v2 更新读取、回退 v1 读取和撤回；Windows 普通员工权限、原生 ACL 自动化和其他下发场景仍待验证。
 
 #### 真机：独立 CODEX_HOME 的执行器被 AppLocker 拦截
 
@@ -94,7 +94,9 @@ Get-AppLockerFileInformation -Path $runtimePath -ErrorAction Stop |
 
 同时回传的 `Test-AppLockerPolicy` 对 `weipeng` 显示 runner 为 `Allowed`，匹配 `Admins-allow-all`。这只证明该用户通过管理员规则；不能代替沙箱账号的实际执行验证，也不能据此确认新增哈希规则被命中。最终仍需新对话实际读取标记文件成功。若继续出现 1260，应先核对最新事件的时间和进程路径，不能将所有后续拦截都当作最初的 runner 拦截。
 
-两处处理后，用户已回传 b13 的实际执行结果：`teenet-delivery-check`、`v1`、`TEENET-SKILL-CHECK-V1-8D42C7`，读取路径为 `C:\ProgramData\OpenAI\Codex\skills\teenet-delivery-check\references\check-marker.txt`，并确认可以使用。随后同一 Skill 导入 v2，Agent 于 14:39:19（Asia/Shanghai）回报版本 2、`applied`，用户回传同一路径中的版本 `v2` 和校验码 `TEENET-SKILL-CHECK-V2-B7359A`。再选择历史版本 v1，Agent 于 14:41:22 回报版本 1、`applied`，用户读取结果也恢复为 v1 和对应校验码。首次下发、更新和历史回退均通过；下一步点该 Skill 的“全部撤回”，核对 Agent 空清单、机器级目录删除和新对话技能列表移除。自动关闭行为尚未由用户单独确认。
+两处处理后，用户已回传 b13 的实际执行结果：`teenet-delivery-check`、`v1`、`TEENET-SKILL-CHECK-V1-8D42C7`，读取路径为 `C:\ProgramData\OpenAI\Codex\skills\teenet-delivery-check\references\check-marker.txt`，并确认可以使用。随后同一 Skill 导入 v2，Agent 于 14:39:19（Asia/Shanghai）回报版本 2、`applied`，用户回传同一路径中的版本 `v2` 和校验码 `TEENET-SKILL-CHECK-V2-B7359A`。再选择历史版本 v1，Agent 于 14:41:22 回报版本 1、`applied`，用户读取结果也恢复为 v1 和对应校验码。
+
+随后撤回该 Skill，Agent 于 14:45:22 回报 `applied`、`skills: []`、无错误。用户检查机器级 Skill 目录得到 `False`，Codex 当前会话可用技能列表也不再包含该项。撤回通过；此时要求执行已撤回 Skill 而得到“未通过/不可用”属于预期。首次下发、更新、回退和撤回四项基本流程通过，自动关闭行为尚未由用户单独确认。
 
 ## 测试 Agent 的边界
 
@@ -131,4 +133,4 @@ systemctl --user stop ai-env-skills-test ai-env-skills-test-tunnel
 
 停用测试环境只操作上述用户服务；不要停止系统级 `ai-env-mgr-console.service`。
 
-本地已验证 HTTPS 登录页、设备接口入口、下载包摘要、测试绑定的管理员/CSRF 门禁，以及测试模式下未绑定、凭据撤回和收到新凭据时保留原登录。Windows 上已完成实际启动、b13 v1 调用、v2 更新读取和回退 v1 读取；普通员工权限及其他场景仍待现场验收。
+本地已验证 HTTPS 登录页、设备接口入口、下载包摘要、测试绑定的管理员/CSRF 门禁，以及测试模式下未绑定、凭据撤回和收到新凭据时保留原登录。Windows 上已完成实际启动、b13 v1 调用、v2 更新读取、回退 v1 读取和撤回；普通员工权限及其他场景仍待现场验收。

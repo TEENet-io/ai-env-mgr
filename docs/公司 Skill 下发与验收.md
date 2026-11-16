@@ -1,6 +1,6 @@
 # 公司 Skill 下发与验收
 
-日期：2026-11-13，更新：2026-11-16。目标：2026 年 11 月内完成交付。当前状态：代码实现和完整数据库回归通过，Windows 云电脑首次下发、v2 更新、回退 v1 及 b13 附件读取验证通过，其余真机场景和独立人员验收待完成；生产后台及正式 Agent 未升级此功能。
+日期：2026-11-13，更新：2026-11-16。目标：2026 年 11 月内完成交付。当前状态：代码实现和完整数据库回归通过，Windows 云电脑首次下发、v2 更新、回退 v1、撤回及 b13 附件读取的基本生命周期验证通过，其余真机场景和独立人员验收待完成；生产后台及正式 Agent 未升级此功能。
 
 ## 依据与复用
 
@@ -71,7 +71,7 @@ Agent 将内容写到 `%ProgramData%\OpenAI\Codex\skills\<名称>`。顶层 Code
 
 CI 的 PostgreSQL 检查现已覆盖全仓测试，保留 Windows 原生 skill 和 ACL 验证作业。其余 Windows 云电脑验收与独立人员认可仍待完成。
 
-### 2026-11-16 首次下发、更新与回退真机结果
+### 2026-11-16 基本生命周期真机结果
 
 独立测试后台向 `lm0b1jcaty0wblw` 绑定员工 `weipeng` 派发 `teenet-delivery-check` v1。Agent 回报 `applied`，版本 1，内容 SHA-256 为 `0bbe89c2e10ec9a2de9623a089eb196e40e843602fbcdbaaf2dfe256e133b154`。用户使用 b13，在修复本机执行器及下载版 PowerShell 的 AppLocker 拦截后，回传以下技能执行结果：
 
@@ -86,7 +86,11 @@ CI 的 PostgreSQL 检查现已覆盖全仓测试，保留 Windows 原生 skill �
 
 随后同一个 Skill 导入 v2。设备于 14:39:19（Asia/Shanghai）回报 `applied`、版本 2，SHA-256 为 `00c21b2695084f097ee5ec51ce561a914ab47862d4812256c073a849126fe5d3`。用户回传 b13 读取结果为版本 `v2`、校验码 `TEENET-SKILL-CHECK-V2-B7359A`，文件仍为上述机器级目录中的 `references\check-marker.txt`。结果与 v2 包一致，版本更新及新附件读取通过。
 
-再选择历史版本 v1 回退。设备于 14:41:22（Asia/Shanghai）回报 `applied`、版本 1，SHA-256 恢复为 v1 的 `0bbe89c2e10ec9a2de9623a089eb196e40e843602fbcdbaaf2dfe256e133b154`。用户回传 b13 同一路径中的版本 `v1`、校验码 `TEENET-SKILL-CHECK-V1-8D42C7`，历史版本回退及附件恢复通过。用户尚未单独确认自动关闭 Codex 的现场行为；撤回、范围隔离及下述其他项目仍待真机验证。
+再选择历史版本 v1 回退。设备于 14:41:22（Asia/Shanghai）回报 `applied`、版本 1，SHA-256 恢复为 v1 的 `0bbe89c2e10ec9a2de9623a089eb196e40e843602fbcdbaaf2dfe256e133b154`。用户回传 b13 同一路径中的版本 `v1`、校验码 `TEENET-SKILL-CHECK-V1-8D42C7`，历史版本回退及附件恢复通过。
+
+最后在后台撤回。设备于 14:45:22（Asia/Shanghai）回报 `applied`、`skills: []`，错误清单为空。用户执行 `Test-Path 'C:\ProgramData\OpenAI\Codex\skills\teenet-delivery-check'` 返回 `False`；Codex 回报当前会话的可用技能列表中不再包含该 Skill，无法执行。结合空清单、目录删除及会话不可用，撤回验证通过。Codex 对“执行测试”回复“未通过”是已撤回技能不能调用的预期结果，不作为派发失败记录；其回复中的目录读取被拒绝也不单独作为新的 ACL 故障证据。
+
+首次下发、更新、回退和撤回四项基本流程已通过。用户尚未单独确认自动关闭 Codex 的现场行为；普通员工只读权限、范围隔离及下述其他项目仍待真机验证。
 
 ## 独立人员验收与上线
 
