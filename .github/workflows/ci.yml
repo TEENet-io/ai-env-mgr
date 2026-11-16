@@ -5,6 +5,9 @@ name: CI
 # normal push does not run the same checks twice.
 on:
   pull_request:
+  push:
+    branches: [feat/company-skills-agent]
+    paths: ['go/**', '.github/workflows/ci.yml']
 
 jobs:
   check:
@@ -37,6 +40,8 @@ jobs:
 
   windows-skills:
     runs-on: windows-latest
+    permissions:
+      contents: write
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
@@ -45,4 +50,22 @@ jobs:
           cache-dependency-path: go/go.sum
       - name: Native Agent skill and ACL regression tests
         working-directory: go
-        run: go test -v ./internal/companyskills ./internal/managedskills ./internal/agentcore ./cmd/agent
+        shell: pwsh
+        run: |
+          go test -v ./internal/companyskills ./internal/managedskills ./internal/agentcore ./cmd/agent
+          $nativeResult = $LASTEXITCODE
+          New-Item -ItemType Directory -Force ../probe-results | Out-Null
+          @{passed=($nativeResult -eq 0); run_id='${{ github.run_id }}'; source='${{ github.sha }}'; platform='windows'; suites=@('companyskills','managedskills','agentcore','agent')} | ConvertTo-Json | Set-Content ../probe-results/windows-skills-${{ github.run_id }}.json
+          exit $nativeResult
+      - name: Preserve Windows result on the test branch
+        if: always() && github.event_name == 'push'
+        shell: pwsh
+        run: |
+          $result = 'probe-results/windows-skills-${{ github.run_id }}.json'
+          if (-not (Test-Path $result)) { exit 0 }
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add $result
+          git commit -m 'test: record Windows Agent skill regression [skip ci]'
+          git pull --rebase origin feat/company-skills-agent
+          git push origin HEAD:feat/company-skills-agent

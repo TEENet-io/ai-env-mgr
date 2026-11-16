@@ -25,4 +25,6 @@ type ManagedSkillsStatus struct {
 	User           string                `json:"user,omitempty"`
 	Skills         []ManagedSkillVersion `json:"skills"`
 	RestartPending []string              `json:"restartPending,omitempty"`
+	RefreshPending []string              `json:"refreshPending,omitempty"`
+	Generation     string                `json:"generation,omitempty"`
 }

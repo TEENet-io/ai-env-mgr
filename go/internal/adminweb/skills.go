@@ -253,12 +253,15 @@ func (s *Server) serveSkills(w http.ResponseWriter, r *http.Request, p skillsPag
 				}
 				row.Actual = strings.Join(versions, ", ")
 				if actual.ManagedSkills.State != "applied" {
-					row.State = map[string]string{"failed": "同步失败，请联系 TEENet", "restart_pending": "等待关闭 Codex，刷新 Skill", "deferred": "等待员工登录云电脑"}[actual.ManagedSkills.State]
+					row.State = map[string]string{"failed": "同步失败，请联系 TEENet", "restart_pending": "旧版 Agent 等待刷新，请升级 Agent", "refresh_pending": "文件已同步，等待 Codex 刷新", "deferred": "等待员工登录云电脑"}[actual.ManagedSkills.State]
+					if actual.ManagedSkills.State == "refresh_pending" && !matches {
+						row.State = "等待 Agent 同步最新版本"
+					}
 					if row.State == "" {
 						row.State = "等待 Agent 同步"
 					}
 				} else if matches {
-					row.State = "已同步（最近上报）"
+					row.State = "文件已同步，当前无需等待刷新（最近上报）"
 				}
 			} else {
 				row.State = "Agent 尚未上报 Skill 能力"

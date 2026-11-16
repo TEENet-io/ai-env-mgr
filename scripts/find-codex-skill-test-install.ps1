@@ -31,6 +31,7 @@ function Get-CodexSkillTestCandidates {
         if ($base) { Join-Path $base 'Codex' }
     }
     if ($env:LOCALAPPDATA) { Join-Path $env:LOCALAPPDATA 'Programs/Codex' }
+    if ($env:SystemDrive) { Join-Path ($env:SystemDrive + '\') 'Tools/Codex' }
 }
 
 function Find-CodexSkillTestInstall {

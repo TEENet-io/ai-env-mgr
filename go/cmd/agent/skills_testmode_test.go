@@ -94,7 +94,7 @@ func TestSkillsTestCyclesKeepExistingLoginWhenUnboundRevokedOrIssuedCredentials(
 	defer server.Close()
 	source := agentcore.NewAPISource(&agentapi.Client{BaseURL: server.URL, HTTP: server.Client()})
 	testDir := t.TempDir()
-	manager := &managedskills.Manager{Root: filepath.Join(t.TempDir(), "Codex"), StateDir: testDir, Protect: func(string) error { return nil }, ProtectState: func(string) error { return nil }, Stop: func(string) error { t.Error("credential change stopped Codex"); return nil }}
+	manager := &managedskills.Manager{Root: filepath.Join(t.TempDir(), "Codex"), StateDir: testDir, Protect: func(string) error { return nil }, ProtectState: func(string) error { return nil }, Refresh: func(string, string) (bool, error) { return true, nil }}
 	syncer := newSkillsTestSyncer(source, skillsTestMachine{profile}, manager, testDir)
 	for _, step := range []struct{ bound, issued bool }{{false, false}, {true, false}, {true, true}} {
 		mu.Lock()

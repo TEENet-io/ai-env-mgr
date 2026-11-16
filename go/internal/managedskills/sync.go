@@ -3,6 +3,8 @@
 package managedskills
 
 import (
+	"crypto/rand"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -19,14 +21,16 @@ type Manager struct {
 	Root, StateDir string
 	Protect        func(string) error
 	ProtectState   func(string) error
-	Stop           func(string) error
+	Refresh        func(user, generation string) (bool, error)
 }
 
 type journal struct {
-	User    string                      `json:"user"`
-	Owned   map[string]bool             `json:"owned"`
-	Applied []model.ManagedSkillVersion `json:"applied"`
-	Pending map[string]bool             `json:"pending"`
+	User       string                      `json:"user"`
+	Owned      map[string]bool             `json:"owned"`
+	Applied    []model.ManagedSkillVersion `json:"applied"`
+	Pending    map[string]bool             `json:"pending"`
+	Generation string                      `json:"generation,omitempty"`
+	Targets    []string                    `json:"targets,omitempty"`
 }
 
 func safePath(path string) error {
@@ -172,7 +176,7 @@ func summaries(skills []model.ManagedSkill) []model.ManagedSkillVersion {
 // required Codex cache refresh. Failed process stops are retried next cycle.
 func (m *Manager) Sync(plan model.ManagedSkills) (result model.ManagedSkillsStatus, err error) {
 	result.State, result.User = "failed", plan.User
-	if m.Root == "" || m.StateDir == "" || m.Protect == nil || m.ProtectState == nil || m.Stop == nil {
+	if m.Root == "" || m.StateDir == "" || m.Protect == nil || m.ProtectState == nil || m.Refresh == nil {
 		return result, errors.New("company skill manager is not configured")
 	}
 	if len(plan.Skills) > 0 && (strings.TrimSpace(plan.User) == "" || strings.EqualFold(plan.User, "administrator")) {
@@ -262,13 +266,23 @@ func (m *Manager) Sync(plan model.ManagedSkills) (result model.ManagedSkillsStat
 			refresh = true
 		}
 	}
-	if refresh {
+	if refresh || len(changes) > 0 || j.Generation == "" || j.User != plan.User {
+		nonce := make([]byte, 16)
+		if _, err := rand.Read(nonce); err != nil {
+			return result, err
+		}
+		j.Generation = hex.EncodeToString(nonce)
 		if j.User != "" {
 			j.Pending[j.User] = true
 		}
 		if plan.User != "" {
 			j.Pending[plan.User] = true
 		}
+		j.Targets = make([]string, 0, len(j.Pending))
+		for user := range j.Pending {
+			j.Targets = append(j.Targets, user)
+		}
+		sort.Strings(j.Targets)
 	}
 	// Claim before creating files, after all conflicts and paths were checked.
 	oldOwned := map[string]bool{}
@@ -359,6 +373,10 @@ func (m *Manager) Sync(plan model.ManagedSkills) (result model.ManagedSkillsStat
 		return result, err
 	}
 	result.User, result.Skills = j.User, j.Applied
+	result.Generation = j.Generation
+	if err := atomicJSON(filepath.Join(m.Root, RefreshManifestName), RefreshManifest{Version: 1, Generation: j.Generation, Users: j.Targets, Skills: j.Applied}); err != nil {
+		return result, fmt.Errorf("publish skill refresh: %w", err)
+	}
 	users := make([]string, 0, len(j.Pending))
 	for user := range j.Pending {
 		users = append(users, user)
@@ -366,8 +384,12 @@ func (m *Manager) Sync(plan model.ManagedSkills) (result model.ManagedSkillsStat
 	sort.Strings(users)
 	var failures []error
 	for _, user := range users {
-		if err := m.Stop(user); err != nil {
+		confirmed, err := m.Refresh(user, j.Generation)
+		if err != nil {
 			failures = append(failures, fmt.Errorf("refresh Codex for %s: %w", user, err))
+			continue
+		}
+		if !confirmed {
 			continue
 		}
 		delete(j.Pending, user)
@@ -376,12 +398,12 @@ func (m *Manager) Sync(plan model.ManagedSkills) (result model.ManagedSkillsStat
 		}
 	}
 	for user := range j.Pending {
-		result.RestartPending = append(result.RestartPending, user)
+		result.RefreshPending = append(result.RefreshPending, user)
 	}
-	sort.Strings(result.RestartPending)
+	sort.Strings(result.RefreshPending)
 	result.State = "applied"
-	if len(failures) > 0 {
-		result.State = "restart_pending"
+	if len(result.RefreshPending) > 0 {
+		result.State = "refresh_pending"
 	}
 	return result, errors.Join(failures...)
 }

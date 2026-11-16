@@ -18,36 +18,36 @@ func bundle(version int, body string) model.ManagedSkill {
 
 func manager(t *testing.T) *Manager {
 	t.Helper()
-	return &Manager{Root: filepath.Join(t.TempDir(), "Codex"), StateDir: t.TempDir(), Protect: func(string) error { return nil }, ProtectState: func(string) error { return nil }, Stop: func(string) error { return nil }}
+	return &Manager{Root: filepath.Join(t.TempDir(), "Codex"), StateDir: t.TempDir(), Protect: func(string) error { return nil }, ProtectState: func(string) error { return nil }, Refresh: func(string, string) (bool, error) { return true, nil }}
 }
 
 func TestInstallUpdateRollbackAndRevoke(t *testing.T) {
 	m := manager(t)
 	stops := 0
-	m.Stop = func(user string) error {
+	m.Refresh = func(user, generation string) (bool, error) {
 		if user != "work1" {
 			t.Fatalf("wrong user %s", user)
 		}
 		stops++
-		return nil
+		return true, nil
 	}
 	plan := model.ManagedSkills{User: "work1", Skills: []model.ManagedSkill{bundle(1, "first")}}
 	st, err := m.Sync(plan)
-	if err != nil || st.State != "applied" || stops != 0 {
+	if err != nil || st.State != "applied" || stops != 1 {
 		t.Fatalf("install: %+v %v stops=%d", st, err, stops)
 	}
-	if _, err := m.Sync(plan); err != nil || stops != 0 {
+	if _, err := m.Sync(plan); err != nil || stops != 1 {
 		t.Fatalf("unchanged: %v stops=%d", err, stops)
 	}
 	plan.Skills[0] = bundle(2, "second")
-	if _, err := m.Sync(plan); err != nil || stops != 1 {
+	if _, err := m.Sync(plan); err != nil || stops != 2 {
 		t.Fatalf("update: %v stops=%d", err, stops)
 	}
 	plan.Skills[0] = bundle(1, "first")
-	if _, err := m.Sync(plan); err != nil || stops != 2 {
+	if _, err := m.Sync(plan); err != nil || stops != 3 {
 		t.Fatalf("rollback: %v stops=%d", err, stops)
 	}
-	if _, err := m.Sync(model.ManagedSkills{}); err != nil || stops != 3 {
+	if _, err := m.Sync(model.ManagedSkills{}); err != nil || stops != 4 {
 		t.Fatalf("revoke: %v stops=%d", err, stops)
 	}
 	if _, err := os.Stat(filepath.Join(m.Root, "skills", "bippo-demo")); !errors.Is(err, os.ErrNotExist) {
@@ -55,24 +55,24 @@ func TestInstallUpdateRollbackAndRevoke(t *testing.T) {
 	}
 }
 
-func TestRestartFailureSurvivesAgentRestartAndRetries(t *testing.T) {
+func TestRefreshFailureSurvivesAgentRestartAndRetries(t *testing.T) {
 	m := manager(t)
 	if _, err := m.Sync(model.ManagedSkills{User: "work1", Skills: []model.ManagedSkill{bundle(1, "first")}}); err != nil {
 		t.Fatal(err)
 	}
-	m.Stop = func(string) error { return errors.New("kill failed") }
+	m.Refresh = func(string, string) (bool, error) { return false, errors.New("ack failed") }
 	st, err := m.Sync(model.ManagedSkills{})
-	if err == nil || st.State != "restart_pending" {
+	if err == nil || st.State != "refresh_pending" {
 		t.Fatalf("lost failure: %+v %v", st, err)
 	}
 	copy := *m
 	stops := 0
-	copy.Stop = func(user string) error {
+	copy.Refresh = func(user, generation string) (bool, error) {
 		if user != "work1" {
 			t.Fatal(user)
 		}
 		stops++
-		return nil
+		return true, nil
 	}
 	if st, err = copy.Sync(model.ManagedSkills{}); err != nil || stops != 1 || st.State != "applied" {
 		t.Fatalf("retry: %+v %v stops=%d", st, err, stops)
@@ -101,7 +101,7 @@ func TestInterruptedSwapCleansBackupAndKeepsPendingRefresh(t *testing.T) {
 		t.Fatal(err)
 	}
 	stops := 0
-	m.Stop = func(string) error { stops++; return nil }
+	m.Refresh = func(string, string) (bool, error) { stops++; return true, nil }
 	if _, err := m.Sync(plan); err != nil || stops != 1 {
 		t.Fatalf("recovery: %v, stops=%d", err, stops)
 	}
@@ -117,7 +117,7 @@ func TestRebindingRefreshesOnlyPreviousAndNewEmployee(t *testing.T) {
 		t.Fatal(err)
 	}
 	var users []string
-	m.Stop = func(user string) error { users = append(users, user); return nil }
+	m.Refresh = func(user, generation string) (bool, error) { users = append(users, user); return true, nil }
 	plan.User = "work2"
 	if _, err := m.Sync(plan); err != nil {
 		t.Fatal(err)
