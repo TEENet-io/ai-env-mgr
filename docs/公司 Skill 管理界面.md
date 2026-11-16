@@ -28,3 +28,12 @@
 浏览器在独立自动化测试数据库操作，未修改用户正在验收的 Skill 清单或派发。验证覆盖搜索与筛选、搜索后保留隐藏选择、员工与部门合并派发、单人试用、取消/确认版本切换、撤回、ZIP 自动识别名称、同名新增拒绝、上传新版、手动创建。8 个页面在 1440 和 390 像素宽度检查通过，无页面横向溢出和脚本异常；窄屏导航另检查文字与数量不被挤压。
 
 浏览器结果和截图保存在 `/home/sun/.cache/ai-env-mgr-company-skills/skills-ui-review/`。模板权限及 PostgreSQL 回归沿用现有测试，补充自动识别名称与防止同名误覆盖的验证。后台、Agent 和 Codex 的派发协议不变；本次界面更新只部署到独立测试后台。
+
+## 本轮验证与部署
+
+- `make check` 通过：格式、Linux/Windows vet、默认测试、Windows 交叉编译。
+- 设置 `TEST_PG_DSN` 后，`go test -p 1 -count=1 ./...` 全仓 PostgreSQL 回归通过。
+- 浏览器操作实际经过服务端处理，测试数据位于自动化专用数据库 `aienv_test_adminweb`；该浏览器验证服务已停止，临时验证入口源码已移除。
+- 界面代码源提交 `4e1b6c9` 已部署到原独立测试后台；只重启用户服务 `ai-env-skills-test.service`，临时通道保持。
+- 测试页入口：`https://memorabilia-get-crystal-watches.trycloudflare.com/skills`。CSS/JS 在线内容与源文件逐字节一致，公网测试入口及生产登录页均返回 200。
+- 用户测试电脑的受管清单仍为已撤回的空清单，generation `2c57979a12ae06a1b10013c6b064ca96` 未变化。生产后台服务启动时间仍为 2026-11-09 21:29:37，未部署或重启。
