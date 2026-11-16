@@ -83,6 +83,17 @@ Get-AppLockerFileInformation -Path $runnerPath -ErrorAction Stop |
 
 `-Merge` 保留已有规则及目标策略的强制模式，见 [Microsoft Set-AppLockerPolicy](https://learn.microsoft.com/en-us/powershell/module/applocker/set-applockerpolicy)。该规则只接受同一执行器内容的哈希；更换执行器版本需要重新验证。没有放行整个用户目录，也没有关闭沙箱或 AppLocker。完成后重开 `Codex Skill Test`，在新对话中重测附件读取；结果仍须以真机回报为准。
 
+随后真机最新 8004 事件（14:31:55、14:32:01）显示下一处拦截为 `C:\Users\weipeng\.cache\codex-runtimes\codex-primary-runtime\dependencies\native\powershell\pwsh.exe`。这是 Codex 下载的 PowerShell，不是系统的 `powershell.exe`；测试 Agent 不管理原 Agent 的运行时兼容规则，因此该文件也需要单独的本机哈希规则：
+
+```powershell
+$runtimePath = 'C:\Users\weipeng\.cache\codex-runtimes\codex-primary-runtime\dependencies\native\powershell\pwsh.exe'
+Get-AppLockerFileInformation -Path $runtimePath -ErrorAction Stop |
+    New-AppLockerPolicy -RuleType Hash -User 'S-1-1-0' -RuleNamePrefix 'CodexSkillTest-PowerShell' -ErrorAction Stop |
+    Set-AppLockerPolicy -Merge -ErrorAction Stop
+```
+
+同时回传的 `Test-AppLockerPolicy` 对 `weipeng` 显示 runner 为 `Allowed`，匹配 `Admins-allow-all`。这只证明该用户通过管理员规则；不能代替沙箱账号的实际执行验证，也不能据此确认新增哈希规则被命中。最终仍需新对话实际读取标记文件成功。若继续出现 1260，应先核对最新事件的时间和进程路径，不能将所有后续拦截都当作最初的 runner 拦截。
+
 ## 测试 Agent 的边界
 
 测试模式复用正式 Agent 的 `agentcore.Syncer`、设备配置 API 和 `managedskills.Manager`，实际写入 Codex 的机器级 skill 目录，并使用实际 Windows 权限和缓存刷新逻辑。
