@@ -6,6 +6,9 @@ param(
 $ErrorActionPreference = 'Stop'
 if ($env:OS -ne 'Windows_NT') { throw 'Run this installer on Windows.' }
 . (Join-Path $PSScriptRoot 'find-codex-skill-test-install.ps1')
+if (@(Get-Process -Name 'agent-skills-test*' -ErrorAction SilentlyContinue).Count) {
+    throw 'Stop the OLD test Agent with Ctrl+C before installing the live refresh adapter.'
+}
 if (-not $CodexInstallDir) {
     try { $CodexInstallDir = Find-CodexSkillTestInstall }
     catch { $CodexInstallDir = Read-Host 'Enter the Codex installation folder containing Codex.vbs and _internal' }

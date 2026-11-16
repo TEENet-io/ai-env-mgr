@@ -64,6 +64,7 @@ func TestWindowsCompanySkillFilesInheritReadOnlyACL(t *testing.T) {
 		}
 	}
 	check(filepath.Join(m.Root, "skills", "bippo-demo", "SKILL.md"), true)
+	check(filepath.Join(m.Root, RefreshManifestName), true)
 	check(filepath.Join(m.StateDir, "company-skills", "state.json"), false)
 	// A second sync must keep file readability and perform no cache refresh.
 	if _, err := m.Sync(plan); err != nil {
@@ -74,6 +75,7 @@ func TestWindowsCompanySkillFilesInheritReadOnlyACL(t *testing.T) {
 		t.Fatal(err)
 	}
 	check(filepath.Join(m.Root, "skills", "bippo-demo", "SKILL.md"), true)
+	check(filepath.Join(m.Root, RefreshManifestName), true)
 }
 
 func TestWindowsRefusesPreexistingChildWithWritableExplicitACL(t *testing.T) {

@@ -23,7 +23,7 @@ Windows 通过临时 HTTPS 地址访问，后台和测试 Agent 使用同一个�
 
 ## Windows 测试步骤
 
-1. 保留 Codex b13、已有模型登录和现有 Agent 服务。下载 `/test/download` 提供的 `agent-skills-test.exe`。
+1. 保留 Codex b13、已有模型登录和现有 Agent 服务。测试无感刷新时使用下节的完整新包；单独 `/test/download` 只提供新 Agent，不包含桌面适配。
 2. 在管理员终端运行页面给出的命令，只运行一个测试 Agent 窗口：
 
    ```powershell
@@ -32,7 +32,7 @@ Windows 通过临时 HTTPS 地址访问，后台和测试 Agent 使用同一个�
 
 3. 让窗口持续运行，默认每 5 秒同步一次。在测试后台 `/test` 刷新，选择刚连接的电脑，填写员工实际使用 b13 的 Windows 用户名，创建并绑定。用户名可由员工终端中的 `whoami` 确认。
 4. 到 `/skills` 新建或导入一个文字/模板 skill，选择测试员工试用或派发；观察应有版本和实际回报。
-5. 在 b13 的新对话检查 skill 列表并调用；用普通员工账号验证公司原件只读。再测试更新、回退、撤回。更新/撤回可能关闭该员工的 Codex，重新打开后确认缓存已刷新。
+5. 在 b13 的新对话检查 skill 列表并调用；用普通员工账号验证公司原件只读。再测试更新、回退、撤回。安装新桌面适配并使用新 Agent 后，保持窗口打开，在新对话确认更新、回退与撤回；等待刷新时后台应明确显示，不强行关闭。
 6. 结束时先在后台撤回。按 Ctrl+C 停止测试 Agent 后，也可执行以下命令清理本测试模式管理的内容：
 
    ```powershell
@@ -48,6 +48,25 @@ Windows 通过临时 HTTPS 地址访问，后台和测试 Agent 使用同一个�
 v1 的源文件在 `examples/skills/teenet-delivery-check`。两个包的 SKILL.md 相同，仅 `references/check-marker.txt` 中的版本和校验码不同，用于检查附件更新和回退。先派发 v1，在 b13 新对话发送 `$teenet-delivery-check 做一次公司技能下发测试`；然后编辑同一个 skill 导入 v2，再开新对话验证附件版本变成 v2。
 
 Skill 要求每次读取随包标记文件，返回实际版本、校验码和读取路径；读取失败必须如实报告。结合后台版本回报判断派发状态，不凭一句“成功”判断整条链路已验收。
+
+### 不关闭 Codex 的自动刷新测试包
+
+管理员登录同一个测试后台后下载 `/test/skill-live-refresh.zip`。完整解压，停止原测试 Agent（Ctrl+C），手动退出 Codex 一次，然后在新解压目录的管理员 PowerShell 执行：
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File .\install-skill-live-refresh.ps1
+.\agent-skills-test.exe skills-test
+```
+
+找不到目录时脚本会要求输入安装目录，仍支持 `-CodexInstallDir "D:\Codex"`。安装器检查锁定桌面版本与原生调用形态，备份 app.asar 并验证覆盖；不更改模型登录。已有 `Codex Skill Test` 快捷方式继续使用。首次安装关闭一次是为了载入新代码，此后更新/回退/撤回不再主动关闭窗口。
+
+保持 Codex 打开，下载 `/test/teenet-delivery-check-v3.zip`，在后台编辑原 `teenet-delivery-check` 导入并保存，保持原派发员工。不要新建另一个同名 Skill。等设备回报后，在 Codex **新建对话而不退出程序**，发送 `$teenet-delivery-check 做一次公司技能下发测试`。
+
+v3 同时改变描述、正文和附件，预期输出五行，包含 `版本：v3`、`校验码：TEENET-SKILL-CHECK-V3-6C91E2`、`指令校验：TEENET-BODY-V3-91A6F0`，及机器级 `references\check-marker.txt` 路径。正文校验值没有放进附件，可区分只读到新附件与已加载新指令。后台数值版本按实际保存次数递增，不要求恰好为 3。
+
+然后保持窗口打开，回退旧版本并开新对话验证；撤回后确认目录不存在，新对话无法调用。已进入旧对话的指令不能追溯撤销。若后台显示“文件已同步，等待 Codex 刷新”，检查新 Agent 和适配是否均安装，不靠关闭进程冒充自动刷新。
+
+包内 `kit-manifest.json` 记录 Agent/桌面源提交及每个文件 SHA-256，不包含模型 Key。需撤销适配时先退出 Codex，执行同一安装脚本追加 `-Rollback`，按原始 ASAR 备份精确恢复；如桌面此后被其他安装器升级，拒绝覆盖。
 
 ### 新机器的模型接入
 
@@ -98,7 +117,7 @@ Get-AppLockerFileInformation -Path $runtimePath -ErrorAction Stop |
 
 随后撤回该 Skill，Agent 于 14:45:22 回报 `applied`、`skills: []`、无错误。用户检查机器级 Skill 目录得到 `False`，Codex 当前会话可用技能列表也不再包含该项。撤回通过；此时要求执行已撤回 Skill 而得到“未通过/不可用”属于预期。首次下发、更新、回退和撤回四项基本流程通过。
 
-用户又一次新增 v1、更新 v2，确认新增不关闭、更新会关闭，重开后读取到 v2。用户同时提出自动关闭的体验问题；已在主验收文档记录待优化项。当前下载的测试 Agent 仍执行强制关闭策略，不代表已实现或验收无感刷新。
+用户又一次新增 v1、更新 v2，确认新增不关闭、更新会关闭，重开后读取到 v2。以上为旧 Agent 的实测记录。用户随后要求接入无感刷新，当前新包已移除公司 Skill 同步时的关闭逻辑；原来下载到 Windows 的旧二进制不会自动替换，必须停止旧进程并使用新包。
 
 ## 测试 Agent 的边界
 

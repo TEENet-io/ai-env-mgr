@@ -171,9 +171,9 @@ func summaries(skills []model.ManagedSkill) []model.ManagedSkillVersion {
 }
 
 // Sync validates the whole snapshot before touching installed skills. Ownership
-// and pending restarts are journalled before mutation, so a service crash can
-// neither turn a partial installation into an unmanaged conflict nor lose a
-// required Codex cache refresh. Failed process stops are retried next cycle.
+// and pending live refreshes are journalled before mutation, so a crash cannot
+// turn a partial installation into an unmanaged conflict or lose a refresh.
+// Missing acknowledgements are retried without stopping desktop processes.
 func (m *Manager) Sync(plan model.ManagedSkills) (result model.ManagedSkillsStatus, err error) {
 	result.State, result.User = "failed", plan.User
 	if m.Root == "" || m.StateDir == "" || m.Protect == nil || m.ProtectState == nil || m.Refresh == nil {

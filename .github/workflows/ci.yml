@@ -52,10 +52,11 @@ jobs:
         working-directory: go
         shell: pwsh
         run: |
-          go test -v ./internal/companyskills ./internal/managedskills ./internal/agentcore ./cmd/agent
+          go test -v ./internal/companyskills ./internal/managedskills ./internal/agentcore ./cmd/agent 2>&1 | Tee-Object windows-skills.log
           $nativeResult = $LASTEXITCODE
           New-Item -ItemType Directory -Force ../probe-results | Out-Null
-          @{passed=($nativeResult -eq 0); run_id='${{ github.run_id }}'; source='${{ github.sha }}'; platform='windows'; suites=@('companyskills','managedskills','agentcore','agent')} | ConvertTo-Json | Set-Content ../probe-results/windows-skills-${{ github.run_id }}.json
+          $skipped = @(Select-String -Path windows-skills.log -Pattern '^--- SKIP:' | ForEach-Object { $_.Line })
+          @{passed=($nativeResult -eq 0); skipped=$skipped; run_id='${{ github.run_id }}'; source='${{ github.sha }}'; platform='windows'; suites=@('companyskills','managedskills','agentcore','agent')} | ConvertTo-Json | Set-Content ../probe-results/windows-skills-${{ github.run_id }}.json
           exit $nativeResult
       - name: Preserve Windows result on the test branch
         if: always() && github.event_name == 'push'
