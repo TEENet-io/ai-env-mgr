@@ -158,8 +158,10 @@ systemctl --user stop ai-env-skills-test ai-env-skills-test-tunnel
 
 ## 本次无感刷新验证记录
 
-2026-11-16：Agent Windows 原生测试 CI 43825288779 通过，包含公司文件与刷新清单 ACL；桌面 CI 43825935754 完整回归及真实 `0.153.4` 同进程更新、回退、撤回探测通过。本机最终 ZIP 自带依赖的真实 ASAR 安装、重复安装及精确回退验证通过。用户已回传实际 b13 的 v3 正文和附件读取结果，二者与测试包一致；用户随后明确确认全程未关闭 Codex，后台更新后新建对话验证，因此本机“不关闭窗口更新”人工验收通过；真实长任务保持仍待现场验证。
+2026-11-16：Agent Windows 原生测试 CI 43825288779 通过，包含公司文件与刷新清单 ACL；桌面 CI 43825935754 完整回归及真实 `0.153.4` 同进程更新、回退、撤回探测通过。本机最终 ZIP 自带依赖的真实 ASAR 安装、重复安装及精确回退验证通过。用户已回传实际 b13 的 v3 正文和附件读取结果，二者与测试包一致；用户随后明确确认全程未关闭 Codex，后台更新后新建对话验证，因此本机“不关闭窗口更新”人工验收通过；随后保持窗口打开的回退 v2 和撤回也经用户确认通过。真实长任务保持仍待现场验证。
 
 当前 ZIP 源版本为 Agent `c72bb68`、桌面 `afb63f0`，后续提交仅补探测和文档，不影响包内运行时代码。`skill-live-refresh.zip` SHA256 为 `b28f5e89a0a3326c1c85fa87a7d9754c531097b1dbab8e9a5fda528eeb92037f`。v3 ZIP SHA256 为 `838378ec06acf3c2669b578a81bfebd90c5a5846dabac23fa49d3e55657bd9e5`。下载均在原独立测试后台；员工、派发和目录数据没有自动更改。
 
 用户真机 v3 结果：`版本：v3`、附件 `TEENET-SKILL-CHECK-V3-6C91E2`、正文 `TEENET-BODY-V3-91A6F0`，路径为 `C:\ProgramData\OpenAI\Codex\skills\teenet-delivery-check\references\check-marker.txt`。2026-11-16 15:59:44（Asia/Shanghai）设备最近回报版本 3、`applied`、无错误，内容 SHA256 为 `b58b471ed98b6585a22aa8013c6cbfec27a6feac8bf3922b145182511e122ce4`。完整记录见主验收文档“用户 b13 真机”一节。
+
+2026-11-16 用户随后确认不关闭窗口的回退 v2、撤回均可用：回退返回 v2、`TEENET-SKILL-CHECK-V2-B7359A`，输出恢复为旧版四行；撤回后新对话不再列出或调用该 Skill，且不沿用历史校验码。16:04:28（Asia/Shanghai）设备最终回报 `applied`、`skills: []`、无错误，generation 为 `2c57979a12ae06a1b10013c6b064ca96`。本机无感更新、回退、撤回的基本生命周期验收通过，生产环境保持原样。
