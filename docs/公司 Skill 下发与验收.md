@@ -1,6 +1,6 @@
 # 公司 Skill 下发与验收
 
-日期：2026-11-13，更新：2026-11-16。目标：2026 年 11 月内完成交付。当前状态：代码实现和本地验证完成，完整数据库回归通过，等待独立人员和 Windows 云电脑验收，未部署生产。
+日期：2026-11-13，更新：2026-11-16。目标：2026 年 11 月内完成交付。当前状态：代码实现和完整数据库回归通过，Windows 云电脑首次下发及 b13 附件读取验证通过，其余真机场景和独立人员验收待完成；生产后台及正式 Agent 未升级此功能。
 
 ## 依据与复用
 
@@ -60,7 +60,7 @@ Agent 将内容写到 `%ProgramData%\OpenAI\Codex\skills\<名称>`。顶层 Code
 - 不覆盖未受管同名目录、失败不撤回有效版本、更新/撤回刷新、失败跨进程重试、转绑仅刷新相关员工、交换中断后的备份清理。
 - 管理页模板，以及 1440 和 390 像素宽浏览器检查，无页面横向溢出。
 
-已新增 Windows 原生 ACL 测试和 CI 作业；本机仅交叉编译测试程序，尚未执行 Windows 原生测试，也未在有 AppLocker/受限 PowerShell 的云电脑验证。
+已新增 Windows 原生 ACL 测试和 CI 作业；本机仅交叉编译测试程序，尚未执行 Windows 原生自动化测试。2026-11-16 已在启用 AppLocker 的 Windows 云电脑完成下述首次下发人工验证；普通员工权限和拒绝写入仍待专项验收。
 
 2026-11-16 已修复此前 6 个既有数据库回归用例：
 
@@ -69,7 +69,20 @@ Agent 将内容写到 `%ProgramData%\OpenAI\Codex\skills\<名称>`。顶层 Code
 
 本轮 `make check` 和带 `TEST_PG_DSN` 的 `go test -p 1 -count=1 ./...` 均通过。完整数据库回归共 29 个测试包、1064 个测试及子用例通过，0 失败；4 个按运行条件跳过，分别为预览生成、真实 OSS 和两个真实网关测试。`-count=1` 保证本轮实际执行测试。
 
-CI 的 PostgreSQL 检查现已覆盖全仓测试，保留 Windows 原生 skill 和 ACL 验证作业。当前修复涉及测试、CI 和验收文档，Windows 云电脑验收与独立人员认可仍待完成。
+CI 的 PostgreSQL 检查现已覆盖全仓测试，保留 Windows 原生 skill 和 ACL 验证作业。其余 Windows 云电脑验收与独立人员认可仍待完成。
+
+### 2026-11-16 首次下发真机结果
+
+独立测试后台向 `lm0b1jcaty0wblw` 绑定员工 `weipeng` 派发 `teenet-delivery-check` v1。Agent 回报 `applied`，版本 1，内容 SHA-256 为 `0bbe89c2e10ec9a2de9623a089eb196e40e843602fbcdbaaf2dfe256e133b154`。用户使用 b13，在修复本机执行器及下载版 PowerShell 的 AppLocker 拦截后，回传以下技能执行结果：
+
+```text
+技能：teenet-delivery-check
+版本：v1
+校验码：TEENET-SKILL-CHECK-V1-8D42C7
+读取文件：C:\ProgramData\OpenAI\Codex\skills\teenet-delivery-check\references\check-marker.txt
+```
+
+结果与 v1 ZIP 附件一致，首次导入、员工派发、Agent 写入、b13 加载和附件读取链路通过。本机策略处理见 [独立测试环境](公司%20Skill%20独立测试环境.md)。该账号的策略检查命中管理员规则，本结果不替代普通员工只读 ACL 验收。v2 更新、回退、撤回、范围隔离及下述其他项目仍待真机验证。
 
 ## 独立人员验收与上线
 
