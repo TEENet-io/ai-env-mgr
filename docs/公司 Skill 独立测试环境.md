@@ -41,6 +41,14 @@ Windows 通过临时 HTTPS 地址访问，后台和测试 Agent 使用同一个�
 
 测试结束并清理后，再安排正式 Agent 升级和验收，避免测试原件与正式 Agent 的管理记录发生同名冲突。
 
+### 测试用 Skill
+
+`/test/teenet-delivery-check-v1.zip` 和 `/test/teenet-delivery-check-v2.zip` 提供两个可导入的测试包。业务名称可填“公司技能下发测试”，英文 Skill 标识必须填 `teenet-delivery-check`。
+
+v1 的源文件在 `examples/skills/teenet-delivery-check`。两个包的 SKILL.md 相同，仅 `references/check-marker.txt` 中的版本和校验码不同，用于检查附件更新和回退。先派发 v1，在 b13 新对话发送 `$teenet-delivery-check 做一次公司技能下发测试`；然后编辑同一个 skill 导入 v2，再开新对话验证附件版本变成 v2。
+
+Skill 要求每次读取随包标记文件，返回实际版本、校验码和读取路径；读取失败必须如实报告。结合后台版本回报判断派发状态，不凭一句“成功”判断整条链路已验收。
+
 ## 测试 Agent 的边界
 
 测试模式复用正式 Agent 的 `agentcore.Syncer`、设备配置 API 和 `managedskills.Manager`，实际写入 Codex 的机器级 skill 目录，并使用实际 Windows 权限和缓存刷新逻辑。

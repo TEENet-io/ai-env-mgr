@@ -90,6 +90,7 @@ func skillsManualHandler(s *Server, origin, agentFile string) http.Handler {
 	page := template.Must(template.New("manual").Parse(`<!doctype html><html lang="zh-CN"><meta charset="utf-8"><title>Skill 独立测试</title><link rel="stylesheet" href="/static/app.css"><body><main class="sheet">
 <h1>Skill 独立测试</h1><p>这是独立测试后台。此处只测 Skill 派发，不更改现有模型登录、浏览器策略或 AppLocker。</p>
 <p><a href="/skills">进入 Skill 管理 →</a>　<a href="/test/download">下载 Windows 测试 Agent</a>　<a href="/overview">机器状态</a></p>
+<p>测试 Skill：<a href="/test/teenet-delivery-check-v1.zip">下载 v1</a>　<a href="/test/teenet-delivery-check-v2.zip">下载 v2（测试更新）</a>。导入时业务名称填“公司技能下发测试”，Skill 标识填 <code>teenet-delivery-check</code>。</p>
 <h2>1. 在 Windows 上运行</h2><p>下载后，用管理员终端运行以下命令；保留当前线上 Agent 服务。</p><pre>.\agent-skills-test.exe skills-test --console {{.URL}}</pre>
 <h2>2. 创建测试员工并绑定电脑</h2><p>Agent 连上后刷新此页。用户名填写员工日常登录 b13 的 Windows 用户名，可在该员工终端运行 whoami 查看。</p>
 <form method="post" action="/test/bind"><input type="hidden" name="csrf" value="{{.CSRF}}"><label>测试电脑<select name="machine" required>{{range .Devices}}<option>{{.Hostname}}</option>{{end}}</select></label><label>员工 Windows 用户名<input name="windows_user" required placeholder="例如 weipeng"></label><button>创建并绑定</button></form>
@@ -139,6 +140,19 @@ func skillsManualHandler(s *Server, origin, agentFile string) http.Handler {
 		w.Header().Set("Content-Disposition", `attachment; filename="agent-skills-test.exe"`)
 		http.ServeFile(w, r, filepath.Clean(agentFile))
 	})
+	for _, version := range []string{"v1", "v2"} {
+		name := "teenet-delivery-check-" + version + ".zip"
+		mux.HandleFunc("/test/"+name, func(w http.ResponseWriter, r *http.Request) {
+			if agentFile == "" {
+				http.NotFound(w, r)
+				return
+			}
+			w.Header().Set("Content-Type", "application/zip")
+			w.Header().Set("Content-Disposition", `attachment; filename="`+name+`"`)
+			w.Header().Set("Cache-Control", "no-store")
+			http.ServeFile(w, r, filepath.Join(filepath.Dir(agentFile), name))
+		})
+	}
 	mux.Handle("/", s.Handler())
 	return mux
 }
