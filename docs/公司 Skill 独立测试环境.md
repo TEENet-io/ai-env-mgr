@@ -68,6 +68,21 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\setup-codex-skill-test.ps1
 
 本地验证包括模型真实 Responses 请求、独立目录写入及原配置保留、错误用户/过期/权限失败拒绝、PowerShell 语法和管理员下载权限；Windows 原生 ACL、快捷方式和 b13 实际对话仍需现场验证。
 
+#### 真机：独立 CODEX_HOME 的执行器被 AppLocker 拦截
+
+2026-11-16，Agent 上报 `teenet-delivery-check` v1 为 `applied`，b13 尝试读取附件时返回错误 1260。真机 AppLocker 8004 明确记录拦截 `%OSDRIVE%\USERS\WEIPENG\APPDATA\LOCAL\TEENET\CODEXSKILLTEST\.SANDBOX-BIN\CODEX-COMMAND-RUNNER-0.153.4.EXE`。根因是独立测试 `CODEX_HOME` 改变了命令执行器的位置；现有 Agent 的本机兼容规则只覆盖用户 `.codex\.sandbox-bin` 和 `.cache\codex-runtimes`，测试 Agent 不修改这些规则。
+
+仅对这台测试机，由管理员合并已确认执行器的哈希规则：
+
+```powershell
+$runnerPath = 'C:\Users\weipeng\AppData\Local\TEENet\CodexSkillTest\.sandbox-bin\codex-command-runner-0.153.4.exe'
+Get-AppLockerFileInformation -Path $runnerPath -ErrorAction Stop |
+    New-AppLockerPolicy -RuleType Hash -User 'S-1-1-0' -RuleNamePrefix 'CodexSkillTest' -ErrorAction Stop |
+    Set-AppLockerPolicy -Merge -ErrorAction Stop
+```
+
+`-Merge` 保留已有规则及目标策略的强制模式，见 [Microsoft Set-AppLockerPolicy](https://learn.microsoft.com/en-us/powershell/module/applocker/set-applockerpolicy)。该规则只接受同一执行器内容的哈希；更换执行器版本需要重新验证。没有放行整个用户目录，也没有关闭沙箱或 AppLocker。完成后重开 `Codex Skill Test`，在新对话中重测附件读取；结果仍须以真机回报为准。
+
 ## 测试 Agent 的边界
 
 测试模式复用正式 Agent 的 `agentcore.Syncer`、设备配置 API 和 `managedskills.Manager`，实际写入 Codex 的机器级 skill 目录，并使用实际 Windows 权限和缓存刷新逻辑。
