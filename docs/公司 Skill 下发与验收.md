@@ -94,6 +94,8 @@ CI 的 PostgreSQL 检查现已覆盖全仓测试，保留 Windows 原生 skill �
 
 刷新体验待优化：用户指出更新时直接关闭 Codex 会影响使用。当前代码用按用户名执行 `taskkill /F` 清除进程缓存，会打断正在进行的工作；行为测试通过不代表该交互已获产品认可。建议普通更新优先无感刷新，无法刷新时明确显示待用户重开；撤回需区分文件移除和已加载会话状态，明确是否要求立即强制生效。官方 App Server 提供 `skills/changed` 通知和 `skills/list` 的 `forceReload`，见 [官方协议](https://learn.chatgpt.com/docs/app-server#skills)，但 b13 对机器级目录的刷新行为以及 Agent 到现有桌面进程的接入尚未验证，不能仅凭协议能力取消缓存处理。此处记录建议，尚未改变当前 Agent 的关闭逻辑。
 
+进一步核对已有的 `codex-kiosk origin/probe/company-skills` 探测提交 `316f987`：`probe-results/company-skills-42982767578.json` 记录 Windows `codex-cli 0.153.4` 同一 app-server 进程新增公司 Skill 后能列出，删除两个 Skill 并等待 4 秒后，普通列表和新会话目录仍保留旧项；调用 `skills/list(forceReload=true)` 后列表清空，期间仅收到一次 `skills/changed`。这证明同版本内核存在不重启的强制重扫能力，同时自动监听不足以覆盖该探测中的删除事件。该用例没有验证更新 SKILL.md 正文，也没有通过 b13 桌面连接正在运行的 app-server；后续应验证 Agent 原子交换目录、正文及附件更新、撤回和桌面刷新联动。不得启动一个新 app-server 刷新后，就声称现有桌面进程的缓存已刷新；已进入旧对话的指令也不能承诺被追溯替换。当前尚未修改关闭策略。
+
 ## 独立人员验收与上线
 
 在按需启动的测试环境和一台测试云电脑执行，记录版本、SHA-256、测试人、时间、结果。不要直接指定全局 Agent 版本。
