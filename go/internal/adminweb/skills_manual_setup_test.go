@@ -3,11 +3,46 @@ package adminweb
 import (
 	"net/http"
 	"net/url"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/TEENet-io/ai-env-mgr/internal/repo"
 )
+
+func TestSkillsManualModelPackageIsAdminOnly(t *testing.T) {
+	s, _ := newDatabaseServer(t)
+	dir := t.TempDir()
+	content := []byte("private test credential package")
+	if err := os.WriteFile(filepath.Join(dir, "codex-model-setup.zip"), content, 0600); err != nil {
+		t.Fatal(err)
+	}
+	h := skillsManualHandler(s, "https://test.trycloudflare.com", filepath.Join(dir, "agent.exe"))
+	const path = "/test/codex-model-setup.zip"
+	if rec := dbGet(t, h, path); rec.Code != http.StatusSeeOther || strings.Contains(rec.Body.String(), string(content)) {
+		t.Fatalf("anonymous download: %d", rec.Code)
+	}
+	admin := signedIn(t, s)
+	_, pw, err := s.dbm.auth.CreateAccount(t.Context(), "model-package-viewer", "", repo.RoleViewer)
+	if err != nil {
+		t.Fatal(err)
+	}
+	viewer := signInAs(t, s, "model-package-viewer", pw)
+	if rec := dbGet(t, h, path, viewer); rec.Code != http.StatusForbidden || strings.Contains(rec.Body.String(), string(content)) {
+		t.Fatalf("viewer download: %d", rec.Code)
+	}
+	rec := dbGet(t, h, path, admin)
+	if rec.Code != http.StatusOK || rec.Body.String() != string(content) {
+		t.Fatalf("admin download: %d", rec.Code)
+	}
+	if rec.Header().Get("Cache-Control") != "no-store, private" {
+		t.Fatal("credential download must not be cached")
+	}
+	if rec := dbPost(t, h, path, url.Values{}, admin); rec.Code != http.StatusMethodNotAllowed {
+		t.Fatalf("unexpected download method: %d", rec.Code)
+	}
+}
 
 func TestSkillsManualSetupRequiresAdminAndBindsOnlyTestRoster(t *testing.T) {
 	s, _ := newDatabaseServer(t)

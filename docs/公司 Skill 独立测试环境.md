@@ -49,6 +49,23 @@ v1 的源文件在 `examples/skills/teenet-delivery-check`。两个包的 SKILL.
 
 Skill 要求每次读取随包标记文件，返回实际版本、校验码和读取路径；读取失败必须如实报告。结合后台版本回报判断派发状态，不凭一句“成功”判断整条链路已验收。
 
+### 新机器的模型接入
+
+测试 Agent 不负责首次模型登录。b13 尚未配置模型时，管理员登录测试后台后可从 `/test/codex-model-setup.zip` 下载专用接入包。该下载只允许管理员，禁止公共缓存；包内含临时模型 Key，不提交 Git，不与公开 Skill ZIP 混放到匿名下载入口。
+
+在绑定员工的 Windows 账号下解压，先彻底退出 Codex，再从解压目录执行：
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File .\setup-codex-skill-test.ps1
+# 如果 Codex 安装在其他目录，追加 -CodexInstallDir "D:\Codex"
+```
+
+脚本复用 b13 自带 Node，兼容现有 PowerShell ConstrainedLanguage 环境。它将连接、模型目录和 API Key 模式配置放在 `%LOCALAPPDATA%\TEENet\CodexSkillTest`，限制目录访问权限，创建 `Codex Skill Test` 桌面快捷方式；通过该入口设置进程级 `CODEX_HOME` 后调用原 b13 启动器。原 Codex 快捷方式仍使用原配置。测试 Agent 继续向机器级目录下发 Skill。
+
+本次接入包限定 `weipeng`，连接生产网关 `https://litellm.teenet.app/v1`，使用独立 Key `skill-test-weipeng-20261116`，模型 `gpt-6.1-sol`，7 天有效、总额度上限 5 美元。没有轮换既有员工 Key。模型目录由现有 `catalog.Build` 生成。安装后删除下载的 ZIP 和解压的 `connection.json`；测试完毕可撤销该 Key 并删除测试目录和快捷方式。
+
+本地验证包括模型真实 Responses 请求、独立目录写入及原配置保留、错误用户/过期/权限失败拒绝、PowerShell 语法和管理员下载权限；Windows 原生 ACL、快捷方式和 b13 实际对话仍需现场验证。
+
 ## 测试 Agent 的边界
 
 测试模式复用正式 Agent 的 `agentcore.Syncer`、设备配置 API 和 `managedskills.Manager`，实际写入 Codex 的机器级 skill 目录，并使用实际 Windows 权限和缓存刷新逻辑。
