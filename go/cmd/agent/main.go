@@ -39,6 +39,9 @@ func stateDir() string {
 }
 
 func main() {
+	if skillsTestBuild == "1" {
+		must(checkSkillsTestBuildArgs(os.Args[1:]))
+	}
 	// A self-update launches a copy of the old image as a detached helper. It
 	// must enter this path before normal service setup so it never opens the
 	// service log or starts a second sync loop.
@@ -57,6 +60,8 @@ func main() {
 		return
 	}
 	switch os.Args[1] {
+	case "skills-test":
+		must(cmdSkillsTest(os.Args[2:]))
 	case "setup":
 		must(cmdSetup())
 	case "prepare-image":
