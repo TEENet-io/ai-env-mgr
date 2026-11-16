@@ -13,6 +13,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/TEENet-io/ai-env-mgr/internal/companyskills"
 	"github.com/TEENet-io/ai-env-mgr/internal/model"
@@ -26,26 +27,34 @@ type skillOption struct {
 }
 type skillRow struct {
 	companyskills.Skill
-	Employees, Departments []skillOption
-	TrialLabel             string
+	Employees, Departments                     []skillOption
+	TrialLabel                                 string
+	Description, Audience, Assignment, Updated string
+	RecipientCount, FileCount                  int
+	History                                    []companyskills.Revision
 }
 type skillEvent struct {
 	repo.AuditEvent
 	ActorName, ActionLabel, Change string
 }
-type skillDeliveryRow struct{ Hostname, User, Expected, Actual, State, LastSync string }
+type skillDeliveryRow struct{ Hostname, User, Expected, Actual, State, LastSync, Status, Tone string }
 type skillsPage struct {
-	AdminPage                       *pageData
-	Name, CSRF, Base, Notice, Error string
-	Editable                        bool
-	Version                         int
-	Rows                            []skillRow
-	Employees                       []skillOption
-	Edit                            *companyskills.Skill
-	Description, When, Steps        string
-	Attachments                     []string
-	Events                          []skillEvent
-	Deliveries                      []skillDeliveryRow
+	AdminPage                            *pageData
+	Name, CSRF, Base, Notice, Error      string
+	Editable                             bool
+	Version                              int
+	Rows                                 []skillRow
+	Employees                            []skillOption
+	Edit                                 *companyskills.Skill
+	Description, When, Steps             string
+	Attachments                          []string
+	Events                               []skillEvent
+	Deliveries                           []skillDeliveryRow
+	View, DetailTab, Mode, Query, Filter string
+	Creating                             bool
+	Selected                             *skillRow
+	Total, ActiveCount, DraftCount       int
+	Content                              string
 }
 
 func skillFields(bundle model.ManagedSkill) (description, when, steps string) {
@@ -105,6 +114,22 @@ func (s *Server) serveSkills(w http.ResponseWriter, r *http.Request, p skillsPag
 		return
 	}
 	p.Version, p.Notice, p.Error = version, r.URL.Query().Get("msg"), r.URL.Query().Get("err")
+	p.View, p.DetailTab, p.Mode = "library", "content", "manual"
+	if view := r.URL.Query().Get("view"); view == "deliveries" || view == "events" {
+		p.View = view
+	}
+	if tab := r.URL.Query().Get("tab"); tab == "audience" || tab == "versions" {
+		p.DetailTab = tab
+	}
+	p.Query, p.Filter = strings.TrimSpace(r.URL.Query().Get("q")), r.URL.Query().Get("filter")
+	p.Creating = r.URL.Query().Get("new") != ""
+	if r.URL.Query().Get("mode") == "import" || r.URL.Query().Get("new") == "import" {
+		p.Mode = "import"
+	}
+	if !p.Editable && (p.Creating || r.URL.Query().Get("edit") != "") {
+		http.Error(w, "当前账号只能查看 Skill", http.StatusForbidden)
+		return
+	}
 	departments := map[string]bool{}
 	for _, e := range roster {
 		if !e.Active() || e.Deleted() {
@@ -123,8 +148,42 @@ func (s *Server) serveSkills(w http.ResponseWriter, r *http.Request, p skillsPag
 		}
 		return false
 	}
+	selectedName := r.URL.Query().Get("edit")
+	if selectedName == "" {
+		selectedName = r.URL.Query().Get("skill")
+	}
 	for _, skill := range catalog.Skills {
 		row := skillRow{Skill: skill}
+		bundle, err := skill.Bundle()
+		if err != nil {
+			http.Error(w, "Skill 版本损坏", 500)
+			return
+		}
+		row.Description, _, _ = skillFields(bundle)
+		row.FileCount = len(bundle.Files)
+		row.Assignment, row.Audience = "draft", "未派发"
+		if skill.TrialEmployee != "" {
+			row.Assignment, row.Audience = "trial", "试用中"
+		} else if len(skill.Employees)+len(skill.Departments) > 0 {
+			row.Assignment, row.Audience = "assigned", "已派发"
+		}
+		if row.Assignment == "draft" {
+			p.DraftCount++
+		} else {
+			p.ActiveCount++
+		}
+		row.History = append([]companyskills.Revision(nil), skill.Revisions...)
+		sort.Slice(row.History, func(i, j int) bool { return row.History[i].Bundle.Version > row.History[j].Bundle.Version })
+		for _, revision := range skill.Revisions {
+			if revision.Bundle.Version == skill.Current {
+				row.Updated = revision.At.Local().Format("2006-01-02 15:04")
+			}
+		}
+		for _, employee := range roster {
+			if employee.Active() && !employee.Deleted() && (skill.TrialEmployee == employee.ID || contains(skill.Employees, employee.ID) || employee.Department != "" && contains(skill.Departments, employee.Department)) {
+				row.RecipientCount++
+			}
+		}
 		for _, option := range p.Employees {
 			if option.Value == skill.TrialEmployee {
 				row.TrialLabel = option.Label
@@ -139,6 +198,10 @@ func (s *Server) serveSkills(w http.ResponseWriter, r *http.Request, p skillsPag
 		}
 		sort.Slice(row.Departments, func(i, j int) bool { return row.Departments[i].Value < row.Departments[j].Value })
 		p.Rows = append(p.Rows, row)
+		if selectedName == skill.Name {
+			copy := row
+			p.Selected, p.Content = &copy, string(bundle.Files["SKILL.md"])
+		}
 		if r.URL.Query().Get("edit") == skill.Name {
 			copy := skill
 			p.Edit = &copy
@@ -155,6 +218,24 @@ func (s *Server) serveSkills(w http.ResponseWriter, r *http.Request, p skillsPag
 			}
 			sort.Strings(p.Attachments)
 		}
+	}
+	p.Total = len(p.Rows)
+	if (r.URL.Query().Get("skill") != "" || r.URL.Query().Get("edit") != "") && p.Selected == nil {
+		http.NotFound(w, r)
+		return
+	}
+	if p.Selected != nil || p.Creating {
+		p.View = "library"
+	}
+	if p.Selected == nil && !p.Creating {
+		visible := make([]skillRow, 0, len(p.Rows))
+		for _, row := range p.Rows {
+			matches := p.Query == "" || strings.Contains(strings.ToLower(row.Title+" "+row.Name+" "+row.Description), strings.ToLower(p.Query))
+			if matches && (p.Filter == "" || p.Filter == row.Assignment || p.Filter == "active" && row.Assignment != "draft") {
+				visible = append(visible, row)
+			}
+		}
+		p.Rows = visible
 	}
 	events, _, err := s.dbm.store.Audit().Search(r.Context(), repo.AuditFilter{TargetType: "company_skill", Limit: 50})
 	if err != nil {
@@ -226,7 +307,7 @@ func (s *Server) serveSkills(w http.ResponseWriter, r *http.Request, p skillsPag
 			http.Error(w, "计算派发清单失败", 500)
 			return
 		}
-		row := skillDeliveryRow{Hostname: device.Hostname, User: e.Name + " · " + e.WindowsUser, State: "等待 Agent 同步"}
+		row := skillDeliveryRow{Hostname: device.Hostname, User: e.Name + " · " + e.WindowsUser, State: "等待 Agent 同步", Status: "待同步", Tone: "warn"}
 		var expected []string
 		for _, skill := range plan.Skills {
 			expected = append(expected, fmt.Sprintf("%s v%d", skill.Name, skill.Version))
@@ -240,6 +321,9 @@ func (s *Server) serveSkills(w http.ResponseWriter, r *http.Request, p skillsPag
 		var actual model.Status
 		if err == nil && json.Unmarshal(report.Report, &actual) == nil {
 			row.LastSync = actual.LastSync
+			if last, err := time.Parse(time.RFC3339, actual.LastSync); err == nil {
+				row.LastSync = last.Local().Format("01-02 15:04:05")
+			}
 			if actual.ManagedSkills != nil {
 				var versions []string
 				matches := actual.ManagedSkills.User == plan.User && len(actual.ManagedSkills.Skills) == len(plan.Skills)
@@ -260,14 +344,24 @@ func (s *Server) serveSkills(w http.ResponseWriter, r *http.Request, p skillsPag
 					if row.State == "" {
 						row.State = "等待 Agent 同步"
 					}
+					if actual.ManagedSkills.State == "failed" {
+						row.Status, row.Tone = "同步失败", "bad"
+					}
+					if actual.ManagedSkills.State == "refresh_pending" && matches {
+						row.Status = "等待刷新"
+					}
 				} else if matches {
 					row.State = "文件已同步，当前无需等待刷新（最近上报）"
+					row.Status, row.Tone = "已同步", "ok"
 				}
 			} else {
 				row.State = "Agent 尚未上报 Skill 能力"
+				row.Status = "待升级 Agent"
 			}
 		}
-		p.Deliveries = append(p.Deliveries, row)
+		if p.View != "deliveries" || p.Query == "" || strings.Contains(strings.ToLower(row.User+" "+row.Hostname), strings.ToLower(p.Query)) {
+			p.Deliveries = append(p.Deliveries, row)
+		}
 	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	if err := s.tpl.ExecuteTemplate(w, "skills.html", p); err != nil {
@@ -299,13 +393,6 @@ func skillChange(r *http.Request, catalog companyskills.Catalog, actorType, acto
 	if c.Action != "save" {
 		return c, nil
 	}
-	if c.Name == "" {
-		id := make([]byte, 6)
-		if _, err := rand.Read(id); err != nil {
-			return c, err
-		}
-		c.Name = "teenet-" + hex.EncodeToString(id)
-	}
 	var bundle model.ManagedSkill
 	if r.MultipartForm != nil && len(r.MultipartForm.File["bundle"]) > 0 && r.MultipartForm.File["bundle"][0].Filename != "" {
 		file, err := r.MultipartForm.File["bundle"][0].Open()
@@ -324,7 +411,15 @@ func skillChange(r *http.Request, catalog companyskills.Catalog, actorType, acto
 		if err != nil {
 			return c, err
 		}
+		c.Name = bundle.Name
 	} else {
+		if c.Name == "" {
+			id := make([]byte, 6)
+			if _, err := rand.Read(id); err != nil {
+				return c, err
+			}
+			c.Name = "teenet-" + hex.EncodeToString(id)
+		}
 		attachments := map[string][]byte{}
 		for _, skill := range catalog.Skills {
 			if skill.Name == c.Name {
@@ -364,6 +459,20 @@ func skillChange(r *http.Request, catalog companyskills.Catalog, actorType, acto
 			return c, err
 		}
 	}
+	for _, existing := range catalog.Skills {
+		if r.PostFormValue("intent") == "create" && existing.Name == c.Name {
+			return c, errors.New("这个 Skill 已存在，请进入该 Skill 的“上传新版”更新内容")
+		}
+	}
+	if r.PostFormValue("intent") == "update" {
+		found := false
+		for _, existing := range catalog.Skills {
+			found = found || existing.Name == c.Name
+		}
+		if !found {
+			return c, errors.New("要更新的 Skill 已不存在，请刷新清单")
+		}
+	}
 	c.Bundle = bundle
 	return c, nil
 }
@@ -379,8 +488,8 @@ func (s *Server) applySkillChange(w http.ResponseWriter, r *http.Request, base, 
 		return
 	}
 	catalog, _, err := companyskills.Load(r.Context(), s.dbm.store.Settings())
+	var c companyskills.Change
 	if err == nil {
-		var c companyskills.Change
 		c, err = skillChange(r, catalog, actorType, actor)
 		c.ActorName = actorName
 		if err == nil {
@@ -392,7 +501,19 @@ func (s *Server) applySkillChange(w http.ResponseWriter, r *http.Request, base, 
 		return
 	}
 	s.dbm.hub.WakeAll()
-	http.Redirect(w, r, base+"?msg="+url.QueryEscape("已保存，等待在线 Agent 同步；更新或撤回会关闭相关员工的 Codex 以刷新 Skill。"), http.StatusSeeOther)
+	messages := map[string]string{"save": "内容已保存为新版本，原有派发范围保持不变。", "assign": "派发范围已保存，在线电脑将自动同步。", "trial": "已派发给试用员工，在线电脑将自动同步。", "rollback": "已切换到所选历史版本，已派发的员工将同步到此版本。", "revoke": "已撤回全部派发，内容和历史版本已保留。"}
+	if c.Action == "save" && r.PostFormValue("intent") == "create" {
+		messages["save"] = "Skill 已创建，可在“派发范围”设置员工和部门。"
+		if c.TrialEmployee != "" {
+			messages["save"] = "Skill 已创建并派发给试用员工，在线电脑将自动同步。"
+		}
+	}
+	tab := map[string]string{"assign": "audience", "trial": "audience", "revoke": "audience", "rollback": "versions"}[c.Action]
+	values := url.Values{"skill": {c.Name}, "msg": {messages[c.Action]}}
+	if tab != "" {
+		values.Set("tab", tab)
+	}
+	http.Redirect(w, r, base+"?"+values.Encode(), http.StatusSeeOther)
 }
 
 func (s *Server) handleSkillChange(w http.ResponseWriter, r *http.Request, sess *session) {

@@ -38,8 +38,10 @@ func TestZIPRejectsLinksTraversalAndDuplicates(t *testing.T) {
 			if err := writer.Close(); err != nil {
 				t.Fatal(err)
 			}
-			if _, err := FromZIP("bippo-demo", data.Bytes()); err == nil {
-				t.Fatal("unsafe ZIP accepted")
+			for _, requestedName := range []string{"bippo-demo", ""} {
+				if _, err := FromZIP(requestedName, data.Bytes()); err == nil {
+					t.Fatal("unsafe ZIP accepted")
+				}
 			}
 		})
 	}
@@ -54,6 +56,41 @@ func TestZIPRejectsLinksTraversalAndDuplicates(t *testing.T) {
 	}
 	if _, err := FromZIP("bippo-demo", data.Bytes()); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestZIPDetectsItsNameAndRejectsAmbiguousOrMismatchedBundles(t *testing.T) {
+	for _, tc := range []struct {
+		name, prefix, headerName, requested string
+		extra, wantError                    bool
+	}{
+		{name: "flat", headerName: "bippo-demo"},
+		{name: "wrapped", prefix: "bippo-demo/", headerName: "bippo-demo"},
+		{name: "wrong wrapper", prefix: "bippo-other/", headerName: "bippo-demo", wantError: true},
+		{name: "invalid header", headerName: "../escape", wantError: true},
+		{name: "multiple roots", headerName: "bippo-demo", extra: true, wantError: true},
+		{name: "update cannot change identity", headerName: "bippo-demo", requested: "bippo-other", wantError: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var data bytes.Buffer
+			writer := zip.NewWriter(&data)
+			f, _ := writer.Create(tc.prefix + "SKILL.md")
+			f.Write(testBundle(tc.headerName, "steps").Files["SKILL.md"])
+			if tc.extra {
+				f, _ = writer.Create("bippo-other/SKILL.md")
+				f.Write(testBundle("bippo-other", "other").Files["SKILL.md"])
+			}
+			if err := writer.Close(); err != nil {
+				t.Fatal(err)
+			}
+			bundle, err := FromZIP(tc.requested, data.Bytes())
+			if (err != nil) != tc.wantError {
+				t.Fatalf("bundle=%+v err=%v", bundle, err)
+			}
+			if err == nil && bundle.Name != "bippo-demo" {
+				t.Fatalf("detected the wrong skill: %s", bundle.Name)
+			}
+		})
 	}
 }
 

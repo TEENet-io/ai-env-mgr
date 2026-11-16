@@ -145,6 +145,7 @@ func FromForm(name, description, when, steps string, attachments map[string][]by
 }
 
 // FromZIP accepts a flat skill bundle or one enclosing skill-name directory.
+// An empty name detects the identity from SKILL.md when creating an import.
 // No extraction happens until every path, size and link has been checked.
 func FromZIP(name string, data []byte) (model.ManagedSkill, error) {
 	s := model.ManagedSkill{Name: name, Version: 1, Files: map[string][]byte{}}
@@ -154,6 +155,13 @@ func FromZIP(name string, data []byte) (model.ManagedSkill, error) {
 	}
 	if len(r.File) > MaxFiles*2 {
 		return s, errors.New("ZIP 文件数过多")
+	}
+	if name == "" {
+		name, err = zipSkillName(r.File)
+		if err != nil {
+			return s, err
+		}
+		s.Name = name
 	}
 	total := 0
 	for _, f := range r.File {
@@ -190,4 +198,50 @@ func FromZIP(name string, data []byte) (model.ManagedSkill, error) {
 	}
 	s.SHA256 = Digest(s.Files)
 	return s, Validate(s)
+}
+
+func zipSkillName(files []*zip.File) (string, error) {
+	var entry *zip.File
+	for _, file := range files {
+		if file.Mode().IsDir() || path.Base(file.Name) != "SKILL.md" {
+			continue
+		}
+		if entry != nil || !validPath(file.Name) || strings.Count(file.Name, "/") > 1 || !file.Mode().IsRegular() || file.UncompressedSize64 > MaxFileBytes {
+			return "", errors.New("ZIP 须只包含一个 Skill，SKILL.md 放在根目录或同名文件夹内")
+		}
+		entry = file
+	}
+	if entry == nil {
+		return "", errors.New("ZIP 中未找到 SKILL.md")
+	}
+	reader, err := entry.Open()
+	if err != nil {
+		return "", err
+	}
+	content, readErr := io.ReadAll(io.LimitReader(reader, MaxFileBytes+1))
+	closeErr := reader.Close()
+	if readErr != nil {
+		return "", readErr
+	}
+	if closeErr != nil {
+		return "", closeErr
+	}
+	content = bytes.ReplaceAll(content, []byte("\r\n"), []byte("\n"))
+	if len(content) > MaxFileBytes || !bytes.HasPrefix(content, []byte("---\n")) {
+		return "", errors.New("SKILL.md 缺少有效的 YAML 说明头")
+	}
+	end := bytes.Index(content[4:], []byte("\n---\n"))
+	if end < 0 {
+		return "", errors.New("SKILL.md 说明头未结束")
+	}
+	var header struct {
+		Name string `yaml:"name"`
+	}
+	if err := yaml.Unmarshal(content[4:4+end], &header); err != nil || !ValidName(header.Name) {
+		return "", errors.New("SKILL.md 的 name 须为带前缀的小写英文标识，例如 teenet-renewal")
+	}
+	if dir := path.Dir(entry.Name); dir != "." && dir != header.Name {
+		return "", errors.New("ZIP 外层文件夹名称须与 SKILL.md 的 name 一致")
+	}
+	return header.Name, nil
 }

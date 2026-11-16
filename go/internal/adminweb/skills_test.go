@@ -1,9 +1,12 @@
 package adminweb
 
 import (
+	"archive/zip"
 	"bytes"
 	"crypto/sha256"
+	"mime/multipart"
 	"net/http"
+	"net/http/httptest"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -15,46 +18,151 @@ import (
 	"github.com/TEENet-io/ai-env-mgr/internal/repo"
 )
 
-func TestCompanySkillTemplatesAndRoles(t *testing.T) {
-	s := newTestServer(t, newFakeStore())
-	bundle, err := companyskills.FromForm("bippo-demo", "整理清单", "每月", "读取模板后输出结果", nil)
+func TestSkillImportDetectsNameAndRequiresExplicitUpdateForAnExistingSkill(t *testing.T) {
+	bundle, err := companyskills.FromForm("teenet-import-check", "Import check", "", "Read the supplied template", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
-	skill := companyskills.Skill{Name: bundle.Name, Title: "续保客户清单", Current: 1, Revisions: []companyskills.Revision{{Bundle: bundle, By: "TEENet", At: time.Now()}}}
-	p := skillsPage{Base: "/customer/skills", CSRF: "token", Editable: true, Version: 3, Edit: &skill, Rows: []skillRow{{Skill: skill, Employees: []skillOption{{Value: "employee-1", Label: "张三 · work1"}}}}}
-	var out bytes.Buffer
-	if err := s.tpl.ExecuteTemplate(&out, "skills.html", p); err != nil {
+	var archive bytes.Buffer
+	writer := zip.NewWriter(&archive)
+	file, _ := writer.Create("SKILL.md")
+	file.Write(bundle.Files["SKILL.md"])
+	if err := writer.Close(); err != nil {
 		t.Fatal(err)
 	}
-	for _, want := range []string{`action="/customer/skills/change"`, `name="version" value="3"`, `name="bundle"`, `name="employees"`, `name="revision"`, `name="action" value="revoke"`} {
-		if !strings.Contains(out.String(), want) {
-			t.Errorf("missing %s", want)
-		}
+	for _, tc := range []struct {
+		name, intent        string
+		existing, wantError bool
+	}{
+		{"create detects identity", "create", false, false},
+		{"create cannot overwrite", "create", true, true},
+		{"update retains identity", "update", true, false},
+		{"update missing skill", "update", false, true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var body bytes.Buffer
+			form := multipart.NewWriter(&body)
+			for name, value := range map[string]string{"csrf": "test-token", "version": "0", "action": "save", "title": "Import check", "intent": tc.intent} {
+				form.WriteField(name, value)
+			}
+			if tc.intent == "update" {
+				form.WriteField("name", bundle.Name)
+			}
+			file, _ := form.CreateFormFile("bundle", "skill.zip")
+			file.Write(archive.Bytes())
+			form.Close()
+			req := httptest.NewRequest("POST", "/skills/change", &body)
+			req.Header.Set("Content-Type", form.FormDataContentType())
+			if err := parseSkillPost(httptest.NewRecorder(), req, "test-token"); err != nil {
+				t.Fatal(err)
+			}
+			if req.MultipartForm != nil {
+				defer req.MultipartForm.RemoveAll()
+			}
+			catalog := companyskills.Catalog{}
+			if tc.existing {
+				catalog.Skills = []companyskills.Skill{{Name: bundle.Name}}
+			}
+			change, err := skillChange(req, catalog, "admin", "test-admin")
+			if (err != nil) != tc.wantError {
+				t.Fatalf("change=%+v err=%v", change, err)
+			}
+			if err == nil && (change.Name != bundle.Name || change.Bundle.Name != bundle.Name) {
+				t.Fatal("import identity was not retained")
+			}
+		})
 	}
-	p.Editable = false
-	out.Reset()
-	if err := s.tpl.ExecuteTemplate(&out, "skills.html", p); err != nil {
+}
+
+func TestCompanySkillTemplatesAndRoles(t *testing.T) {
+	s := newTestServer(t, newFakeStore())
+	bundle, err := companyskills.FromForm("bippo-demo", "根据客户资料和业务模板，整理本月待跟进的续保清单。", "每月续保资料整理时", "读取模板后输出结果，标出需要人工确认的信息。", map[string][]byte{"references/客户清单.csv": []byte("客户,续保日期\n")})
+	if err != nil {
 		t.Fatal(err)
 	}
-	if strings.Contains(out.String(), `action="/customer/skills/change"`) {
-		t.Fatal("viewer offered a mutation")
-	}
+	old := bundle
+	bundle.Version = 2
+	now := time.Now()
+	skill := companyskills.Skill{Name: bundle.Name, Title: "续保客户清单", Current: 2, Employees: []string{"employee-1"}, Departments: []string{"客户服务部"}, Revisions: []companyskills.Revision{{Bundle: old, By: "TEENet", At: now.Add(-24 * time.Hour)}, {Bundle: bundle, By: "梦寒", At: now}}}
+	people := []skillOption{{Value: "employee-1", Label: "张三 · work1 · 客户服务部", Selected: true}, {Value: "employee-2", Label: "李四 · work2 · 业务部"}, {Value: "employee-3", Label: "王五 · work3 · 业务部"}, {Value: "employee-4", Label: "赵六 · work4 · 运营部"}, {Value: "employee-5", Label: "陈晨 · work5 · 客户服务部"}}
+	description, when, steps := skillFields(bundle)
+	row := skillRow{Skill: skill, Description: description, Assignment: "assigned", Audience: "已派发", Updated: now.Format("2006-01-02 15:04"), FileCount: 2, RecipientCount: 2, Employees: people, Departments: []skillOption{{Value: "客户服务部", Label: "客户服务部", Selected: true}, {Value: "业务部", Label: "业务部"}, {Value: "运营部", Label: "运营部"}}, History: []companyskills.Revision{skill.Revisions[1], skill.Revisions[0]}}
+	second := row
+	second.Name, second.Title, second.Assignment, second.Audience = "teenet-weekly-report", "部门周报整理", "trial", "试用中"
+	second.TrialLabel = "李四 · work2 · 业务部"
+	third := row
+	third.Name, third.Title, third.Assignment, third.Audience = "teenet-invoice-review", "发票资料核对", "draft", "未派发"
+	base := skillsPage{Base: "/customer/skills", CSRF: "token", Name: "测试经理", Editable: true, Version: 3, View: "library", DetailTab: "content", Mode: "manual", Total: 3, ActiveCount: 2, DraftCount: 1, Rows: []skillRow{row, second, third}, Employees: people, Description: description, When: when, Steps: steps, Content: string(bundle.Files["SKILL.md"]), Attachments: []string{"references/客户清单.csv"}}
 	if allowed(repo.RoleViewer, "POST", "/skills/change") || !allowed(repo.RoleOperator, "POST", "/skills/change") {
 		t.Fatal("skill role boundary")
 	}
-	if dir := os.Getenv("ADMINWEB_PREVIEW_DIR"); dir != "" {
-		p.Editable = true
-		out.Reset()
-		if err := s.tpl.ExecuteTemplate(&out, "skills.html", p); err != nil {
-			t.Fatal(err)
-		}
-		if err := os.MkdirAll(dir, 0755); err != nil {
-			t.Fatal(err)
-		}
-		if err := os.WriteFile(filepath.Join(dir, "skills.html"), out.Bytes(), 0644); err != nil {
-			t.Fatal(err)
-		}
+	variants := []struct {
+		name    string
+		prepare func(*skillsPage)
+		want    string
+	}{
+		{"skills", func(p *skillsPage) {}, "?new=import"},
+		{"skill-content", func(p *skillsPage) { p.Selected = &row }, "查看 SKILL.md 完整内容"},
+		{"skill-audience", func(p *skillsPage) { p.Selected = &row; p.DetailTab = "audience" }, "name=\"employees\""},
+		{"skill-versions", func(p *skillsPage) { p.Selected = &row; p.DetailTab = "versions" }, "name=\"revision\""},
+		{"skill-import", func(p *skillsPage) { p.Creating = true; p.Mode = "import" }, "name=\"bundle\""},
+		{"skill-create", func(p *skillsPage) { p.Creating = true }, "name=\"steps\""},
+		{"skill-update", func(p *skillsPage) { p.Selected = &row; p.Edit = &skill; p.Mode = "import" }, "name=\"bundle\""},
+		{"skill-edit", func(p *skillsPage) { p.Selected = &row; p.Edit = &skill }, "name=\"remove_files\""},
+		{"skill-deliveries", func(p *skillsPage) {
+			p.View = "deliveries"
+			p.Deliveries = []skillDeliveryRow{{User: "张三 · work1", Hostname: "work-desktop-01", Expected: "bippo-demo v2", Actual: "bippo-demo v2", State: "文件已同步，当前无需等待刷新（最近上报）", Status: "已同步", Tone: "ok", LastSync: now.Format("01-02 15:04:05")}, {User: "李四 · work2", Hostname: "work-desktop-02", Expected: "bippo-demo v2", Actual: "bippo-demo v1", State: "等待 Agent 同步最新版本", Status: "待同步", Tone: "warn", LastSync: now.Add(-time.Hour).Format("01-02 15:04:05")}}
+		}, "员工电脑同步情况"},
+		{"skill-events", func(p *skillsPage) { p.View = "events" }, "最近操作记录"},
+	}
+	for _, variant := range variants {
+		t.Run(variant.name, func(t *testing.T) {
+			p := base
+			variant.prepare(&p)
+			var out bytes.Buffer
+			if err := s.tpl.ExecuteTemplate(&out, "skills.html", p); err != nil {
+				t.Fatal(err)
+			}
+			if !strings.Contains(out.String(), variant.want) {
+				t.Fatalf("missing %s", variant.want)
+			}
+			if strings.Contains(out.String(), "action=\"/customer/skills/change\"") && (!strings.Contains(out.String(), "name=\"csrf\" value=\"token\"") || !strings.Contains(out.String(), "name=\"version\" value=\"3\"")) {
+				t.Fatal("mutation lost CSRF or catalog version")
+			}
+			if variant.name == "skill-audience" && !strings.Contains(out.String(), "name=\"action\" value=\"revoke\"") {
+				t.Fatal("missing revoke action")
+			}
+			if dir := os.Getenv("ADMINWEB_PREVIEW_DIR"); dir != "" {
+				if err := os.MkdirAll(dir, 0755); err != nil {
+					t.Fatal(err)
+				}
+				if err := os.WriteFile(filepath.Join(dir, variant.name+".html"), out.Bytes(), 0644); err != nil {
+					t.Fatal(err)
+				}
+				if variant.name == "skills" {
+					for _, name := range []string{"app.css", "app.js", "skills.css", "skills.js"} {
+						data, err := assetFS.ReadFile("assets/static/" + name)
+						if err != nil {
+							t.Fatal(err)
+						}
+						if err := os.MkdirAll(filepath.Join(dir, "static"), 0755); err != nil {
+							t.Fatal(err)
+						}
+						if err := os.WriteFile(filepath.Join(dir, "static", name), data, 0644); err != nil {
+							t.Fatal(err)
+						}
+					}
+				}
+			}
+			p.Editable = false
+			out.Reset()
+			if err := s.tpl.ExecuteTemplate(&out, "skills.html", p); err != nil {
+				t.Fatal(err)
+			}
+			if strings.Contains(out.String(), "action=\"/customer/skills/change\"") {
+				t.Fatal("viewer offered a mutation")
+			}
+		})
 	}
 }
 
@@ -106,6 +214,14 @@ func TestCustomerSkillLifecycleAndAuthorization(t *testing.T) {
 	page := dbGet(t, h, "/customer/skills?edit=bippo-demo", manager)
 	if page.Code != 200 || !strings.Contains(page.Body.String(), "先读取模板，再汇总客户资料") {
 		t.Fatalf("saved page: %d %s", page.Code, page.Body.String())
+	}
+	for _, path := range []string{"/customer/skills?skill=bippo-demo", "/customer/skills?skill=bippo-demo&tab=audience", "/customer/skills?skill=bippo-demo&tab=versions", "/customer/skills?new=import", "/customer/skills?view=deliveries", "/customer/skills?view=events"} {
+		if rec := dbGet(t, h, path, manager); rec.Code != 200 {
+			t.Fatalf("%s: %d", path, rec.Code)
+		}
+	}
+	if rec := dbGet(t, h, "/customer/skills?edit=teenet-missing", manager); rec.Code != http.StatusNotFound {
+		t.Fatal("missing edit target must not open a create form")
 	}
 	form.Set("version", "1")
 	form.Set("action", "assign")

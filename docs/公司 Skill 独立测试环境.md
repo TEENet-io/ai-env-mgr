@@ -43,7 +43,7 @@ Windows 通过临时 HTTPS 地址访问，后台和测试 Agent 使用同一个�
 
 ### 测试用 Skill
 
-`/test/teenet-delivery-check-v1.zip` 和 `/test/teenet-delivery-check-v2.zip` 提供两个可导入的测试包。业务名称可填“公司技能下发测试”，英文 Skill 标识必须填 `teenet-delivery-check`。
+`/test/teenet-delivery-check-v1.zip` 和 `/test/teenet-delivery-check-v2.zip` 提供两个可导入的测试包。业务名称可填“公司技能下发测试”。新版界面从 ZIP 自动识别英文标识 `teenet-delivery-check`，无需手动填写；已存在时进入原 Skill 的“上传新版”。
 
 v1 的源文件在 `examples/skills/teenet-delivery-check`。两个包的 SKILL.md 相同，仅 `references/check-marker.txt` 中的版本和校验码不同，用于检查附件更新和回退。先派发 v1，在 b13 新对话发送 `$teenet-delivery-check 做一次公司技能下发测试`；然后编辑同一个 skill 导入 v2，再开新对话验证附件版本变成 v2。
 
@@ -165,3 +165,7 @@ systemctl --user stop ai-env-skills-test ai-env-skills-test-tunnel
 用户真机 v3 结果：`版本：v3`、附件 `TEENET-SKILL-CHECK-V3-6C91E2`、正文 `TEENET-BODY-V3-91A6F0`，路径为 `C:\ProgramData\OpenAI\Codex\skills\teenet-delivery-check\references\check-marker.txt`。2026-11-16 15:59:44（Asia/Shanghai）设备最近回报版本 3、`applied`、无错误，内容 SHA256 为 `b58b471ed98b6585a22aa8013c6cbfec27a6feac8bf3922b145182511e122ce4`。完整记录见主验收文档“用户 b13 真机”一节。
 
 2026-11-16 用户随后确认不关闭窗口的回退 v2、撤回均可用：回退返回 v2、`TEENET-SKILL-CHECK-V2-B7359A`，输出恢复为旧版四行；撤回后新对话不再列出或调用该 Skill，且不沿用历史校验码。16:04:28（Asia/Shanghai）设备最终回报 `applied`、`skills: []`、无错误，generation 为 `2c57979a12ae06a1b10013c6b064ca96`。本机无感更新、回退、撤回的基本生命周期验收通过，生产环境保持原样。
+
+## 管理页面易用性调整
+
+2026-11-16，按用户反馈调整清单、内容编辑/ZIP 导入、员工及部门派发、版本切换、同步结果和操作记录。进入原 `/skills` 即可使用；管理端和客户经理端使用同一套操作结构。详见 [公司 Skill 管理界面](公司%20Skill%20管理界面.md)。本次只更新独立测试后台，不需要更换 Windows Agent 或 b13 刷新适配，不修改现有派发内容。
