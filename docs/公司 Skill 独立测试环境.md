@@ -60,6 +60,8 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\setup-codex-skill-test.ps1
 # 如果 Codex 安装在其他目录，追加 -CodexInstallDir "D:\Codex"
 ```
 
+安装目录优先从 Codex 安装器的 HKCU/HKLM 卸载注册项读取，支持安装器沿用其他盘的旧位置；便携包可从当前会话中的运行进程定位，也会检查常见用户和 Program Files 目录。显式指定目录时检查启动器、桌面程序和内置 Node，缺失时报告具体目录及预期文件，不再仅假设 `%USERPROFILE%\Codex`。
+
 脚本复用 b13 自带 Node，兼容现有 PowerShell ConstrainedLanguage 环境。它将连接、模型目录和 API Key 模式配置放在 `%LOCALAPPDATA%\TEENet\CodexSkillTest`，限制目录访问权限，创建 `Codex Skill Test` 桌面快捷方式；通过该入口设置进程级 `CODEX_HOME` 后调用原 b13 启动器。原 Codex 快捷方式仍使用原配置。测试 Agent 继续向机器级目录下发 Skill。
 
 本次接入包限定 `weipeng`，连接生产网关 `https://litellm.teenet.app/v1`，使用独立 Key `skill-test-weipeng-20261116`，模型 `gpt-6.1-sol`，7 天有效、总额度上限 5 美元。没有轮换既有员工 Key。模型目录由现有 `catalog.Build` 生成。安装后删除下载的 ZIP 和解压的 `connection.json`；测试完毕可撤销该 Key 并删除测试目录和快捷方式。
