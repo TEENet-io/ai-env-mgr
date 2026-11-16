@@ -96,7 +96,9 @@ Get-AppLockerFileInformation -Path $runtimePath -ErrorAction Stop |
 
 两处处理后，用户已回传 b13 的实际执行结果：`teenet-delivery-check`、`v1`、`TEENET-SKILL-CHECK-V1-8D42C7`，读取路径为 `C:\ProgramData\OpenAI\Codex\skills\teenet-delivery-check\references\check-marker.txt`，并确认可以使用。随后同一 Skill 导入 v2，Agent 于 14:39:19（Asia/Shanghai）回报版本 2、`applied`，用户回传同一路径中的版本 `v2` 和校验码 `TEENET-SKILL-CHECK-V2-B7359A`。再选择历史版本 v1，Agent 于 14:41:22 回报版本 1、`applied`，用户读取结果也恢复为 v1 和对应校验码。
 
-随后撤回该 Skill，Agent 于 14:45:22 回报 `applied`、`skills: []`、无错误。用户检查机器级 Skill 目录得到 `False`，Codex 当前会话可用技能列表也不再包含该项。撤回通过；此时要求执行已撤回 Skill 而得到“未通过/不可用”属于预期。首次下发、更新、回退和撤回四项基本流程通过，自动关闭行为尚未由用户单独确认。
+随后撤回该 Skill，Agent 于 14:45:22 回报 `applied`、`skills: []`、无错误。用户检查机器级 Skill 目录得到 `False`，Codex 当前会话可用技能列表也不再包含该项。撤回通过；此时要求执行已撤回 Skill 而得到“未通过/不可用”属于预期。首次下发、更新、回退和撤回四项基本流程通过。
+
+用户又一次新增 v1、更新 v2，确认新增不关闭、更新会关闭，重开后读取到 v2。用户同时提出自动关闭的体验问题；已在主验收文档记录待优化项。当前下载的测试 Agent 仍执行强制关闭策略，不代表已实现或验收无感刷新。
 
 ## 测试 Agent 的边界
 
