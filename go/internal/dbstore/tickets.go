@@ -313,8 +313,11 @@ func (s TicketStore) CreateByAdmin(ctx context.Context, key, kind, title, descri
 func (s TicketStore) create(ctx context.Context, requesterID, key, kind, title, description, priority string, details []byte, actorType, actorID string) (Ticket, error) {
 	var t Ticket
 	err := s.db.Tx(ctx, func(tx pgx.Tx) error {
-		err := tx.QueryRow(ctx, `insert into tickets(requester_id,request_key,type,title,description,priority,details)
-			values(nullif($1,'')::uuid,$2,$3,$4,$5,$6,$7) on conflict do nothing returning id,number`, requesterID, key, kind, title, description, priority, details).Scan(&t.ID, &t.Number)
+		err := tx.QueryRow(ctx, `insert into tickets(requester_id,request_key,type,title,description,priority,details,requester_name,requester_account)
+			select nullif($1,'')::uuid,$2,$3,$4,$5,$6,$7,coalesce(c.name,''),coalesce(d.username,c.email,'')
+			from (select 1) one left join customer_contacts c on c.id=nullif($1,'')::uuid
+			left join directory_accounts d on d.id=c.directory_id
+			on conflict do nothing returning id,number`, requesterID, key, kind, title, description, priority, details).Scan(&t.ID, &t.Number)
 		if errors.Is(err, pgx.ErrNoRows) {
 			return tx.QueryRow(ctx, `select id,number from tickets where requester_id is not distinct from nullif($1,'')::uuid and request_key=$2`, requesterID, key).Scan(&t.ID, &t.Number)
 		}
@@ -334,8 +337,8 @@ func (s TicketStore) create(ctx context.Context, requesterID, key, kind, title, 
 				}
 			}
 		}
-		_, err = tx.Exec(ctx, `insert into ticket_events(ticket_id,actor_type,actor_id,kind,visibility,body)
-			values($1,$2,$3,'created','public','')`, t.ID, actorType, actorID)
+		_, err = tx.Exec(ctx, `insert into ticket_events(ticket_id,actor_type,actor_id,kind,visibility,body,actor_name)
+			values($1,$2,$3,'created','public','',case when $2='customer' then coalesce((select name from customer_contacts where id=$3::uuid),'') else '' end)`, t.ID, actorType, actorID)
 		if err != nil {
 			return err
 		}
@@ -352,7 +355,7 @@ const ticketNeedsActionSQL = `(t.status='new' or (t.status='working' and t.reque
 		and te.visibility='public' and te.kind in ('created','comment','status')
 		order by te.id desc limit 1),'')='customer'))`
 
-const ticketSelect = `select t.id,t.number,coalesce(t.requester_id::text,''),coalesce(c.name,'內部工單'),t.type,t.title,t.description,t.status,t.priority,
+const ticketSelect = `select t.id,t.number,coalesce(t.requester_id::text,''),coalesce(nullif(t.requester_name,''),c.name,'內部工單'),t.type,t.title,t.description,t.status,t.priority,
 	coalesce(t.assignee_id::text,''),coalesce(a.username,''),coalesce(t.employee_id::text,''),coalesce(e.windows_user,''),
 	coalesce(t.device_id::text,''),coalesce(d.hostname,''),t.version,t.created_at,t.updated_at,t.details,` + ticketNeedsActionSQL + ` as needs_action,
 	coalesce((select d.id is null from ticket_proposals p left join ticket_proposal_decisions d on d.proposal_id=p.id
@@ -427,7 +430,7 @@ func (s TicketStore) ActionRequiredCount(ctx context.Context) (int, error) {
 }
 
 func (s TicketStore) Events(ctx context.Context, id, requesterID string) ([]TicketEvent, error) {
-	query := `select e.id,e.actor_type,coalesce(c.name,a.username,'系統'),e.kind,e.visibility,e.body,
+	query := `select e.id,e.actor_type,coalesce(nullif(e.actor_name,''),c.name,a.username,'系統'),e.kind,e.visibility,e.body,
 		coalesce(e.from_status,''),coalesce(e.to_status,''),e.created_at from ticket_events e
 		left join customer_contacts c on e.actor_type='customer' and e.actor_id=c.id
 		left join admin_principals a on e.actor_type='admin' and e.actor_id=a.id
@@ -500,8 +503,8 @@ func (s TicketStore) AddEvent(ctx context.Context, id, requesterID, actorType, a
 			closed_at=case when $2 in ('done','closed') then coalesce(closed_at,now()) else null end where id=$1`, id, nextStatus); err != nil {
 			return err
 		}
-		_, err = tx.Exec(ctx, `insert into ticket_events(ticket_id,actor_type,actor_id,kind,visibility,body,from_status,to_status)
-			values($1,$2,$3,$4,$5,$6,$7,$8)`, id, actorType, actorID, kind, visibility, body, status, nextStatus)
+		_, err = tx.Exec(ctx, `insert into ticket_events(ticket_id,actor_type,actor_id,kind,visibility,body,from_status,to_status,actor_name)
+			values($1,$2,$3,$4,$5,$6,$7,$8,case when $2='customer' then coalesce((select name from customer_contacts where id=$3::uuid),'') else '' end)`, id, actorType, actorID, kind, visibility, body, status, nextStatus)
 		if err != nil {
 			return err
 		}
@@ -656,4 +659,15 @@ func (s TicketStore) TaskIDs(ctx context.Context, id string) ([]TicketTaskLink, 
 		out = append(out, x)
 	}
 	return out, rows.Err()
+}
+
+// ContactHasWorkspace reports whether a contact has a live AI workspace
+// account: the employee linked to the same custom tool account, or, for a
+// contact the tool does not know, the one under the same email.
+func (s TicketStore) ContactHasWorkspace(ctx context.Context, contactID string) (bool, error) {
+	var has bool
+	err := s.db.pool.QueryRow(ctx, `select exists (select 1 from customer_contacts c join employees e
+		on (e.directory_id = c.directory_id or (c.directory_id is null and lower(e.email) = c.email))
+		where c.id = $1 and e.status = 'active' and e.deleted_at is null)`, contactID).Scan(&has)
+	return has, err
 }

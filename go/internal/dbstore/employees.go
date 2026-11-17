@@ -18,7 +18,7 @@ type employeeRepo struct{ q querier }
 // in one place, not in six that must agree.
 const employeeColumns = `id, windows_user, coalesce(external_id, ''), name, department,
 	codex_account, email, status, auth_epoch, version,
-	created_at, updated_at, offboarded_at, deleted_at`
+	created_at, updated_at, offboarded_at, deleted_at, coalesce(directory_id::text, '')`
 
 type scanner interface{ Scan(dest ...any) error }
 
@@ -28,7 +28,7 @@ func scanEmployee(row scanner) (repo.Employee, error) {
 	var offboardedAt, deletedAt *time.Time
 	err := row.Scan(&e.ID, &e.WindowsUser, &e.ExternalID, &e.Name, &e.Department,
 		&e.CodexAccount, &e.Email, &status, &e.AuthEpoch, &e.Version,
-		&e.CreatedAt, &e.UpdatedAt, &offboardedAt, &deletedAt)
+		&e.CreatedAt, &e.UpdatedAt, &offboardedAt, &deletedAt, &e.DirectoryID)
 	if err != nil {
 		return repo.Employee{}, err
 	}
@@ -90,10 +90,10 @@ func (r employeeRepo) Create(ctx context.Context, n repo.NewEmployee) (repo.Empl
 		return repo.Employee{}, errors.New("create employee: windows user must not be empty")
 	}
 	e, err := scanEmployee(r.q.QueryRow(ctx,
-		`insert into employees (windows_user, external_id, name, department, codex_account, email)
-		 values ($1, nullif($2, ''), $3, $4, $5, $6)
+		`insert into employees (windows_user, external_id, name, department, codex_account, email, directory_id)
+		 values ($1, nullif($2, ''), $3, $4, $5, $6, nullif($7, '')::uuid)
 		 returning `+employeeColumns,
-		user, n.ExternalID, n.Name, n.Department, n.CodexAccount, n.Email))
+		user, n.ExternalID, n.Name, n.Department, n.CodexAccount, n.Email, n.DirectoryID))
 	if err != nil {
 		return repo.Employee{}, mapError(err, "create employee")
 	}

@@ -2,6 +2,7 @@ package adminweb
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log"
 	"net/http"
@@ -12,6 +13,7 @@ import (
 	"strings"
 
 	"github.com/TEENet-io/ai-env-mgr/internal/admincore"
+	"github.com/TEENet-io/ai-env-mgr/internal/directory"
 	"github.com/TEENet-io/ai-env-mgr/internal/litellm"
 	"github.com/TEENet-io/ai-env-mgr/internal/model"
 )
@@ -42,6 +44,8 @@ type accountRow struct {
 	// anything here -- see admincore.AccountSpec.
 	CodexAccount string
 	Email        string
+	// Linked: the account belongs to a custom tool account (AIC-209).
+	Linked bool
 
 	// Version and QuotaVersion are what the detail page's forms carry back,
 	// so a save from a page rendered before somebody else's save is refused
@@ -275,6 +279,12 @@ func (s *Server) handleUsers(w http.ResponseWriter, r *http.Request, sess *sessi
 		return
 	}
 	data.Accounts = filterAccounts(rows, data.Show)
+	if data.Directory = s.usesDirectory(); data.Directory {
+		if data.Unopened, err = s.dbm.db.Directory().WithoutWorkspace(r.Context()); err != nil {
+			data.Error = "讀取定製工具名單失敗，暫時不能開戶"
+			log.Printf("adminweb: accounts: directory: %v", err)
+		}
+	}
 	if !data.GatewayEnabled {
 		data.Accounts = dropGatewayFlags(data.Accounts)
 	}
@@ -326,6 +336,7 @@ func (s *Server) handleUserDetail(w http.ResponseWriter, r *http.Request, sess *
 	data := newPage(sess, r, "users")
 	data.GatewayURL = s.opts.GatewayURL
 
+	data.Directory = s.usesDirectory()
 	data.Audit, _ = sess.be.Audit(r.Context(), user)
 	if s.dbm != nil {
 		data.History = s.employeeHistory(r, user)
@@ -427,19 +438,51 @@ func (s *Server) actionAccountOnboard(sess *session, r *http.Request) error {
 	if err != nil {
 		return err
 	}
-	email, err := parseEmail(formValue(r, "email"), true)
-	if err != nil {
-		return err
-	}
-	return sess.be.Onboard(ctx, gw, cfg, admincore.AccountSpec{
-		Email:        email,
+	spec := admincore.AccountSpec{
 		WindowsUser:  user,
 		Name:         formValue(r, "name"),
 		Department:   formValue(r, "department"),
 		Quota:        quota,
 		Models:       chosenModels(r), // none selected = everything the gateway offers
 		CodexAccount: formValue(r, "codexAccount"),
-	})
+	}
+	if s.usesDirectory() {
+		// The person comes from the custom tool's list, and so do the name
+		// and the email: what the form says about them is not read.
+		person, err := s.workspaceCandidate(r.Context(), formValue(r, "directoryID"))
+		if err != nil {
+			return err
+		}
+		if person.Email == "" {
+			return fmt.Errorf("%s 在定製工具裡沒有郵箱，請先在定製工具補上（員工用它接收雲電腦的登入驗證碼）", person.DisplayName())
+		}
+		spec.DirectoryID, spec.Name, spec.Email = person.ID, person.DisplayName(), person.Email
+	} else if spec.Email, err = parseEmail(formValue(r, "email"), true); err != nil {
+		return err
+	}
+	return sess.be.Onboard(ctx, gw, cfg, spec)
+}
+
+// usesDirectory reports whether the customer's list of people comes from
+// the custom tool. Accounts are then opened only for somebody on it.
+func (s *Server) usesDirectory() bool { return s.dbm != nil && s.dbm.directory != nil }
+
+// workspaceCandidate is the person picked to get an AI workspace account,
+// refused unless the list still has them without one.
+func (s *Server) workspaceCandidate(ctx context.Context, id string) (directory.Account, error) {
+	if id == "" {
+		return directory.Account{}, errors.New("請從定製工具名單裡選擇員工")
+	}
+	people, err := s.dbm.db.Directory().WithoutWorkspace(ctx)
+	if err != nil {
+		return directory.Account{}, err
+	}
+	for _, p := range people {
+		if p.ID == id {
+			return p, nil
+		}
+	}
+	return directory.Account{}, errors.New("這位員工已經有 AI 工作間帳號，或已不在定製工具名單裡，請刷新後重選")
 }
 
 // actionAccountReopen is onboarding from a row button: no form fields
@@ -603,8 +646,19 @@ func (s *Server) actionAccountProfile(sess *session, r *http.Request) error {
 	if err != nil {
 		return err
 	}
+	name := formValue(r, "name")
+	if s.usesDirectory() {
+		// A linked account's name is the custom tool's, kept by the sync.
+		e, err := s.dbm.store.Employees().ByWindowsUser(ctx, user)
+		if err != nil {
+			return err
+		}
+		if e.DirectoryID != "" {
+			name = e.Name
+		}
+	}
 	return sess.be.UpdateProfile(ctx, gw, user,
-		formValue(r, "name"), formValue(r, "department"),
+		name, formValue(r, "department"),
 		formValue(r, "codexAccount"), email, formInt(r, "version"))
 }
 

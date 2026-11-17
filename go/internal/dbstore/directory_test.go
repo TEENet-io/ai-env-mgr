@@ -2,8 +2,10 @@ package dbstore
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"testing"
+	"time"
 
 	"github.com/TEENet-io/ai-env-mgr/internal/directory"
 	"github.com/TEENet-io/ai-env-mgr/internal/repo"
@@ -210,5 +212,156 @@ func TestAFailingReadingIsRecordedUntilOneSucceeds(t *testing.T) {
 	st, err := d.State(ctx)
 	if err != nil || st.FailingSince != nil || st.LastError != "" || st.LastSuccessAt == nil {
 		t.Errorf("after a success: %+v %v", st, err)
+	}
+}
+
+func TestAnOpsAccountWaitsUntilSomebodyOpensIt(t *testing.T) {
+	s, ctx := newTestStore(t)
+	d := s.db.Directory()
+	wei := dirAccount(51, directory.RoleOps, directory.StatusActive)
+	wei.Username = "wei.peng@teenet.io"
+	readDirectory(t, ctx, d, wei, dirAccount(52, directory.RoleEmployee, directory.StatusActive))
+	stranger := dirAccount(53, directory.RoleOps, directory.StatusActive)
+
+	if d.IsBound(ctx, wei.ID) {
+		t.Fatal("an ops account nobody opened reads as bound")
+	}
+	for _, a := range []directory.Account{wei, wei, stranger} {
+		if err := d.RecordOpsRequest(ctx, a); err != nil {
+			t.Fatal(err)
+		}
+	}
+	pending, err := d.PendingOpsAccounts(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := map[string]PendingOps{}
+	for _, p := range pending {
+		got[p.Username] = p
+	}
+	if len(pending) != 2 || got[wei.Username].Attempts != 2 || !got[wei.Username].Known || got[stranger.Username].Known {
+		t.Fatalf("pending = %+v", pending)
+	}
+
+	// Somebody not in the copy of the list yet cannot be opened.
+	if _, err := d.OpenOpsAccount(ctx, stranger.ID, "stranger", repo.RoleAdmin); !errors.Is(err, ErrNotPermitted) {
+		t.Errorf("opened an account the list does not have: %v", err)
+	}
+	if _, err := d.OpenOpsAccount(ctx, dirAccount(52, "", "").ID, "u52", repo.RoleAdmin); !errors.Is(err, ErrNotPermitted) {
+		t.Errorf("opened an employee: %v", err)
+	}
+	if _, err := d.OpenOpsAccount(ctx, wei.ID, " Wei.Peng ", repo.RoleViewer); err != nil {
+		t.Fatalf("open: %v", err)
+	}
+	user, err := d.AdminForSignIn(ctx, wei.ID)
+	if err != nil || user != "wei.peng" {
+		t.Fatalf("after opening, sign-in finds %q, %v", user, err)
+	}
+	var hash *string
+	var role string
+	if err := s.db.Pool().QueryRow(ctx, `select password_hash, role from admin_principals where username = 'wei.peng'`).Scan(&hash, &role); err != nil {
+		t.Fatal(err)
+	}
+	if hash != nil || role != repo.RoleViewer {
+		t.Errorf("opened account: password %v, role %q", hash, role)
+	}
+	if _, err := d.OpenOpsAccount(ctx, wei.ID, "wei2", repo.RoleAdmin); !errors.Is(err, repo.ErrDuplicate) {
+		t.Errorf("opened the same tool account twice: %v", err)
+	}
+	pending, _ = d.PendingOpsAccounts(ctx)
+	if len(pending) != 1 || pending[0].ID != stranger.ID {
+		t.Errorf("after opening, pending = %+v", pending)
+	}
+}
+
+// An AI workspace account is opened for somebody the list has: active, not
+// ops, and without a live account here.
+func TestOnlyPeopleWithoutAnAccountCanGetOne(t *testing.T) {
+	s, ctx := newTestStore(t)
+	d := s.db.Directory()
+	boss, amy, bob := dirAccount(1, directory.RoleAdmin, directory.StatusActive), dirAccount(2, directory.RoleEmployee, directory.StatusActive), dirAccount(3, directory.RoleEmployee, directory.StatusActive)
+	ops, gone := dirAccount(4, directory.RoleOps, directory.StatusActive), dirAccount(5, directory.RoleEmployee, directory.StatusDisabled)
+	readDirectory(t, ctx, d, boss, amy, bob, ops, gone)
+
+	ids := func() []string {
+		t.Helper()
+		people, err := d.WithoutWorkspace(ctx)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var out []string
+		for _, p := range people {
+			out = append(out, p.Username)
+		}
+		return out
+	}
+	if got := fmt.Sprint(ids()); got != "[u1 u2 u3]" {
+		t.Fatalf("candidates = %s", got)
+	}
+
+	emp, err := s.Employees().Create(ctx, repo.NewEmployee{WindowsUser: "work2", Name: amy.Name, DirectoryID: amy.ID})
+	if err != nil || emp.DirectoryID != amy.ID {
+		t.Fatalf("create linked: %+v %v", emp, err)
+	}
+	if got := fmt.Sprint(ids()); got != "[u1 u3]" {
+		t.Errorf("after amy got one: %s", got)
+	}
+	if _, err := s.Employees().Create(ctx, repo.NewEmployee{WindowsUser: "work9", DirectoryID: amy.ID}); !errors.Is(err, repo.ErrDuplicate) {
+		t.Errorf("a second live account for amy: %v", err)
+	}
+
+	// Somebody whose account was closed still has it.
+	if _, err := s.Employees().Offboard(ctx, emp.ID, emp.Version); err != nil {
+		t.Fatal(err)
+	}
+	if got := fmt.Sprint(ids()); got != "[u1 u3]" {
+		t.Errorf("after amy left: %s", got)
+	}
+}
+
+// A rename in the tool renames the AI workspace account; what was recorded
+// under the old name -- a machine bound, a day of usage -- keeps it.
+func TestARenameReachesTheAccountButNotTheRecords(t *testing.T) {
+	s, ctx := newTestStore(t)
+	d := s.db.Directory()
+	amy := dirAccount(2, directory.RoleEmployee, directory.StatusActive)
+	readDirectory(t, ctx, d, amy)
+	emp, err := s.Employees().Create(ctx, repo.NewEmployee{WindowsUser: "work2", Name: amy.Name, DirectoryID: amy.ID})
+	if err != nil {
+		t.Fatal(err)
+	}
+	dev, _ := s.Devices().EnsureByHostname(ctx, "desktop-02")
+	if _, err := s.Bindings().Bind(ctx, dev.ID, emp.ID, "", "admin"); err != nil {
+		t.Fatal(err)
+	}
+	day := time.Date(2026, 11, 3, 0, 0, 0, 0, time.UTC)
+	usage := []repo.UsageRow{{EmployeeID: emp.ID, KeyAlias: "emp-work2", ModelGroup: "sonnet", Calls: 1, CostUSD: "1"}}
+	if err := s.Usage().UpsertDay(ctx, day, usage); err != nil {
+		t.Fatal(err)
+	}
+
+	amy.Name = "Amy Chan"
+	readDirectory(t, ctx, d, amy)
+	after, err := s.Employees().ByID(ctx, emp.ID)
+	if err != nil || after.Name != "Amy Chan" {
+		t.Fatalf("account after rename: %+v %v", after, err)
+	}
+	// The day is counted again after the rename, as the snapshot does.
+	if err := s.Usage().UpsertDay(ctx, day, usage); err != nil {
+		t.Fatal(err)
+	}
+	if b, err := s.Bindings().Open(ctx, dev.ID); err != nil || b.EmployeeName != "User 2" {
+		t.Errorf("binding name = %q %v", b.EmployeeName, err)
+	}
+	names, err := s.Usage().NamesInPeriod(ctx, repo.UsageFilter{From: day, To: day.AddDate(0, 0, 1)})
+	if err != nil || names[emp.ID] != "User 2" {
+		t.Errorf("usage names = %v %v", names, err)
+	}
+	// A new day is counted under the new name.
+	if err := s.Usage().UpsertDay(ctx, day.AddDate(0, 0, 1), usage); err != nil {
+		t.Fatal(err)
+	}
+	if names, _ := s.Usage().NamesInPeriod(ctx, repo.UsageFilter{From: day, To: day.AddDate(0, 0, 2)}); names[emp.ID] != "Amy Chan" {
+		t.Errorf("latest name in the period = %q", names[emp.ID])
 	}
 }

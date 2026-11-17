@@ -151,6 +151,7 @@ func (s *Server) handleUsage(w http.ResponseWriter, r *http.Request, sess *sessi
 		page.Months = append([]string{month}, page.Months...)
 	}
 	names := s.employeeNames(r)
+	recorded, _ := store.NamesInPeriod(ctx, f) // a page without them still shows the Windows users
 	byEmployee, err1 := store.ByEmployee(ctx, f)
 	byModel, err2 := store.ByModel(ctx, f)
 	byDay, err3 := store.ByDay(ctx, f)
@@ -162,7 +163,12 @@ func (s *Server) handleUsage(w http.ResponseWriter, r *http.Request, sess *sessi
 	page.ByEmployee = usageLines(byEmployee, total, func(r repo.UsageRow) (string, string, string) {
 		if e, ok := names[r.EmployeeID]; ok {
 			link := "/usage?" + url.Values{"month": {month}, "employee": {e.WindowsUser}}.Encode()
-			return e.WindowsUser, e.Department, link
+			// The name the month was recorded under, not today's.
+			sub := recorded[r.EmployeeID]
+			if e.Department != "" {
+				sub = strings.TrimPrefix(sub+" · "+e.Department, " · ")
+			}
+			return e.WindowsUser, sub, link
 		}
 		return r.KeyAlias, "未關聯到員工", ""
 	})

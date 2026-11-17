@@ -322,6 +322,7 @@ func (b dbBackend) accountRow(ctx context.Context, e repo.Employee, gwUsers []li
 	row := accountRow{
 		WindowsUser: e.WindowsUser, Name: e.Name, Department: e.Department, Enabled: e.Active(),
 		OnRoster: true, CodexAccount: e.CodexAccount, Email: e.Email, Version: e.Version,
+		Linked: e.DirectoryID != "",
 	}
 	if q, err := b.store.Quotas().Get(ctx, e.ID); err == nil {
 		row.QuotaVersion = q.Version
@@ -399,7 +400,7 @@ func (b dbBackend) accountRow(ctx context.Context, e repo.Employee, gwUsers []li
 func (b dbBackend) Onboard(ctx context.Context, _ *litellm.Client, _ admincore.GatewayConfig, spec admincore.AccountSpec) error {
 	_, err := b.ops.Onboard(ctx, ops.OnboardSpec{
 		WindowsUser: spec.WindowsUser, Name: spec.Name, Department: spec.Department,
-		CodexAccount: spec.CodexAccount, Email: spec.Email,
+		CodexAccount: spec.CodexAccount, Email: spec.Email, DirectoryID: spec.DirectoryID,
 		Quota: storedQuota(spec.Quota), Models: spec.Models,
 		Actor: b.actor, RequestID: b.requestID,
 	})

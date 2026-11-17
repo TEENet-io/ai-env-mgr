@@ -63,7 +63,7 @@ func TestDailyTicketKinds(t *testing.T) {
 			form := tc.fields
 			form.Set("request_kind", tc.kind)
 			form.Set("request_key", strings.Repeat("a", 32))
-			kind, title, description, priority, key, raw, err := parseDailyTicketSubmission(ticketFormRequest(form), employees)
+			kind, title, description, priority, key, raw, err := parseDailyTicketSubmission(ticketFormRequest(form), employees, nil)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -136,7 +136,7 @@ func TestDailyTicketRejectsInvalidTargetAndFields(t *testing.T) {
 		form := tc.fields
 		form.Set("request_kind", tc.kind)
 		form.Set("request_key", strings.Repeat("a", 32))
-		if _, _, _, _, _, _, err := parseDailyTicketSubmission(ticketFormRequest(form), employees); err == nil {
+		if _, _, _, _, _, _, err := parseDailyTicketSubmission(ticketFormRequest(form), employees, nil); err == nil {
 			t.Errorf("accepted invalid %s: %v", tc.kind, tc.fields)
 		}
 	}
@@ -147,6 +147,7 @@ func TestContactsRaiseOnlyTheKindsTheirRoleAllows(t *testing.T) {
 	h := s.Handler()
 	employee := customerCookieFor(t, s, "staff@example.com", "employee")
 	manager := customerCookieFor(t, s, "lead@example.com", "manager")
+	withWorkspace(t, s, "staff@example.com")
 	raise := func(cookie *http.Cookie, kind string) *httptest.ResponseRecorder {
 		t.Helper()
 		key, err := randomTicketKey()
@@ -200,6 +201,7 @@ func TestAnEditCannotMoveToAKindTheContactMayNotRaise(t *testing.T) {
 	s, _ := newDatabaseServer(t)
 	h := s.Handler()
 	employee := customerCookieFor(t, s, "staff@example.com", "employee")
+	withWorkspace(t, s, "staff@example.com")
 	key, err := randomTicketKey()
 	if err != nil {
 		t.Fatal(err)
@@ -276,15 +278,87 @@ func TestAManagerReadsUsageAndEmployeesOfThisCompanyOnly(t *testing.T) {
 func TestAQuotaRequestNamesItsEmployees(t *testing.T) {
 	employees := []repo.Employee{{ID: "11111111-1111-1111-1111-111111111111", Name: "Alice", Email: "alice@example.com"}}
 	form := url.Values{"request_kind": {"quota"}, "request_key": {strings.Repeat("a", 32)}}
-	if _, _, _, _, _, _, err := parseDailyTicketSubmission(ticketFormRequest(form), employees); err == nil {
+	if _, _, _, _, _, _, err := parseDailyTicketSubmission(ticketFormRequest(form), employees, nil); err == nil {
 		t.Fatal("a quota request without an employee was accepted")
 	}
 	form.Set("employee_ids", employees[0].ID)
-	_, _, description, _, _, raw, err := parseDailyTicketSubmission(ticketFormRequest(form), employees)
+	_, _, description, _, _, raw, err := parseDailyTicketSubmission(ticketFormRequest(form), employees, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if !strings.Contains(description, "Alice") || !strings.Contains(string(raw), employees[0].ID) {
 		t.Fatalf("the employee is not on the request: %s / %s", description, raw)
+	}
+}
+
+// An employee without an AI workspace account has no remote desktop or AI
+// to ask about: those requests are neither offered nor accepted (AIC-204
+// #10). A manager raises them for others and is not limited.
+func TestAnEmployeeWithoutAnAccountSeesNoDesktopOrAIRequests(t *testing.T) {
+	// Without the custom tool's list, contacts and accounts meet only by
+	// email, and nothing is taken away.
+	legacy, _ := newDatabaseServer(t)
+	nobody := customerCookieFor(t, legacy, "staff@example.com", "employee")
+	key, _ := randomTicketKey()
+	if rec := postTicketForm(t, legacy.Handler(), "/customer/ticket/create", nobody, map[string]string{
+		"csrf": legacy.csrfFor(nobody.Value), "request_key": key, "request_kind": "ai-problem", "problem": "它打不開",
+	}); rec.Code != http.StatusSeeOther {
+		t.Errorf("without the list, ai-problem: %d", rec.Code)
+	}
+
+	s := newDirectoryServer(t)
+	h := s.Handler()
+	employee := customerCookieFor(t, s, "staff@example.com", "employee")
+	manager := customerCookieFor(t, s, "lead@example.com", "manager")
+	raise := func(cookie *http.Cookie, kind string) int {
+		t.Helper()
+		key, _ := randomTicketKey()
+		return postTicketForm(t, h, "/customer/ticket/create", cookie, map[string]string{
+			"csrf": s.csrfFor(cookie.Value), "request_key": key, "request_kind": kind, "problem": "它打不開", "tool": "",
+		}).Code
+	}
+	for _, kind := range []string{"desktop-problem", "ai-problem", "website"} {
+		if code := raise(employee, kind); code != http.StatusForbidden {
+			t.Errorf("employee without an account raised %s: %d", kind, code)
+		}
+	}
+	if code := raise(employee, "other-problem"); code != http.StatusSeeOther {
+		t.Errorf("other-problem: %d", code)
+	}
+	if code := raise(manager, "desktop-problem"); code != http.StatusSeeOther {
+		t.Errorf("manager desktop-problem: %d", code)
+	}
+	page := dbGet(t, h, "/customer?view=new", employee).Body.String()
+	for _, hidden := range []string{`data-tp-category="desktop"`, `data-tp-category="ai"`} {
+		if strings.Contains(page, hidden) {
+			t.Errorf("the form offers %s", hidden)
+		}
+	}
+	if home := dbGet(t, h, "/customer", employee).Body.String(); strings.Contains(home, "category=desktop") || strings.Contains(home, "category=ai") {
+		t.Error("the home page offers desktop or AI")
+	}
+	// An account under the same email changes that; so does a closed one going back.
+	emp, err := s.dbm.store.Employees().Create(t.Context(), repo.NewEmployee{WindowsUser: "work1", Email: "staff@example.com"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if code := raise(employee, "ai-problem"); code != http.StatusSeeOther {
+		t.Errorf("with an account, ai-problem: %d", code)
+	}
+	if _, err := s.dbm.store.Employees().Offboard(t.Context(), emp.ID, emp.Version); err != nil {
+		t.Fatal(err)
+	}
+	if code := raise(employee, "ai-problem"); code != http.StatusForbidden {
+		t.Errorf("after the account closed, ai-problem: %d", code)
+	}
+}
+
+// withWorkspace gives a contact an AI workspace account under the same
+// email, for requests only somebody with one may raise.
+func withWorkspace(t *testing.T, s *Server, email string) {
+	t.Helper()
+	user := "w-" + strings.SplitN(email, "@", 2)[0]
+	if _, err := s.dbm.store.Employees().Create(t.Context(), repo.NewEmployee{WindowsUser: user, Email: email}); err != nil {
+		t.Fatal(err)
 	}
 }

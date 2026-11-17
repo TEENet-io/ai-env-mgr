@@ -185,7 +185,7 @@ func TestProblemReportsTakeNoHandlingTime(t *testing.T) {
 	}.Encode()))
 	r.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	r.ParseForm()
-	_, _, description, _, _, details, err := parseDailyTicketSubmission(r, nil)
+	_, _, description, _, _, details, err := parseDailyTicketSubmission(r, nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -250,6 +250,7 @@ func TestATicketsFilesFollowWhoMaySeeIt(t *testing.T) {
 	s, _ := newDatabaseServer(t)
 	h := s.Handler()
 	owner := customerCookieFor(t, s, "owner@example.com", "employee")
+	withWorkspace(t, s, "owner@example.com")
 	other := customerCookieFor(t, s, "other@example.com", "employee")
 	manager := customerCookieFor(t, s, "manager@example.com", "manager")
 	key, err := randomTicketKey()
@@ -300,6 +301,7 @@ func TestTheCurrentRequestNamesItsFilesOnce(t *testing.T) {
 	s, _ := newDatabaseServer(t)
 	h := s.Handler()
 	owner := customerCookieFor(t, s, "owner@example.com", "employee")
+	withWorkspace(t, s, "owner@example.com")
 	key, err := randomTicketKey()
 	if err != nil {
 		t.Fatal(err)
@@ -388,6 +390,7 @@ func slowTicketUpload(t *testing.T, s *Server, addr string, owner *http.Cookie, 
 func TestASlowUploadOutlivesTheServersShortLimits(t *testing.T) {
 	s, _ := newDatabaseServer(t)
 	owner := customerCookieFor(t, s, "owner@example.com", "employee")
+	withWorkspace(t, s, "owner@example.com")
 	l, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
 		t.Fatal(err)

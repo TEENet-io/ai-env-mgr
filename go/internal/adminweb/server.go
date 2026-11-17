@@ -455,6 +455,7 @@ func (s *Server) Handler() http.Handler {
 		mux.HandleFunc("/admins/create", s.requireSession(s.handleAdminCreate))
 		mux.HandleFunc("/admins/reset", s.requireSession(s.handleAdminReset))
 		mux.HandleFunc("/admins/link", s.requirePost("/admins", s.actionAdminLink))
+		mux.HandleFunc("/admins/open", s.requirePost("/admins", s.actionAdminOpen))
 		mux.HandleFunc("/admins/disable", s.requirePost("/admins", s.actionAdminSetDisabled(true)))
 		mux.HandleFunc("/admins/enable", s.requirePost("/admins", s.actionAdminSetDisabled(false)))
 		mux.HandleFunc("/tasks", s.requireSession(s.handleTasks))
@@ -485,7 +486,6 @@ func (s *Server) Handler() http.Handler {
 		mux.HandleFunc("/channels", s.requireSession(s.handleChannels))
 		mux.HandleFunc("/channels/pause", s.requirePostNotice("/channels", s.actionChannelPause))
 		mux.HandleFunc("/channels/test", s.requirePostNotice("/channels", s.actionChannelTest))
-		mux.HandleFunc("/channels/try", s.requireSession(s.handleChannelTrial))
 		// The agents' own API: device tokens, not administrator sessions.
 		mux.Handle("/agent/v1/", s.dbm.devices.Handler())
 		mux.HandleFunc("/usage", s.requireSession(s.handleUsage))

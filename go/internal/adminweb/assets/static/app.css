@@ -2342,19 +2342,6 @@ pre.log.log-viewer::selection { background: #5645d4; color: #ffffff; }
 .channel-kicker { color: var(--ink-faint); font: 11px/1.4 var(--mono); text-transform: uppercase; letter-spacing: .08em; }
 .channel-meta { margin: 10px 0 0; color: var(--ink-soft); font-size: 13px; }
 .channel-reason { margin: 10px 0 0; color: var(--bad); font-size: 13px; }
-.channel-test-form { display: grid; grid-template-columns: minmax(180px, 280px) minmax(240px, 1fr) auto; align-items: end; gap: 12px; margin-top: 20px; }
-.channel-test-form label { min-width: 0; font-size: 12px; color: var(--ink-soft); }
-.channel-test-form select, .channel-test-form textarea { display: block; width: 100%; margin-top: 6px; }
-.channel-test-form textarea { min-height: 78px; resize: vertical; }
-.channel-trial-result { margin-top: 18px; padding: 18px; border: 1px solid var(--rule); border-radius: 10px; background: var(--panel-sunk); }
-.channel-trial-result[hidden], .channel-trial-transcript[hidden] { display: none; }
-.channel-trial-state { margin: 0; font-weight: 600; }
-.channel-trial-result.is-error .channel-trial-state { color: var(--bad); }
-.channel-trial-transcript { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-top: 14px; }
-.channel-trial-transcript > div { min-width: 0; }
-.channel-trial-transcript span { color: var(--ink-faint); font-size: 12px; }
-.channel-trial-transcript pre { min-height: 74px; max-height: 250px; margin: 5px 0 0; padding: 12px; overflow: auto; border: 1px solid var(--rule); border-radius: 7px; background: var(--panel); color: var(--ink); font: 13px/1.55 var(--mono); white-space: pre-wrap; overflow-wrap: anywhere; }
-.channel-trial-meta { margin: 12px 0 0; color: var(--ink-faint); font-size: 12px; }
 .channel-card .hint { margin: 10px 0 0; }
 .channel-policy { margin-top: 18px; padding-top: 16px; border-top: 1px solid var(--rule); }
 .channel-policy form { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
@@ -2365,7 +2352,6 @@ pre.log.log-viewer::selection { background: #5645d4; color: #ffffff; }
 @media (max-width: 760px) {
   .channel-card { padding: 18px; }
   .channel-card-head { align-items: stretch; flex-direction: column; }
-  .channel-test-form, .channel-trial-transcript { grid-template-columns: 1fr; }
   .channel-policy input, .channel-policy button { width: 100%; }
 }
 
@@ -2714,3 +2700,8 @@ pre.log.log-viewer::selection { background: #5645d4; color: #ffffff; }
   .ticket-composer-footer button { align-self: auto; }
   .ticket-tools-grid { padding-left: 0; }
 }
+
+/* /admins「待開通」: two short forms per row, one above the other. */
+.pending-actions form { display: flex; align-items: center; gap: 8px; margin: 4px 0; flex-wrap: wrap; }
+.pending-actions input, .pending-actions select { width: auto; min-width: 0; margin: 0; }
+.pending-actions .dim { min-width: 5.5em; }

@@ -7,6 +7,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"errors"
+	"log"
 	"net/http"
 	"net/mail"
 	"net/url"
@@ -17,6 +18,7 @@ import (
 
 	"github.com/TEENet-io/ai-env-mgr/internal/authn"
 	"github.com/TEENet-io/ai-env-mgr/internal/dbstore"
+	"github.com/TEENet-io/ai-env-mgr/internal/directory"
 	"github.com/TEENet-io/ai-env-mgr/internal/repo"
 )
 
@@ -49,21 +51,28 @@ type customerPage struct {
 	Rows                             []dbstore.Ticket
 	Filter                           string
 	Employees                        []repo.Employee
-	Tools                            []string
-	Ticket                           *dbstore.Ticket
-	Events                           []dbstore.TicketEvent
-	Revisions                        []dbstore.TicketRequestRevision
-	Proposal                         *dbstore.TicketProposal
-	Approvals                        []dbstore.PendingTicketApproval
-	Owner                            bool
-	EditTicket                       *dbstore.Ticket
-	EditPayload                      string
-	Page                             int
-	HasNext                          bool
-	Workflow                         dbstore.TicketChangeWorkflow
-	NewView                          bool
-	Manager                          bool
-	Pending, Working, Finished       int
+	// PickPeople is set when people come from the custom tool: a new AI
+	// workspace account is asked for by picking one of Unopened.
+	PickPeople bool
+	Unopened   []directory.Account
+	// NoWorkspace hides the desktop and AI requests from an employee
+	// without an AI workspace account.
+	NoWorkspace                bool
+	Tools                      []string
+	Ticket                     *dbstore.Ticket
+	Events                     []dbstore.TicketEvent
+	Revisions                  []dbstore.TicketRequestRevision
+	Proposal                   *dbstore.TicketProposal
+	Approvals                  []dbstore.PendingTicketApproval
+	Owner                      bool
+	EditTicket                 *dbstore.Ticket
+	EditPayload                string
+	Page                       int
+	HasNext                    bool
+	Workflow                   dbstore.TicketChangeWorkflow
+	NewView                    bool
+	Manager                    bool
+	Pending, Working, Finished int
 }
 
 func ticketID(r *http.Request) string { return strings.TrimSpace(r.FormValue("id")) }
@@ -624,6 +633,14 @@ func (s *Server) customerPost(w http.ResponseWriter, r *http.Request) (dbstore.C
 
 func (s *Server) handleCustomerLogin(w http.ResponseWriter, r *http.Request) {
 	if r.Method == http.MethodGet {
+		// In the oidc mode the page has only the one button; go straight to
+		// the tool, which lets in at once whoever is already signed in there.
+		// Not when the page has something to say: that is how a refused or
+		// failed sign-in comes back, and going on again would loop.
+		if s.oidcMode() && len(r.URL.Query()) == 0 {
+			http.Redirect(w, r, "/oidc/start?entry="+entryCustomer, http.StatusSeeOther)
+			return
+		}
 		csrf, err := randomTicketKey()
 		if err != nil {
 			http.Error(w, "登入暫不可用", 500)
@@ -787,7 +804,7 @@ func (s *Server) handleCustomerHome(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "無法建立表單", 500)
 		return
 	}
-	p := customerPage{Name: c.Name, Email: c.Email, CSRF: csrf, SubmitKey: key, Rows: rows, Page: page, HasNext: hasNext, Filter: filter, Manager: c.Role == "manager",
+	p := customerPage{NoWorkspace: !s.contactMay(r, c, "ai-problem"), Name: c.Name, Email: c.Email, CSRF: csrf, SubmitKey: key, Rows: rows, Page: page, HasNext: hasNext, Filter: filter, Manager: c.Role == "manager",
 		NewView: r.URL.Query().Get("view") == "new" || r.URL.Query().Get("edit") != "", Pending: counts.Pending, Working: counts.Working,
 		Finished: counts.Finished, Notice: r.URL.Query().Get("msg")}
 	if p.Manager && !p.NewView {
@@ -821,6 +838,10 @@ func (s *Server) handleCustomerHome(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		p.Employees = dailyAuthorizedEmployees(p.Employees, c)
+		if p.Manager {
+			p.Unopened = s.ticketUnopened(r)
+		}
+		p.PickPeople = s.usesDirectory()
 		if p.Tools, err = s.ticketTools(r.Context()); err != nil {
 			http.Error(w, "無法讀取工具清單", 500)
 			return
@@ -851,7 +872,7 @@ func (s *Server) handleAdminTicketNew(w http.ResponseWriter, r *http.Request, se
 	}
 	adminPage := newPage(sess, r, "tickets")
 	adminPage.GatewayTeamID = s.teamID()
-	s.tpl.ExecuteTemplate(w, "customer_portal.html", customerPage{AdminMode: true, AdminPage: adminPage, Manager: true, NewView: true, Name: sess.admin.Username, CSRF: sess.csrf, SubmitKey: key, Employees: dailyVisibleEmployees(employees), Tools: tools})
+	s.tpl.ExecuteTemplate(w, "customer_portal.html", customerPage{AdminMode: true, AdminPage: adminPage, Manager: true, NewView: true, Name: sess.admin.Username, CSRF: sess.csrf, SubmitKey: key, Employees: dailyVisibleEmployees(employees), Unopened: s.ticketUnopened(r), PickPeople: s.usesDirectory(), Tools: tools})
 }
 
 func (s *Server) handleAdminTicketCreate(w http.ResponseWriter, r *http.Request, sess *session) {
@@ -870,7 +891,7 @@ func (s *Server) handleAdminTicketCreate(w http.ResponseWriter, r *http.Request,
 		var employees []repo.Employee
 		employees, err = s.dbm.store.Employees().List(r.Context(), repo.EmployeeFilter{IncludeOffboarded: true})
 		if err == nil {
-			kind, title, description, priority, key, details, err = parseDailyTicketSubmission(r, employees)
+			kind, title, description, priority, key, details, err = parseDailyTicketSubmission(r, employees, s.ticketUnopened(r))
 		}
 		if err == nil {
 			err = s.checkTicketTool(r, "")
@@ -945,14 +966,14 @@ func (s *Server) handleCustomerCreateTicket(w http.ResponseWriter, r *http.Reque
 	var details []byte
 	var err error
 	if requestKind := formValue(r, "request_kind"); requestKind != "" {
-		if !contactMayRequest(c.Role, requestKind) {
+		if !s.contactMay(r, c, requestKind) {
 			http.Error(w, "當前帳號不能發起這類工單", 403)
 			return
 		}
 		var employees []repo.Employee
 		employees, err = s.dbm.store.Employees().List(r.Context(), repo.EmployeeFilter{IncludeOffboarded: true})
 		if err == nil {
-			kind, title, description, priority, key, details, err = parseDailyTicketSubmission(r, dailyAuthorizedEmployees(employees, c))
+			kind, title, description, priority, key, details, err = parseDailyTicketSubmission(r, dailyAuthorizedEmployees(employees, c), s.ticketUnopened(r))
 		}
 		if err == nil {
 			err = s.checkTicketTool(r, "")
@@ -1006,14 +1027,14 @@ func (s *Server) handleCustomerEditTicket(w http.ResponseWriter, r *http.Request
 	}
 	// A ticket raised before the limits keeps its kind; an edit cannot move
 	// to a kind this contact may not raise.
-	if !contactMayRequest(c.Role, requestKind) {
+	if !s.contactMay(r, c, requestKind) {
 		current, getErr := s.dbm.db.Tickets().GetForContact(r.Context(), id, c.ID, c.Role)
 		if getErr != nil || current.Details["request_kind"] != requestKind {
 			http.Error(w, "當前帳號不能發起這類工單", 403)
 			return
 		}
 	}
-	kind, title, description, _, _, details, err := parseDailyTicketSubmission(r, dailyAuthorizedEmployees(employees, c))
+	kind, title, description, _, _, details, err := parseDailyTicketSubmission(r, dailyAuthorizedEmployees(employees, c), s.ticketUnopened(r))
 	if err == nil {
 		// What the version being edited carries: its files stay, and it may
 		// keep a tool that has since left the list. A ticket this contact
@@ -1231,4 +1252,43 @@ func (s *Server) handleCustomerReply(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	http.Redirect(w, r, "/customer/ticket?id="+url.QueryEscape(id), 303)
+}
+
+// ticketUnopened is what a request for a new AI workspace account may pick
+// from: nil when people are not from the custom tool, and the people the
+// list has without an account otherwise. A list that cannot be read offers
+// nobody, rather than falling back to typed names.
+func (s *Server) ticketUnopened(r *http.Request) []directory.Account {
+	if !s.usesDirectory() {
+		return nil
+	}
+	people, err := s.dbm.db.Directory().WithoutWorkspace(r.Context())
+	if err != nil {
+		log.Printf("adminweb: tickets: directory: %v", err)
+		return []directory.Account{}
+	}
+	return people
+}
+
+// contactMay is contactMayRequest plus the AI workspace rule: an employee
+// without an account does not raise desktop or AI requests. Managers ask
+// for others and are not limited by their own account.
+func (s *Server) contactMay(r *http.Request, c dbstore.CustomerContact, requestKind string) bool {
+	if !contactMayRequest(c.Role, requestKind) {
+		return false
+	}
+	// Only where people come from the custom tool: there an account and its
+	// contact are tied by the tool's id. Elsewhere they meet only by email,
+	// which is too loose to take requests away on.
+	if c.Role == "manager" || !needsWorkspace(requestKind) || !s.usesDirectory() {
+		return true
+	}
+	has, err := s.dbm.db.Tickets().ContactHasWorkspace(r.Context(), c.ID)
+	if err != nil {
+		// A request let through is a ticket somebody reads; one refused by
+		// mistake is a person who cannot report a broken desktop.
+		log.Printf("adminweb: tickets: workspace of %s: %v", c.ID, err)
+		return true
+	}
+	return has
 }

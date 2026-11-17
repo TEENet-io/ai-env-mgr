@@ -48,6 +48,7 @@ func cmdWeb(args []string) error {
 			MasterKeyFile:      os.Getenv("AIENVMGR_MASTER_KEY_FILE"),
 			OSSAccessKeyID:     os.Getenv("AIENVMGR_OSS_ACCESS_KEY_ID"),
 			OSSAccessKeySecret: os.Getenv("AIENVMGR_OSS_ACCESS_KEY_SECRET"),
+			MockOSSDir:         os.Getenv("AIENVMGR_MOCK_OSS_DIR"),
 			FirstAdminEmail:    os.Getenv("AIENVMGR_FIRST_ADMIN_EMAIL"),
 			// Off unless asked for. During a migration the database is filled
 			// and compared while the old console is still live, and a Worker
@@ -56,15 +57,18 @@ func cmdWeb(args []string) error {
 			Worker: os.Getenv("AIENVMGR_WORKER") == "on",
 			// The custom tool (AIC-206): how people sign in, and where the
 			// list of people is read from. The token never comes from a flag.
-			IdentityMode:     os.Getenv("AIENVMGR_IDENTITY_MODE"),
-			DirectoryURL:     os.Getenv("AIENVMGR_DIRECTORY_URL"),
-			DirectoryToken:   os.Getenv("AIENVMGR_DIRECTORY_TOKEN"),
-			OIDCIssuer:       os.Getenv("AIENVMGR_OIDC_ISSUER"),
-			OIDCClientID:     os.Getenv("AIENVMGR_OIDC_CLIENT_ID"),
-			OIDCClientSecret: os.Getenv("AIENVMGR_OIDC_CLIENT_SECRET"),
-			OIDCRedirectURL:  os.Getenv("AIENVMGR_OIDC_REDIRECT_URL"),
-			ToolName:         os.Getenv("AIENVMGR_TOOL_NAME"),
-			EmergencyAdmin:   os.Getenv("AIENVMGR_EMERGENCY_ADMIN"),
+			IdentityMode:   os.Getenv("AIENVMGR_IDENTITY_MODE"),
+			DirectoryURL:   os.Getenv("AIENVMGR_DIRECTORY_URL"),
+			DirectoryToken: os.Getenv("AIENVMGR_DIRECTORY_TOKEN"),
+			// Off until the list has been watched for a while: see
+			// DatabaseOptions.DirectoryAutoOffboard.
+			DirectoryAutoOffboard: os.Getenv("AIENVMGR_DIRECTORY_AUTO_OFFBOARD") == "on",
+			OIDCIssuer:            os.Getenv("AIENVMGR_OIDC_ISSUER"),
+			OIDCClientID:          os.Getenv("AIENVMGR_OIDC_CLIENT_ID"),
+			OIDCClientSecret:      os.Getenv("AIENVMGR_OIDC_CLIENT_SECRET"),
+			OIDCRedirectURL:       os.Getenv("AIENVMGR_OIDC_REDIRECT_URL"),
+			ToolName:              os.Getenv("AIENVMGR_TOOL_NAME"),
+			EmergencyAdmin:        os.Getenv("AIENVMGR_EMERGENCY_ADMIN"),
 		}
 	}
 	for i := 0; i < len(args); i++ {
@@ -129,6 +133,17 @@ func cmdWeb(args []string) error {
 	}
 	if (opts.CertFile == "") != (opts.KeyFile == "") {
 		return fmt.Errorf("--cert and --key go together")
+	}
+	if os.Getenv("AIENVMGR_MOCK_GATEWAY") == "on" {
+		mockURL, mockKey, stopMock, err := adminweb.StartMockGateway()
+		if err != nil {
+			return fmt.Errorf("start mock gateway: %w", err)
+		}
+		defer stopMock()
+		opts.GatewayURL = mockURL
+		opts.GatewayAdminURL = ""
+		opts.GatewayAdminKey = mockKey
+		fmt.Printf("mock LiteLLM gateway running in-process on %s\n", mockURL)
 	}
 	// The gateway address is built in, so a missing key is the only way this
 	// can be half-configured. Say so at startup rather than rendering a page

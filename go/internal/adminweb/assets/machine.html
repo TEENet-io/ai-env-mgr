@@ -64,7 +64,7 @@
     <thead><tr><th>員工</th><th>綁定</th><th>解綁</th><th>備註</th></tr></thead>
     <tbody>{{range .Bindings}}
       <tr>
-        <td class="id">{{.WindowsUser}}{{if .Deleted}} <span class="tag">帳號已刪除</span>{{end}}</td>
+        <td class="id">{{.WindowsUser}}{{if .Deleted}} <span class="tag">帳號已刪除</span>{{end}}{{if .EmployeeName}}<div class="rowsub">{{.EmployeeName}}</div>{{end}}</td>
         <td class="dim">{{.BoundAt.Local.Format "2006-01-02 15:04"}}{{if .BoundBy}} · {{.BoundBy}}{{end}}</td>
         <td class="dim">{{if .UnboundAt}}{{.UnboundAt.Local.Format "2006-01-02 15:04"}}{{if .UnboundBy}} · {{.UnboundBy}}{{end}}{{else}}<span class="tag tag-ok">當前</span>{{end}}</td>
         <td class="remark">{{.Note}}</td>

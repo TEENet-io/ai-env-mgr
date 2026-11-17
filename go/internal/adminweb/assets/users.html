@@ -21,7 +21,7 @@
     {{range .Accounts}}
       <tr>
         <td class="id">{{if .OnRoster}}<a href="/users/detail?user={{.WindowsUser}}">{{.WindowsUser}}</a>{{else}}<span class="id">{{.WindowsUser}}</span>{{end}}</td>
-        <td>{{if .Name}}{{.Name}}{{else}}<span class="dim">—</span>{{end}}{{if .Email}}<div class="rowsub">{{.Email}}</div>{{end}}</td>
+        <td>{{if .Name}}{{.Name}}{{else}}<span class="dim">—</span>{{end}}{{if and $.Directory .OnRoster (not .Deleted) (not .Linked)}} <span class="tag tag-warn" title="不屬於任何定製工具帳號：改名、停用不會同步到這裡">未關聯定製工具</span>{{end}}{{if .Email}}<div class="rowsub">{{.Email}}</div>{{end}}</td>
         <td class="dim">{{if .Department}}{{.Department}}{{else}}—{{end}}</td>
         <td>
           {{if .Deleted}}<span class="tag">已刪除 {{.DeletedAt}}</span>{{else if .Enabled}}<span class="tag tag-ok">在職</span>{{else}}<span class="tag tag-bad">已離職</span>{{end}}
@@ -76,8 +76,15 @@
     <input type="hidden" name="csrf" value="{{.CSRF}}">
     {{if .GatewayTeamID}}<label>組織<input value="{{.GatewayTeamID}}" readonly disabled><span class="field-hint">新員工的令牌和用量都歸在這個組織（LiteLLM team）下</span></label>{{end}}
     <label>Windows 用戶<input name="windowsUser" required placeholder="work1"><span class="field-hint">按小寫保存，機器上的帳號大小寫無關</span></label>
+    {{if .Directory}}
+    <label>員工<select name="directoryID" required>
+      <option value="">{{if .Unopened}}選擇員工{{else}}定製工具名單裡沒有待開戶的員工{{end}}</option>
+      {{range .Unopened}}<option value="{{.ID}}">{{.DisplayName}}{{if .Email}} · {{.Email}}{{else}}（沒有郵箱）{{end}}</option>{{end}}
+    </select><span class="field-hint">只列定製工具裡啟用中、還沒有 AI 工作間帳號的人。姓名和郵箱以定製工具為準，郵箱用來接收雲電腦的登入驗證碼；已關戶的員工請在上面的列表裡「重新開戶」</span></label>
+    {{else}}
     <label>郵箱<input name="email" type="email" required placeholder="zhangsan@example.com"><span class="field-hint">員工用它接收雲電腦的登入驗證碼</span></label>
     <label>姓名<input name="name" placeholder="張三"></label>
+    {{end}}
     <label>部門<input name="department" placeholder="研發"></label>
     <label>月預算（美元）<input name="budget" type="number" step="0.01" min="0.01" value="{{.QuotaDefaults.MonthlyBudgetUSD}}" required></label>
     <fieldset class="checks">
@@ -87,7 +94,7 @@
         <label class="check"><input type="checkbox" name="models" value="{{.Name}}"> {{.Info.DisplayName}} <span class="dim">{{.Name}}</span></label>
       {{end}}
     </fieldset>
-    <button type="submit"{{if or (not .GatewayEnabled) (not .GatewayModels)}} disabled{{end}}>開戶並下發配置</button>
+    <button type="submit"{{if or (not .GatewayEnabled) (not .GatewayModels) (and .Directory (not .Unopened))}} disabled{{end}}>開戶並下發配置</button>
   </form>
   <p class="hint">
     開戶一次完成：入名冊、在網關建用戶與令牌、生成並下發 Codex 配置。機器綁定在<a href="/machines">機器</a>頁。

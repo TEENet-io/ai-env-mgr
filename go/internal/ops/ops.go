@@ -66,9 +66,12 @@ func (s *Service) wakeAll() {
 // Audit actions. They are constants because they are searched for: an incident
 // starts with somebody grepping for one of these strings.
 const (
-	ActionOnboard       = "account.onboard"
-	ActionReopen        = "account.reopen"
-	ActionOffboard      = "account.offboard"
+	ActionOnboard  = "account.onboard"
+	ActionReopen   = "account.reopen"
+	ActionOffboard = "account.offboard"
+	// ActionSyncOffboard is a close the custom tool's list caused: the
+	// person was disabled or deleted there (AIC-209 #5).
+	ActionSyncOffboard  = "account.offboard_sync"
 	ActionReissue       = "account.reissue"
 	ActionRotate        = "account.rotate"
 	ActionTeamMove      = "account.team_move"
@@ -104,8 +107,11 @@ type OnboardSpec struct {
 	CodexAccount string
 	Email        string
 	ExternalID   string
-	Quota        repo.Quota
-	Models       []string
+	// DirectoryID is the custom tool account the person was picked from.
+	// Reopening an existing account is only for the same person.
+	DirectoryID string
+	Quota       repo.Quota
+	Models      []string
 
 	// Actor is the administrator's user name, for the audit trail.
 	Actor string
@@ -135,6 +141,7 @@ func (s *Service) Onboard(ctx context.Context, spec OnboardSpec) (repo.Employee,
 			employee, err = tx.Employees().Create(ctx, repo.NewEmployee{
 				WindowsUser: user, Name: spec.Name, Department: spec.Department,
 				CodexAccount: spec.CodexAccount, Email: spec.Email, ExternalID: spec.ExternalID,
+				DirectoryID: spec.DirectoryID,
 			})
 			if err != nil {
 				return err
@@ -147,6 +154,12 @@ func (s *Service) Onboard(ctx context.Context, spec OnboardSpec) (repo.Employee,
 		action := ActionOnboard
 
 		if !created {
+			// A Windows user already in use belongs to whoever has it. Taking
+			// it over would rename that person's account and revoke their
+			// credentials under somebody else's name.
+			if spec.DirectoryID != "" && employee.DirectoryID != spec.DirectoryID {
+				return fmt.Errorf("Windows 用戶 %s 已被 %s 使用，請換一個：%w", user, employee.Name, repo.ErrConflict)
+			}
 			// An existing row: bring the labels up to what the form says,
 			// leaving alone whatever it did not fill in.
 			if employee, err = s.applyProfile(ctx, tx, employee, spec); err != nil {
@@ -202,6 +215,17 @@ func (s *Service) Onboard(ctx context.Context, spec OnboardSpec) (repo.Employee,
 // removing the delivered files, and those are tasks -- so a gateway that is
 // down delays the revocation rather than losing it.
 func (s *Service) Offboard(ctx context.Context, employeeID, actor, requestID string) (repo.Employee, error) {
+	return s.offboard(ctx, employeeID, actor, requestID, ActionOffboard)
+}
+
+// OffboardForDirectory is Offboard on behalf of the list sync: the same close,
+// recorded as one the system made. Only access goes; the instance and the
+// data stay until a person deals with them.
+func (s *Service) OffboardForDirectory(ctx context.Context, employeeID string) (repo.Employee, error) {
+	return s.offboard(ctx, employeeID, "directory-sync", "", ActionSyncOffboard)
+}
+
+func (s *Service) offboard(ctx context.Context, employeeID, actor, requestID, action string) (repo.Employee, error) {
 	var result repo.Employee
 	err := s.store.InTx(ctx, func(tx repo.Store) error {
 		employee, err := tx.Employees().ByID(ctx, employeeID)
@@ -232,7 +256,7 @@ func (s *Service) Offboard(ctx context.Context, employeeID, actor, requestID str
 		if err := s.enqueueEmployeeExport(ctx, tx, employee, epochMarker(employee)); err != nil {
 			return err
 		}
-		if err := s.audit(ctx, tx, actor, requestID, ActionOffboard, employee, before, employee); err != nil {
+		if err := s.audit(ctx, tx, actor, requestID, action, employee, before, employee); err != nil {
 			return err
 		}
 		result = employee

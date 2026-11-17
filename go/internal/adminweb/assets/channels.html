@@ -5,12 +5,12 @@
 <main class="sheet">
   <header class="pagehead"><h1>模型渠道</h1></header>
   {{template "notices" .}}
-  <p class="lede">在這裡查看供應商部署、檢測指定模型，並在故障時暫停渠道。暫停是管理員策略，不等於供應商健康狀態。</p>
+  <p class="lede">在這裡查看供應商部署，並在故障時暫停渠道。暫停是管理員策略，不等於供應商健康狀態。</p>
   <section class="panel summary-row">
     <p>LiteLLM 網關 {{if .GatewayURL}}<code>{{.GatewayURL}}</code>{{else}}未配置{{end}}
     {{if .GatewayUnusable}}<span class="tag tag-bad">無法讀取</span>{{else if .GatewayEnabled}}<span class="tag tag-ok">清單可讀</span>{{end}}</p>
     {{if .GatewayUnusable}}<p class="note note-err">{{.GatewayUnusable}}</p>{{end}}
-    <p class="hint">模型清單可讀只說明網關可訪問，不代表上游推理可用。下方的「發送測試」會實際調用所選聊天部署，不使用健康檢查緩存，併產生少量供應商費用。</p>
+    <p class="hint">模型清單可讀只說明網關可訪問，不代表上游推理可用。</p>
   </section>
 
   <div class="channel-stack">
@@ -22,30 +22,6 @@
     </div>
     <p class="channel-meta">{{len .Deployments}} 個部署 · {{len .Models}} 個員工可見條目{{if .Paused}} · {{.Pause.At}} 由 {{.Pause.By}} 暫停{{end}}</p>
     {{if .Pause.Reason}}<p class="channel-reason">暫停原因：{{.Pause.Reason}}</p>{{end}}
-
-    {{if and (may $.Role "/channels/test") $.GatewayEnabled (not $.GatewayUnusable) .Testable}}
-    <form method="post" action="/channels/try" class="channel-test-form" data-channel-trial>
-      <input type="hidden" name="csrf" value="{{$.CSRF}}"><input type="hidden" name="channel" value="{{.ID}}">
-      <label>選擇部署
-        <select name="model_id" required>{{range .Deployments}}{{if and .ID .ChatCapable (not .Blocked)}}<option value="{{.ID}}">{{.Name}}{{if not .Visible}} · 隱藏部署{{end}}</option>{{end}}{{end}}</select>
-      </label>
-      <label>輸入測試內容
-        <textarea name="prompt" maxlength="2000" rows="3" required>請用一句話回覆：渠道測試成功。</textarea>
-      </label>
-      <button type="submit">發送測試</button>
-    </form>
-    <div class="channel-trial-result" data-channel-result hidden aria-live="polite">
-      <p class="channel-trial-state" data-channel-state></p>
-      <div class="channel-trial-transcript" data-channel-transcript hidden>
-        <div><span>輸入</span><pre data-channel-input></pre></div>
-        <div><span>模型回覆</span><pre data-channel-output></pre></div>
-      </div>
-      <p class="channel-trial-meta" data-channel-meta></p>
-    </div>
-    <p class="hint">按部署 ID 定向調用並核對網關返回的部署 ID；不會把同名模型誤判為此渠道。輸入最多 2000 字，回覆上限 256 tokens。輸入和回覆只在當前頁面顯示，不寫入 Admin 審計記錄。單個部署通過不代表整個渠道的所有部署均可用。</p>
-    {{else if and (may $.Role "/channels/test") $.GatewayEnabled (not $.GatewayUnusable) (not .Testable)}}
-    <p class="hint">網關沒有提供可試調用的聊天部署 ID。請檢查模型配置。</p>
-    {{end}}
 
     {{if may $.Role "/channels/pause"}}
     <div class="channel-policy">

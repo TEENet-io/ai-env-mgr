@@ -90,11 +90,15 @@
     typePanel.scrollIntoView({behavior:'smooth', block:'start'});
   });
 
+  // A new account is asked for either by typing names, or, when people come
+  // from the custom tool, by picking them from its list.
   const rows = [...form.querySelectorAll('.tp-employee-row')];
-  document.getElementById('tp-add-employee').addEventListener('click', () => {
+  const people = form.querySelector('[data-tp-people]');
+  const addEmployee = document.getElementById('tp-add-employee');
+  if (addEmployee) addEmployee.addEventListener('click', () => {
     const row = rows.find(item => item.hidden);
     if (row) { row.hidden = false; row.querySelector('input')?.focus(); }
-    if (!rows.some(item => item.hidden)) document.getElementById('tp-add-employee').hidden = true;
+    if (!rows.some(item => item.hidden)) addEmployee.hidden = true;
   });
 
   form.querySelectorAll('[data-tp-select-all]').forEach(toggle => {
@@ -127,7 +131,8 @@
     const person = editEmployee.selectedOptions[0]?.dataset || {};
     for (const field of ['name', 'email', 'number']) {
       document.getElementById(`tp-current-${field}`).textContent = person[field] || '—';
-      editEmployee.closest('fieldset').querySelector(`[name="new_${field}"]`).value = '';
+      const input = editEmployee.closest('fieldset').querySelector(`[name="new_${field}"]`);
+      if (input) input.value = '';
     }
   });
 
@@ -137,7 +142,10 @@
     const kind = kindInput.value;
     const named = name => active.querySelector(`[name="${name}"]`);
     let invalid = null;
-    if (kind === 'account-add') {
+    if (kind === 'account-add' && people) {
+      if (!people.querySelector('input[name=directory_ids]:checked')) invalid = people.querySelector('input[name=directory_ids]');
+      if (!people.querySelector('input[name=directory_ids]')) { formError.textContent = '沒有可選的員工'; formError.hidden = false; return false; }
+    } else if (kind === 'account-add') {
       const filled = rows.filter(row => [...row.querySelectorAll('input')].some(input => input.value.trim()));
       if (!filled.length) invalid = rows[0].querySelector('input');
       for (const row of filled) {
@@ -147,7 +155,10 @@
       }
     }
     if (kind.startsWith('account-') && kind !== 'account-add' && !named('target_employee').value) invalid = named('target_employee');
-    if (kind === 'account-edit' && !['new_name','new_email','new_number'].some(name => named(name).value.trim())) invalid = named('new_name');
+    if (kind === 'account-edit') {
+      const changes = ['new_name','new_email','new_number'].map(named).filter(Boolean);
+      if (!changes.some(input => input.value.trim())) invalid = changes[0];
+    }
     if (kind.startsWith('software-')) {
       if (![...active.querySelectorAll('input[name=employee_ids]')].some(input => input.checked)) invalid = active.querySelector('input[name=employee_ids]');
       if (!named('software').value.trim()) invalid = named('software');
@@ -189,7 +200,9 @@
     };
     add('事項', titles[kindInput.value]);
     const active = fieldsets.find(item => !item.disabled);
-    if (kindInput.value === 'account-add') {
+    if (kindInput.value === 'account-add' && people) {
+      add('新增員工', [...people.querySelectorAll('input[name=directory_ids]:checked')].map(input => input.dataset.label).join('\n'));
+    } else if (kindInput.value === 'account-add') {
       add('新增員工', rows.filter(row => [...row.querySelectorAll('input')].some(input => input.value.trim())).map(row => {
         const inputs = row.querySelectorAll('input');
         return `${inputs[0].value.trim()} · ${inputs[1].value.trim()}${inputs[2].value.trim() ? ' · '+inputs[2].value.trim() : ''}`;
@@ -271,7 +284,10 @@
       const input = active.querySelector(`[name="${name}"]`);
       if (input && value != null) input.value = String(value);
     };
-    if (edit.kind === 'account-add') {
+    if (edit.kind === 'account-add' && people) {
+      const ids = new Set((details.employees || []).map(employee => employee.directory_id));
+      people.querySelectorAll('input[name=directory_ids]').forEach(input => { input.checked = ids.has(input.value); });
+    } else if (edit.kind === 'account-add') {
       (details.employees || []).forEach((employee, index) => {
         const row = rows[index];
         if (!row) return;

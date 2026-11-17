@@ -47,14 +47,40 @@
   </div>
 
   {{if and .SSOTool (eq .Role "admin")}}
-  <h2>綁定{{.SSOTool}}帳號</h2>
+  <h2>待開通</h2>
+  <div class="panel scroll">
+  <table>
+    <thead><tr><th>{{.SSOTool}}運維帳號</th><th>嘗試登入</th><th>開通</th></tr></thead>
+    <tbody>
+    {{range .PendingOps}}
+      <tr>
+        <td><span class="id">{{.Username}}</span>{{if .Name}}<br><span class="dim">{{.Name}}</span>{{end}}</td>
+        <td>{{if .Requested}}<span class="tag tag-warn">{{.Requested}}</span>{{if gt .Attempts 1}} <span class="dim">共 {{.Attempts}} 次</span>{{end}}{{else}}<span class="dim">未嘗試</span>{{end}}</td>
+        {{if .Known}}
+        <td class="pending-actions">
+          <form method="post" action="/admins/open" autocomplete="off"><input type="hidden" name="csrf" value="{{$.CSRF}}"><input type="hidden" name="directory_id" value="{{.ID}}"><span class="dim">新帳號</span><input name="username" value="{{.Suggested}}" size="14" required aria-label="控制台用戶名"><select name="role" aria-label="角色"><option value="admin">admin</option><option value="viewer">viewer</option></select><button>建立並綁定</button></form>
+          {{if $.Bindable}}<form method="post" action="/admins/link"><input type="hidden" name="csrf" value="{{$.CSRF}}"><input type="hidden" name="directory_id" value="{{.ID}}"><span class="dim">或已有帳號</span><select name="username" aria-label="現有管理員">{{range $.Bindable}}<option value="{{.}}">{{.}}</option>{{end}}</select><button class="link">綁定</button></form>{{end}}
+        </td>
+        {{else}}
+        <td class="dim">等下一次名單同步（最多 5 分鐘）後可開通</td>
+        {{end}}
+      </tr>
+    {{else}}
+      <tr><td colspan="3" class="empty">沒有等待開通的運維帳號。</td></tr>
+    {{end}}
+    </tbody>
+  </table>
+  </div>
+  <p class="hint">運維後台只讓已綁定控制台帳號的{{.SSOTool}}運維帳號進入：綁定就是白名單。{{.SSOTool}}運維帳號登入被拒時會出現在這裡並發告警；確認是自己人再開通。一個人已有控制台帳號時用「綁定」，不要再建一個。開通的帳號沒有密碼，只能經{{.SSOTool}}登入；運維入口要求 10 分鐘內在{{.SSOTool}}輸入過密碼和驗證碼。</p>
+
+  <h2>修改綁定</h2>
   <form method="post" action="/admins/link" class="form" autocomplete="off">
     <input type="hidden" name="csrf" value="{{.CSRF}}">
     <label>管理員<select name="username" required>{{range .Admins}}<option value="{{.Username}}">{{.Username}}</option>{{end}}</select></label>
     <label>{{.SSOTool}}運維帳號<select name="directory_id"><option value="">不綁定</option>{{range .OpsAccounts}}<option value="{{.ID}}">{{.Username}}{{if .Name}}（{{.Name}}）{{end}}{{if .LinkedTo}} · 已綁定 {{.LinkedTo}}{{end}}</option>{{end}}</select></label>
     <button type="submit">保存</button>
   </form>
-  <p class="hint">運維人員用{{.SSOTool}}帳號登入運維後台，前提是這裡已綁定：綁定就是運維入口的白名單。只能綁定{{.SSOTool}}裡角色為運維的帳號；改綁定會讓這個管理員重新登入。</p>
+  <p class="hint">改綁定或解除綁定。只能綁定{{.SSOTool}}裡角色為運維的帳號；改綁定會讓這個管理員重新登入。</p>
   {{end}}
 
   {{if eq .Role "admin"}}

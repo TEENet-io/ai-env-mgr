@@ -50,6 +50,9 @@ type DatabaseOptions struct {
 	// environment.
 	OSSAccessKeyID     string
 	OSSAccessKeySecret string
+	// MockOSSDir, when set, stores objects in a local directory instead of
+	// Aliyun OSS so local test environments require zero cloud credentials.
+	MockOSSDir string
 
 	// FirstAdminEmail is recorded on the account created at first start.
 	FirstAdminEmail string
@@ -68,6 +71,10 @@ type DatabaseOptions struct {
 	// environment only.
 	DirectoryURL   string
 	DirectoryToken string
+	// DirectoryAutoOffboard closes the AI workspace account of somebody
+	// disabled or deleted in the custom tool, at the reading that sees it
+	// (AIC-209 #5). Off, the default, an alert asks a person to do it.
+	DirectoryAutoOffboard bool
 
 	// The custom tool as an OpenID Connect provider, for IdentityMode oidc.
 	// RedirectURL is this console's /oidc/callback as the tool has it
@@ -188,11 +195,13 @@ func (s *Server) openDatabaseMode(ctx context.Context, opts DatabaseOptions) err
 	if err := opts.checkIdentity(); err != nil {
 		return err
 	}
-	if opts.OSSAccessKeyID == "" || opts.OSSAccessKeySecret == "" {
-		return errors.New("database mode needs the server's OSS identity (AIENVMGR_OSS_ACCESS_KEY_ID / _SECRET)")
-	}
-	if s.opts.Bucket == "" || s.opts.Endpoint == "" {
-		return errors.New("database mode needs the OSS bucket and endpoint built in")
+	if opts.MockOSSDir == "" {
+		if opts.OSSAccessKeyID == "" || opts.OSSAccessKeySecret == "" {
+			return errors.New("database mode needs the server's OSS identity (AIENVMGR_OSS_ACCESS_KEY_ID / _SECRET)")
+		}
+		if s.opts.Bucket == "" || s.opts.Endpoint == "" {
+			return errors.New("database mode needs the OSS bucket and endpoint built in")
+		}
 	}
 
 	ring, err := secrets.NewFileKeyring(opts.MasterKeyFile)
@@ -209,14 +218,26 @@ func (s *Server) openDatabaseMode(ctx context.Context, opts DatabaseOptions) err
 	}
 	store := dbstore.NewStore(database)
 
-	cfg := config.Config{
-		Endpoint: s.opts.Endpoint, Bucket: s.opts.Bucket,
-		AccessKeyID: opts.OSSAccessKeyID, AccessKeySecret: opts.OSSAccessKeySecret,
+	var objects interface {
+		admincore.Store
+		Verify() error
 	}
-	objects, err := s.dialOSS(cfg)
-	if err != nil {
-		database.Close()
-		return fmt.Errorf("server OSS identity: %w", err)
+	if opts.MockOSSDir != "" {
+		objects, err = newLocalDirStore(opts.MockOSSDir)
+		if err != nil {
+			database.Close()
+			return fmt.Errorf("mock OSS dir: %w", err)
+		}
+	} else {
+		cfg := config.Config{
+			Endpoint: s.opts.Endpoint, Bucket: s.opts.Bucket,
+			AccessKeyID: opts.OSSAccessKeyID, AccessKeySecret: opts.OSSAccessKeySecret,
+		}
+		objects, err = s.dialOSS(cfg)
+		if err != nil {
+			database.Close()
+			return fmt.Errorf("server OSS identity: %w", err)
+		}
 	}
 	if err := objects.Verify(); err != nil {
 		database.Close()
@@ -268,10 +289,10 @@ func (s *Server) openDatabaseMode(ctx context.Context, opts DatabaseOptions) err
 		}
 	}
 	st.team.Store(&team)
-	if s.opts.SLSProject != "" {
+	if opts.MockOSSDir == "" && s.opts.SLSProject != "" {
 		st.sls = slsclient.New(s.opts.SLSEndpoint, s.opts.SLSProject, opts.OSSAccessKeyID, opts.OSSAccessKeySecret)
 	}
-	if s.opts.ECDRegion != "" {
+	if opts.MockOSSDir == "" && s.opts.ECDRegion != "" {
 		if client, err := ecdclient.New(opts.OSSAccessKeyID, opts.OSSAccessKeySecret, s.opts.ECDRegion); err == nil {
 			st.cloud = newCloudLookup(client)
 		}
@@ -407,7 +428,11 @@ func (s *Server) buildWorker(st *dbState) *worker.Worker {
 	}
 	w.Register(repo.TaskAuditPublish, audit)
 	if st.directory != nil {
-		w.Register(worker.TaskDirectorySync, worker.DirectorySync{Store: st.store, Directory: st.directory, Copy: st.db.Directory()})
+		sync := worker.DirectorySync{Store: st.store, Directory: st.directory, Copy: st.db.Directory()}
+		if s.opts.Database.DirectoryAutoOffboard {
+			sync.Offboard = st.ops.OffboardForDirectory
+		}
+		w.Register(worker.TaskDirectorySync, sync)
 	}
 	return w
 }
@@ -719,6 +744,13 @@ type adminRow struct {
 	Linked string
 }
 
+// pendingOpsRow is an ops account of the tool on the "待開通" list.
+type pendingOpsRow struct {
+	dbstore.PendingOps
+	Suggested string // console user name offered
+	Requested string // when it last tried to sign in, if it did
+}
+
 func (s *Server) handleAdmins(w http.ResponseWriter, r *http.Request, sess *session) {
 	s.render(w, "admins.html", http.StatusOK, s.adminsPage(r, sess))
 }
@@ -735,6 +767,14 @@ func (s *Server) adminsPage(r *http.Request, sess *session) pageData {
 	if s.oidcMode() {
 		links, _ = s.dbm.db.Directory().AdminLinks(r.Context())
 		data.OpsAccounts, _ = s.dbm.db.Directory().OpsAccounts(r.Context())
+		pending, _ := s.dbm.db.Directory().PendingOpsAccounts(r.Context())
+		for _, p := range pending {
+			row := pendingOpsRow{PendingOps: p, Suggested: suggestedUsername(p.Username)}
+			if p.RequestedAt != nil {
+				row.Requested = p.RequestedAt.In(shanghai()).Format("2006-01-02 15:04")
+			}
+			data.PendingOps = append(data.PendingOps, row)
+		}
 	}
 	for _, a := range admins {
 		row := adminRow{
@@ -748,6 +788,9 @@ func (s *Server) adminsPage(r *http.Request, sess *session) pageData {
 			row.LastLogin = a.LastLoginAt.In(shanghai()).Format("2006-01-02 15:04")
 		}
 		data.Admins = append(data.Admins, row)
+		if s.oidcMode() && row.Linked == "" && row.Enabled && a.Username != s.dbm.identity.emergency {
+			data.Bindable = append(data.Bindable, a.Username)
+		}
 	}
 	return data
 }

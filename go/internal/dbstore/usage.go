@@ -23,6 +23,22 @@ func scanUsage(row scanner) (repo.UsageRow, error) {
 
 func (r usageRepo) UpsertDay(ctx context.Context, day time.Time, rows []repo.UsageRow) error {
 	d := dateOf(day)
+	// A day is counted again for a few days after it ends. The names it was
+	// first counted under stay: a rename in between must not reach back.
+	names := map[string]string{}
+	old, err := r.q.Query(ctx, `select coalesce(employee_id::text, ''), employee_name from usage_daily where day = $1 and employee_name <> ''`, d)
+	if err != nil {
+		return mapError(err, "read usage day")
+	}
+	for old.Next() {
+		var id, name string
+		if err := old.Scan(&id, &name); err != nil {
+			old.Close()
+			return mapError(err, "read usage day")
+		}
+		names[id] = name
+	}
+	old.Close()
 	if _, err := r.q.Exec(ctx, `delete from usage_daily where day = $1`, d); err != nil {
 		return mapError(err, "replace usage day")
 	}
@@ -38,8 +54,8 @@ func (r usageRepo) UpsertDay(ctx context.Context, day time.Time, rows []repo.Usa
 		}
 		_, err := r.q.Exec(ctx,
 			`insert into usage_daily
-			   (day, employee_id, key_alias, model_group, calls, failures, cost_usd, unpriced, prompt_tokens, completion_tokens)
-			 values ($1, $2, $3, $4, $5, $6, $7::numeric, $8, $9, $10)
+			   (day, employee_id, key_alias, model_group, calls, failures, cost_usd, unpriced, prompt_tokens, completion_tokens, employee_name)
+			 values ($1, $2, $3, $4, $5, $6, $7::numeric, $8, $9, $10, coalesce(nullif($11, ''), (select name from employees where id = $2), ''))
 			 on conflict (day, key_alias, model_group) do update set
 			   employee_id = excluded.employee_id, calls = usage_daily.calls + excluded.calls,
 			   failures = usage_daily.failures + excluded.failures, cost_usd = usage_daily.cost_usd + excluded.cost_usd,
@@ -47,7 +63,7 @@ func (r usageRepo) UpsertDay(ctx context.Context, day time.Time, rows []repo.Usa
 			   prompt_tokens = usage_daily.prompt_tokens + excluded.prompt_tokens,
 			   completion_tokens = usage_daily.completion_tokens + excluded.completion_tokens,
 			   updated_at = now()`,
-			d, employee, u.KeyAlias, u.ModelGroup, u.Calls, u.Failures, cost, u.Unpriced, u.PromptTokens, u.CompletionTokens)
+			d, employee, u.KeyAlias, u.ModelGroup, u.Calls, u.Failures, cost, u.Unpriced, u.PromptTokens, u.CompletionTokens, names[u.EmployeeID])
 		if err != nil {
 			return mapError(err, "write usage row")
 		}
@@ -65,6 +81,27 @@ func (r usageRepo) ByEmployee(ctx context.Context, f repo.UsageFilter) ([]repo.U
 	return r.query(ctx, "sum usage by employee",
 		`select '0001-01-01'::date, coalesce(employee_id::text, ''), min(key_alias), '', `+usageSums+`
 		 group by employee_id order by sum(cost_usd) desc, min(key_alias)`, f)
+}
+
+// NamesInPeriod is the name each employee's usage was last recorded under
+// in the period, for a page about a month that has since passed.
+func (r usageRepo) NamesInPeriod(ctx context.Context, f repo.UsageFilter) (map[string]string, error) {
+	rows, err := r.q.Query(ctx, `select distinct on (employee_id) employee_id::text, employee_name from usage_daily
+		where day >= $1 and day < $2 and employee_id is not null and employee_name <> ''
+		order by employee_id, day desc`, dateOf(f.From), dateOf(f.To))
+	if err != nil {
+		return nil, mapError(err, "usage names")
+	}
+	defer rows.Close()
+	out := map[string]string{}
+	for rows.Next() {
+		var id, name string
+		if err := rows.Scan(&id, &name); err != nil {
+			return nil, mapError(err, "usage names")
+		}
+		out[id] = name
+	}
+	return out, rows.Err()
 }
 
 func (r usageRepo) ByModel(ctx context.Context, f repo.UsageFilter) ([]repo.UsageRow, error) {

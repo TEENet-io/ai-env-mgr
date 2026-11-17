@@ -55,6 +55,13 @@ func (a Account) DisplayName() string {
 	return a.Username
 }
 
+// Gone is a live AI workspace account whose person the list has as
+// disabled or deleted: one the sync closes when it is allowed to.
+type Gone struct {
+	EmployeeID, WindowsUser string
+	Person                  Account
+}
+
 // List is one reply from the custom tool.
 type List struct {
 	GeneratedAt time.Time `json:"generated_at"`

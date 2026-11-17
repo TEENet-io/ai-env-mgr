@@ -11,13 +11,13 @@ import (
 type bindingRepo struct{ q querier }
 
 const bindingColumns = `id, device_id, employee_id, epoch, note,
-	bound_at, bound_by, unbound_at, unbound_by, restart_nonce, restart_at`
+	bound_at, bound_by, unbound_at, unbound_by, restart_nonce, restart_at, employee_name`
 
 func scanBinding(row scanner) (repo.Binding, error) {
 	var b repo.Binding
 	var unboundAt, restartAt *time.Time
 	err := row.Scan(&b.ID, &b.DeviceID, &b.EmployeeID, &b.Epoch, &b.Note,
-		&b.BoundAt, &b.BoundBy, &unboundAt, &b.UnboundBy, &b.RestartNonce, &restartAt)
+		&b.BoundAt, &b.BoundBy, &unboundAt, &b.UnboundBy, &b.RestartNonce, &restartAt, &b.EmployeeName)
 	if err != nil {
 		return repo.Binding{}, err
 	}
@@ -80,10 +80,10 @@ func (r bindingRepo) Bind(ctx context.Context, deviceID, employeeID, note, by st
 		return repo.Binding{}, errors.New("bind machine: device and employee are both required")
 	}
 	b, err := scanBinding(r.q.QueryRow(ctx,
-		`insert into device_bindings (device_id, employee_id, epoch, note, bound_by)
+		`insert into device_bindings (device_id, employee_id, epoch, note, bound_by, employee_name)
 		 select $1, $2,
 		        coalesce((select max(epoch) from device_bindings where device_id = $1), 0) + 1,
-		        $3, $4
+		        $3, $4, coalesce((select name from employees where id = $2), '')
 		 returning `+bindingColumns,
 		deviceID, employeeID, note, by))
 	if err != nil {

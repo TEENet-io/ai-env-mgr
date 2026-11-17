@@ -70,7 +70,7 @@ func (tp *testProvider) claims() map[string]any {
 	now := time.Now().Unix()
 	return map[string]any{
 		"iss": tp.URL, "aud": "console", "sub": "00000000-0000-4000-8000-000000000001",
-		"exp": now + 300, "iat": now, "nonce": "n0nce", "role": "ops", "amr": []string{"pwd", "otp"},
+		"exp": now + 300, "iat": now, "auth_time": now - 30, "nonce": "n0nce", "role": "ops", "amr": []string{"pwd", "otp"},
 		"preferred_username": "wei@example.com", "email": "Wei@Example.com",
 	}
 }
@@ -143,8 +143,8 @@ func TestExchangeChecksTheNonceAndSendsTheVerifier(t *testing.T) {
 		t.Errorf("a token for another sign-in was accepted: %v", err)
 	}
 
-	u, err := p.AuthURL(context.Background(), flow, "https://console/cb", "login")
-	if err != nil || !strings.Contains(u, "code_challenge_method=S256") || !strings.Contains(u, "prompt=login") || strings.Contains(u, "code_verifier") {
+	u, err := p.AuthURL(context.Background(), flow, "https://console/cb", 10*time.Minute)
+	if err != nil || !strings.Contains(u, "code_challenge_method=S256") || !strings.Contains(u, "max_age=600") || strings.Contains(u, "code_verifier") {
 		t.Errorf("auth URL = %s %v", u, err)
 	}
 }
@@ -152,10 +152,28 @@ func TestExchangeChecksTheNonceAndSendsTheVerifier(t *testing.T) {
 func TestADiscoveryNamingAnotherIssuerIsRefused(t *testing.T) {
 	tp := newTestProvider(t)
 	p := &Provider{Issuer: tp.URL + "/other", ClientID: "console"}
-	if _, err := p.AuthURL(context.Background(), Flow{}, "https://console/cb", ""); err == nil {
+	if _, err := p.AuthURL(context.Background(), Flow{}, "https://console/cb", 0); err == nil {
 		t.Error("a provider that names another issuer was trusted")
 	}
 	if err := (&Provider{Issuer: "http://127.0.0.1:1"}).Reachable(context.Background()); err == nil {
 		t.Error("an unreachable provider was reported reachable")
+	}
+}
+
+func TestAuthenticatedWithinTrustsOnlyARecentPassword(t *testing.T) {
+	now := time.Unix(1_800_000_000, 0)
+	for name, c := range map[string]struct {
+		at   int64
+		want bool
+	}{
+		"just now":           {now.Unix() - 5, true},
+		"nine minutes ago":   {now.Unix() - 9*60, true},
+		"twelve minutes ago": {now.Unix() - 12*60, false},
+		"no auth_time":       {0, false},
+		"in the far future":  {now.Unix() + 3600, false},
+	} {
+		if got := (Claims{AuthTime: c.at}).AuthenticatedWithin(10*time.Minute, now); got != c.want {
+			t.Errorf("%s: got %v, want %v", name, got, c.want)
+		}
 	}
 }

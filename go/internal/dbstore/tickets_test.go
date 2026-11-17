@@ -321,3 +321,50 @@ func TestEnvironmentChangeWorkflow(t *testing.T) {
 		t.Fatalf("entries=%d err=%v", count, err)
 	}
 }
+
+// A ticket and its comments keep the name the contact had when they were
+// written; a later rename -- the custom tool's sync does them -- does not
+// reach back (AIC-204 #6).
+func TestTicketsKeepTheNameTheyWereRaisedUnder(t *testing.T) {
+	db := testDB(t)
+	ctx := context.Background()
+	if err := db.Migrate(ctx); err != nil {
+		t.Fatal(err)
+	}
+	s := db.Tickets()
+	c, err := s.CreateContact(ctx, "amy@example.com", "Amy", "hash")
+	if err != nil {
+		t.Fatal(err)
+	}
+	ticket, err := s.Create(ctx, c.ID, "name-key", "bug", "Desk", "It is down", "normal", []byte(`{}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	current, err := s.Get(ctx, ticket.ID, c.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := s.AddEvent(ctx, ticket.ID, c.ID, "customer", c.ID, "comment", "public", "Still down", "", current.Version); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.pool.Exec(ctx, `update customer_contacts set name = 'Amy Chan' where id = $1`, c.ID); err != nil {
+		t.Fatal(err)
+	}
+	got, err := s.Get(ctx, ticket.ID, c.ID)
+	if err != nil || got.RequesterName != "Amy" {
+		t.Errorf("requester = %q %v", got.RequesterName, err)
+	}
+	var account string
+	if err := db.pool.QueryRow(ctx, `select requester_account from tickets where id = $1`, ticket.ID).Scan(&account); err != nil || account != "amy@example.com" {
+		t.Errorf("requester account = %q %v", account, err)
+	}
+	events, err := s.Events(ctx, ticket.ID, c.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, e := range events {
+		if e.ActorType == "customer" && e.ActorName != "Amy" {
+			t.Errorf("%s by %q", e.Kind, e.ActorName)
+		}
+	}
+}

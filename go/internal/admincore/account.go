@@ -28,6 +28,9 @@ type AccountSpec struct {
 	// Email is where the cloud desktop's verification codes go: a note, like
 	// CodexAccount, and likewise left alone when empty.
 	Email string
+	// DirectoryID is the custom tool account picked in the onboarding form.
+	// Only the database mode keeps it.
+	DirectoryID string
 }
 
 // Onboard opens an account: roster entry, gateway user with its limits, a

@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/TEENet-io/ai-env-mgr/internal/dbstore"
+	"github.com/TEENet-io/ai-env-mgr/internal/directory"
 	"github.com/TEENet-io/ai-env-mgr/internal/repo"
 )
 
@@ -47,6 +48,13 @@ func contactMayRequest(role, requestKind string) bool {
 		return true
 	}
 	return dailyRequests[requestKind].Category != "account" && requestKind != "quota"
+}
+
+// needsWorkspace is a kind about a remote desktop or the AI in it: only
+// somebody with an AI workspace account has those to ask about (AIC-204 #10).
+func needsWorkspace(requestKind string) bool {
+	category := dailyRequests[requestKind].Category
+	return category == "desktop" || category == "ai"
 }
 
 var proposalDecimal = regexp.MustCompile(`^[0-9]{1,12}(\.[0-9]{1,4})?$`)
@@ -184,6 +192,43 @@ func dailyTargets(r *http.Request, options map[string]repo.Employee) ([]map[stri
 	return targets, strings.Join(names, "、"), nil
 }
 
+// dailyPickedPeople reads who a new AI workspace account is asked for, from
+// the people the form offered. Each row keeps the name and email the tool had
+// when the request was made.
+func dailyPickedPeople(r *http.Request, unopened []directory.Account) ([]map[string]string, []string, error) {
+	offered := make(map[string]directory.Account, len(unopened))
+	for _, a := range unopened {
+		offered[a.ID] = a
+	}
+	ids := r.PostForm["directory_ids"]
+	if len(ids) == 0 {
+		return nil, nil, errors.New("請至少選擇一位員工")
+	}
+	if len(ids) > 50 {
+		return nil, nil, errors.New("一次最多選擇 50 位員工")
+	}
+	rows := make([]map[string]string, 0, len(ids))
+	var lines []string
+	seen := map[string]bool{}
+	for _, id := range ids {
+		a, ok := offered[id]
+		if !ok {
+			return nil, nil, errors.New("所選員工已經有 AI 工作間帳號，或已不在定製工具名單裡，請刷新後重選")
+		}
+		if seen[id] {
+			continue
+		}
+		seen[id] = true
+		rows = append(rows, map[string]string{"directory_id": a.ID, "username": a.Username, "name": a.DisplayName(), "email": a.Email})
+		line := a.DisplayName()
+		if a.Email != "" {
+			line += " <" + a.Email + ">"
+		}
+		lines = append(lines, line)
+	}
+	return rows, lines, nil
+}
+
 // dailyDateTime reads a time typed as 2026-11-05 14:30 (the form uses a plain
 // text box, since a date box shows the format of the browser's language) and
 // returns it in the format stored. Empty is ok; the caller decides if it may be.
@@ -198,7 +243,11 @@ func dailyDateTime(value string) (string, bool) {
 	return t.Format("2006-01-02T15:04"), true
 }
 
-func parseDailyTicketSubmission(r *http.Request, employees []repo.Employee) (kind, title, description, priority, key string, details []byte, err error) {
+// parseDailyTicketSubmission reads the request form. unopened is the custom
+// tool's people without an AI workspace account when the list comes from the
+// tool: a new account is then asked for by picking them, not by typing a
+// name; nil keeps the typed rows.
+func parseDailyTicketSubmission(r *http.Request, employees []repo.Employee, unopened []directory.Account) (kind, title, description, priority, key string, details []byte, err error) {
 	requestKind := formValue(r, "request_kind")
 	spec, ok := dailyRequests[requestKind]
 	if !ok {
@@ -223,6 +272,15 @@ func parseDailyTicketSubmission(r *http.Request, employees []repo.Employee) (kin
 
 	switch requestKind {
 	case "account-add":
+		if unopened != nil {
+			var rows []map[string]string
+			if rows, lines, err = dailyPickedPeople(r, unopened); err != nil {
+				return
+			}
+			data["employees"] = rows
+			title += " · " + rows[0]["name"]
+			break
+		}
 		rows := make([]map[string]string, 0, 10)
 		seenEmail := map[string]bool{}
 		for i := 1; i <= 10; i++ {
@@ -272,7 +330,16 @@ func parseDailyTicketSubmission(r *http.Request, employees []repo.Employee) (kin
 		}
 		if requestKind == "account-edit" {
 			changes := map[string]string{}
-			for field, current := range map[string]string{"name": employee.Name, "email": employee.Email, "number": employee.ExternalID} {
+			editable := map[string]string{"name": employee.Name, "email": employee.Email, "number": employee.ExternalID}
+			if unopened != nil {
+				// Names and emails are the custom tool's to change.
+				if formValue(r, "new_name") != "" || formValue(r, "new_email") != "" {
+					err = errors.New("姓名和工作郵箱以定製工具為準，請在定製工具裡修改")
+					return
+				}
+				editable = map[string]string{"number": employee.ExternalID}
+			}
+			for field, current := range editable {
 				max := 100
 				if field == "email" {
 					max = 254

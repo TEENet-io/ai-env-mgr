@@ -11,7 +11,6 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -350,100 +349,6 @@ func (c *Client) CheckDeployment(ctx context.Context, modelID string) (Deploymen
 		return DeploymentHealth{}, fmt.Errorf("health check returned another deployment")
 	}
 	return out, nil
-}
-
-// ChatTrial sends a small, non-streaming prompt to one exact deployment. The
-// caller must still validate that the deployment belongs to the requested
-// channel. Prompt and output are returned to the caller only; they are not
-// recorded in the console's audit trail.
-type ChatTrial struct {
-	Output           string `json:"output"`
-	ModelID          string `json:"model_id"`
-	PromptTokens     int    `json:"prompt_tokens"`
-	CompletionTokens int    `json:"completion_tokens"`
-	FinishReason     string `json:"finish_reason"`
-}
-
-type ChatTrialOptions struct {
-	DisableThinking bool
-}
-
-var ErrNoVisibleOutput = errors.New("gateway chat response had no visible text")
-
-func (c *Client) TryChat(ctx context.Context, modelID, prompt string, opts ChatTrialOptions) (ChatTrial, error) {
-	if modelID == "" || strings.TrimSpace(prompt) == "" {
-		return ChatTrial{}, fmt.Errorf("chat trial requires a deployment and prompt")
-	}
-	params := map[string]any{
-		"model":      modelID,
-		"messages":   []map[string]string{{"role": "user", "content": prompt}},
-		"max_tokens": 256,
-		"stream":     false,
-		"metadata":   map[string]string{"request_source": "windows-control-channel-test"},
-	}
-	if opts.DisableThinking {
-		params["thinking"] = map[string]any{"type": "disabled", "budget_tokens": 0}
-	}
-	body, err := json.Marshal(params)
-	if err != nil {
-		return ChatTrial{}, err
-	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.BaseURL+"/chat/completions", bytes.NewReader(body))
-	if err != nil {
-		return ChatTrial{}, err
-	}
-	req.Header.Set("Authorization", "Bearer "+c.AdminKey)
-	req.Header.Set("Content-Type", "application/json")
-	resp, err := c.HTTP.Do(req)
-	if err != nil {
-		return ChatTrial{}, err
-	}
-	defer resp.Body.Close()
-	payload, err := io.ReadAll(io.LimitReader(resp.Body, 64<<10))
-	if err != nil {
-		return ChatTrial{}, err
-	}
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		// Provider errors can contain credentials or echoed prompts. Only the
-		// status is propagated to the admin page.
-		return ChatTrial{}, &APIError{Status: resp.StatusCode, Path: "/chat/completions"}
-	}
-	var out struct {
-		Choices []struct {
-			Message struct {
-				Content string `json:"content"`
-			} `json:"message"`
-			FinishReason string `json:"finish_reason"`
-		} `json:"choices"`
-		Usage struct {
-			PromptTokens     int `json:"prompt_tokens"`
-			CompletionTokens int `json:"completion_tokens"`
-		} `json:"usage"`
-	}
-	if err := json.Unmarshal(payload, &out); err != nil {
-		return ChatTrial{}, fmt.Errorf("decode gateway chat response: %w", err)
-	}
-	if len(out.Choices) == 0 {
-		return ChatTrial{}, fmt.Errorf("gateway chat response had no choices")
-	}
-	routedID := resp.Header.Get("x-litellm-model-id")
-	if routedID == "" {
-		return ChatTrial{}, fmt.Errorf("gateway did not identify the serving deployment")
-	}
-	if routedID != modelID {
-		return ChatTrial{}, fmt.Errorf("gateway routed the trial to another deployment")
-	}
-	trial := ChatTrial{
-		Output:           out.Choices[0].Message.Content,
-		ModelID:          routedID,
-		PromptTokens:     out.Usage.PromptTokens,
-		CompletionTokens: out.Usage.CompletionTokens,
-		FinishReason:     out.Choices[0].FinishReason,
-	}
-	if strings.TrimSpace(trial.Output) == "" {
-		return trial, ErrNoVisibleOutput
-	}
-	return trial, nil
 }
 
 func (c *Client) do(ctx context.Context, method, path string, body any, out any) error {

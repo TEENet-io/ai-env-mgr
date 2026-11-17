@@ -28,11 +28,15 @@ import (
 //     ticket contacts, and makes the contact on the spot for somebody the
 //     last reading of the list did not have yet;
 //   - the ops entry lets in an ops account that passed the tool's second
-//     factor and is linked to a console account here -- the link is the
-//     whitelist -- and asks the tool for the password again every time.
+//     factor within the last opsReauth and is linked to a console account
+//     here -- the link is the whitelist. One that is not linked yet is put
+//     on the "待開通" list of /admins, where an administrator opens it with
+//     one click.
 //
 // A refusal says only that the account may not come in, never why; the
-// reason goes to the audit trail, and at the ops entry to an alert.
+// reason goes to the audit trail, and at the ops entry to an alert. The one
+// exception is an ops account waiting to be opened, which is told so: it has
+// already proved who it is, and it should know somebody has been asked.
 
 const (
 	entryCustomer = "customer"
@@ -41,6 +45,13 @@ const (
 	oidcStateCookie = "aem_oidc"
 	oidcFlowTTL     = 10 * time.Minute
 	refusedMessage  = "此帳號無權進入"
+	pendingMessage  = "帳號尚未開通，已通知管理員；開通後重新登入即可"
+
+	// opsReauth is how long ago an operator may have given the password and
+	// code for the ops entry to take the tool's word without asking again:
+	// long enough not to ask twice in a row, short enough that a tool
+	// session left open on some desk does not open the console.
+	opsReauth = 10 * time.Minute
 )
 
 type oidcIdentity struct {
@@ -128,13 +139,11 @@ func (s *Server) handleOIDCStart(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "sign-in unavailable", http.StatusInternalServerError)
 		return
 	}
-	// Operators prove themselves again at every sign-in: a tool session
-	// left open on some desk must not open the console.
-	prompt := ""
+	var maxAge time.Duration
 	if entry == entryOps {
-		prompt = "login"
+		maxAge = opsReauth
 	}
-	target, err := id.provider.AuthURL(r.Context(), flow, id.redirectURL, prompt)
+	target, err := id.provider.AuthURL(r.Context(), flow, id.redirectURL, maxAge)
 	if err == nil {
 		err = id.provider.Reachable(r.Context())
 	}
@@ -234,11 +243,19 @@ func (s *Server) oidcOpsSignIn(w http.ResponseWriter, r *http.Request, c oidc.Cl
 		why = "role " + c.Role
 	case !c.SecondFactor():
 		why = "no second factor"
+	case !c.AuthenticatedWithin(opsReauth, time.Now()):
+		why = "password not given recently"
 	}
 	username := ""
 	if why == "" {
 		var err error
 		username, err = s.dbm.db.Directory().AdminForSignIn(r.Context(), c.Subject)
+		// Bound to a console account that is disabled here is a refusal;
+		// bound to nothing is somebody waiting to be opened.
+		if errors.Is(err, dbstore.ErrNotPermitted) && !s.dbm.db.Directory().IsBound(r.Context(), c.Subject) {
+			s.awaitOpening(w, r, c)
+			return
+		}
 		if err != nil {
 			why = "not on the whitelist"
 		}
@@ -265,6 +282,27 @@ func (s *Server) recordRefusal(r *http.Request, entry string, c oidc.Claims, why
 		"entry": entry, "role": c.Role, "reason": why,
 	})
 }
+
+// awaitOpening: an ops account that proved itself and is bound to nothing
+// here. It goes on the waiting list of /admins and the others are told.
+func (s *Server) awaitOpening(w http.ResponseWriter, r *http.Request, c oidc.Claims) {
+	if err := s.dbm.db.Directory().RecordOpsRequest(r.Context(), claimsAccount(c)); err != nil {
+		s.events.Ops("warn", "ops_request_failed", err.Error(), map[string]any{"sub": c.Subject})
+	}
+	s.recordRefusal(r, entryOps, c, "waiting to be opened")
+	_, _, err := s.dbm.store.Alerts().Open(r.Context(), repo.NewAlert{
+		Kind: "ops_signin_pending", Fingerprint: opsPendingFingerprint(c.Subject), Severity: repo.SeverityWarn,
+		SubjectType: "directory_account", SubjectID: c.Subject,
+		Title:  c.PreferredUsername + " 等待開通運維後台",
+		Detail: s.dbm.identity.toolName + "運維帳號 " + c.PreferredUsername + " 已通過二次驗證，還沒有控制台帳號。確認是自己人後，到「設定 → 管理員」的「待開通」裡點「建立並綁定」。",
+	})
+	if err != nil {
+		s.events.Ops("warn", "alert_open_failed", err.Error(), nil)
+	}
+	s.refuseSignIn(w, r, entryOps, pendingMessage)
+}
+
+func opsPendingFingerprint(directoryID string) string { return "ops_signin_pending:" + directoryID }
 
 // alertOpsRefusal: somebody the tool vouched for tried the operators' door
 // and was turned away. Either a person who should have been linked, or a
@@ -361,7 +399,50 @@ func (s *Server) actionAdminLink(sess *session, r *http.Request) error {
 	action := "admin.link"
 	if dirID == "" {
 		action = "admin.unlink"
+	} else {
+		s.resolveOpsPending(r.Context(), dirID, sess.actor)
 	}
 	s.recordAccountEvent(r, sess.actor, action, "admin", target.ID, map[string]any{"username": target.Username, "directory_id": dirID})
 	return nil
 }
+
+// actionAdminOpen creates a console account for an ops account on the
+// waiting list and binds it, so its next sign-in comes in.
+func (s *Server) actionAdminOpen(sess *session, r *http.Request) error {
+	if sess.admin.Role != repo.RoleAdmin {
+		return errors.New("只有 admin 角色可以開通帳號")
+	}
+	dirID, username, role := formValue(r, "directory_id"), formValue(r, "username"), formValue(r, "role")
+	if role != repo.RoleAdmin && role != repo.RoleViewer {
+		return errors.New("只能開通 admin 或 viewer 帳號")
+	}
+	id, err := s.dbm.db.Directory().OpenOpsAccount(r.Context(), dirID, username, role)
+	switch {
+	case errors.Is(err, dbstore.ErrNotPermitted):
+		return errors.New("只能開通" + s.ssoTool() + "裡啟用中的運維帳號；剛建立的帳號要等下一次名單同步（最多 5 分鐘）")
+	case errors.Is(err, repo.ErrDuplicate):
+		return errors.New("這個用戶名已被使用，或這個帳號已經開通過")
+	case err != nil:
+		return err
+	}
+	s.resolveOpsPending(r.Context(), dirID, sess.actor)
+	s.recordAccountEvent(r, sess.actor, "admin.open", "admin", id, map[string]any{
+		"username": normalizeName(username), "role": role, "directory_id": dirID,
+	})
+	return nil
+}
+
+func (s *Server) resolveOpsPending(ctx context.Context, directoryID, by string) {
+	if _, err := s.dbm.store.Alerts().Resolve(ctx, opsPendingFingerprint(directoryID), by); err != nil {
+		s.events.Ops("warn", "alert_resolve_failed", err.Error(), nil)
+	}
+}
+
+// suggestedUsername is the console user name offered for a tool account:
+// the part of an e-mail address before the @.
+func suggestedUsername(toolUsername string) string {
+	name, _, _ := strings.Cut(normalizeName(toolUsername), "@")
+	return name
+}
+
+func normalizeName(s string) string { return strings.ToLower(strings.TrimSpace(s)) }

@@ -27,6 +27,7 @@ import (
 	"net/http"
 	"net/url"
 	"slices"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -70,10 +71,24 @@ type Claims struct {
 	Email             string   `json:"email"`
 	Role              string   `json:"role"`
 	AMR               []string `json:"amr"`
+	AuthTime          int64    `json:"auth_time"`
 }
 
-// SecondFactor reports whether this sign-in passed a one-time code.
-func (c Claims) SecondFactor() bool { return slices.Contains(c.AMR, "otp") }
+// SecondFactor reports whether this sign-in passed a one-time code (OTP or SMS).
+func (c Claims) SecondFactor() bool {
+	return slices.Contains(c.AMR, "otp") || slices.Contains(c.AMR, "sms")
+}
+
+// AuthenticatedWithin reports whether the person gave their password at most
+// d before now, by the provider's word. A minute is allowed for clock drift.
+// A token without auth_time does not pass: the provider ignored max_age.
+func (c Claims) AuthenticatedWithin(d time.Duration, now time.Time) bool {
+	if c.AuthTime == 0 {
+		return false
+	}
+	at := time.Unix(c.AuthTime, 0)
+	return !at.After(now.Add(time.Minute)) && now.Sub(at) <= d+time.Minute
+}
 
 // audience is a string or a list of strings, as the specification allows.
 type audience []string
@@ -182,9 +197,10 @@ func NewFlow() (Flow, error) {
 	return f, nil
 }
 
-// AuthURL is where to send the browser. prompt is "login" to make the
-// provider ask for the password and second factor again, or "".
-func (p *Provider) AuthURL(ctx context.Context, f Flow, redirectURI, prompt string) (string, error) {
+// AuthURL is where to send the browser. A maxAge above zero asks the
+// provider for the password and second factor again unless the person gave
+// them within that long; Claims.AuthenticatedWithin checks it came true.
+func (p *Provider) AuthURL(ctx context.Context, f Flow, redirectURI string, maxAge time.Duration) (string, error) {
 	m, err := p.discover(ctx)
 	if err != nil {
 		return "", err
@@ -200,8 +216,8 @@ func (p *Provider) AuthURL(ctx context.Context, f Flow, redirectURI, prompt stri
 		"code_challenge":        {base64.RawURLEncoding.EncodeToString(sum[:])},
 		"code_challenge_method": {"S256"},
 	}
-	if prompt != "" {
-		q.Set("prompt", prompt)
+	if maxAge > 0 {
+		q.Set("max_age", strconv.Itoa(int(maxAge.Seconds())))
 	}
 	sep := "?"
 	if strings.Contains(m.AuthorizationEndpoint, "?") {

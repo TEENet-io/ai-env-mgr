@@ -138,8 +138,8 @@ func (s TicketStore) ConfirmChangeResult(ctx context.Context, ticketID, contactI
 			return err
 		}
 		body := fmt.Sprintf("客戶已確認變更結果：%s", payload["result"])
-		if _, err := tx.Exec(ctx, `insert into ticket_events(ticket_id,actor_type,actor_id,kind,visibility,body)
-			values($1,'customer',$2,'comment','public',$3)`, ticketID, contactID, body); err != nil {
+		if _, err := tx.Exec(ctx, `insert into ticket_events(ticket_id,actor_type,actor_id,kind,visibility,body,actor_name)
+			values($1,'customer',$2,'comment','public',$3,coalesce((select name from customer_contacts where id=$2),''))`, ticketID, contactID, body); err != nil {
 			return err
 		}
 		return ticketAudit(ctx, tx, "customer", contactID, "ticket_change_confirmation", ticketID, map[string]string{"result": payload["result"]})

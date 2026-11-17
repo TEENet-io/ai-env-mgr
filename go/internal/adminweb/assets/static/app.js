@@ -1,6 +1,4 @@
-// The console's only script. It is served from the binary under a CSP that
-// allows nothing inline. Most forms work without it; the channel trial uses
-// fetch so prompts and replies remain on the page instead of entering a URL.
+// The console script is served from the binary; the CSP disallows inline scripts.
 (function () {
   "use strict";
   document.querySelectorAll("fieldset.checks").forEach(function (set) {
@@ -46,72 +44,6 @@
     };
     form.addEventListener("change", update);
     update();
-  });
-  document.querySelectorAll("form[data-channel-trial]").forEach(function (form) {
-    var result = form.parentElement.querySelector("[data-channel-result]");
-    if (!result) { return; }
-    var state = result.querySelector("[data-channel-state]");
-    var transcript = result.querySelector("[data-channel-transcript]");
-    var input = result.querySelector("[data-channel-input]");
-    var output = result.querySelector("[data-channel-output]");
-    var meta = result.querySelector("[data-channel-meta]");
-    var button = form.querySelector('button[type="submit"]');
-    form.addEventListener("submit", async function (event) {
-      event.preventDefault();
-      if (!form.reportValidity() || button.disabled) { return; }
-      var entered = form.querySelector('[name="prompt"]').value.trim();
-      result.hidden = false;
-      transcript.hidden = true;
-      result.classList.remove("is-error");
-      state.textContent = "正在向指定部署發送測試請求…";
-      meta.textContent = "";
-      button.disabled = true;
-      try {
-        var sendTrial = function () {
-          return fetch(form.action, {
-            method: "POST", body: new FormData(form), credentials: "same-origin",
-            headers: { "Accept": "application/json" }, cache: "no-store"
-          });
-        };
-        var response = await sendTrial();
-        var data = await response.json();
-        if (response.status === 403 && data.error === "表單已過期，請刷新頁面重試") {
-          var fresh = await fetch("/channels", { credentials: "same-origin", cache: "no-store" });
-          if (fresh.ok && new URL(fresh.url).pathname === "/channels") {
-            var page = new DOMParser().parseFromString(await fresh.text(), "text/html");
-            var token = page.querySelector('form[data-channel-trial] input[name="csrf"]');
-            if (token && token.value) {
-              form.querySelector('input[name="csrf"]').value = token.value;
-              response = await sendTrial();
-              data = await response.json();
-            }
-          }
-        }
-        var passed = response.ok && data.ok;
-        result.classList.toggle("is-error", !passed);
-        state.textContent = passed ? "試調用成功" : (data.error || "試調用失敗");
-        input.textContent = data.input || entered;
-        output.textContent = passed ? (data.output || "模型未返回可顯示文本") : "沒有模型回覆";
-        transcript.hidden = false;
-        var details = [];
-        if (data.model_name) { details.push(data.model_name); }
-        if (data.model_id) { details.push("部署 " + data.model_id); }
-        if (data.elapsed_ms !== undefined) { details.push((data.elapsed_ms / 1000).toFixed(1) + " 秒"); }
-        if (passed || data.completion_tokens !== undefined) { details.push("輸入 " + (data.prompt_tokens || 0) + " tokens · 輸出 " + (data.completion_tokens || 0) + " tokens"); }
-        if (data.finish_reason) { details.push("結束原因 " + data.finish_reason); }
-        if (data.warning) { details.push(data.warning); }
-        meta.textContent = details.join(" · ");
-      } catch (_) {
-        result.classList.add("is-error");
-        state.textContent = "無法讀取測試結果，請檢查登入狀態和網絡後重試";
-        input.textContent = entered;
-        output.textContent = "沒有模型回覆";
-        transcript.hidden = false;
-        meta.textContent = "";
-      } finally {
-        button.disabled = false;
-      }
-    });
   });
   var ticketForm = document.querySelector("[data-ticket-form]");
   if (ticketForm) {

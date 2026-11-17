@@ -153,7 +153,13 @@ func (ap directoryApply) change(c directory.Change) error {
 		}
 		return nil
 	case directory.ChangeRenamed:
-		_, err := ap.tx.Exec(ap.ctx, `update customer_contacts set name = $2 where directory_id = $1`, a.ID, a.DisplayName())
+		if _, err := ap.tx.Exec(ap.ctx, `update customer_contacts set name = $2 where directory_id = $1`, a.ID, a.DisplayName()); err != nil {
+			return err
+		}
+		// The AI workspace account takes the new name too. What was recorded
+		// under the old one (bindings, usage, the audit trail) keeps it.
+		_, err := ap.tx.Exec(ap.ctx, `update employees set name = $2, version = version + 1, updated_at = now()
+			where directory_id = $1 and deleted_at is null and name is distinct from $2`, a.ID, a.DisplayName())
 		return err
 	case directory.ChangeEmail:
 		if a.Email != "" {
@@ -460,6 +466,92 @@ func (s DirectoryStore) OpsAccounts(ctx context.Context) ([]OpsAccount, error) {
 	return out, rows.Err()
 }
 
+// IsBound reports whether any console account, enabled or not, is bound to
+// the directory account. An error reads as bound: the caller then refuses.
+func (s DirectoryStore) IsBound(ctx context.Context, directoryID string) bool {
+	var bound bool
+	err := s.db.pool.QueryRow(ctx, `select exists (select 1 from admin_principals where directory_id = $1)`, directoryID).Scan(&bound)
+	return err != nil || bound
+}
+
+// RecordOpsRequest notes that an ops account the tool vouched for tried the
+// operators' entry and is not bound to a console account yet.
+func (s DirectoryStore) RecordOpsRequest(ctx context.Context, a directory.Account) error {
+	_, err := s.db.pool.Exec(ctx, `insert into ops_signin_requests (directory_id, username, name, email)
+		values ($1, $2, $3, $4)
+		on conflict (directory_id) do update set username = excluded.username, name = excluded.name,
+		  email = excluded.email, last_at = now(), attempts = ops_signin_requests.attempts + 1`,
+		a.ID, a.Username, a.Name, a.Email)
+	return mapError(err, "record ops request")
+}
+
+// PendingOps is an ops account of the tool with no console account bound
+// to it: one in the copy of the list, one that tried to sign in, or both.
+type PendingOps struct {
+	directory.Account
+	// Known is false for somebody who tried to sign in but is not in the
+	// copy of the list yet; they can be opened after the next reading.
+	Known       bool
+	RequestedAt *time.Time
+	Attempts    int
+}
+
+// PendingOpsAccounts lists, those who tried to sign in first, the active
+// ops accounts nobody has opened.
+func (s DirectoryStore) PendingOpsAccounts(ctx context.Context) ([]PendingOps, error) {
+	rows, err := s.db.pool.Query(ctx, `
+		select coalesce(d.id, r.directory_id)::text, coalesce(d.username, r.username), coalesce(d.name, r.name),
+		       coalesce(d.email, r.email), d.id is not null, r.last_at, coalesce(r.attempts, 0)
+		from directory_accounts d
+		full join ops_signin_requests r on r.directory_id = d.id
+		where (d.id is null or (d.role = 'ops' and d.status = 'active'))
+		  and not exists (select 1 from admin_principals a where a.directory_id = coalesce(d.id, r.directory_id))
+		order by r.last_at desc nulls last, 2`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []PendingOps
+	for rows.Next() {
+		var p PendingOps
+		if err := rows.Scan(&p.ID, &p.Username, &p.Name, &p.Email, &p.Known, &p.RequestedAt, &p.Attempts); err != nil {
+			return nil, err
+		}
+		p.Role, p.Status = directory.RoleOps, directory.StatusActive
+		out = append(out, p)
+	}
+	return out, rows.Err()
+}
+
+// OpenOpsAccount creates a console account for an active ops account of the
+// tool and binds the two, in one step. The account has no password: it is
+// entered only through the tool. Returns the new account's id.
+func (s DirectoryStore) OpenOpsAccount(ctx context.Context, directoryID, username, role string) (string, error) {
+	username = normalizeUsername(username)
+	if username == "" {
+		return "", errors.New("open ops account: a user name is required")
+	}
+	var id string
+	err := s.db.Tx(ctx, func(tx pgx.Tx) error {
+		var email string
+		err := tx.QueryRow(ctx, `select email from directory_accounts
+			where id = $1 and role = 'ops' and status = 'active'`, directoryID).Scan(&email)
+		if errors.Is(err, pgx.ErrNoRows) {
+			return ErrNotPermitted
+		}
+		if err != nil {
+			return mapError(err, "open ops account")
+		}
+		if err := tx.QueryRow(ctx, `insert into admin_principals (username, email, password_hash, role, directory_id)
+			values ($1, $2, null, $3, $4) returning id::text`, username, email, role, directoryID).Scan(&id); err != nil {
+			return mapError(err, "open ops account")
+		}
+		_, err = tx.Exec(ctx, `delete from ops_signin_requests where directory_id = $1`, directoryID)
+		return err
+	})
+	return id, err
+}
+
 // AdminLinks maps console account ids to the directory account each is
 // linked to.
 func (s DirectoryStore) AdminLinks(ctx context.Context) (map[string]directory.Account, error) {
@@ -497,8 +589,60 @@ func (s DirectoryStore) LinkAdmin(ctx context.Context, adminID, directoryID stri
 	if tag.RowsAffected() == 0 {
 		return ErrNotPermitted
 	}
+	if _, err := s.db.pool.Exec(ctx, `delete from ops_signin_requests where directory_id = $1`, directoryID); err != nil {
+		return err
+	}
 	// A new link changes who this account is; whoever is signed in as it
 	// signs in again.
 	_, err = s.db.pool.Exec(ctx, `delete from admin_sessions where principal_id = $1`, adminID)
 	return err
+}
+
+// WithoutWorkspace lists the people an AI workspace account can be opened
+// for (AIC-209): active customer accounts of the tool -- ops accounts are
+// not employees -- that no live account here belongs to yet. Somebody whose
+// account was closed still has it, and gets it reopened instead.
+func (s DirectoryStore) WithoutWorkspace(ctx context.Context) ([]directory.Account, error) {
+	rows, err := s.db.pool.Query(ctx, `select d.id::text, d.username, d.name, d.email, d.role, d.status
+		from directory_accounts d
+		where d.status = 'active' and d.role <> 'ops' and d.missing_since is null
+		  and not exists (select 1 from employees e where e.directory_id = d.id and e.deleted_at is null)
+		order by lower(coalesce(nullif(d.name, ''), d.username))`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := []directory.Account{}
+	for rows.Next() {
+		var a directory.Account
+		if err := rows.Scan(&a.ID, &a.Username, &a.Name, &a.Email, &a.Role, &a.Status); err != nil {
+			return nil, err
+		}
+		out = append(out, a)
+	}
+	return out, rows.Err()
+}
+
+// GoneWithWorkspace lists the accounts the sync should close. It reads the
+// state rather than the changes of one reading, so a close that failed is
+// tried again at the next one.
+func (s DirectoryStore) GoneWithWorkspace(ctx context.Context) ([]directory.Gone, error) {
+	rows, err := s.db.pool.Query(ctx, `select e.id::text, e.windows_user, d.id::text, d.username, d.name, d.email, d.role, d.status
+		from employees e join directory_accounts d on d.id = e.directory_id
+		where e.status = 'active' and e.deleted_at is null and d.status in ('disabled', 'deleted')
+		order by e.windows_user`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []directory.Gone
+	for rows.Next() {
+		var g directory.Gone
+		if err := rows.Scan(&g.EmployeeID, &g.WindowsUser, &g.Person.ID, &g.Person.Username, &g.Person.Name,
+			&g.Person.Email, &g.Person.Role, &g.Person.Status); err != nil {
+			return nil, err
+		}
+		out = append(out, g)
+	}
+	return out, rows.Err()
 }

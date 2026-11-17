@@ -64,7 +64,7 @@ func (s TicketStore) LatestProposal(ctx context.Context, ticketID string) (*Tick
 }
 
 func (s TicketStore) PendingManagerApprovals(ctx context.Context, limit int) ([]PendingTicketApproval, error) {
-	rows, err := s.db.pool.Query(ctx, `select t.id,t.number,t.title,c.name,p.id
+	rows, err := s.db.pool.Query(ctx, `select t.id,t.number,t.title,coalesce(nullif(t.requester_name,''),c.name,''),p.id
 		from ticket_proposals p join tickets t on t.id=p.ticket_id
 		join customer_contacts c on c.id=t.requester_id
 		left join ticket_proposal_decisions d on d.proposal_id=p.id
@@ -177,8 +177,8 @@ func (s TicketStore) DecideProposal(ctx context.Context, ticketID, contactID str
 		if decision == "rejected" {
 			body = "客戶未同意具體方案；服務團隊需重新評估，不能按此方案執行。"
 		}
-		if _, err := tx.Exec(ctx, `insert into ticket_events(ticket_id,actor_type,actor_id,kind,visibility,body)
-			values($1,'customer',$2,'comment','public',$3)`, ticketID, contactID, body); err != nil {
+		if _, err := tx.Exec(ctx, `insert into ticket_events(ticket_id,actor_type,actor_id,kind,visibility,body,actor_name)
+			values($1,'customer',$2,'comment','public',$3,coalesce((select name from customer_contacts where id=$2),''))`, ticketID, contactID, body); err != nil {
 			return err
 		}
 		return ticketAudit(ctx, tx, "customer", contactID, "ticket_proposal_decided", ticketID, map[string]string{"decision": decision, "proposal_id": fmt.Sprint(proposalID)})

@@ -118,6 +118,9 @@ type Employee struct {
 	// DeletedAt is set when an offboarded account is removed from the
 	// console: the row stays for history, the name is free for reuse.
 	DeletedAt *time.Time
+	// DirectoryID is the custom tool account this person is (AIC-209);
+	// empty for an account opened before the list, or without one.
+	DirectoryID string
 }
 
 // Active reports whether this employee should have working credentials.
@@ -134,6 +137,7 @@ type NewEmployee struct {
 	Department   string
 	CodexAccount string
 	Email        string
+	DirectoryID  string
 }
 
 // Profile is the set of fields an administrator edits by hand.
@@ -348,6 +352,9 @@ type Binding struct {
 	BoundBy    string
 	UnboundAt  *time.Time
 	UnboundBy  string
+	// EmployeeName is the person's name when the machine was bound to them;
+	// a later rename does not change it.
+	EmployeeName string
 
 	// RestartNonce is a one-shot "end this user's Codex" request. The agent
 	// echoes the nonce it acted on into its status, so the console can tell a
@@ -1069,6 +1076,9 @@ type Usage interface {
 	// ByEmployee sums the range per employee (unresolved aliases each count
 	// as their own line, EmployeeID empty). ModelGroup and Day are unset.
 	ByEmployee(ctx context.Context, f UsageFilter) ([]UsageRow, error)
+	// NamesInPeriod maps employee ids to the name their usage was last
+	// recorded under in the range.
+	NamesInPeriod(ctx context.Context, f UsageFilter) (map[string]string, error)
 	// ByModel sums the range per model group, biggest cost first.
 	ByModel(ctx context.Context, f UsageFilter) ([]UsageRow, error)
 	// ByDay sums the range per day, oldest first.

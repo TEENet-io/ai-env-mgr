@@ -206,7 +206,7 @@ func auditTargetName(ev repo.AuditEvent, employees, devices, accounts map[string
 // knownActions is what the action filter offers: every action the console
 // writes, in the order the file that defines them lists them.
 var knownActions = []string{
-	"account.onboard", "account.reopen", "account.offboard", "account.reissue", "account.quota",
+	"account.onboard", "account.reopen", "account.offboard", "account.offboard_sync", "account.reissue", "account.quota",
 	"account.models", "account.profile", "account.delete",
 	"machine.bind", "machine.unbind", "machine.codex_restart", "machine.sync",
 	"policy.publish",

@@ -27,7 +27,7 @@
   <h2>基本信息</h2>
   <form method="post" action="/users/profile" class="form">
     <input type="hidden" name="csrf" value="{{$.CSRF}}"><input type="hidden" name="windowsUser" value="{{.WindowsUser}}"><input type="hidden" name="back" value="detail"><input type="hidden" name="version" value="{{.Version}}">
-    <label>姓名<input name="name" value="{{.Name}}" placeholder="張三"></label>
+    {{if and $.Directory .Linked}}<label>姓名<input value="{{.Name}}" readonly disabled><span class="field-hint">以定製工具為準，在定製工具裡改名後自動同步</span></label>{{else}}<label>姓名<input name="name" value="{{.Name}}" placeholder="張三"></label>{{end}}
     <label>部門<input name="department" value="{{.Department}}" placeholder="研發"></label>
     <label>郵箱<input name="email" type="email" value="{{.Email}}" placeholder="zhangsan@example.com"></label>
     <input type="hidden" name="codexAccount" value="{{.CodexAccount}}">

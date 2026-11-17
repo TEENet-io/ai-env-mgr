@@ -3,7 +3,7 @@
 <main class="card">
   <h1>AI 環境管理</h1>
   {{if and .DBLogin .SSOTool}}
-  <p class="lede">運維人員用本人的{{.SSOTool}}帳號登入，每次都要輸入密碼和驗證碼。</p>
+  <p class="lede">運維人員用本人的{{.SSOTool}}帳號登入，10 分鐘內沒在{{.SSOTool}}輸入過密碼和驗證碼的，會再問一次。</p>
   {{if .Error}}<p class="note note-err">{{.Error}}</p>{{end}}
   {{if .Notice}}<p class="note note-ok">{{.Notice}}</p>{{end}}
   <p><a class="button" href="/oidc/start?entry=ops">使用{{.SSOTool}}帳號登入</a></p>

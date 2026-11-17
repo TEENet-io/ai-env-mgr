@@ -10,6 +10,7 @@ import (
 	"github.com/TEENet-io/ai-env-mgr/internal/admincore"
 	"github.com/TEENet-io/ai-env-mgr/internal/config"
 	"github.com/TEENet-io/ai-env-mgr/internal/dbstore"
+	"github.com/TEENet-io/ai-env-mgr/internal/directory"
 	"github.com/TEENet-io/ai-env-mgr/internal/ecdclient"
 	"github.com/TEENet-io/ai-env-mgr/internal/litellm"
 	"github.com/TEENet-io/ai-env-mgr/internal/model"
@@ -76,6 +77,8 @@ type pageData struct {
 	NewUsername      string
 	NewIsReset       bool
 	OpsAccounts      []dbstore.OpsAccount
+	PendingOps       []pendingOpsRow
+	Bindable         []string // enabled console accounts bound to nothing, emergency one aside
 	Tasks            []taskRow
 	Tickets          *ticketPage
 	ApplicationTasks []applicationTaskRow
@@ -120,6 +123,10 @@ type pageData struct {
 	// Account pages.
 	Accounts []accountRow
 	Show     string // the list filter: "", "active", "offboarded", "deleted"
+	// Directory is set when people come from the custom tool's list; the
+	// onboarding form then picks one of Unopened instead of typing a name.
+	Directory bool
+	Unopened  []directory.Account
 
 	// Version library (database mode).
 	Artifacts           map[string][]artifactRow // by product
