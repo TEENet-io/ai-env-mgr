@@ -74,10 +74,12 @@ type Claims struct {
 	AuthTime          int64    `json:"auth_time"`
 }
 
-// SecondFactor reports whether this sign-in passed a one-time code (OTP or SMS).
-func (c Claims) SecondFactor() bool {
-	return slices.Contains(c.AMR, "otp") || slices.Contains(c.AMR, "sms")
-}
+// OpsSecondFactor reports whether this sign-in passed the authenticator
+// app's code, the only second factor the ops entry takes. A text message
+// ("sms") is for customer accounts and does not count here: operators open
+// every customer's console, and a code sent to a phone number can be taken
+// by swapping the SIM or forwarding the message.
+func (c Claims) OpsSecondFactor() bool { return slices.Contains(c.AMR, "otp") }
 
 // AuthenticatedWithin reports whether the person gave their password at most
 // d before now, by the provider's word. A minute is allowed for clock drift.

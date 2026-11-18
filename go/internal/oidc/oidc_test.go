@@ -84,7 +84,7 @@ func TestVerifyAcceptsAGoodTokenAndNothingElse(t *testing.T) {
 	if err != nil {
 		t.Fatalf("a good token was refused: %v", err)
 	}
-	if !c.SecondFactor() || c.Role != "ops" || c.Email != "wei@example.com" {
+	if !c.OpsSecondFactor() || c.Role != "ops" || c.Email != "wei@example.com" {
 		t.Errorf("claims = %+v", c)
 	}
 
@@ -157,6 +157,22 @@ func TestADiscoveryNamingAnotherIssuerIsRefused(t *testing.T) {
 	}
 	if err := (&Provider{Issuer: "http://127.0.0.1:1"}).Reachable(context.Background()); err == nil {
 		t.Error("an unreachable provider was reported reachable")
+	}
+}
+
+func TestOnlyTheAuthenticatorOpensTheOpsEntry(t *testing.T) {
+	for name, c := range map[string]struct {
+		amr  []string
+		want bool
+	}{
+		"authenticator": {[]string{"pwd", "otp"}, true},
+		"text message":  {[]string{"pwd", "sms"}, false},
+		"password only": {[]string{"pwd"}, false},
+		"no amr":        {nil, false},
+	} {
+		if got := (Claims{AMR: c.amr}).OpsSecondFactor(); got != c.want {
+			t.Errorf("%s: got %v, want %v", name, got, c.want)
+		}
 	}
 }
 

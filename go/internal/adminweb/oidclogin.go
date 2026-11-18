@@ -241,8 +241,8 @@ func (s *Server) oidcOpsSignIn(w http.ResponseWriter, r *http.Request, c oidc.Cl
 	switch {
 	case c.Role != directory.RoleOps:
 		why = "role " + c.Role
-	case !c.SecondFactor():
-		why = "no second factor"
+	case !c.OpsSecondFactor():
+		why = "no authenticator code"
 	case !c.AuthenticatedWithin(opsReauth, time.Now()):
 		why = "password not given recently"
 	}
