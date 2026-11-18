@@ -64,6 +64,8 @@
 .skill-form p { margin: 0; }
 .skill-form .skill-upload { display: grid; justify-items: center; gap: 9px; border: 1.5px dashed var(--rule-strong); background: var(--panel-sunk); padding: 27px 20px; border-radius: 9px; text-align: center; cursor: pointer; }
 .skill-upload:hover { border-color: var(--accent); }
+.skill-upload.is-dragover { border-color: var(--accent); background: var(--accent-soft); }
+.skill-attachment-upload.is-dragover { outline: 1.5px dashed var(--accent); outline-offset: 6px; border-radius: 4px; }
 .skill-upload > span:not(.skill-upload-symbol) { font-size: 12px; font-weight: 400; color: var(--ink-soft); }
 .skill-upload-symbol { display: grid; place-items: center; width: 35px; height: 35px; background: var(--accent-soft); color: var(--accent); border-radius: 9px; font-size: 23px; font-weight: 400; margin-bottom: 3px; }
 .skill-upload input[type=file] { max-width: 330px; font-size: 12px; text-align: left; margin: 2px auto 0; }
