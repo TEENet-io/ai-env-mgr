@@ -99,3 +99,36 @@ func TestDesktopAckChecksGenerationUserSizeAndLinks(t *testing.T) {
 		t.Fatal("linked ack accepted")
 	}
 }
+
+func TestRecheckPendingConfirmsLateAckWithoutTouchingFiles(t *testing.T) {
+	m := manager(t)
+	ack := ""
+	m.Refresh = func(user, generation string) (bool, error) { return generation == ack, nil }
+	plan := model.ManagedSkills{User: "work1", Skills: []model.ManagedSkill{bundle(1, "first")}}
+	first, err := m.Sync(plan)
+	if err != nil || first.State != "refresh_pending" {
+		t.Fatalf("initial pending: %+v %v", first, err)
+	}
+	manifest := filepath.Join(m.Root, RefreshManifestName)
+	before, err := os.ReadFile(manifest)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if st, err := m.RecheckPending(); err != nil || st.State != "refresh_pending" || st.Generation != first.Generation || len(st.Skills) != 1 {
+		t.Fatalf("recheck before ack: %+v %v", st, err)
+	}
+	// The desktop acknowledges just after Sync looked.
+	ack = first.Generation
+	st, err := m.RecheckPending()
+	if err != nil || st.State != "applied" || len(st.RefreshPending) != 0 || st.User != "work1" || st.Generation != first.Generation {
+		t.Fatalf("late ack not confirmed: %+v %v", st, err)
+	}
+	after, err := os.ReadFile(manifest)
+	if err != nil || string(after) != string(before) {
+		t.Fatal("recheck must not republish the refresh manifest")
+	}
+	// The confirmation is durable: the next full sync keeps the generation.
+	if again, err := m.Sync(plan); err != nil || again.State != "applied" || again.Generation != first.Generation {
+		t.Fatalf("sync after recheck: %+v %v", again, err)
+	}
+}
