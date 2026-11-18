@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"sort"
+	"strconv"
 	"time"
 
 	"github.com/TEENet-io/ai-env-mgr/internal/repo"
@@ -69,8 +71,76 @@ func (r releaseRepo) ListArtifacts(ctx context.Context, product string) ([]repo.
 		}
 		out = append(out, a)
 	}
-	return out, rows.Err()
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	// Newest version first, compared numerically: registration order is not
+	// version order (a rebuilt library registers everything at once), and as
+	// text 1.5.9 sorts after 1.5.19 and b43 after b13.
+	sort.SliceStable(out, func(i, j int) bool {
+		if out[i].Product != out[j].Product {
+			return out[i].Product < out[j].Product
+		}
+		if c := compareVersions(out[i].Version, out[j].Version); c != 0 {
+			return c > 0
+		}
+		return out[i].CreatedAt.After(out[j].CreatedAt)
+	})
+	return out, nil
 }
+
+// compareVersions orders version strings by their runs of digits as numbers
+// and everything else as text: 1.5.19 > 1.5.9, 26.901.51231-b44 > -b13.
+func compareVersions(a, b string) int {
+	for a != "" && b != "" {
+		ra, rb := versionRun(a), versionRun(b)
+		da, db := isDigit(ra[0]), isDigit(rb[0])
+		switch {
+		case da && db:
+			na, _ := strconv.ParseUint(ra, 10, 64)
+			nb, _ := strconv.ParseUint(rb, 10, 64)
+			if na != nb {
+				if na < nb {
+					return -1
+				}
+				return 1
+			}
+		case da != db:
+			// A number outranks a text suffix at the same place (1.5.1 > 1.5.x).
+			if da {
+				return 1
+			}
+			return -1
+		default:
+			if ra != rb {
+				if ra < rb {
+					return -1
+				}
+				return 1
+			}
+		}
+		a, b = a[len(ra):], b[len(rb):]
+	}
+	switch {
+	case a == "" && b == "":
+		return 0
+	case a == "":
+		return -1
+	default:
+		return 1
+	}
+}
+
+func versionRun(s string) string {
+	d := isDigit(s[0])
+	i := 1
+	for i < len(s) && isDigit(s[i]) == d {
+		i++
+	}
+	return s[:i]
+}
+
+func isDigit(c byte) bool { return c >= '0' && c <= '9' }
 
 func (r releaseRepo) SetArtifactStatus(ctx context.Context, id string, status repo.ArtifactStatus, note, by string) (repo.Artifact, error) {
 	a, err := scanArtifact(r.q.QueryRow(ctx,
