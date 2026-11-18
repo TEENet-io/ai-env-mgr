@@ -81,12 +81,12 @@ func TestTheDirectoryGivesCustomersContactsAndTakesThemAway(t *testing.T) {
 	if _, ok := contactFor(t, ctx, db, ops.ID); ok {
 		t.Error("an ops account became a customer contact")
 	}
-	if c, ok := contactFor(t, ctx, db, admin.ID); !ok || c.ID != manual.ID || c.Role != "manager" || c.Name != "User 2" {
+	if c, ok := contactFor(t, ctx, db, admin.ID); !ok || c.ID != manual.ID || c.Role != "viewer" || c.Name != "User 2" {
 		t.Errorf("the hand-made contact was not linked and updated: %+v", c)
 	}
-	// An employee in the tool reads the company's tickets from the start.
+	// An employee sees only its own tickets.
 	c, ok := contactFor(t, ctx, db, staff.ID)
-	if !ok || c.Role != "viewer" || c.PasswordHash != "" {
+	if !ok || c.Role != "employee" || c.PasswordHash != "" {
 		t.Fatalf("new contact = %+v", c)
 	}
 
@@ -367,7 +367,7 @@ func TestARenameReachesTheAccountButNotTheRecords(t *testing.T) {
 	}
 }
 
-func TestAViewOnlyAdminIsAViewerInTheTicketSystem(t *testing.T) {
+func TestEveryCustomerAdminIsAViewerInTheTicketSystem(t *testing.T) {
 	s, ctx := newTestStore(t)
 	db := s.db
 	d := db.Directory()
@@ -410,14 +410,12 @@ func TestAViewOnlyAdminIsAViewerInTheTicketSystem(t *testing.T) {
 		t.Errorf("a viewer approved a paid proposal: %v", err)
 	}
 
-	// Allowed to approve in the tool: a manager from the next reading.
+	// Whatever ticket role the tool sends, an admin stays a viewer: approving
+	// is done by ops in the console.
 	viewer.TicketRole = directory.TicketApprove
-	plan, _ := readDirectory(t, ctx, d, viewer, staff)
-	if len(plan.Changes) != 1 || plan.Changes[0].Kind != directory.ChangeRole {
-		t.Errorf("changes = %+v", plan.Changes)
-	}
-	if v, _ := contactFor(t, ctx, db, viewer.ID); v.Role != "manager" {
-		t.Errorf("after approve: %+v", v)
+	readDirectory(t, ctx, d, viewer, staff)
+	if v, _ := contactFor(t, ctx, db, viewer.ID); v.Role != "viewer" {
+		t.Errorf("after the tool said approve: %+v", v)
 	}
 	// Nothing changed: nothing to report.
 	if plan, _ := readDirectory(t, ctx, d, viewer, staff); len(plan.Changes) != 0 {
@@ -449,7 +447,7 @@ func TestAnAccountWithoutAnEmailStillOpensTheTicketSystem(t *testing.T) {
 		t.Fatalf("reading: %s", res)
 	}
 	c, ok := contactFor(t, ctx, db, peter.ID)
-	if !ok || c.Email != "peter1-local-test" || c.Role != "viewer" || c.PasswordHash != "" {
+	if !ok || c.Email != "peter1-local-test" || c.Role != "employee" || c.PasswordHash != "" {
 		t.Fatalf("contact = %+v", c)
 	}
 	if len(openAlerts(t, ctx, s, repo.AlertDirectoryFollowUp)) != 0 {

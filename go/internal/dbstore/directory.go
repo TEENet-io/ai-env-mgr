@@ -131,20 +131,17 @@ type directoryApply struct {
 }
 
 // contactRole is the ticket system's name for a directory account's role.
-// An admin the tool lets only look is a viewer, and so is every employee: a
-// new account in the tool can read the company's tickets from the start,
-// without anyone ticking a box. "employee", which sees only its own tickets,
-// is left for contacts made by hand here. Ops accounts are not customers and
-// have no contact.
+// A customer admin is a viewer: it reads the company's tickets, usage and
+// employees but approves nothing -- accounts, quota and proposals are done by
+// ops in this console. An employee sees only its own. Whatever ticket role
+// the tool sends is not consulted. "manager" is left for contacts made by
+// hand here. Ops accounts are not customers and have no contact.
 func contactRole(a directory.Account) (string, bool) {
 	switch a.Role {
 	case directory.RoleAdmin:
-		if a.TicketRole == directory.TicketView {
-			return "viewer", true
-		}
-		return "manager", true
-	case directory.RoleEmployee:
 		return "viewer", true
+	case directory.RoleEmployee:
+		return "employee", true
 	}
 	return "", false
 }
