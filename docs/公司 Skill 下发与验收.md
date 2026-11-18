@@ -1,6 +1,6 @@
 # 公司 Skill 下发与验收
 
-日期：2026-11-13，更新：2026-11-16。目标：2026 年 11 月内完成交付。当前状态：代码实现和完整数据库回归通过；Windows 云电脑 b13 首次下发及不关闭 Codex 的 v3 更新、回退 v2、撤回基本生命周期验收通过。普通员工权限、其他真机场景和独立人员验收待完成；生产后台及正式 Agent 未升级此功能。
+日期：2026-11-13，更新：2026-11-18。目标：2026 年 11 月内完成交付。当前状态：2026-11-18 已上线生产（后台 `v1.5.20-20-gcdcdc0c`，迁移 0032；全员目标 Agent 1.5.21、Codex b44）。生产测试机 hv8uqpity23nkc7 上新建、ZIP 导入、更新、回退及不关闭 Codex 刷新均通过；普通员工只读权限通过。多员工范围隔离、按部门派发与组织变动、后台角色、运行中长任务和独立人员验收待完成。
 
 ## 依据与复用
 
@@ -160,6 +160,47 @@ CI 的 PostgreSQL 检查现已覆盖全仓测试，保留 Windows 原生 skill �
 | 新建个人 skill `C:\Users\skilltest\.codex\skills\my-own` | 成功 | 通过 |
 
 检查后设备于 13:02:26（Asia/Shanghai）回报的 SHA256 不变。Windows PowerShell 5.1 的 `Get-Content` 默认按 ANSI 解码无 BOM 的 UTF-8，`description` 中文显示为乱码，属于显示问题，不是文件损坏。普通员工只读一项通过；该用户未接入 Codex，未验证其会话内的列表和调用。
+
+## 生产上线与验收（2026-11-18）
+
+### 部署内容
+
+生产后台在 ali0 运行，原版本为 `feat/oidc-aliyun-sms` 的 `4bafcd8`（迁移 24），不是 main。上线版本在 `4bafcd8` 之上只合入本功能，分支 `release/prod-4bafcd8-skills`，未带入该分支后续提交。
+
+| 时间（北京时间） | 内容 | 版本 / 位置 |
+|---|---|---|
+| 15:49 | 后台上线公司 Skill，执行迁移 `0032_customer_skill_audit` | `v1.5.20-17-ge301c9c` |
+| 16:30 | 后台修复：上传框拖放、版本列表按版本号排序 | `v1.5.20-20-gcdcdc0c` |
+| 15:12 | Agent 1.5.20 上传 OSS，不含个人记忆同步 | `agent_workdir/_agent/1.5.20/agent.exe`，SHA256 `5c39fa03…4713fd9` |
+| 16:32 | Agent 1.5.21：等待刷新期间每 10 秒复查 Codex 确认 | `agent_workdir/_agent/1.5.21/agent.exe`，SHA256 `642a063b…c2cf970` |
+| 15:12 | Codex 企业版 b44 = b13 + 无感刷新适配；b14–b43 已被个人记忆试验包占用 | `agent_workdir/_codex/codex-setup-26.901.51231-b44.exe`，SHA256 `214b0157…873c452a` |
+| 16:52 | 全员目标改为 Agent 1.5.21、Codex b44 | 后台「软件安装」 |
+
+迁移编号用 0032，因为 `feat/oidc-aliyun-sms` 已占用 0024–0031；迁移器拒绝数据库中存在而程序未携带的迁移，main 已同步改为 0032，该分支部署前须合入 main。上线前在生产表结构副本上演练：0001–0024 校验和一致，仅 0032 待执行，down/up 往返正常。生产审计表现有 `actor_type` 仅 admin、device。数据库备份 `/var/backups/ai-env-mgr/pre-skills-20261118T074854.dump`，旧程序保留为 `/usr/local/bin/*.prev-*`。
+
+### 生产真机结果
+
+测试机 `hv8uqpity23nkc7`，员工 weipeng，Agent 1.5.20 → 1.5.21，Codex b43 → b44。b44 安装后输入框下的个人记忆按钮消失；Codex 执行命令正常，未被 AppLocker 拦截；模型登录保留。
+
+| 场景 | 操作 | 结果 |
+|---|---|---|
+| 旧后台兼容 | 1.5.20 连接未升级的生产后台 | 通过：设备配置无 Skill 字段时跳过同步，上报不带新字段 |
+| 首次派发 | `teenet-delivery-check` v2 派发给 weipeng | 通过：新对话读取 v2 与 `TEENET-SKILL-CHECK-V2-B7359A` |
+| 不关窗口更新 | 更新到 v3，Codex 保持打开 | 通过：读取 v3 附件与正文校验 `TEENET-BODY-V3-91A6F0` |
+| 刷新确认 | 1.5.20 下状态停在「等待 Codex 刷新」 | 发现问题：Codex 确认比 Agent 检查晚约 1 秒，须等下一次完整同步（最长 30 分钟）；1.5.21 修复 |
+| 回退 | 1.5.21 下回退到 v2（16:42:42） | 通过：16:43 前后台显示已同步 |
+| ZIP 导入新 Skill | 拖放导入 `teenet-meeting-minutes` v1（模板 `.md` + 术语表 `.csv`） | 通过：按模板输出，术语按表替换，正文 `TEENET-MIN-BODY-V1-4C27`、模板 `TEENET-MIN-TPL-V1-A913` |
+| 上传新版 | 同一 Skill 上传 v2 | 通过：新增「下一次会议」一节，正文 `TEENET-MIN-BODY-V2-7E50`、模板 `TEENET-MIN-TPL-V2-D681` |
+| 自动选用 | 不写 `$teenet-meeting-minutes`，只说「整理一下：…」 | 通过：Codex 按 Skill 说明自动选中 |
+
+17:37 设备回报 `applied`，两个 Skill 均为 v2。
+
+### 上线过程中发现的问题
+
+- 11-13 全员 Agent 目标被设为 1.5.9，设备由 1.5.19 降级。原因是版本列表按登记时间排列，生产库 11-09 重建时按字符串顺序批量登记，1.5.9 排在最前。已改为按版本号排序。
+- main 曾因 Skill 分支基于个人记忆 Agent 分支而带入 `1e0cb7d`（个人记忆同步，无后台开关）。已在 main 上回退，个人记忆仍在 `feature/personal-memory-mvp-agent`。
+- Codex 选 Claude 或 Gemini 时，请求带 `verbosity` 与 `prompt_cache_key`，LiteLLM 报 `UnsupportedParamsError`。已提 [litellm-config#18](https://github.com/TEENet-io/litellm-config/pull/18) 为这些模型开启 `drop_params`。Gemini 另因 GCP 项目 `coral-matrix-falcon-7821` 于 11-18 13:50–17:11 间停用结算（`BILLING_DISABLED`）而不可用，需恢复结算。
+- 仍有 3 台设备离线（最后在线 11-16 至 11-17），开机后将升级到 Agent 1.5.21 与 Codex b44；安装 Codex 时会关闭正在运行的 Codex。
 
 ## 独立人员验收与上线
 
