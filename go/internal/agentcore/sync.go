@@ -14,6 +14,7 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -205,6 +206,9 @@ type Updater interface {
 
 // Syncer runs one sync cycle.
 type Syncer struct {
+	Skills interface {
+		Sync(model.ManagedSkills) (model.ManagedSkillsStatus, error)
+	}
 	// Store is the bucket, used when Source is nil. Source, when set, is
 	// where instructions come from and reports go -- the console's device
 	// API in an enrolled agent.
@@ -559,6 +563,38 @@ func (s *Syncer) RunOnce() (model.Status, error) {
 	agentTarget, codexTarget := effectiveTargets(pol, binding)
 	codex := s.updateCodex(codexTarget, binding.User, &errs)
 	var appStatuses []model.ApplicationStatus
+	var skillStatus *model.ManagedSkillsStatus
+	if s.Skills != nil {
+		if source, ok := src.(interface {
+			ManagedSkills() (*model.ManagedSkills, error)
+		}); ok {
+			plan, err := source.ManagedSkills()
+			if err != nil {
+				skillStatus = &model.ManagedSkillsStatus{State: "failed"}
+				errs = append(errs, fmt.Sprintf("company skills config: %v", err))
+			} else if plan != nil {
+				if len(plan.Skills) > 0 && !strings.EqualFold(plan.User, binding.User) {
+					skillStatus = &model.ManagedSkillsStatus{State: "failed"}
+					errs = append(errs, "company skills recipient does not match current binding")
+				} else {
+					desired := *plan
+					deferred := false
+					if !bound || !boundUserExists || strings.EqualFold(binding.User, administratorAccount) {
+						deferred = len(plan.Skills) > 0
+						desired = model.ManagedSkills{Skills: []model.ManagedSkill{}}
+					}
+					result, err := s.Skills.Sync(desired)
+					skillStatus = &result
+					if err != nil {
+						errs = append(errs, fmt.Sprintf("company skills sync: %v", err))
+					} else if deferred {
+						skillStatus.State = "deferred"
+						warns = append(warns, "company skills deferred: bound employee profile is unavailable")
+					}
+				}
+			}
+		}
+	}
 	// The API worker owns current Admin tasks. This path remains for direct
 	// OSS/legacy sources and for compatibility tests; the device API no longer
 	// embeds OSS machine plans in its configuration.
@@ -612,6 +648,7 @@ func (s *Syncer) RunOnce() (model.Status, error) {
 		Warnings:              warns,
 	})
 
+	st.ManagedSkills = skillStatus
 	if out, err := status.Marshal(st); err != nil {
 		st.Errors = append(st.Errors, fmt.Sprintf("status encode: %v", err))
 	} else if err := src.ReportStatus(machine, out); err != nil {
@@ -721,6 +758,46 @@ func (s *Syncer) Heartbeat() error {
 	s.lastStatus = st
 	s.mu.Unlock()
 	return nil
+}
+
+// SkillRefreshPending reports whether the last full sync left company skills
+// waiting for a desktop acknowledgement.
+func (s *Syncer) SkillRefreshPending() bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	ms := s.lastStatus.ManagedSkills
+	return ms != nil && ms.State == "refresh_pending"
+}
+
+// RecheckSkillRefresh asks the skill manager whether the desktop has since
+// acknowledged the pending generation, and folds the answer into the status
+// the next heartbeat reports. It reports true when that status changed. The
+// caller must not run it while a full sync is running.
+func (s *Syncer) RecheckSkillRefresh() (bool, error) {
+	r, ok := s.Skills.(interface {
+		RecheckPending() (model.ManagedSkillsStatus, error)
+	})
+	if !ok || !s.SkillRefreshPending() {
+		return false, nil
+	}
+	st, err := r.RecheckPending()
+	if err != nil {
+		return false, err
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	cur := s.lastStatus.ManagedSkills
+	// A full sync that published another generation since then wins.
+	if cur == nil || cur.State != "refresh_pending" || cur.Generation != st.Generation {
+		return false, nil
+	}
+	if cur.State == st.State && slices.Equal(cur.RefreshPending, st.RefreshPending) {
+		return false, nil
+	}
+	next := *cur
+	next.State, next.RefreshPending = st.State, st.RefreshPending
+	s.lastStatus.ManagedSkills = &next
+	return true, nil
 }
 
 // ReportEvent stamps a lifecycle transition (the machine is about to suspend,

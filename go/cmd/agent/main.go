@@ -39,6 +39,9 @@ func stateDir() string {
 }
 
 func main() {
+	if skillsTestBuild == "1" {
+		must(checkSkillsTestBuildArgs(os.Args[1:]))
+	}
 	// A self-update launches a copy of the old image as a detached helper. It
 	// must enter this path before normal service setup so it never opens the
 	// service log or starts a second sync loop.
@@ -57,6 +60,8 @@ func main() {
 		return
 	}
 	switch os.Args[1] {
+	case "skills-test":
+		must(cmdSkillsTest(os.Args[2:]))
 	case "setup":
 		must(cmdSetup())
 	case "prepare-image":
@@ -184,6 +189,7 @@ func newSyncer() (*agentcore.Syncer, error) {
 		return nil, err
 	}
 	s := &agentcore.Syncer{
+		Skills:           newManagedSkillsManager(),
 		Applier:          localApplier{},
 		Machine:          machine,
 		Version:          version,
@@ -346,6 +352,13 @@ func runService() {
 // otherwise keep an outdated policy for the remainder of its interval, right
 // when the employee has just resumed work. The wake channel covers resume
 // events, and the wall-clock check covers a resume whose event never arrived.
+// How often, and for how long after a full sync, the agent looks again for a
+// desktop acknowledgement of new company skills.
+const (
+	skillRefreshRecheckEvery = 10 * time.Second
+	skillRefreshRecheckFor   = 10 * time.Minute
+)
+
 func loop(s *agentcore.Syncer, stop <-chan struct{}, wake <-chan struct{}) {
 	interval := time.Duration(s.FallbackInterval) * time.Minute
 	if interval <= 0 {
@@ -474,6 +487,13 @@ func loop(s *agentcore.Syncer, stop <-chan struct{}, wake <-chan struct{}) {
 	ticker := time.NewTicker(checkEvery)
 	defer ticker.Stop()
 
+	// Codex acknowledges a new company skill generation within seconds, but
+	// usually just after the sync that published it has looked. Recheck the
+	// acknowledgement for a while instead of reporting "waiting for Codex"
+	// until the next full sync.
+	recheck := time.NewTicker(skillRefreshRecheckEvery)
+	defer recheck.Stop()
+
 	for {
 		select {
 		case result := <-syncDone:
@@ -495,6 +515,19 @@ func loop(s *agentcore.Syncer, stop <-chan struct{}, wake <-chan struct{}) {
 		case <-wake:
 			// Trigger 2: the machine resumed from sleep.
 			startSync("wake-up")
+
+		case <-recheck.C:
+			if syncing || lastRun.IsZero() || time.Since(lastRun) > skillRefreshRecheckFor || !s.SkillRefreshPending() {
+				continue
+			}
+			if changed, err := s.RecheckSkillRefresh(); err != nil {
+				log.Printf("company skills: refresh recheck failed: %v", err)
+			} else if changed {
+				log.Printf("company skills: desktop refresh confirmed")
+				if err := s.Heartbeat(); err != nil {
+					log.Printf("heartbeat failed: %v", err)
+				}
+			}
 
 		case <-ticker.C:
 			// Trigger 3: the wall clock says we are overdue. This also catches

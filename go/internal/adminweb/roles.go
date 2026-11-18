@@ -20,6 +20,8 @@ var roleRank = map[string]int{
 // Reads are for everybody who can sign in, and so are signing out and one's
 // own account. Every other write is for admins.
 var minRole = map[string]string{
+	"GET /skills":                        repo.RoleViewer,
+	"POST /skills/change":                repo.RoleAdmin,
 	"GET /overview":                      repo.RoleViewer,
 	"GET /users":                         repo.RoleViewer,
 	"GET /users/detail":                  repo.RoleViewer,

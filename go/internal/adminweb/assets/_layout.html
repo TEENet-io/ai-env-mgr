@@ -30,8 +30,9 @@ file stays out of it. */}}
 <nav class="rail">
   <div class="wordmark"><span class="wordmark-mark">AI</span><span class="wordmark-copy"><strong>AI 環境管理</strong><small>設備與策略控制台</small></span></div>
   {{if .GatewayTeamID}}<div class="rail-org"><span>組織</span><strong>{{.GatewayTeamID}}</strong></div>{{end}}
-  {{/* Nine entries in database mode. The numbers are stable ordinals an operator learns;
-  pages that used to be top-level entries (日誌、任務、封禁策略、管理員) live
+  {{/* Existing numbered entries keep their stable ordinals. Additional entries
+  use the same alignment with a dot; 公司 Skill follows 軟件安裝. Pages that
+  used to be top-level entries (日誌、任務、封禁策略、管理員) live
   as tabs inside their group and keep their old addresses. */}}
   <div class="rail-section">
     <div class="rail-section-label">工作台</div>
@@ -39,6 +40,7 @@ file stays out of it. */}}
     <a href="/users"{{if eq .Nav "users"}} class="active"{{end}}><span class="n">2</span>AI 工作間帳號</a>
     {{if .DB}}<a href="/channels"{{if eq .Nav "channels"}} class="active"{{end}}><span class="n">3</span>模型渠道</a>{{end}}
     <a href="{{if .DB}}/releases{{else}}/rollout{{end}}"{{if or (eq .Nav "rollout") (eq .Nav "releases")}} class="active"{{end}}><span class="n">{{if .DB}}4{{else}}3{{end}}</span>軟件安裝</a>
+    {{if .DB}}<a href="/skills"{{if eq .Nav "skills"}} class="active"{{end}}><span class="n">·</span>公司 Skill</a>{{end}}
   </div>
   {{if .DB}}
   <div class="rail-section">
@@ -79,6 +81,7 @@ sets .Tab to the entry it is. */}}
 {{define "tabs-users"}}{{if .DB}}<nav class="tabs">
   <a href="/users"{{if eq .Tab ""}} class="active"{{end}}>員工</a>
   <a href="/models"{{if eq .Tab "models"}} class="active"{{end}}>模型下發</a>
+  <a href="/skills"{{if eq .Nav "skills"}} class="active"{{end}}>公司 Skill</a>
 </nav>{{end}}{{end}}
 {{define "tabs-usage"}}<nav class="tabs">
   {{if .DB}}<a href="/usage"{{if eq .Tab "usage"}} class="active"{{end}}>按月彙總</a>{{end}}

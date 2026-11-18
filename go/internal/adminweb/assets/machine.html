@@ -69,6 +69,7 @@
     <tr><th>AppLocker</th><td>{{if .AppLockerMode}}{{.AppLockerMode}}{{else}}<span class="dim">未管理</span>{{end}}{{if gt .AppLockerManagedPathCount 0}} · {{.AppLockerManagedPathCount}} 條受管規則{{end}}</td></tr>
     <tr><th>Codex 運行規則</th><td>{{if .CodexSandboxState}}{{.CodexSandboxState}}{{else}}<span class="dim">未上報</span>{{end}}{{if gt .CodexSandboxProfileCount 0}} · 沙盒 {{.CodexSandboxProfileCount}} 個用戶{{end}}{{if gt .CodexRuntimeProfileCount 0}} · 運行時 {{.CodexRuntimeProfileCount}} 個用戶{{end}}</td></tr>
     <tr><th>憑據</th><td>{{if .CredsApplied}}已投遞{{else}}<span class="dim">未投遞</span>{{end}}</td></tr>
+    {{with .ManagedSkills}}<tr><th>公司 Skill</th><td>{{.State}}{{range .Skills}}<div><code>{{.Name}}</code> · v{{.Version}}</div>{{end}}{{if .RestartPending}}<div>等待刷新 Codex：{{range .RestartPending}}{{.}} {{end}}</div>{{end}}</td></tr>{{end}}
     {{if .Errors}}<tr><th>錯誤</th><td class="remark">{{range .Errors}}{{.}}<br>{{end}}</td></tr>{{end}}
     {{if .Warnings}}<tr><th>提示</th><td class="remark">{{range .Warnings}}{{.}}<br>{{end}}</td></tr>{{end}}
   </tbody></table></div>

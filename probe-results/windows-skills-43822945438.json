@@ -1,0 +1,12 @@
+{
+  "run_id": "43822945438",
+  "platform": "windows",
+  "passed": true,
+  "source": "dac88b42a9a0fe10ff009495d799585a9ca01045",
+  "suites": [
+    "companyskills",
+    "managedskills",
+    "agentcore",
+    "agent"
+  ]
+}

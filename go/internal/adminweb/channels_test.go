@@ -111,6 +111,8 @@ func TestAnAdministratorPausesAndResumesAChannel(t *testing.T) {
 	if page := dbGet(t, h, "/channels", op).Body.String(); strings.Contains(page, `action="/channels/pause"`) || strings.Contains(page, `action="/channels/test"`) || strings.Contains(page, "google-hidden") {
 		t.Error("an operator should not see admin controls or hidden deployments")
 	}
+	// The viewer's channel page is read-only and therefore has no form.
+	// Use their own account form's token to exercise the server-side role check.
 	opCSRF := csrfFrom(t, s, op, "/account")
 	if rec := dbPost(t, h, "/channels/pause", url.Values{"csrf": {opCSRF}, "channel": {"google"}, "pause": {"0"}, "version": {"1"}}, op); rec.Code != http.StatusForbidden {
 		t.Errorf("operator resume: %d, want 403", rec.Code)
