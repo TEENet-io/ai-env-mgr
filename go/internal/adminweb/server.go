@@ -212,6 +212,7 @@ func New(opts Options) (*Server, error) {
 		return nil, fmt.Errorf("read the embedded static files: %w", err)
 	}
 	tpl, err := template.New("").Funcs(template.FuncMap{
+		"machineChoice":     machineChoice,
 		"static":            static.URL,
 		"toolURL":           func() string { return opts.ToolURL },
 		"requestText":       ticketRequestText,
@@ -458,6 +459,7 @@ func (s *Server) Handler() http.Handler {
 		mux.HandleFunc("/admins/open", s.requirePost("/admins", s.actionAdminOpen))
 		mux.HandleFunc("/admins/disable", s.requirePost("/admins", s.actionAdminSetDisabled(true)))
 		mux.HandleFunc("/admins/enable", s.requirePost("/admins", s.actionAdminSetDisabled(false)))
+		mux.HandleFunc("/admins/role", s.requirePost("/admins", s.actionAdminSetRole))
 		mux.HandleFunc("/tasks", s.requireSession(s.handleTasks))
 		mux.HandleFunc("/tasks/detail", s.requireSession(s.handleTaskDetail))
 		mux.HandleFunc("/tasks/reconcile", s.requirePostNotice("/tasks", s.actionReconcileNow))
@@ -480,6 +482,7 @@ func (s *Server) Handler() http.Handler {
 		mux.HandleFunc("/machines/allow-reenrol", s.requirePostNotice("/overview", s.actionAllowReenrol))
 		mux.HandleFunc("/machines/revoke-token", s.requirePostNotice("/overview", s.actionRevokeToken))
 		mux.HandleFunc("/machines/version", s.requirePostBack(backToMachine, s.actionMachineVersion))
+		mux.HandleFunc("/machines/label", s.requirePostBack(backToMachine, s.actionMachineLabel))
 		mux.HandleFunc("/models", s.requireSession(s.handleModels))
 		mux.HandleFunc("/models/deliver", s.requirePostNotice("/models", s.actionModelsDeliver))
 		mux.HandleFunc("/models/retry", s.requirePostNotice("/models", s.actionModelsRetry))

@@ -25,6 +25,9 @@ type MachineState struct {
 	// Channel is how the agent talks to the console: "api" or "oss" (empty
 	// outside the database mode).
 	Channel string
+	// Label and Note are the short name and remark set in the console
+	// (database mode only).
+	Label, Note string
 
 	Stale       bool     // hasn't reported within the requested threshold
 	Missing     bool     // bound, but has never reported at all

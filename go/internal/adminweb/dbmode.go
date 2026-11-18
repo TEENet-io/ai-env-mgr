@@ -924,6 +924,38 @@ func (s *Server) actionAdminSetDisabled(disabled bool) func(*session, *http.Requ
 	}
 }
 
+// actionAdminSetRole makes another console account an admin or a viewer.
+// The person signs in again, under the new role.
+func (s *Server) actionAdminSetRole(sess *session, r *http.Request) error {
+	if sess.admin.Role != repo.RoleAdmin {
+		return errors.New("只有 admin 角色可以修改管理員角色")
+	}
+	username, role := formValue(r, "username"), formValue(r, "role")
+	if role != repo.RoleAdmin && role != repo.RoleViewer {
+		return errors.New("角色只能是 admin 或 viewer")
+	}
+	if username == sess.actor {
+		return errors.New("不能修改自己的角色")
+	}
+	target, err := s.dbm.store.Admins().ByUsername(r.Context(), username)
+	if err != nil {
+		return err
+	}
+	if target.Role == role {
+		return nil
+	}
+	if _, err := s.dbm.store.Admins().SetRole(r.Context(), target.ID, role); err != nil {
+		if strings.Contains(err.Error(), "last enabled admin") {
+			return errors.New("不能把最後一個啟用中的 admin 改成 viewer")
+		}
+		return err
+	}
+	_, _ = s.dbm.store.Admins().DeleteSessionsFor(r.Context(), target.ID)
+	s.recordAccountEvent(r, sess.actor, "admin.role", "admin", target.ID,
+		map[string]any{"username": target.Username, "from": target.Role, "to": role})
+	return nil
+}
+
 // --- tasks ---
 
 type taskRow struct {

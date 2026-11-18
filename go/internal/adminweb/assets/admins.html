@@ -22,7 +22,7 @@
       <tr>
         <td class="id">{{.Username}}{{if .Self}} <span class="dim">（我）</span>{{end}}</td>
         <td class="dim">{{if .Email}}{{.Email}}{{else}}—{{end}}</td>
-        <td>{{.Role}}</td>
+        <td>{{if .Self}}{{.Role}}{{else}}<form method="post" action="/admins/role" class="inline" data-confirm="確認修改 {{.Username}} 的角色？對方需要重新登入。"><input type="hidden" name="csrf" value="{{$.CSRF}}"><input type="hidden" name="username" value="{{.Username}}"><select name="role" aria-label="{{.Username}} 的角色"><option value="admin"{{if eq .Role "admin"}} selected{{end}}>admin</option><option value="viewer"{{if eq .Role "viewer"}} selected{{end}}>viewer</option></select><button class="link">保存</button></form>{{end}}</td>
         {{if $.SSOTool}}<td>{{if .Linked}}<span class="id">{{.Linked}}</span>{{else}}<span class="tag tag-warn">未綁定</span>{{end}}</td>{{end}}
         <td>{{if .Enrolled}}<span class="tag tag-ok">已綁定</span>{{else}}<span class="tag tag-warn">未綁定</span>{{end}}</td>
         <td class="num">{{.RecoveryCodes}}</td>

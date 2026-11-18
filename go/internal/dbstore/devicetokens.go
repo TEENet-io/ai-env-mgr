@@ -124,7 +124,7 @@ func (r deviceTokenRepo) IssuedAt(ctx context.Context, deviceID string) (time.Ti
 // deviceColumnsPrefixed qualifies the device columns with a table alias, for
 // a query that joins devices with something else.
 func deviceColumnsPrefixed(alias string) string {
-	return alias + `.id, ` + alias + `.hostname, ` + alias + `.status, ` + alias + `.agent_version, ` + alias + `.note,
+	return alias + `.id, ` + alias + `.hostname, ` + alias + `.status, ` + alias + `.agent_version, ` + alias + `.label, ` + alias + `.note,
 	` + alias + `.last_seen_at, ` + alias + `.created_at, ` + alias + `.updated_at, ` + alias + `.revoked_at, ` + alias + `.sync_nonce,
 	` + alias + `.channel, ` + alias + `.enrolled_at, ` + alias + `.enrolled_from, ` + alias + `.reenrol_allowed_until, ` + alias + `.log_tail, ` + alias + `.log_tail_at`
 }

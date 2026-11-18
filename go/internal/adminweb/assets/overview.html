@@ -112,13 +112,14 @@
   <div class="panel scroll">
   <table>
     <thead>
-      <tr><th>主機名</th><th>員工</th><th>狀態</th><th>最後同步</th><th>AGENT</th><th>APPLOCKER</th><th>CODEX</th>{{if $.DB}}<th>通道</th>{{end}}<th></th></tr>
+      <tr>{{if $.DB}}<th>編號</th>{{end}}<th>主機名</th><th>員工</th><th>狀態</th><th>最後同步</th><th>AGENT</th><th>APPLOCKER</th><th>CODEX</th>{{if $.DB}}<th>通道</th>{{end}}<th></th></tr>
     </thead>
     <tbody>
     {{$target := ""}}{{if .Policy}}{{$target = .Policy.CodexVersion}}{{end}}
     {{range .Machines}}
       {{$m := .}}
       <tr class="r-{{classify .}}">
+        {{if $.DB}}<td>{{if .Label}}<strong>{{.Label}}</strong>{{else}}<span class="muted">—</span>{{end}}{{if .Note}}<div class="rowsub">{{.Note}}</div>{{end}}</td>{{end}}
         <td class="id">{{if $.DB}}<a href="/machines/detail?machine={{.Machine}}">{{.Machine}}</a>{{else}}{{.Machine}}{{end}}</td>
         <td>{{if .Bound}}{{.Binding.User}}{{else}}<span class="muted">—</span>{{end}}</td>
         <td><span class="tag tag-{{classify .}}">{{state .}}</span></td>
@@ -170,7 +171,7 @@
         </td>
       </tr>
     {{else}}
-      <tr><td colspan="9" class="empty">還沒有機器上報。</td></tr>
+      <tr><td colspan="{{if $.DB}}10{{else}}8{{end}}" class="empty">還沒有機器上報。</td></tr>
     {{end}}
     </tbody>
   </table>
@@ -179,7 +180,12 @@
   <h2>綁定機器</h2>
   <form method="post" action="/machines/bind" class="form">
     <input type="hidden" name="csrf" value="{{.CSRF}}">
-    <label>主機名<input name="machine" required></label>
+    <label>機器
+      <select name="machine" required>
+        <option value="">選擇…</option>
+        {{range .Machines}}<option value="{{.Machine}}">{{machineChoice .}}</option>{{end}}
+      </select>
+    </label>
     <label>員工
       <select name="user" required>
         <option value="">選擇…</option>
@@ -189,7 +195,7 @@
     <label>備註<input name="note"></label>
     <button type="submit">綁定</button>
   </form>
-  <p class="hint">一台機器綁定一個員工：憑證只投放到這個人的用戶目錄。</p>
+  <p class="hint">一台機器綁定一個員工：憑證只投放到這個人的用戶目錄。列表裡是控制台認識的全部機器，包括已分配的：選一台已分配的會改綁，原來的人會失去它。新機器裝好 agent、第一次上報後才會出現在這裡。</p>
 
   <h2>註銷機器</h2>
   <div class="caution">

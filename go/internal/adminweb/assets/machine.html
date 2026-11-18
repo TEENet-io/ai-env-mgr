@@ -11,6 +11,21 @@
   </header>
   {{template "notices" $}}
 
+  <h2>編號與備註</h2>
+  <div class="panel scroll"><table class="kv"><tbody>
+    <tr><th>編號</th><td>{{if .Device.Label}}<strong>{{.Device.Label}}</strong>{{else}}<span class="dim">未設定</span>{{end}}</td></tr>
+    <tr><th>備註</th><td>{{if .Device.Note}}{{.Device.Note}}{{else}}<span class="dim">—</span>{{end}}</td></tr>
+    {{if eq $.Role "admin"}}<tr><th></th><td>
+      <form method="post" action="/machines/label" class="inline">
+        <input type="hidden" name="csrf" value="{{$.CSRF}}"><input type="hidden" name="machine" value="{{.Device.Hostname}}">
+        <input name="label" value="{{.Device.Label}}" maxlength="32" placeholder="BPO1" aria-label="編號" size="8">
+        <input name="note" value="{{.Device.Note}}" maxlength="200" placeholder="備註，例如誰在用、放在哪" aria-label="備註" size="30">
+        <button class="link">保存</button>
+      </form>
+      <div class="rowsub">主機名由雲端決定、不能改；編號是大家叫它的名字，不能和別的機器重複（不分大小寫）。綁定機器、工單關聯機器時都能看到。</div>
+    </td></tr>{{end}}
+  </tbody></table></div>
+
   <h2>通道</h2>
   <div class="panel scroll"><table class="kv"><tbody>
     <tr><th>方式</th><td>{{if eq .Device.Channel "api"}}<span class="tag tag-ok">直連控制台</span>{{else}}<span class="tag tag-muted">讀取 OSS 對象</span> <span class="dim">agent 升到 1.3.0 後會自己註冊</span>{{end}}</td></tr>

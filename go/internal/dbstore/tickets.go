@@ -593,7 +593,9 @@ func (s TicketStore) LinkSubject(ctx context.Context, id, subject, key, actorID 
 		if subject == "employee" {
 			err = tx.QueryRow(ctx, `select id from employees where windows_user=$1`, strings.ToLower(key)).Scan(&refID)
 		} else {
-			err = tx.QueryRow(ctx, `select id from devices where hostname=$1`, key).Scan(&refID)
+			// The machine's hostname or the short name people call it (BPO1).
+			err = tx.QueryRow(ctx, `select id from devices where lower(hostname)=lower($1)
+				or (label <> '' and lower(label)=lower($1))`, key).Scan(&refID)
 		}
 		if errors.Is(err, pgx.ErrNoRows) {
 			return errors.New("employee or device not found")

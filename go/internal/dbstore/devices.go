@@ -11,7 +11,7 @@ import (
 
 type deviceRepo struct{ q querier }
 
-const deviceColumns = `id, hostname, status, agent_version, note,
+const deviceColumns = `id, hostname, status, agent_version, label, note,
 	last_seen_at, created_at, updated_at, revoked_at, sync_nonce,
 	channel, enrolled_at, enrolled_from, reenrol_allowed_until, log_tail, log_tail_at`
 
@@ -19,7 +19,7 @@ func scanDevice(row scanner) (repo.Device, error) {
 	var d repo.Device
 	var status string
 	var lastSeen, revoked *time.Time
-	err := row.Scan(&d.ID, &d.Hostname, &status, &d.AgentVersion, &d.Note,
+	err := row.Scan(&d.ID, &d.Hostname, &status, &d.AgentVersion, &d.Label, &d.Note,
 		&lastSeen, &d.CreatedAt, &d.UpdatedAt, &revoked, &d.SyncNonce,
 		&d.Channel, &d.EnrolledAt, &d.EnrolledFrom, &d.ReenrolAllowedUntil, &d.LogTail, &d.LogTailAt)
 	if err != nil {
@@ -114,6 +114,17 @@ func (r deviceRepo) MarkSeen(ctx context.Context, id, agentVersion string, at ti
 		return mapError(errNoRow, "record device sync")
 	}
 	return nil
+}
+
+func (r deviceRepo) SetLabel(ctx context.Context, id, label, note string) (repo.Device, error) {
+	d, err := scanDevice(r.q.QueryRow(ctx,
+		`update devices set label = $2, note = $3, updated_at = now()
+		  where id = $1
+		  returning `+deviceColumns, id, label, note))
+	if err != nil {
+		return repo.Device{}, mapError(err, "set device label")
+	}
+	return d, nil
 }
 
 func (r deviceRepo) RequestSync(ctx context.Context, id, nonce string) (repo.Device, error) {

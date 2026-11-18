@@ -218,6 +218,31 @@ func (r adminRepo) SetDisabled(ctx context.Context, id string, disabled bool) (r
 	return a, nil
 }
 
+func (r adminRepo) SetRole(ctx context.Context, id, role string) (repo.Admin, error) {
+	if role != repo.RoleAdmin && role != repo.RoleViewer {
+		return repo.Admin{}, fmt.Errorf("set administrator role: unknown role %q", role)
+	}
+	// As with disabling: the check and the write are one statement, so two
+	// admins demoting each other at once cannot both pass it.
+	a, err := scanAdmin(r.q.QueryRow(ctx,
+		`update admin_principals set role = $2, updated_at = now()
+		  where id = $1
+		    and ($2 = 'admin'
+		         or exists (select 1 from admin_principals other
+		                     where other.id <> admin_principals.id and other.disabled_at is null
+		                       and other.role = 'admin'))
+		  returning `+adminColumns, id, role))
+	if err != nil {
+		if errors.Is(err, errNoRow) {
+			if _, lookupErr := r.ByID(ctx, id); lookupErr == nil {
+				return repo.Admin{}, errors.New("set administrator role: this is the last enabled admin")
+			}
+		}
+		return repo.Admin{}, mapError(err, "set administrator role")
+	}
+	return a, nil
+}
+
 func (r adminRepo) RecordAttempt(ctx context.Context, a repo.LoginAttempt) error {
 	at := a.At
 	if at.IsZero() {

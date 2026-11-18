@@ -130,3 +130,103 @@ func TestTheMachinePageSetsTheMachinesVersion(t *testing.T) {
 		t.Fatal("跟隨全局 must drop the machine's own target")
 	}
 }
+
+// A machine gets a short name people can tell apart (BPO1). The bind form
+// picks from every machine, the assigned ones too, so an operator can take
+// one over; a ticket finds a machine by that name.
+func TestAMachineGetsANameAndIsPickedFromTheList(t *testing.T) {
+	s, _ := newDatabaseServer(t)
+	h := s.Handler()
+	cookie := signedIn(t, s)
+	ctx := t.Context()
+	store := s.dbm.store
+	csrf := csrfFrom(t, s, cookie, "/users")
+	dbPost(t, h, "/users/onboard", url.Values{"csrf": {csrf}, "windowsUser": {"alice"}, "email": {"t@example.com"}, "budget": {"20"}, "rpm": {"60"}, "tpm": {"100000"}, "parallel": {"4"}}, cookie)
+	one, _ := store.Devices().EnsureByHostname(ctx, "DESKTOP-7F3KQ")
+	store.Devices().EnsureByHostname(ctx, "DESKTOP-9ZX2M")
+	alice, _ := store.Employees().ByWindowsUser(ctx, "alice")
+	if _, err := s.dbm.ops.BindMachine(ctx, "DESKTOP-7F3KQ", alice.ID, "", "admin", "r1"); err != nil {
+		t.Fatal(err)
+	}
+
+	label := func(machine, label, note string) string {
+		rec := dbPost(t, h, "/machines/label", url.Values{"csrf": {csrfFrom(t, s, cookie, "/overview")}, "machine": {machine}, "label": {label}, "note": {note}}, cookie)
+		return rec.Header().Get("Location")
+	}
+	if loc := label("DESKTOP-7F3KQ", "BPO1", "前台"); strings.Contains(loc, "err=") {
+		t.Fatalf("set label: %q", loc)
+	}
+	if d, _ := store.Devices().ByID(ctx, one.ID); d.Label != "BPO1" || d.Note != "前台" || d.Hostname != "DESKTOP-7F3KQ" {
+		t.Fatalf("after labelling: %+v", d)
+	}
+	for _, bad := range []struct{ label, why string }{
+		{"bpo1", "a label another machine has, in another case"},
+		{"DESKTOP-7F3KQ", "another machine's hostname"},
+		{"BPO 2", "a space"},
+	} {
+		if loc := label("DESKTOP-9ZX2M", bad.label, ""); !strings.Contains(loc, "err=") {
+			t.Errorf("%s was accepted: %q", bad.why, loc)
+		}
+	}
+	if loc := label("DESKTOP-9ZX2M", "BPO2", ""); strings.Contains(loc, "err=") {
+		t.Fatalf("second label: %q", loc)
+	}
+
+	page := dbGet(t, h, "/overview", cookie).Body.String()
+	for _, want := range []string{"<strong>BPO1</strong>", "前台",
+		`<option value="DESKTOP-7F3KQ">BPO1 · DESKTOP-7F3KQ · 現在綁給 alice</option>`,
+		`<option value="DESKTOP-9ZX2M">BPO2 · DESKTOP-9ZX2M · 未分配</option>`} {
+		if !strings.Contains(page, want) {
+			t.Errorf("overview lacks %q", want)
+		}
+	}
+	bind := page[strings.Index(page, `action="/machines/bind"`):]
+	bind = bind[:strings.Index(bind, "</form>")]
+	if strings.Contains(bind, `<input name="machine"`) {
+		t.Error("the bind form still takes a typed hostname")
+	}
+
+	// A ticket is linked to the machine by its short name.
+	contact, err := s.dbm.db.Tickets().CreateContactWithRole(ctx, "c@example.com", "C", "hash", "employee")
+	if err != nil {
+		t.Fatal(err)
+	}
+	ticket, err := s.dbm.db.Tickets().Create(ctx, contact.ID, "label-key", "bug", "打不開", "打不開", "normal", []byte(`{}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	current, err := s.dbm.db.Tickets().Get(ctx, ticket.ID, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	rootName, _ := knownAdmin(t, s)
+	root, err := store.Admins().ByUsername(ctx, rootName)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := s.dbm.db.Tickets().LinkSubject(ctx, ticket.ID, "device", "bpo2", root.ID, current.Version); err != nil {
+		t.Fatalf("link by label: %v", err)
+	}
+	if got, _ := s.dbm.db.Tickets().Get(ctx, ticket.ID, ""); got.DeviceHostname != "DESKTOP-9ZX2M" {
+		t.Errorf("ticket linked to %q", got.DeviceHostname)
+	}
+}
+
+func TestAViewerCannotNameAMachine(t *testing.T) {
+	s, _ := newDatabaseServer(t)
+	h := s.Handler()
+	ctx := t.Context()
+	device, _ := s.dbm.store.Devices().EnsureByHostname(ctx, "PC-V")
+	_, password, err := s.dbm.auth.CreateAccount(ctx, "eve", "", "viewer")
+	if err != nil {
+		t.Fatal(err)
+	}
+	viewer := signInAs(t, s, "eve", password)
+	if page := dbGet(t, h, "/machines/detail?machine=PC-V", viewer).Body.String(); strings.Contains(page, `action="/machines/label"`) {
+		t.Error("a viewer is offered the label form")
+	}
+	dbPost(t, h, "/machines/label", url.Values{"csrf": {csrfFrom(t, s, viewer, "/settings")}, "machine": {"PC-V"}, "label": {"BPO9"}}, viewer)
+	if d, _ := s.dbm.store.Devices().ByID(ctx, device.ID); d.Label != "" {
+		t.Errorf("a viewer named a machine %q", d.Label)
+	}
+}

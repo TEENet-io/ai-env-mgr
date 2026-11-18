@@ -274,11 +274,14 @@ type Device struct {
 	Hostname     string
 	Status       DeviceStatus
 	AgentVersion string
-	Note         string
-	LastSeenAt   *time.Time
-	CreatedAt    time.Time
-	UpdatedAt    time.Time
-	RevokedAt    *time.Time
+	// Label is the short name people call the machine (BPO1); Note is a
+	// free-form remark. Both are set in the console; the hostname is not.
+	Label      string
+	Note       string
+	LastSeenAt *time.Time
+	CreatedAt  time.Time
+	UpdatedAt  time.Time
+	RevokedAt  *time.Time
 	// SyncNonce is the last "sync now" request; it rides in the binding
 	// object so that the object changes and the agent notices.
 	SyncNonce string
@@ -336,6 +339,10 @@ type Devices interface {
 
 	// RequestSync records a "sync now" nonce for the machine.
 	RequestSync(ctx context.Context, id, nonce string) (Device, error)
+
+	// SetLabel sets the machine's short name and remark. A label another
+	// machine already has, in any case, is ErrDuplicate.
+	SetLabel(ctx context.Context, id, label, note string) (Device, error)
 }
 
 // Binding is one machine serving one employee, over a span of time.
@@ -963,6 +970,9 @@ type Admins interface {
 
 	RecordLogin(ctx context.Context, id string, at time.Time) error
 	SetDisabled(ctx context.Context, id string, disabled bool) (Admin, error)
+	// SetRole changes an account's role. It refuses to turn the last enabled
+	// admin into a viewer, which would leave nobody who can manage accounts.
+	SetRole(ctx context.Context, id, role string) (Admin, error)
 
 	// RecordAttempt writes one sign-in attempt, successful or not.
 	RecordAttempt(ctx context.Context, a LoginAttempt) error

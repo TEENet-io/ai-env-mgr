@@ -136,3 +136,79 @@ func TestAccountChangesAreInTheAuditTrailUnderTheAccountsID(t *testing.T) {
 		t.Error("the audit page does not show the account under its current name")
 	}
 }
+
+// An admin turns another console account into a viewer and back. The
+// person signs in again under the new role; nobody changes their own role,
+// and the last admin is never demoted.
+func TestAnAdministratorChangesAnotherOnesRole(t *testing.T) {
+	s, _ := newDatabaseServer(t)
+	h := s.Handler()
+	rootName, _ := knownAdmin(t, s)
+	root := signedIn(t, s)
+	password := createOperator(t, s, root, "zhang", "zhang@example.com")
+	zhang := signInAs(t, s, "zhang", password)
+	setRole := func(by *http.Cookie, username, role string) string {
+		page := "/admins"
+		if by != root {
+			page = "/settings" // a viewer cannot open /admins
+		}
+		rec := dbPost(t, h, "/admins/role", url.Values{"csrf": {csrfFrom(t, s, by, page)}, "username": {username}, "role": {role}}, by)
+		return rec.Header().Get("Location")
+	}
+	if page := dbGet(t, h, "/admins", root).Body.String(); !strings.Contains(page, `action="/admins/role"`) {
+		t.Fatal("the admins page offers no role change")
+	}
+
+	if loc := setRole(root, "zhang", "viewer"); strings.Contains(loc, "err=") {
+		t.Fatalf("demote: %q", loc)
+	}
+	if a, _ := s.dbm.store.Admins().ByUsername(t.Context(), "zhang"); a.Role != repo.RoleViewer {
+		t.Fatalf("role after demote = %q", a.Role)
+	}
+	if rec := dbGet(t, h, "/overview", zhang); rec.Code != http.StatusSeeOther {
+		t.Errorf("the old session outlived the role change: %d", rec.Code)
+	}
+
+	// A viewer changes nobody's role, an admin not their own.
+	_, viewerPassword, err := s.dbm.auth.CreateAccount(t.Context(), "eve", "", "viewer")
+	if err != nil {
+		t.Fatal(err)
+	}
+	viewer := signInAs(t, s, "eve", viewerPassword)
+	// Refused before the action runs; either way nothing is saved.
+	if loc := setRole(viewer, rootName, "viewer"); strings.Contains(loc, "ok=1") {
+		t.Errorf("a viewer changed a role: %q", loc)
+	}
+	if loc := setRole(root, rootName, "viewer"); !strings.Contains(loc, "err=") {
+		t.Errorf("an admin changed their own role: %q", loc)
+	}
+	rootAdmin, err := s.dbm.store.Admins().ByUsername(t.Context(), rootName)
+	if err != nil || rootAdmin.Role != repo.RoleAdmin {
+		t.Fatalf("root = %+v, %v", rootAdmin, err)
+	}
+	// With zhang a viewer, root is the last admin and stays one.
+	if _, err := s.dbm.store.Admins().SetRole(t.Context(), rootAdmin.ID, repo.RoleViewer); err == nil {
+		t.Error("the last enabled admin was made a viewer")
+	}
+
+	if loc := setRole(root, "zhang", "admin"); strings.Contains(loc, "err=") {
+		t.Fatalf("promote: %q", loc)
+	}
+	zhangAdmin, _ := s.dbm.store.Admins().ByUsername(t.Context(), "zhang")
+	if zhangAdmin.Role != repo.RoleAdmin {
+		t.Errorf("role after promote = %q", zhangAdmin.Role)
+	}
+	events, _, err := s.dbm.store.Audit().Search(t.Context(), repo.AuditFilter{TargetType: "admin", TargetID: zhangAdmin.ID, Limit: 50})
+	if err != nil {
+		t.Fatal(err)
+	}
+	changes := 0
+	for _, ev := range events {
+		if ev.Action == "admin.role" && ev.ActorID == rootName {
+			changes++
+		}
+	}
+	if changes != 2 {
+		t.Errorf("%d role changes in the audit trail, want 2", changes)
+	}
+}

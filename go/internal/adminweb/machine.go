@@ -6,9 +6,12 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"regexp"
 	"strings"
 	"time"
+	"unicode/utf8"
 
+	"github.com/TEENet-io/ai-env-mgr/internal/admincore"
 	"github.com/TEENet-io/ai-env-mgr/internal/model"
 	"github.com/TEENet-io/ai-env-mgr/internal/ops"
 	"github.com/TEENet-io/ai-env-mgr/internal/repo"
@@ -224,6 +227,62 @@ func (s *Server) actionMachineVersion(sess *session, r *http.Request) error {
 }
 
 // backToMachine sends a machine-page action back to that machine.
+// deviceLabelPattern is what a machine's short name may be: what people
+// write on a sticker and say aloud, BPO1 or HK-02.
+var deviceLabelPattern = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]{0,31}$`)
+
+// actionMachineLabel sets a machine's short name (BPO1) and remark. The
+// hostname is the cloud's and stays as it is.
+func (s *Server) actionMachineLabel(sess *session, r *http.Request) error {
+	if sess.admin.Role != repo.RoleAdmin {
+		return errors.New("只有 admin 角色可以修改機器編號")
+	}
+	ctx := r.Context()
+	device, err := s.dbm.store.Devices().ByHostname(ctx, formValue(r, "machine"))
+	if err != nil {
+		return err
+	}
+	label, note := formValue(r, "label"), formValue(r, "note")
+	if label != "" && !deviceLabelPattern.MatchString(label) {
+		return errors.New("編號只能用字母、數字和 . _ -，以字母或數字開頭，最多 32 個字")
+	}
+	if utf8.RuneCountInString(note) > 200 {
+		return errors.New("備註最多 200 個字")
+	}
+	// A label that is another machine's hostname would make "BPO1" in a
+	// ticket mean two machines.
+	if label != "" {
+		if other, err := s.dbm.store.Devices().ByHostname(ctx, label); err == nil && other.ID != device.ID {
+			return fmt.Errorf("編號 %s 和另一台機器的主機名相同", label)
+		}
+	}
+	updated, err := s.dbm.store.Devices().SetLabel(ctx, device.ID, label, note)
+	if errors.Is(err, repo.ErrDuplicate) {
+		return fmt.Errorf("編號 %s 已經給了另一台機器", label)
+	}
+	if err != nil {
+		return err
+	}
+	s.recordAccountEvent(r, sess.actor, "device.label", "device", device.ID, map[string]any{
+		"hostname": device.Hostname, "from": device.Label, "to": updated.Label,
+		"note_from": device.Note, "note_to": updated.Note,
+	})
+	return nil
+}
+
+// machineChoice is one entry of a pick-a-machine list: every machine the
+// console knows, assigned or not, so an operator can also take one over.
+func machineChoice(m admincore.MachineState) string {
+	name := m.Machine
+	if m.Label != "" {
+		name = m.Label + " · " + m.Machine
+	}
+	if m.Bound {
+		return name + " · 現在綁給 " + m.Binding.User
+	}
+	return name + " · 未分配"
+}
+
 func backToMachine(r *http.Request) string {
 	return "/machines/detail?machine=" + url.QueryEscape(r.PostFormValue("machine"))
 }

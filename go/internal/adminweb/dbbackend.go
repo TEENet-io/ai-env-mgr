@@ -117,6 +117,7 @@ func (b dbBackend) Machines(ctx context.Context) ([]admincore.MachineState, erro
 		state := admincore.AssembleMachineState(
 			d.Hostname, st, hasStatus, binding, bound, disabled, freshAfter)
 		state.Channel = d.Channel
+		state.Label, state.Note = d.Label, d.Note
 		states = append(states, state)
 	}
 	sort.Slice(states, func(i, j int) bool {

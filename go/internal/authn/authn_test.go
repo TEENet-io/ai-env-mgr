@@ -161,6 +161,16 @@ func (f *fakeAdmins) SetDisabled(_ context.Context, id string, disabled bool) (r
 	return a, nil
 }
 
+func (f *fakeAdmins) SetRole(_ context.Context, id, role string) (repo.Admin, error) {
+	a, ok := f.byID[id]
+	if !ok {
+		return repo.Admin{}, repo.ErrNotFound
+	}
+	a.Role = role
+	f.byID[id] = a
+	return a, nil
+}
+
 func (f *fakeAdmins) RecordAttempt(_ context.Context, a repo.LoginAttempt) error {
 	f.attempts = append(f.attempts, a)
 	return nil
