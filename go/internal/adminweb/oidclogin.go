@@ -201,7 +201,14 @@ func (s *Server) handleOIDCCallback(w http.ResponseWriter, r *http.Request) {
 }
 
 func claimsAccount(c oidc.Claims) directory.Account {
-	return directory.Account{ID: c.Subject, Username: c.PreferredUsername, Name: c.Name, Email: c.Email, Role: c.Role, Status: directory.StatusActive}
+	// An unknown ticket role is read as the narrower one: the token is only
+	// used to add a person not yet on the copy, and the sync corrects it.
+	ticketRole, err := directory.TicketRoleFor(c.Role, c.TicketRole)
+	if err != nil {
+		ticketRole = directory.TicketView
+	}
+	return directory.Account{ID: c.Subject, Username: c.PreferredUsername, Name: c.Name, Email: c.Email, Role: c.Role,
+		TicketRole: ticketRole, Status: directory.StatusActive}
 }
 
 func (s *Server) oidcCustomerSignIn(w http.ResponseWriter, r *http.Request, c oidc.Claims) {

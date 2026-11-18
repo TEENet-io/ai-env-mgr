@@ -25,7 +25,7 @@ const directoryActor = "directory-sync"
 
 // Known is the local copy, keyed by account id.
 func (s DirectoryStore) Known(ctx context.Context) (map[string]directory.Account, error) {
-	rows, err := s.db.pool.Query(ctx, `select id::text, username, name, email, role, status from directory_accounts`)
+	rows, err := s.db.pool.Query(ctx, `select id::text, username, name, email, role, ticket_role, status from directory_accounts`)
 	if err != nil {
 		return nil, err
 	}
@@ -33,7 +33,7 @@ func (s DirectoryStore) Known(ctx context.Context) (map[string]directory.Account
 	out := map[string]directory.Account{}
 	for rows.Next() {
 		var a directory.Account
-		if err := rows.Scan(&a.ID, &a.Username, &a.Name, &a.Email, &a.Role, &a.Status); err != nil {
+		if err := rows.Scan(&a.ID, &a.Username, &a.Name, &a.Email, &a.Role, &a.TicketRole, &a.Status); err != nil {
 			return nil, err
 		}
 		out[a.ID] = a
@@ -85,16 +85,17 @@ func (s DirectoryStore) Apply(ctx context.Context, list directory.List, plan dir
 	res := SyncResult{Accounts: len(list.Accounts), Changes: len(plan.Changes), Held: len(plan.Held), Missing: len(plan.Missing)}
 	err := s.db.Tx(ctx, func(tx pgx.Tx) error {
 		for _, a := range plan.Store(list) {
-			if _, err := tx.Exec(ctx, `insert into directory_accounts (id, username, name, email, role, status)
-				values ($1, $2, $3, $4, $5, $6)
+			if _, err := tx.Exec(ctx, `insert into directory_accounts (id, username, name, email, role, ticket_role, status)
+				values ($1, $2, $3, $4, $5, $6, $7)
 				on conflict (id) do update set
 				  username = excluded.username, name = excluded.name, email = excluded.email,
-				  role = excluded.role, status = excluded.status, missing_since = null,
+				  role = excluded.role, ticket_role = excluded.ticket_role, status = excluded.status, missing_since = null,
 				  updated_at = case when (directory_accounts.username, directory_accounts.name, directory_accounts.email,
-				                          directory_accounts.role, directory_accounts.status)
-				                       is distinct from (excluded.username, excluded.name, excluded.email, excluded.role, excluded.status)
+				                          directory_accounts.role, directory_accounts.ticket_role, directory_accounts.status)
+				                       is distinct from (excluded.username, excluded.name, excluded.email, excluded.role,
+				                                         excluded.ticket_role, excluded.status)
 				                    then now() else directory_accounts.updated_at end`,
-				a.ID, a.Username, a.Name, a.Email, a.Role, a.Status); err != nil {
+				a.ID, a.Username, a.Name, a.Email, a.Role, a.TicketRole, a.Status); err != nil {
 				return fmt.Errorf("store account %s: %w", a.ID, err)
 			}
 		}
@@ -129,11 +130,15 @@ type directoryApply struct {
 	res *SyncResult
 }
 
-// contactRole is the ticket system's name for a directory role. Ops
-// accounts are not customers and have no contact.
-func contactRole(role string) (string, bool) {
-	switch role {
+// contactRole is the ticket system's name for a directory account's role.
+// An admin the tool lets only look is a viewer. Ops accounts are not
+// customers and have no contact.
+func contactRole(a directory.Account) (string, bool) {
+	switch a.Role {
 	case directory.RoleAdmin:
+		if a.TicketRole == directory.TicketView {
+			return "viewer", true
+		}
 		return "manager", true
 	case directory.RoleEmployee:
 		return "employee", true
@@ -186,7 +191,7 @@ func (ap directoryApply) change(c directory.Change) error {
 				return err
 			}
 		}
-		role, ok := contactRole(a.Role)
+		role, ok := contactRole(a)
 		if !ok {
 			return ap.endContact(a.ID)
 		}
@@ -217,7 +222,7 @@ func (ap directoryApply) change(c directory.Change) error {
 		}
 		return nil
 	case directory.ChangeReenabled:
-		if _, ok := contactRole(a.Role); ok {
+		if _, ok := contactRole(a); ok {
 			if _, err := ap.tx.Exec(ap.ctx, `update customer_contacts set disabled_at = null where directory_id = $1`, a.ID); err != nil {
 				return err
 			}
@@ -247,7 +252,7 @@ func statusWord(status string) string {
 // otherwise. An account with no email cannot have one -- the ticket system
 // matches people by email -- and is left for a person to look at.
 func (ap directoryApply) ensureContact(a directory.Account) error {
-	role, ok := contactRole(a.Role)
+	role, ok := contactRole(a)
 	if !ok {
 		return nil
 	}
@@ -398,9 +403,9 @@ func (s DirectoryStore) CustomerForSignIn(ctx context.Context, a directory.Accou
 		switch {
 		case errors.Is(err, pgx.ErrNoRows):
 			a.Status = directory.StatusActive
-			if _, err := tx.Exec(ctx, `insert into directory_accounts (id, username, name, email, role, status)
-				values ($1, $2, $3, $4, $5, 'active') on conflict (id) do nothing`,
-				a.ID, a.Username, a.Name, a.Email, a.Role); err != nil {
+			if _, err := tx.Exec(ctx, `insert into directory_accounts (id, username, name, email, role, ticket_role, status)
+				values ($1, $2, $3, $4, $5, $6, 'active') on conflict (id) do nothing`,
+				a.ID, a.Username, a.Name, a.Email, a.Role, a.TicketRole); err != nil {
 				return err
 			}
 			if err := (directoryApply{ctx: ctx, tx: tx, res: &SyncResult{}}).audit(directory.Change{Kind: directory.ChangeAdded, After: a}); err != nil {

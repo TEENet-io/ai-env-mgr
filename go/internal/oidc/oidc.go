@@ -70,6 +70,7 @@ type Claims struct {
 	Name              string   `json:"name"`
 	Email             string   `json:"email"`
 	Role              string   `json:"role"`
+	TicketRole        string   `json:"ticket_role"`
 	AMR               []string `json:"amr"`
 	AuthTime          int64    `json:"auth_time"`
 }

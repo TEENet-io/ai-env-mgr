@@ -30,7 +30,7 @@ type PendingTicketApproval struct {
 }
 
 func (s TicketStore) GetForContact(ctx context.Context, id, contactID, role string) (Ticket, error) {
-	if role != "manager" {
+	if !SeesCompany(role) {
 		return s.Get(ctx, id, contactID)
 	}
 	ticket, err := s.Get(ctx, id, "")

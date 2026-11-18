@@ -156,3 +156,40 @@ func TestFetchSendsTheTokenAndValidates(t *testing.T) {
 		t.Error("an HTTP 500 was accepted")
 	}
 }
+
+func TestOnlyAdminsCarryATicketRole(t *testing.T) {
+	admin, viewer, staff := account(1, RoleAdmin, StatusActive), account(2, RoleAdmin, StatusActive), account(3, RoleEmployee, StatusActive)
+	viewer.TicketRole = TicketView
+	staff.TicketRole = TicketView // an employee has none, whatever was sent
+	list := List{Accounts: []Account{admin, viewer, staff}}
+	if err := list.Validate(); err != nil {
+		t.Fatal(err)
+	}
+	got := []string{list.Accounts[0].TicketRole, list.Accounts[1].TicketRole, list.Accounts[2].TicketRole}
+	if want := []string{TicketApprove, TicketView, ""}; fmt.Sprint(got) != fmt.Sprint(want) {
+		t.Errorf("ticket roles = %q, want %q (an admin with none approves, as before)", got, want)
+	}
+	bad := account(4, RoleAdmin, StatusActive)
+	bad.TicketRole = "boss"
+	if err := (&List{Accounts: []Account{bad}}).Validate(); err == nil {
+		t.Error("an unknown ticket role was accepted")
+	}
+}
+
+func TestATicketRoleChangeIsARoleChangeButNotOnDeletion(t *testing.T) {
+	before := account(1, RoleAdmin, StatusActive)
+	before.TicketRole = TicketApprove
+	now := before
+	now.TicketRole = TicketView
+	if got := kinds(Compare(known(before), List{Accounts: []Account{now}}).Changes); fmt.Sprint(got) != "[role:u1@example.com]" {
+		t.Errorf("approve -> view: %v", got)
+	}
+	// A deleted account's record says nothing about tickets; it arrives as approve.
+	gone := before
+	gone.TicketRole, gone.Status = TicketApprove, StatusDeleted
+	disabled := now
+	disabled.Status = StatusDisabled
+	if got := kinds(Compare(known(disabled), List{Accounts: []Account{gone}}).Changes); fmt.Sprint(got) != "[deleted:u1@example.com]" {
+		t.Errorf("deleting a viewer: %v", got)
+	}
+}

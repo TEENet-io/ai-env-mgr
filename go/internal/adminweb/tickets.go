@@ -57,21 +57,25 @@ type customerPage struct {
 	Unopened   []directory.Account
 	// NoWorkspace hides the desktop and AI requests from an employee
 	// without an AI workspace account.
-	NoWorkspace                bool
-	Tools                      []string
-	Ticket                     *dbstore.Ticket
-	Events                     []dbstore.TicketEvent
-	Revisions                  []dbstore.TicketRequestRevision
-	Proposal                   *dbstore.TicketProposal
-	Approvals                  []dbstore.PendingTicketApproval
-	Owner                      bool
-	EditTicket                 *dbstore.Ticket
-	EditPayload                string
-	Page                       int
-	HasNext                    bool
-	Workflow                   dbstore.TicketChangeWorkflow
-	NewView                    bool
-	Manager                    bool
+	NoWorkspace bool
+	Tools       []string
+	Ticket      *dbstore.Ticket
+	Events      []dbstore.TicketEvent
+	Revisions   []dbstore.TicketRequestRevision
+	Proposal    *dbstore.TicketProposal
+	Approvals   []dbstore.PendingTicketApproval
+	Owner       bool
+	EditTicket  *dbstore.Ticket
+	EditPayload string
+	Page        int
+	HasNext     bool
+	Workflow    dbstore.TicketChangeWorkflow
+	NewView     bool
+	Manager     bool
+	// Viewer is a customer admin who may look but not approve: the company's
+	// usage, employees and pending proposals, and otherwise what an
+	// employee has.
+	Viewer                     bool
 	Pending, Working, Finished int
 }
 
@@ -469,7 +473,7 @@ func (s *Server) handleCustomerContactCreate(w http.ResponseWriter, r *http.Requ
 	email := strings.ToLower(formValue(r, "email"))
 	name := formValue(r, "name")
 	role := formValue(r, "role")
-	if role != "manager" && role != "employee" {
+	if !dbstore.ContactRole(role) {
 		s.redirectWithError(w, r, "/tickets", "請選擇客戶聯絡人權限")
 		return
 	}
@@ -804,10 +808,10 @@ func (s *Server) handleCustomerHome(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "無法建立表單", 500)
 		return
 	}
-	p := customerPage{NoWorkspace: !s.contactMay(r, c, "ai-problem"), Name: c.Name, Email: c.Email, CSRF: csrf, SubmitKey: key, Rows: rows, Page: page, HasNext: hasNext, Filter: filter, Manager: c.Role == "manager",
+	p := customerPage{NoWorkspace: !s.contactMay(r, c, "ai-problem"), Name: c.Name, Email: c.Email, CSRF: csrf, SubmitKey: key, Rows: rows, Page: page, HasNext: hasNext, Filter: filter, Manager: c.Role == "manager", Viewer: c.Role == "viewer",
 		NewView: r.URL.Query().Get("view") == "new" || r.URL.Query().Get("edit") != "", Pending: counts.Pending, Working: counts.Working,
 		Finished: counts.Finished, Notice: r.URL.Query().Get("msg")}
-	if p.Manager && !p.NewView {
+	if dbstore.SeesCompany(c.Role) && !p.NewView {
 		p.Approvals, err = s.dbm.db.Tickets().PendingManagerApprovals(r.Context(), 20)
 		if err != nil {
 			http.Error(w, "無法讀取待確認方案", 500)
@@ -1086,7 +1090,7 @@ func (s *Server) handleCustomerTicket(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "無法讀取工單", 500)
 		return
 	}
-	page := customerPage{Name: c.Name, CSRF: csrf, Ticket: &t, Events: events, Manager: c.Role == "manager", Owner: t.RequesterID == c.ID, Notice: r.URL.Query().Get("msg")}
+	page := customerPage{Name: c.Name, CSRF: csrf, Ticket: &t, Events: events, Manager: c.Role == "manager", Viewer: c.Role == "viewer", Owner: t.RequesterID == c.ID, Notice: r.URL.Query().Get("msg")}
 	if t.Details["request_kind"] != nil {
 		page.Revisions, err = s.dbm.db.Tickets().RequestRevisions(r.Context(), t.ID, t.RequesterID)
 		if err != nil {

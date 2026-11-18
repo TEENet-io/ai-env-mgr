@@ -365,3 +365,72 @@ func TestARenameReachesTheAccountButNotTheRecords(t *testing.T) {
 		t.Errorf("latest name in the period = %q", names[emp.ID])
 	}
 }
+
+func TestAViewOnlyAdminIsAViewerInTheTicketSystem(t *testing.T) {
+	s, ctx := newTestStore(t)
+	db := s.db
+	d := db.Directory()
+	tickets := db.Tickets()
+
+	viewer, staff := dirAccount(1, directory.RoleAdmin, directory.StatusActive), dirAccount(2, directory.RoleEmployee, directory.StatusActive)
+	viewer.TicketRole = directory.TicketView
+	readDirectory(t, ctx, d, viewer, staff)
+	v, ok := contactFor(t, ctx, db, viewer.ID)
+	if !ok || v.Role != "viewer" {
+		t.Fatalf("view-only admin's contact = %+v", v)
+	}
+
+	// The viewer opens a colleague's ticket but cannot approve what it costs.
+	e, _ := contactFor(t, ctx, db, staff.ID)
+	ticket, err := tickets.Create(ctx, e.ID, "viewer-key", "general", "額度用完，申請增加", "申請追加額度", "normal", []byte(`{"schema_version":4,"request_kind":"quota"}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := tickets.GetForContact(ctx, ticket.ID, v.ID, v.Role); err != nil {
+		t.Errorf("a viewer could not read a colleague's ticket: %v", err)
+	}
+	var adminID string
+	if err := db.Pool().QueryRow(ctx, `insert into admin_principals(username,password_hash,role)
+		values('viewer_operator','hash','admin') returning id`).Scan(&adminID); err != nil {
+		t.Fatal(err)
+	}
+	if err := tickets.AddEvent(ctx, ticket.ID, "", "admin", adminID, "status", "public", "開始核對", "working", 1); err != nil {
+		t.Fatal(err)
+	}
+	payload := map[string]string{"amount": "100", "unit": "tokens", "valid_until": "2026-12-31", "cost": "1", "currency": "USD"}
+	if err := tickets.SaveProposal(ctx, ticket.ID, adminID, 2, "quota", payload, true); err != nil {
+		t.Fatal(err)
+	}
+	proposal, err := tickets.LatestProposal(ctx, ticket.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := tickets.DecideProposal(ctx, ticket.ID, v.ID, 3, proposal.ID, "approved"); !errors.Is(err, ErrTicketNotFound) {
+		t.Errorf("a viewer approved a paid proposal: %v", err)
+	}
+
+	// Allowed to approve in the tool: a manager from the next reading.
+	viewer.TicketRole = directory.TicketApprove
+	plan, _ := readDirectory(t, ctx, d, viewer, staff)
+	if len(plan.Changes) != 1 || plan.Changes[0].Kind != directory.ChangeRole {
+		t.Errorf("changes = %+v", plan.Changes)
+	}
+	if v, _ := contactFor(t, ctx, db, viewer.ID); v.Role != "manager" {
+		t.Errorf("after approve: %+v", v)
+	}
+	// Nothing changed: nothing to report.
+	if plan, _ := readDirectory(t, ctx, d, viewer, staff); len(plan.Changes) != 0 {
+		t.Errorf("a quiet reading reported %+v", plan.Changes)
+	}
+
+	// Somebody new since the last reading signs in as a viewer on the spot.
+	fresh := dirAccount(3, directory.RoleAdmin, directory.StatusActive)
+	fresh.TicketRole = directory.TicketView
+	id, err := d.CustomerForSignIn(ctx, fresh)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if c, _ := contactFor(t, ctx, db, fresh.ID); c.ID != id || c.Role != "viewer" {
+		t.Errorf("signed-in newcomer = %+v", c)
+	}
+}

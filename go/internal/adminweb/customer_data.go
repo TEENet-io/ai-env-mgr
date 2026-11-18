@@ -35,7 +35,8 @@ func (l *customerUsageLine) add(r repo.UsageRow) {
 	l.Tokens += r.PromptTokens + r.CompletionTokens
 }
 
-// customerManager lets a request through for a signed-in manager only.
+// customerManager lets a request through for a contact who sees the whole
+// company: a manager, or a viewer, who may look but not approve.
 func (s *Server) customerManager(w http.ResponseWriter, r *http.Request) (dbstore.CustomerContact, string, bool) {
 	if r.Method != http.MethodGet {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
@@ -45,7 +46,7 @@ func (s *Server) customerManager(w http.ResponseWriter, r *http.Request) (dbstor
 	if !ok {
 		return c, csrf, false
 	}
-	if c.Role != "manager" {
+	if !dbstore.SeesCompany(c.Role) {
 		http.Error(w, "只有客戶管理員可以查看", http.StatusForbidden)
 		return c, csrf, false
 	}

@@ -157,12 +157,23 @@ func ticketAudit(ctx context.Context, tx pgx.Tx, actorType, actorID, action, tic
 	return err
 }
 
+// ContactRole reports whether role is one a customer contact may have:
+// manager approves, viewer sees the company but approves nothing, employee
+// handles their own matters.
+func ContactRole(role string) bool {
+	return role == "manager" || role == "viewer" || role == "employee"
+}
+
+// SeesCompany reports whether a contact with this role may read the whole
+// company's usage, employees and pending proposals.
+func SeesCompany(role string) bool { return role == "manager" || role == "viewer" }
+
 func (s TicketStore) CreateContact(ctx context.Context, email, name, hash string) (CustomerContact, error) {
 	return s.CreateContactWithRole(ctx, email, name, hash, "manager")
 }
 
 func (s TicketStore) CreateContactWithRole(ctx context.Context, email, name, hash, role string) (CustomerContact, error) {
-	if role != "manager" && role != "employee" {
+	if !ContactRole(role) {
 		return CustomerContact{}, errors.New("invalid customer contact role")
 	}
 	var c CustomerContact
@@ -250,7 +261,7 @@ func (s TicketStore) SetContactDisabled(ctx context.Context, id string, disabled
 }
 
 func (s TicketStore) SetContactRole(ctx context.Context, id, role string) error {
-	if role != "manager" && role != "employee" {
+	if !ContactRole(role) {
 		return errors.New("invalid customer contact role")
 	}
 	return s.db.Tx(ctx, func(tx pgx.Tx) error {

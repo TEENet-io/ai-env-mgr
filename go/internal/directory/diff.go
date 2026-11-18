@@ -7,7 +7,7 @@ const (
 	ChangeAdded     = "added"     // on the list for the first time
 	ChangeRenamed   = "renamed"   // display name or username
 	ChangeEmail     = "email"     // email address
-	ChangeRole      = "role"      // ops / admin / employee
+	ChangeRole      = "role"      // ops / admin / employee, or an admin's ticket role
 	ChangeDisabled  = "disabled"  // was active, now disabled or deleted
 	ChangeReenabled = "reenabled" // was disabled or deleted, now active
 	ChangeDeleted   = "deleted"   // was disabled, now deleted: nothing more to take away
@@ -58,7 +58,9 @@ func Compare(known map[string]Account, list List) Plan {
 		if before.Email != now.Email {
 			p.Changes = append(p.Changes, Change{Kind: ChangeEmail, Before: before, After: now})
 		}
-		if before.Role != now.Role {
+		// A deleted account's record carries no ticket role; that is not a change.
+		ticketChanged := before.TicketRole != now.TicketRole && now.Status != StatusDeleted
+		if before.Role != now.Role || ticketChanged {
 			p.Changes = append(p.Changes, Change{Kind: ChangeRole, Before: before, After: now})
 		}
 		switch {

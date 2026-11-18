@@ -28,6 +28,12 @@ const (
 	RoleAdmin    = "admin"
 	RoleEmployee = "employee"
 
+	// What a customer admin may do in the ticket system. The tool sends it
+	// with admins only; an admin without one is approving, as every admin
+	// was before the tool could say otherwise.
+	TicketApprove = "approve"
+	TicketView    = "view"
+
 	StatusActive   = "active"
 	StatusDisabled = "disabled"
 	StatusDeleted  = "deleted"
@@ -40,7 +46,25 @@ type Account struct {
 	Name     string `json:"name"`
 	Email    string `json:"email"`
 	Role     string `json:"role"`
-	Status   string `json:"status"`
+	// TicketRole is TicketApprove or TicketView for an admin, "" otherwise.
+	TicketRole string `json:"ticket_role,omitempty"`
+	Status     string `json:"status"`
+}
+
+// TicketRoleFor is the ticket role an account is taken to have: what the
+// tool sent for an admin, approving when it sent nothing, and none for the
+// other roles whatever was sent.
+func TicketRoleFor(role, sent string) (string, error) {
+	if role != RoleAdmin {
+		return "", nil
+	}
+	switch sent {
+	case "":
+		return TicketApprove, nil
+	case TicketApprove, TicketView:
+		return sent, nil
+	}
+	return "", fmt.Errorf("unknown ticket role %q", sent)
 }
 
 // Active reports whether the account may sign in.
@@ -103,6 +127,11 @@ func (l *List) Validate() error {
 		default:
 			return fmt.Errorf("account %s has unknown role %q", a.ID, a.Role)
 		}
+		ticketRole, err := TicketRoleFor(a.Role, a.TicketRole)
+		if err != nil {
+			return fmt.Errorf("account %s: %w", a.ID, err)
+		}
+		a.TicketRole = ticketRole
 		switch a.Status {
 		case StatusActive, StatusDisabled, StatusDeleted:
 		default:

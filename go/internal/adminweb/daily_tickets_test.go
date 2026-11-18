@@ -362,3 +362,24 @@ func withWorkspace(t *testing.T, s *Server, email string) {
 		t.Fatal(err)
 	}
 }
+
+func TestAViewerReadsTheCompanyButRaisesOnlyWhatAnEmployeeMay(t *testing.T) {
+	s, _ := newDatabaseServer(t)
+	h := s.Handler()
+	viewer := customerCookieFor(t, s, "it@example.com", "viewer")
+	for _, path := range []string{"/customer/usage", "/customer/employees"} {
+		if rec := dbGet(t, h, path, viewer); rec.Code != http.StatusOK {
+			t.Errorf("viewer %s: %d", path, rec.Code)
+		}
+	}
+	home := dbGet(t, h, "/customer", viewer).Body.String()
+	if !strings.Contains(home, "/customer/usage") {
+		t.Error("a viewer is not offered the usage page")
+	}
+	if strings.Contains(home, "category=account") {
+		t.Error("a viewer is offered AI workspace account requests")
+	}
+	if !contactMayRequest("manager", "quota") || contactMayRequest("viewer", "quota") || contactMayRequest("viewer", "account-delete") {
+		t.Error("only a manager may ask for quota or accounts")
+	}
+}
