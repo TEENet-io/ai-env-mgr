@@ -192,15 +192,22 @@ CI 的 PostgreSQL 检查现已覆盖全仓测试，保留 Windows 原生 skill �
 | ZIP 导入新 Skill | 拖放导入 `teenet-meeting-minutes` v1（模板 `.md` + 术语表 `.csv`） | 通过：按模板输出，术语按表替换，正文 `TEENET-MIN-BODY-V1-4C27`、模板 `TEENET-MIN-TPL-V1-A913` |
 | 上传新版 | 同一 Skill 上传 v2 | 通过：新增「下一次会议」一节，正文 `TEENET-MIN-BODY-V2-7E50`、模板 `TEENET-MIN-TPL-V2-D681` |
 | 自动选用 | 不写 `$teenet-meeting-minutes`，只说「整理一下：…」 | 通过：Codex 按 Skill 说明自动选中 |
+| 普通员工账号 | lm0b1jcaty0wblw（员工 menghan，非管理员）升级到 Agent 1.5.21、Codex b44 后打开 Codex | 发现问题：被 AppLocker 拦截（见下文「AppLocker 放行目录丢失」），恢复放行目录后可正常打开 |
+| 其他模型 | Codex 选 Claude（`drop_params` 生效后）调用 `teenet-meeting-minutes` | 发现问题：PowerShell 输出乱码，模型猜错术语并漏掉 v2 章节（见下文「中文乱码」）；Agent 1.5.22 修复后同一请求输出正确 |
 
 17:37 设备回报 `applied`，两个 Skill 均为 v2。
+
+Agent 1.5.22 下，lm0b 用 Claude 重复同一请求（19:19）：后台→AI 环境管理后台、云电脑→无影云电脑、agent/skill→Agent/Skill，包含 v2 的「下一次会议」，正文 `TEENET-MIN-BODY-V2-7E50`、模板 `TEENET-MIN-TPL-V2-D681`；原文无具体日期，按规则写「未注明」。
 
 ### 上线过程中发现的问题
 
 - 11-13 全员 Agent 目标被设为 1.5.9，设备由 1.5.19 降级。原因是版本列表按登记时间排列，生产库 11-09 重建时按字符串顺序批量登记，1.5.9 排在最前。已改为按版本号排序。
 - main 曾因 Skill 分支基于个人记忆 Agent 分支而带入 `1e0cb7d`（个人记忆同步，无后台开关）。已在 main 上回退，个人记忆仍在 `feature/personal-memory-mvp-agent`。
 - Codex 选 Claude 或 Gemini 时，请求带 `verbosity` 与 `prompt_cache_key`，LiteLLM 报 `UnsupportedParamsError`。已提 [litellm-config#18](https://github.com/TEENet-io/litellm-config/pull/18) 为这些模型开启 `drop_params`。Gemini 另因 GCP 项目 `coral-matrix-falcon-7821` 于 11-18 13:50–17:11 间停用结算（`BILLING_DISABLED`）而不可用，需恢复结算。
-- 仍有 3 台设备离线（最后在线 11-16 至 11-17），开机后将升级到 Agent 1.5.21 与 Codex b44；安装 Codex 时会关闭正在运行的 Codex。
+- **AppLocker 放行目录丢失**：11-09 重建生产库时，策略中的 `appLockerAllowPaths`（`C:\tools\Codex\*`、VS Code、WeChat、Weixin）和 `appLockerMode`、`baidu.com` 屏蔽、`collectSince` 未带入，同步间隔由 1 分钟变为 30 分钟。11-13 发布策略后 Agent 删除了这些放行规则，普通员工账号运行 `C:\tools\Codex` 下的 Codex 被拦截（管理员账号不受影响，故此前未被发现）。依据为 11-09 重建前备份 `aienv-2026-11-09.sql.gz` 中的第 49 版策略。18:27 在「封禁策略」页恢复 4 个放行目录（策略第 7 版）后 menghan 可正常打开。`appLockerMode`、`baidu.com`、同步间隔尚未恢复。同日 lm0b 有 1004 次无影组件（`Program Files (x86)\Alibaba\Wuying\*`）被拦记录，现有 `%PROGRAMFILES%\*` 规则应已覆盖，原因待查。
+- **中文乱码**：中文 Windows 控制台为 GBK（代码页 936），PowerShell 以 `-Encoding UTF8` 读取 UTF-8 文件后仍以 GBK 输出，Codex 收到乱码。Claude 隐式调用 Skill 时据此猜错术语、漏掉章节，并在结尾声明内容未经核实。Agent 1.5.22（`agent_workdir/_agent/1.5.22/agent.exe`，SHA256 `627cf07f…53af24db`）在绑定员工的 `%USERPROFILE%\.codex\AGENTS.md` 中维护受管说明块，要求先设置 `[Console]::OutputEncoding` 与 `$OutputEncoding` 为 UTF-8、不据乱码猜测；块外内容不动，其他用户与解绑时移除。
+- lm0b 正式 Agent 服务自 11-16 起处于停止状态（当日测试时执行过 `Stop-Service`），11-18 重新设为自动启动并启动后恢复上报。
+- 仍有 2 台设备离线（最后在线 11-16 至 11-17），开机后升级到全员目标版本；安装 Codex 时会关闭正在运行的 Codex。
 
 ## 独立人员验收与上线
 
