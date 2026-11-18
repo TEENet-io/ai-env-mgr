@@ -160,13 +160,13 @@ func TestADiscoveryNamingAnotherIssuerIsRefused(t *testing.T) {
 	}
 }
 
-func TestOnlyTheAuthenticatorOpensTheOpsEntry(t *testing.T) {
+func TestTheOpsEntryTakesTheAuthenticatorOrATextButNotAPasswordAlone(t *testing.T) {
 	for name, c := range map[string]struct {
 		amr  []string
 		want bool
 	}{
 		"authenticator": {[]string{"pwd", "otp"}, true},
-		"text message":  {[]string{"pwd", "sms"}, false},
+		"text message":  {[]string{"pwd", "sms"}, true},
 		"password only": {[]string{"pwd"}, false},
 		"no amr":        {nil, false},
 	} {

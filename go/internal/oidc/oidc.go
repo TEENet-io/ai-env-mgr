@@ -75,12 +75,15 @@ type Claims struct {
 	AuthTime          int64    `json:"auth_time"`
 }
 
-// OpsSecondFactor reports whether this sign-in passed the authenticator
-// app's code, the only second factor the ops entry takes. A text message
-// ("sms") is for customer accounts and does not count here: operators open
-// every customer's console, and a code sent to a phone number can be taken
-// by swapping the SIM or forwarding the message.
-func (c Claims) OpsSecondFactor() bool { return slices.Contains(c.AMR, "otp") }
+// OpsSecondFactor reports whether this sign-in passed a second factor the
+// ops entry takes: the authenticator app's code, or a text message to the
+// operator's registered Hong Kong number. The tool sends a text to an ops
+// account that has a number and asks the others for the authenticator.
+// A text is the weaker of the two (a swapped SIM or a forwarded message
+// gives it away); the tool's owners chose to accept it for operators.
+func (c Claims) OpsSecondFactor() bool {
+	return slices.Contains(c.AMR, "otp") || slices.Contains(c.AMR, "sms")
+}
 
 // AuthenticatedWithin reports whether the person gave their password at most
 // d before now, by the provider's word. A minute is allowed for clock drift.
