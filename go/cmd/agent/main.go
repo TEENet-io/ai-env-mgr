@@ -190,6 +190,7 @@ func newSyncer() (*agentcore.Syncer, error) {
 	}
 	s := &agentcore.Syncer{
 		Skills:           newManagedSkillsManager(),
+		Instructions:     codexInstructions{},
 		Applier:          localApplier{},
 		Machine:          machine,
 		Version:          version,
