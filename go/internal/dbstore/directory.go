@@ -131,8 +131,11 @@ type directoryApply struct {
 }
 
 // contactRole is the ticket system's name for a directory account's role.
-// An admin the tool lets only look is a viewer. Ops accounts are not
-// customers and have no contact.
+// An admin the tool lets only look is a viewer, and so is every employee: a
+// new account in the tool can read the company's tickets from the start,
+// without anyone ticking a box. "employee", which sees only its own tickets,
+// is left for contacts made by hand here. Ops accounts are not customers and
+// have no contact.
 func contactRole(a directory.Account) (string, bool) {
 	switch a.Role {
 	case directory.RoleAdmin:
@@ -141,7 +144,7 @@ func contactRole(a directory.Account) (string, bool) {
 		}
 		return "manager", true
 	case directory.RoleEmployee:
-		return "employee", true
+		return "viewer", true
 	}
 	return "", false
 }
@@ -167,14 +170,24 @@ func (ap directoryApply) change(c directory.Change) error {
 			where directory_id = $1 and deleted_at is null and name is distinct from $2`, a.ID, a.DisplayName())
 		return err
 	case directory.ChangeEmail:
-		if a.Email != "" {
+		if key := contactKey(a); key != "" {
 			tag, err := ap.tx.Exec(ap.ctx, `update customer_contacts set email = $2 where directory_id = $1
-				and not exists (select 1 from customer_contacts o where o.email = $2 and o.directory_id is distinct from $1)`, a.ID, a.Email)
+				and not exists (select 1 from customer_contacts o where o.email = $2 and o.directory_id is distinct from $1)`, a.ID, key)
 			if err != nil {
 				return err
 			}
 			if tag.RowsAffected() == 0 && a.Active() && c.After.Role != directory.RoleOps {
-				if err := ap.followUp(a, "email-conflict", fmt.Sprintf("%s 的郵箱改為 %s，但這個郵箱已屬於另一位聯絡人，工單聯絡人未更新", a.DisplayName(), a.Email)); err != nil {
+				var has bool
+				if err := ap.tx.QueryRow(ap.ctx, `select exists (select 1 from customer_contacts where directory_id = $1)`, a.ID).Scan(&has); err != nil {
+					return err
+				}
+				if !has {
+					// None yet (an account made before contacts were filed
+					// under usernames): make it now.
+					if err := ap.ensureContact(a); err != nil {
+						return err
+					}
+				} else if err := ap.followUp(a, "email-conflict", fmt.Sprintf("%s 的郵箱改為 %s，但這個郵箱已屬於另一位聯絡人，工單聯絡人未更新", a.DisplayName(), key)); err != nil {
 					return err
 				}
 			}
@@ -247,10 +260,22 @@ func statusWord(status string) string {
 	return "停用"
 }
 
+// contactKey is what a directory account's contact is filed under: its
+// email, or, for an account the tool gave none, its username. Nobody signs
+// in with it -- people from the tool come in through the tool and are found
+// by directory_id, and these contacts have no password -- so a username
+// does the job, and it cannot be mistaken for anyone's email: it has no @.
+func contactKey(a directory.Account) string {
+	if a.Email != "" {
+		return a.Email
+	}
+	return strings.ToLower(strings.TrimSpace(a.Username))
+}
+
 // ensureContact gives an active customer account a ticket contact: linked
 // if there is one under the same email that nobody has claimed, new
-// otherwise. An account with no email cannot have one -- the ticket system
-// matches people by email -- and is left for a person to look at.
+// otherwise. An account the tool gave no email gets one too, filed under its
+// username: anyone added in the tool can open the ticket system.
 func (ap directoryApply) ensureContact(a directory.Account) error {
 	role, ok := contactRole(a)
 	if !ok {
@@ -263,25 +288,28 @@ func (ap directoryApply) ensureContact(a directory.Account) error {
 	if exists {
 		return nil
 	}
-	if a.Email == "" {
-		return ap.followUp(a, "no-email", fmt.Sprintf("%s 在定製工具裡沒有郵箱，無法建立工單聯絡人", a.DisplayName()))
+	key := contactKey(a)
+	if key == "" {
+		return ap.followUp(a, "no-email", fmt.Sprintf("%s 在定製工具裡沒有郵箱也沒有用戶名，無法建立工單聯絡人", a.DisplayName()))
 	}
-	tag, err := ap.tx.Exec(ap.ctx, `update customer_contacts set directory_id = $1, name = $3, role = $4
-		where email = $2 and directory_id is null`, a.ID, a.Email, a.DisplayName(), role)
-	if err != nil {
-		return err
+	if a.Email != "" {
+		tag, err := ap.tx.Exec(ap.ctx, `update customer_contacts set directory_id = $1, name = $3, role = $4
+			where email = $2 and directory_id is null`, a.ID, a.Email, a.DisplayName(), role)
+		if err != nil {
+			return err
+		}
+		if tag.RowsAffected() > 0 {
+			ap.res.ContactsLinked++
+			return nil
+		}
 	}
-	if tag.RowsAffected() > 0 {
-		ap.res.ContactsLinked++
-		return nil
-	}
-	tag, err = ap.tx.Exec(ap.ctx, `insert into customer_contacts (email, name, password_hash, role, directory_id)
-		values ($1, $2, null, $3, $4) on conflict (email) do nothing`, a.Email, a.DisplayName(), role, a.ID)
+	tag, err := ap.tx.Exec(ap.ctx, `insert into customer_contacts (email, name, password_hash, role, directory_id)
+		values ($1, $2, null, $3, $4) on conflict (email) do nothing`, key, a.DisplayName(), role, a.ID)
 	if err != nil {
 		return err
 	}
 	if tag.RowsAffected() == 0 {
-		return ap.followUp(a, "email-conflict", fmt.Sprintf("%s 的郵箱 %s 已屬於另一位定製工具帳號的聯絡人，未建立工單聯絡人", a.DisplayName(), a.Email))
+		return ap.followUp(a, "email-conflict", fmt.Sprintf("%s 的郵箱或用戶名 %s 已屬於另一位聯絡人，未建立工單聯絡人", a.DisplayName(), key))
 	}
 	ap.res.ContactsCreated++
 	return nil

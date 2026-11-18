@@ -84,8 +84,9 @@ func TestTheDirectoryGivesCustomersContactsAndTakesThemAway(t *testing.T) {
 	if c, ok := contactFor(t, ctx, db, admin.ID); !ok || c.ID != manual.ID || c.Role != "manager" || c.Name != "User 2" {
 		t.Errorf("the hand-made contact was not linked and updated: %+v", c)
 	}
+	// An employee in the tool reads the company's tickets from the start.
 	c, ok := contactFor(t, ctx, db, staff.ID)
-	if !ok || c.Role != "employee" || c.PasswordHash != "" {
+	if !ok || c.Role != "viewer" || c.PasswordHash != "" {
 		t.Fatalf("new contact = %+v", c)
 	}
 
@@ -432,5 +433,49 @@ func TestAViewOnlyAdminIsAViewerInTheTicketSystem(t *testing.T) {
 	}
 	if c, _ := contactFor(t, ctx, db, fresh.ID); c.ID != id || c.Role != "viewer" {
 		t.Errorf("signed-in newcomer = %+v", c)
+	}
+}
+
+func TestAnAccountWithoutAnEmailStillOpensTheTicketSystem(t *testing.T) {
+	s, ctx := newTestStore(t)
+	db := s.db
+	d := db.Directory()
+
+	// Made in the tool with a plain username: no email reaches us.
+	peter := dirAccount(1, directory.RoleEmployee, directory.StatusActive)
+	peter.Username, peter.Email = "Peter1-Local-Test", ""
+	_, res := readDirectory(t, ctx, d, peter)
+	if res.ContactsCreated != 1 {
+		t.Fatalf("reading: %s", res)
+	}
+	c, ok := contactFor(t, ctx, db, peter.ID)
+	if !ok || c.Email != "peter1-local-test" || c.Role != "viewer" || c.PasswordHash != "" {
+		t.Fatalf("contact = %+v", c)
+	}
+	if len(openAlerts(t, ctx, s, repo.AlertDirectoryFollowUp)) != 0 {
+		t.Error("a follow-up was raised for an account that simply has no email")
+	}
+	if id, err := d.CustomerForSignIn(ctx, peter); err != nil || id != c.ID {
+		t.Fatalf("sign-in = %q, %v; want the contact", id, err)
+	}
+
+	// Signing in for the first time works the same for one the copy has
+	// never seen.
+	fresh := dirAccount(2, directory.RoleEmployee, directory.StatusActive)
+	fresh.Email = ""
+	if _, err := d.CustomerForSignIn(ctx, fresh); err != nil {
+		t.Fatalf("first sign-in without an email: %v", err)
+	}
+
+	// The tool gives the account an email later: the contact moves to it.
+	peter.Email = "peter@example.com"
+	readDirectory(t, ctx, d, peter, fresh)
+	if c, _ := contactFor(t, ctx, db, peter.ID); c.Email != "peter@example.com" {
+		t.Errorf("contact email after the tool gave one = %q", c.Email)
+	}
+
+	// Nobody can use the username to sign in with a password: there is none.
+	if c, err := db.Tickets().ContactByEmail(ctx, "u2"); err != nil || c.PasswordHash != "" {
+		t.Errorf("username contact = %+v, %v; want one with no password", c, err)
 	}
 }
