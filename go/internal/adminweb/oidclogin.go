@@ -213,6 +213,13 @@ func claimsAccount(c oidc.Claims) directory.Account {
 
 func (s *Server) oidcCustomerSignIn(w http.ResponseWriter, r *http.Request, c oidc.Claims) {
 	a := claimsAccount(c)
+	// Ops are not customers, but one who is signed in to the tool and clicks
+	// through to the tickets wants the tickets: those are in the ops console.
+	// That entry asks for the second factor again, so nothing is skipped.
+	if a.Role == directory.RoleOps {
+		http.Redirect(w, r, "/oidc/start?entry="+entryOps, http.StatusSeeOther)
+		return
+	}
 	if a.Role != directory.RoleAdmin && a.Role != directory.RoleEmployee {
 		s.recordRefusal(r, entryCustomer, c, "role "+a.Role)
 		s.refuseSignIn(w, r, entryCustomer, refusedMessage)

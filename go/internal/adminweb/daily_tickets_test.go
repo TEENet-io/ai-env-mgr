@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/TEENet-io/ai-env-mgr/internal/dbstore"
+	"github.com/TEENet-io/ai-env-mgr/internal/oidc"
 	"github.com/TEENet-io/ai-env-mgr/internal/repo"
 )
 
@@ -381,5 +382,15 @@ func TestAViewerReadsTheCompanyButRaisesOnlyWhatAnEmployeeMay(t *testing.T) {
 	}
 	if !contactMayRequest("manager", "quota") || contactMayRequest("viewer", "quota") || contactMayRequest("viewer", "account-delete") {
 		t.Error("only a manager may ask for quota or accounts")
+	}
+}
+
+func TestAnOperatorAtTheCustomerEntryIsSentToTheOpsEntry(t *testing.T) {
+	s, _ := newDatabaseServer(t)
+	rec := httptest.NewRecorder()
+	s.oidcCustomerSignIn(rec, httptest.NewRequest(http.MethodGet, "/oidc/callback", nil),
+		oidc.Claims{Subject: "00000000-0000-4000-8000-000000000009", PreferredUsername: "wei", Role: "ops"})
+	if rec.Code != http.StatusSeeOther || rec.Header().Get("Location") != "/oidc/start?entry=ops" {
+		t.Fatalf("ops at the customer entry: %d %q", rec.Code, rec.Header().Get("Location"))
 	}
 }
