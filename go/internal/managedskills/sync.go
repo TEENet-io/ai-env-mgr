@@ -407,3 +407,50 @@ func (m *Manager) Sync(plan model.ManagedSkills) (result model.ManagedSkillsStat
 	}
 	return result, errors.Join(failures...)
 }
+
+// RecheckPending looks only for desktop acknowledgements still outstanding
+// from the last Sync. It never touches skill files or republishes the
+// refresh manifest. The desktop rescans within seconds of a new generation,
+// usually just after Sync has looked, so this lets the Agent report
+// "applied" without waiting for its next full sync. The caller must not run
+// it concurrently with Sync.
+func (m *Manager) RecheckPending() (result model.ManagedSkillsStatus, err error) {
+	result.State = "failed"
+	if m.StateDir == "" || m.Refresh == nil {
+		return result, errors.New("company skill manager is not configured")
+	}
+	j, err := m.load()
+	if err != nil {
+		return result, err
+	}
+	result.User, result.Skills, result.Generation = j.User, j.Applied, j.Generation
+	users := make([]string, 0, len(j.Pending))
+	for user := range j.Pending {
+		users = append(users, user)
+	}
+	sort.Strings(users)
+	var failures []error
+	for _, user := range users {
+		confirmed, err := m.Refresh(user, j.Generation)
+		if err != nil {
+			failures = append(failures, fmt.Errorf("refresh Codex for %s: %w", user, err))
+			continue
+		}
+		if !confirmed {
+			continue
+		}
+		delete(j.Pending, user)
+		if err := m.save(j); err != nil {
+			return result, err
+		}
+	}
+	for user := range j.Pending {
+		result.RefreshPending = append(result.RefreshPending, user)
+	}
+	sort.Strings(result.RefreshPending)
+	result.State = "applied"
+	if len(result.RefreshPending) > 0 {
+		result.State = "refresh_pending"
+	}
+	return result, errors.Join(failures...)
+}
