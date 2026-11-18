@@ -145,6 +145,22 @@ CI 的 PostgreSQL 检查现已覆盖全仓测试，保留 Windows 原生 skill �
 
 本机新 Agent 与 b13 刷新适配的无感更新、回退、撤回基本生命周期验收完成；未据此将普通员工只读权限、多员工范围隔离、真实运行中长任务或生产上线标为通过。生产后台及正式 Agent 未升级。
 
+### 普通员工只读权限真机结果（2026-11-18）
+
+测试环境已迁到 ec2-new，见独立测试环境文档。设备 `lm0b1jcaty0wblw` 已派发 `teenet-delivery-check` v3（回报 `applied`，内容 SHA256 `b58b471ed98b6585a22aa8013c6cbfec27a6feac8bf3922b145182511e122ce4`）。在同一台云电脑新建本地标准用户 `skilltest`（不在管理员组），用 `Start-Process powershell -Credential` 以该用户打开 PowerShell 逐项检查：
+
+| 操作 | 结果 | 结论 |
+|---|---|---|
+| 读取 `SKILL.md`、`references\check-marker.txt` | 成功，附件为 `version=v3`、`TEENET-SKILL-CHECK-V3-6C91E2` | 通过 |
+| `Add-Content` 追加 `SKILL.md` | 访问被拒绝 | 通过 |
+| 在 Skill 目录新建 `new.txt` | 访问被拒绝 | 通过 |
+| 在机器级 `skills` 下新建子目录 `fake` | 访问被拒绝 | 通过 |
+| 改名 Skill 目录 | 访问被拒绝 | 通过 |
+| `Remove-Item -Recurse -Force` 删除 Skill 目录 | 各文件及目录均拒绝 | 通过 |
+| 新建个人 skill `C:\Users\skilltest\.codex\skills\my-own` | 成功 | 通过 |
+
+检查后设备于 13:02:26（Asia/Shanghai）回报的 SHA256 不变。Windows PowerShell 5.1 的 `Get-Content` 默认按 ANSI 解码无 BOM 的 UTF-8，`description` 中文显示为乱码，属于显示问题，不是文件损坏。普通员工只读一项通过；该用户未接入 Codex，未验证其会话内的列表和调用。
+
 ## 独立人员验收与上线
 
 在按需启动的测试环境和一台测试云电脑执行，记录版本、SHA-256、测试人、时间、结果。不要直接指定全局 Agent 版本。

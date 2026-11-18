@@ -4,9 +4,13 @@
 
 ## 当前测试入口
 
-本机测试后台监听 `127.0.0.1:18864`，使用独立 PostgreSQL 实例中的 `aienv_skills_manual` 数据库、独立加密密钥和管理员账号。没有导入线上账号、设备令牌、业务数据或云服务密钥。Worker 关闭，对象存储写入禁止；网关、SLS 和无影云接口未接入。
+本机测试后台监听 `127.0.0.1:18864`，使用独立 PostgreSQL 16 实例（`127.0.0.1:25479`，数据目录 `/home/sun/.local/share/company-skills-pg`）中的 `aienv_skills_manual` 数据库、独立加密密钥和管理员账号。没有导入线上账号、设备令牌、业务数据或云服务密钥。Worker 关闭，对象存储写入禁止；网关、SLS 和无影云接口未接入。
 
 Windows 通过临时 HTTPS 地址访问，后台和测试 Agent 使用同一个地址，无需 Windows SSH 隧道或额外的公网入站端口。服务端使用 [Cloudflare Quick Tunnel](https://developers.cloudflare.com/tunnel/get-started/quick-tunnels/)。该地址用于本次开发测试，停止并重新创建通道后会改变。
+
+当前测试地址（2026-11-18 起）：`https://proved-mandate-celebrities-providers.trycloudflare.com`。以 `public-url.txt` 为准；隧道服务重启（含机器重启）后地址会变，需同步更新后台服务的 `SKILLS_MANUAL_PUBLIC_URL` 并重启测试 Agent。
+
+2026-11-18 测试环境已从 ali0 迁到 ec2-new（`ip-172-31-23-119`），ali0 上的测试后台、隧道和临时 PostgreSQL 已停止，原数据保留未删除。测试库由 ali0 导出后完整恢复，测试管理员账号、设备和 Skill 数据不变。
 
 本机当前地址、首次登录信息和测试包在以下目录，均不提交 Git：
 
@@ -145,11 +149,17 @@ GOOS=windows GOARCH=amd64 go build -trimpath \
   -o agent-skills-test.exe ./cmd/agent
 ```
 
-当前服务端以用户服务运行：
+当前服务端以三个用户服务运行，已开启 linger 并设为开机自启，单元文件位于 `~/.config/systemd/user/`：
+
+| 服务 | 作用 |
+|---|---|
+| `ai-env-skills-test-pg` | 独立 PostgreSQL 16，`127.0.0.1:25479`，数据目录 `/home/sun/.local/share/company-skills-pg` |
+| `ai-env-skills-test-tunnel` | Cloudflare Quick Tunnel → `127.0.0.1:18864`，日志 `manual-test/tunnel.log` |
+| `ai-env-skills-test` | `console.test` 独立测试后台 |
 
 ```sh
-systemctl --user status ai-env-skills-test ai-env-skills-test-tunnel
-systemctl --user stop ai-env-skills-test ai-env-skills-test-tunnel
+systemctl --user status ai-env-skills-test ai-env-skills-test-tunnel ai-env-skills-test-pg
+systemctl --user stop ai-env-skills-test ai-env-skills-test-tunnel ai-env-skills-test-pg
 ```
 
 停用测试环境只操作上述用户服务；不要停止系统级 `ai-env-mgr-console.service`。

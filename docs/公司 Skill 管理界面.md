@@ -37,5 +37,5 @@
 - 设置 `TEST_PG_DSN` 后，`go test -p 1 -count=1 ./...` 全仓 PostgreSQL 回归通过。
 - 浏览器操作实际经过服务端处理，测试数据位于自动化专用数据库 `aienv_test_adminweb`；该浏览器验证服务已停止，临时验证入口源码已移除。
 - 界面代码源提交 `4e1b6c9` 已部署到原独立测试后台；只重启用户服务 `ai-env-skills-test.service`，临时通道保持。
-- 测试页入口：`https://memorabilia-get-crystal-watches.trycloudflare.com/skills`。CSS/JS 在线内容与源文件逐字节一致，公网测试入口及生产登录页均返回 200。
+- 测试页入口：`https://proved-mandate-celebrities-providers.trycloudflare.com/skills`（2026-11-18 迁到 ec2-new 后的地址；验证时为 ali0 上的 `memorabilia-get-crystal-watches.trycloudflare.com`）。CSS/JS 在线内容与源文件逐字节一致，公网测试入口及生产登录页均返回 200。
 - 用户测试电脑的受管清单仍为已撤回的空清单，generation `2c57979a12ae06a1b10013c6b064ca96` 未变化。生产后台服务启动时间仍为 2026-11-09 21:29:37，未部署或重启。
