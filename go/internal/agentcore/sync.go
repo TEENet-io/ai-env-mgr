@@ -209,6 +209,11 @@ type Syncer struct {
 	Skills interface {
 		Sync(model.ManagedSkills) (model.ManagedSkillsStatus, error)
 	}
+	// Instructions keeps the agent-managed block of an employee's global
+	// Codex instructions: present for the bound employee, absent otherwise.
+	Instructions interface {
+		Sync(profileDir, user string, enabled bool) (bool, error)
+	}
 	// Store is the bucket, used when Source is nil. Source, when set, is
 	// where instructions come from and reports go -- the console's device
 	// API in an enrolled agent.
@@ -422,6 +427,7 @@ func (s *Syncer) RunOnce() (model.Status, error) {
 		// (sessions, history and personal settings) is not ours to delete.
 		warns = append(warns, "no binding: this machine has not been assigned to a user yet")
 		for _, user := range localUsers {
+			s.syncInstructions(user, false, &warns)
 			n, rmErr := s.Applier.RemoveCreds(s.Machine.ProfileDir(user))
 			switch {
 			case rmErr != nil:
@@ -438,6 +444,13 @@ func (s *Syncer) RunOnce() (model.Status, error) {
 		boundUserExists = containsFold(localUsers, binding.User)
 		if !boundUserExists {
 			warns = append(warns, fmt.Sprintf("bound user %q has no profile on this machine", binding.User))
+		}
+
+		for _, user := range localUsers {
+			if strings.EqualFold(user, administratorAccount) {
+				continue
+			}
+			s.syncInstructions(user, strings.EqualFold(user, binding.User), &warns)
 		}
 
 		// ---- credentials ----
@@ -758,6 +771,21 @@ func (s *Syncer) Heartbeat() error {
 	s.lastStatus = st
 	s.mu.Unlock()
 	return nil
+}
+
+// syncInstructions is best effort: a profile it cannot write to is reported
+// and never stops the rest of the sync.
+func (s *Syncer) syncInstructions(user string, enabled bool, warns *[]string) {
+	if s.Instructions == nil {
+		return
+	}
+	changed, err := s.Instructions.Sync(s.Machine.ProfileDir(user), user, enabled)
+	switch {
+	case err != nil:
+		*warns = append(*warns, fmt.Sprintf("codex instructions for %q: %v", user, err))
+	case changed:
+		log.Printf("codex instructions: managed block %s for %q", map[bool]string{true: "written", false: "removed"}[enabled], user)
+	}
 }
 
 // SkillRefreshPending reports whether the last full sync left company skills
