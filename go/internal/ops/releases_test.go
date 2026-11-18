@@ -43,9 +43,28 @@ func TestRegisteringAnArtifactChangesNoTarget(t *testing.T) {
 
 func TestSettingTheGlobalTargetTakesTheArtifactsChecksum(t *testing.T) {
 	svc, store, ctx := newService(t)
-	a, _ := svc.RegisterArtifact(ctx, newArtifact(repo.ProductCodex, "0.42.0"), "admin", "r1")
+	a, err := svc.RegisterArtifact(ctx, newArtifact(repo.ProductCodex, "0.42.0"), "admin", "r1")
+	if err != nil {
+		t.Fatalf("register: %v", err)
+	}
 	if _, err := svc.SetGlobalTarget(ctx, repo.ProductCodex, "0.99.0", "admin", "r2"); !errors.Is(err, repo.ErrNotFound) {
 		t.Fatalf("aiming at an unregistered version: err = %v", err)
+	}
+	for _, status := range []repo.ArtifactStatus{repo.ArtifactCandidate, repo.ArtifactAccepted} {
+		if _, err := svc.SetGlobalTarget(ctx, repo.ProductCodex, a.Version, "admin", "refused-"+string(status)); err == nil || !strings.Contains(err.Error(), string(status)) {
+			t.Fatalf("%s must not be a fleet target: %v", status, err)
+		}
+		pol, _, err := svc.CurrentPolicy(ctx)
+		if err != nil || pol.CodexVersion != "" || len(openTasks(t, ctx, store)) != 0 {
+			t.Fatalf("refused %s changed the policy or queued work: %+v, %v", status, pol, err)
+		}
+		next := repo.ArtifactAccepted
+		if status == repo.ArtifactAccepted {
+			next = repo.ArtifactStable
+		}
+		if _, err := svc.SetArtifactStatus(ctx, a.ID, next, "test acceptance", "admin", "promote-"+string(next)); err != nil {
+			t.Fatalf("promote to %s: %v", next, err)
+		}
 	}
 	pol, err := svc.SetGlobalTarget(ctx, repo.ProductCodex, "0.42.0", "admin", "r3")
 	if err != nil {
@@ -57,7 +76,9 @@ func TestSettingTheGlobalTargetTakesTheArtifactsChecksum(t *testing.T) {
 	if tasks := openTasks(t, ctx, store); len(tasks) != 1 || tasks[0].Kind != repo.TaskOSSExport {
 		t.Fatalf("a policy change must queue exactly one export, got %d", len(tasks))
 	}
-	svc.SetArtifactStatus(ctx, a.ID, repo.ArtifactRetired, "", "admin", "r4")
+	if _, err := svc.SetArtifactStatus(ctx, a.ID, repo.ArtifactRetired, "", "admin", "r4"); err != nil {
+		t.Fatalf("retire: %v", err)
+	}
 	if _, err := svc.SetGlobalTarget(ctx, repo.ProductCodex, "0.42.0", "admin", "r5"); err == nil {
 		t.Fatal("a retired artifact must not be aimed at anyone")
 	}

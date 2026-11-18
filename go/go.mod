@@ -6,6 +6,7 @@ require (
 	github.com/aliyun/aliyun-oss-go-sdk v3.0.2+incompatible
 	github.com/jackc/pgx/v5 v5.11.0
 	golang.org/x/sys v0.48.0
+	gopkg.in/yaml.v3 v3.0.1
 )
 
 require (

@@ -39,6 +39,7 @@ file stays out of it. */}}
     <a href="/users"{{if eq .Nav "users"}} class="active"{{end}}><span class="n">2</span>員工帳號</a>
     {{if .DB}}<a href="/channels"{{if eq .Nav "channels"}} class="active"{{end}}><span class="n">3</span>模型渠道</a>{{end}}
     <a href="{{if .DB}}/releases{{else}}/rollout{{end}}"{{if or (eq .Nav "rollout") (eq .Nav "releases")}} class="active"{{end}}><span class="n">{{if .DB}}4{{else}}3{{end}}</span>軟件安裝</a>
+    {{if .DB}}<a href="/skills"{{if eq .Nav "skills"}} class="active"{{end}}><span class="n">·</span>公司 Skill</a>{{end}}
   </div>
   {{if .DB}}
   <div class="rail-section">
@@ -78,6 +79,7 @@ sets .Tab to the entry it is. */}}
 {{define "tabs-users"}}{{if .DB}}<nav class="tabs">
   <a href="/users"{{if eq .Tab ""}} class="active"{{end}}>員工</a>
   <a href="/models"{{if eq .Tab "models"}} class="active"{{end}}>模型下發</a>
+  <a href="/skills"{{if eq .Nav "skills"}} class="active"{{end}}>公司 Skill</a>
 </nav>{{end}}{{end}}
 {{define "tabs-usage"}}<nav class="tabs">
   {{if .DB}}<a href="/usage"{{if eq .Tab "usage"}} class="active"{{end}}>按月彙總</a>{{end}}
