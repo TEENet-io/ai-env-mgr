@@ -5,10 +5,23 @@ name: CI
 # normal push does not run the same checks twice.
 on:
   pull_request:
+  push:
+    branches: [feat/company-skills-agent]
+    paths: ['go/**', '.github/workflows/ci.yml']
 
 jobs:
   check:
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready --health-interval 5s
+          --health-timeout 5s --health-retries 10
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
@@ -18,3 +31,42 @@ jobs:
       - name: make check
         working-directory: go
         run: make check
+      - name: PostgreSQL integration tests
+        working-directory: go
+        env:
+          TEST_PG_DSN: postgres://postgres:postgres@127.0.0.1:5432/postgres?sslmode=disable
+        # Initial migrations create cluster-wide roles; serialize suites.
+        run: go test -p 1 -count=1 ./...
+
+  windows-skills:
+    runs-on: windows-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go/go.mod
+          cache-dependency-path: go/go.sum
+      - name: Native Agent skill and ACL regression tests
+        working-directory: go
+        shell: pwsh
+        run: |
+          go test -v ./internal/companyskills ./internal/managedskills ./internal/agentcore ./cmd/agent 2>&1 | Tee-Object windows-skills.log
+          $nativeResult = $LASTEXITCODE
+          New-Item -ItemType Directory -Force ../probe-results | Out-Null
+          $skipped = @(Select-String -Path windows-skills.log -Pattern '^--- SKIP:' | ForEach-Object { $_.Line })
+          @{passed=($nativeResult -eq 0); skipped=$skipped; run_id='${{ github.run_id }}'; source='${{ github.sha }}'; platform='windows'; suites=@('companyskills','managedskills','agentcore','agent')} | ConvertTo-Json | Set-Content ../probe-results/windows-skills-${{ github.run_id }}.json
+          exit $nativeResult
+      - name: Preserve Windows result on the test branch
+        if: always() && github.event_name == 'push'
+        shell: pwsh
+        run: |
+          $result = 'probe-results/windows-skills-${{ github.run_id }}.json'
+          if (-not (Test-Path $result)) { exit 0 }
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add $result
+          git commit -m 'test: record Windows Agent skill regression [skip ci]'
+          git pull --rebase origin feat/company-skills-agent
+          git push origin HEAD:feat/company-skills-agent

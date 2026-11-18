@@ -1,0 +1,15 @@
+{
+  "skipped": [
+    "--- SKIP: TestCatalogLifecycleCASAndAtomicAudit (0.00s)"
+  ],
+  "platform": "windows",
+  "passed": true,
+  "run_id": "43831907351",
+  "source": "175a37416d2e7380343cf90ea52ea265f495c8ce",
+  "suites": [
+    "companyskills",
+    "managedskills",
+    "agentcore",
+    "agent"
+  ]
+}

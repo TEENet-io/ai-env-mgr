@@ -30,9 +30,34 @@ func TestReleasesPageListsCandidatesAndAimsOnlyOnRequest(t *testing.T) {
 		t.Fatalf("releases page: %d", page.Code)
 	}
 	csrf := csrfFrom(t, s, cookie, "/releases")
-	rec := dbPost(t, h, "/releases/global", url.Values{"csrf": {csrf}, "product": {"codex"}, "version": {"0.42.0"}, "confirm": {"0.42.0"}}, cookie)
-	if rec.Code != http.StatusSeeOther || strings.Contains(rec.Header().Get("Location"), "err=") {
-		t.Fatalf("global: %d %s", rec.Code, rec.Header().Get("Location"))
+	globalForm := url.Values{"csrf": {csrf}, "product": {"codex"}, "version": {"0.42.0"}, "confirm": {"0.42.0"}}
+	for _, status := range []repo.ArtifactStatus{repo.ArtifactCandidate, repo.ArtifactAccepted, repo.ArtifactStable} {
+		if status != repo.ArtifactCandidate {
+			rec := dbPost(t, h, "/releases/status", url.Values{"csrf": {csrf}, "id": {a.ID}, "status": {string(status)}}, cookie)
+			if rec.Code != http.StatusSeeOther || strings.Contains(rec.Header().Get("Location"), "err=") {
+				t.Fatalf("promote to %s: %d %s", status, rec.Code, rec.Header().Get("Location"))
+			}
+			artifact, err := s.dbm.store.Releases().ArtifactByID(ctx, a.ID)
+			if err != nil || artifact.Status != status {
+				t.Fatalf("artifact after promotion: %+v, %v", artifact, err)
+			}
+		}
+		page := dbGet(t, h, "/releases", cookie)
+		if page.Code != http.StatusOK || strings.Contains(page.Body.String(), `action="/releases/global"`) != (status == repo.ArtifactStable) {
+			t.Fatalf("global control for %s: HTTP %d", status, page.Code)
+		}
+		rec := dbPost(t, h, "/releases/global", globalForm, cookie)
+		if status != repo.ArtifactStable {
+			if rec.Code != http.StatusSeeOther || !strings.Contains(rec.Header().Get("Location"), "err=") || !strings.Contains(rec.Header().Get("Location"), string(status)) {
+				t.Fatalf("%s must be refused as a fleet target: %d %s", status, rec.Code, rec.Header().Get("Location"))
+			}
+			pol, _, err := s.dbm.ops.CurrentPolicy(ctx)
+			if err != nil || pol.CodexVersion != "" {
+				t.Fatalf("refused %s changed the policy: %+v, %v", status, pol, err)
+			}
+		} else if rec.Code != http.StatusSeeOther || strings.Contains(rec.Header().Get("Location"), "err=") {
+			t.Fatalf("global: %d %s", rec.Code, rec.Header().Get("Location"))
+		}
 	}
 	pol, _, _ := s.dbm.ops.CurrentPolicy(ctx)
 	if pol.CodexVersion != "0.42.0" || pol.CodexSHA256 != a.SHA256 {
@@ -131,13 +156,22 @@ func TestThePageListsWhatCIUploadedUntilItIsRegistered(t *testing.T) {
 		t.Fatalf("register: redirect %s, job %+v", rec.Header().Get("Location"), snap)
 	}
 	page = dbGet(t, h, "/releases", cookie)
-	// The unregistered table is gone now; the version shows only in the
-	// library table (whose "set as fleet target" form also carries it).
+	// Registration creates a candidate, ready for targeted testing and
+	// acceptance. Only a later stable approval enables fleet-wide publishing.
 	if strings.Contains(page.Body.String(), "未能自动登记的包") {
 		t.Fatalf("a registered package must leave the unregistered list (redirect %s)", rec.Header().Get("Location"))
 	}
-	if !strings.Contains(page.Body.String(), `action="/releases/global"`) {
-		t.Fatal("the registered version should now be in the library with its actions")
+	artifact, err := s.dbm.store.Releases().ArtifactByVersion(t.Context(), repo.ProductCodex, "0.42.0")
+	if err != nil || artifact.Status != repo.ArtifactCandidate {
+		t.Fatalf("registered artifact should be a candidate: %+v, %v", artifact, err)
+	}
+	for _, want := range []string{`action="/releases/status"`, `name="id" value="` + artifact.ID + `"`, `name="status" value="accepted"`, `href="/rollouts/new?artifact=` + artifact.ID + `"`} {
+		if page.Code != http.StatusOK || !strings.Contains(page.Body.String(), want) {
+			t.Fatalf("registered candidate lacks %s (HTTP %d)", want, page.Code)
+		}
+	}
+	if strings.Contains(page.Body.String(), `action="/releases/global"`) {
+		t.Fatal("a newly registered candidate must not offer fleet-wide publishing")
 	}
 }
 

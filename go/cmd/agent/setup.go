@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/TEENet-io/ai-env-mgr/internal/agentapi"
+	"github.com/TEENet-io/ai-env-mgr/internal/model"
 	"github.com/TEENet-io/ai-env-mgr/internal/winsvc"
 )
 
@@ -123,6 +124,11 @@ func cmdPrepareImage() error {
 		waitForStop()
 	}
 
+	// Skills are employee-specific even though Codex loads them from the
+	// machine directory. Never let a tested template clone those instructions.
+	if _, err := newManagedSkillsManager().Sync(model.ManagedSkills{}); err != nil {
+		return fmt.Errorf("remove company skills before imaging: %w", err)
+	}
 	if err := agentapi.ForgetToken(stateDir()); err != nil {
 		return fmt.Errorf("remove device enrollment: %w", err)
 	}
