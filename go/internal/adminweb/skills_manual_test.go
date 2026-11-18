@@ -87,18 +87,18 @@ func TestManualSkillsConsole(t *testing.T) {
 }
 
 func skillsManualHandler(s *Server, origin, agentFile string) http.Handler {
-	page := template.Must(template.New("manual").Parse(`<!doctype html><html lang="zh-CN"><meta charset="utf-8"><title>Skill 独立测试</title><link rel="stylesheet" href="/static/app.css"><body><main class="sheet">
-<h1>Skill 独立测试</h1><p>这是独立测试后台。此处只测 Skill 派发，不更改现有模型登录、浏览器策略或 AppLocker。</p>
-<p><a href="/skills">进入 Skill 管理 →</a>　<a href="/test/download">下载 Windows 测试 Agent</a>　<a href="/overview">机器状态</a></p>
-<p>测试 Skill：<a href="/test/teenet-delivery-check-v1.zip">下载 v1</a>　<a href="/test/teenet-delivery-check-v2.zip">下载 v2（测试更新）</a>。首次选择“导入 Skill ZIP”，业务名称填“公司技能下发测试”，英文标识会自动识别为 <code>teenet-delivery-check</code>；更新时进入该 Skill 的“上传新版”。</p>
-<p>新装 Codex 尚无模型配置时：<a href="/test/codex-model-setup.zip">下载模型接入包（管理员登录后可下载）</a>。使用绑定员工账号解压，先退出 Codex，再运行包内 setup-codex-skill-test.ps1。此包连接生产模型网关，生成独立的 Codex Skill Test 桌面快捷方式。</p>
-<p><a href="/test/skill-live-refresh.zip">下载无感刷新测试包</a>：先停止旧测试 Agent，关闭 Codex 一次，解压后运行 install-skill-live-refresh.ps1，再运行包内新 Agent。安装适配后，更新、回退和撤回不再自动关闭 Codex。<a href="/test/teenet-delivery-check-v3.zip">v3 正文更新测试包</a>。</p>
-<h2>1. 在 Windows 上运行</h2><p>下载后，用管理员终端运行以下命令；保留当前线上 Agent 服务。</p><pre>.\agent-skills-test.exe skills-test --console {{.URL}}</pre>
-<h2>2. 创建测试员工并绑定电脑</h2><p>Agent 连上后刷新此页。用户名填写员工日常登录 b13 的 Windows 用户名，可在该员工终端运行 whoami 查看。</p>
-<form method="post" action="/test/bind"><input type="hidden" name="csrf" value="{{.CSRF}}"><label>测试电脑<select name="machine" required>{{range .Devices}}<option>{{.Hostname}}</option>{{end}}</select></label><label>员工 Windows 用户名<input name="windows_user" required placeholder="例如 weipeng"></label><button>创建并绑定</button></form>
-<h2>3. 派发与回收</h2><p>进入 Skill 管理，新增或导入 Skill，再选择刚绑定的员工。检查 b13 新会话中的 Skill；随后测试更新、回退和撤回。新版 Agent 与刷新适配会自动重扫当前桌面进程，不主动中断任务；后台区分文件同步和等待客户端刷新。</p>
-<p>结束后先在后台撤回；也可在管理员终端执行 <code>.\agent-skills-test.exe skills-test --cleanup</code>，只清理测试 Agent 管理的 Skill。</p>
-<h2>已连接的电脑</h2><ul>{{range .Devices}}<li>{{.Hostname}} · {{.AgentVersion}}</li>{{else}}<li>尚未连接；先启动 Windows 测试 Agent。</li>{{end}}</ul>
+	page := template.Must(template.New("manual").Parse(`<!doctype html><html lang="zh-CN"><meta charset="utf-8"><title>Skill 獨立測試</title><link rel="stylesheet" href="/static/app.css"><body><main class="sheet">
+<h1>Skill 獨立測試</h1><p>這是獨立測試後台。此處只測 Skill 派發，不更改現有模型登錄、瀏覽器策略或 AppLocker。</p>
+<p><a href="/skills">進入 Skill 管理 →</a>　<a href="/test/download">下載 Windows 測試 Agent</a>　<a href="/overview">機器狀態</a></p>
+<p>測試 Skill：<a href="/test/teenet-delivery-check-v1.zip">下載 v1</a>　<a href="/test/teenet-delivery-check-v2.zip">下載 v2（測試更新）</a>。首次選擇“導入 Skill ZIP”，業務名稱填“公司技能下發測試”，英文標識會自動識別爲 <code>teenet-delivery-check</code>；更新時進入該 Skill 的“上傳新版”。</p>
+<p>新裝 Codex 尚無模型配置時：<a href="/test/codex-model-setup.zip">下載模型接入包（管理員登錄後可下載）</a>。使用綁定員工賬號解壓，先退出 Codex，再運行包內 setup-codex-skill-test.ps1。此包連接生產模型網關，生成獨立的 Codex Skill Test 桌面快捷方式。</p>
+<p><a href="/test/skill-live-refresh.zip">下載無感刷新測試包</a>：先停止舊測試 Agent，關閉 Codex 一次，解壓後運行 install-skill-live-refresh.ps1，再運行包內新 Agent。安裝適配後，更新、回退和撤回不再自動關閉 Codex。<a href="/test/teenet-delivery-check-v3.zip">v3 正文更新測試包</a>。</p>
+<h2>1. 在 Windows 上運行</h2><p>下載後，用管理員終端運行以下命令；保留當前線上 Agent 服務。</p><pre>.\agent-skills-test.exe skills-test --console {{.URL}}</pre>
+<h2>2. 創建測試員工並綁定電腦</h2><p>Agent 連上後刷新此頁。用戶名填寫員工日常登錄 b13 的 Windows 用戶名，可在該員工終端運行 whoami 查看。</p>
+<form method="post" action="/test/bind"><input type="hidden" name="csrf" value="{{.CSRF}}"><label>測試電腦<select name="machine" required>{{range .Devices}}<option>{{.Hostname}}</option>{{end}}</select></label><label>員工 Windows 用戶名<input name="windows_user" required placeholder="例如 weipeng"></label><button>創建並綁定</button></form>
+<h2>3. 派發與回收</h2><p>進入 Skill 管理，新增或導入 Skill，再選擇剛綁定的員工。檢查 b13 新會話中的 Skill；隨後測試更新、回退和撤回。新版 Agent 與刷新適配會自動重掃當前桌面進程，不主動中斷任務；後台區分文件同步和等待客戶端刷新。</p>
+<p>結束後先在後台撤回；也可在管理員終端執行 <code>.\agent-skills-test.exe skills-test --cleanup</code>，只清理測試 Agent 管理的 Skill。</p>
+<h2>已連接的電腦</h2><ul>{{range .Devices}}<li>{{.Hostname}} · {{.AgentVersion}}</li>{{else}}<li>尚未連接；先啓動 Windows 測試 Agent。</li>{{end}}</ul>
 </main></body></html>`))
 	mux := http.NewServeMux()
 	mux.HandleFunc("/test", s.requireSession(func(w http.ResponseWriter, r *http.Request, sess *session) {
@@ -122,17 +122,17 @@ func skillsManualHandler(s *Server, origin, agentFile string) http.Handler {
 	mux.HandleFunc("/test/bind", s.requirePostNotice("/test", func(sess *session, r *http.Request) (string, error) {
 		user := strings.TrimSpace(r.FormValue("windows_user"))
 		if !regexp.MustCompile(`^[A-Za-z0-9._-]{1,64}$`).MatchString(user) || strings.EqualFold(user, "administrator") {
-			return "", errors.New("请填写普通员工的 Windows 用户名")
+			return "", errors.New("請填寫普通員工的 Windows 用戶名")
 		}
 		e, err := s.dbm.store.Employees().ByWindowsUser(r.Context(), user)
 		if errors.Is(err, repo.ErrNotFound) {
-			e, err = s.dbm.store.Employees().Create(r.Context(), repo.NewEmployee{WindowsUser: user, Name: user, Department: "Skill 测试"})
+			e, err = s.dbm.store.Employees().Create(r.Context(), repo.NewEmployee{WindowsUser: user, Name: user, Department: "Skill 測試"})
 		}
 		if err != nil {
 			return "", err
 		}
 		_, err = s.dbm.ops.BindMachine(r.Context(), r.FormValue("machine"), e.ID, "isolated skill test", sess.actor, "manual-test")
-		return "已绑定，可以进入 Skill 管理派发", err
+		return "已綁定，可以進入 Skill 管理派發", err
 	}))
 	mux.HandleFunc("/test/download", func(w http.ResponseWriter, r *http.Request) {
 		if agentFile == "" {

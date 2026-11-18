@@ -72,8 +72,8 @@ func skillFields(bundle model.ManagedSkill) (description, when, steps string) {
 	_ = yaml.Unmarshal([]byte(text[4:4+end]), &header)
 	body := strings.TrimSpace(text[4+end+5:])
 	when, steps = "", body
-	if rest, ok := strings.CutPrefix(body, "## 何时使用\n"); ok {
-		if a, b, found := strings.Cut(rest, "\n## 操作步骤\n"); found {
+	if rest, ok := strings.CutPrefix(body, companyskills.WhenHeading+"\n"); ok {
+		if a, b, found := strings.Cut(rest, "\n"+companyskills.StepsHeading+"\n"); found {
 			when, steps = strings.TrimSpace(a), strings.TrimSpace(b)
 		}
 	}
@@ -92,7 +92,7 @@ func (s *Server) handleCustomerSkills(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if c.Role != "manager" {
-		http.Error(w, "公司 Skill 由客户经理管理", http.StatusForbidden)
+		http.Error(w, "公司 Skill 由客戶經理管理", http.StatusForbidden)
 		return
 	}
 	s.serveSkills(w, r, skillsPage{Name: c.Name, CSRF: csrf, Base: "/customer/skills", Editable: true})
@@ -105,12 +105,12 @@ func (s *Server) serveSkills(w http.ResponseWriter, r *http.Request, p skillsPag
 	}
 	catalog, version, err := companyskills.Load(r.Context(), s.dbm.store.Settings())
 	if err != nil {
-		http.Error(w, "读取 Skill 失败", 500)
+		http.Error(w, "讀取 Skill 失敗", 500)
 		return
 	}
 	roster, err := s.dbm.store.Employees().List(r.Context(), repo.EmployeeFilter{})
 	if err != nil {
-		http.Error(w, "读取员工失败", 500)
+		http.Error(w, "讀取員工失敗", 500)
 		return
 	}
 	p.Version, p.Notice, p.Error = version, r.URL.Query().Get("msg"), r.URL.Query().Get("err")
@@ -127,7 +127,7 @@ func (s *Server) serveSkills(w http.ResponseWriter, r *http.Request, p skillsPag
 		p.Mode = "import"
 	}
 	if !p.Editable && (p.Creating || r.URL.Query().Get("edit") != "") {
-		http.Error(w, "当前账号只能查看 Skill", http.StatusForbidden)
+		http.Error(w, "當前賬號只能查看 Skill", http.StatusForbidden)
 		return
 	}
 	departments := map[string]bool{}
@@ -156,16 +156,16 @@ func (s *Server) serveSkills(w http.ResponseWriter, r *http.Request, p skillsPag
 		row := skillRow{Skill: skill}
 		bundle, err := skill.Bundle()
 		if err != nil {
-			http.Error(w, "Skill 版本损坏", 500)
+			http.Error(w, "Skill 版本損壞", 500)
 			return
 		}
 		row.Description, _, _ = skillFields(bundle)
 		row.FileCount = len(bundle.Files)
-		row.Assignment, row.Audience = "draft", "未派发"
+		row.Assignment, row.Audience = "draft", "未派發"
 		if skill.TrialEmployee != "" {
-			row.Assignment, row.Audience = "trial", "试用中"
+			row.Assignment, row.Audience = "trial", "試用中"
 		} else if len(skill.Employees)+len(skill.Departments) > 0 {
-			row.Assignment, row.Audience = "assigned", "已派发"
+			row.Assignment, row.Audience = "assigned", "已派發"
 		}
 		if row.Assignment == "draft" {
 			p.DraftCount++
@@ -207,7 +207,7 @@ func (s *Server) serveSkills(w http.ResponseWriter, r *http.Request, p skillsPag
 			p.Edit = &copy
 			bundle, err := skill.Bundle()
 			if err != nil {
-				http.Error(w, "Skill 版本损坏", 500)
+				http.Error(w, "Skill 版本損壞", 500)
 				return
 			}
 			p.Description, p.When, p.Steps = skillFields(bundle)
@@ -239,10 +239,10 @@ func (s *Server) serveSkills(w http.ResponseWriter, r *http.Request, p skillsPag
 	}
 	events, _, err := s.dbm.store.Audit().Search(r.Context(), repo.AuditFilter{TargetType: "company_skill", Limit: 50})
 	if err != nil {
-		http.Error(w, "读取 Skill 操作记录失败", 500)
+		http.Error(w, "讀取 Skill 操作記錄失敗", 500)
 		return
 	}
-	labels := map[string]string{"skill.save": "保存新版本", "skill.assign": "修改派发范围", "skill.trial": "派发试用", "skill.rollback": "使用历史版本", "skill.revoke": "全部撤回"}
+	labels := map[string]string{"skill.save": "保存新版本", "skill.assign": "修改派發範圍", "skill.trial": "派發試用", "skill.rollback": "使用歷史版本", "skill.revoke": "全部撤回"}
 	people := map[string]string{}
 	for _, e := range roster {
 		people[e.ID] = e.Name + " · " + e.WindowsUser
@@ -260,22 +260,22 @@ func (s *Server) serveSkills(w http.ResponseWriter, r *http.Request, p skillsPag
 		if after.Trial != "" {
 			label := people[after.Trial]
 			if label == "" {
-				label = "已停用的员工"
+				label = "已停用的員工"
 			}
-			recipients = append(recipients, "试用："+label)
+			recipients = append(recipients, "試用："+label)
 		}
 		for _, id := range after.Employees {
 			label := people[id]
 			if label == "" {
-				label = "已停用的员工"
+				label = "已停用的員工"
 			}
 			recipients = append(recipients, label)
 		}
 		for _, department := range after.Departments {
-			recipients = append(recipients, "部门："+department)
+			recipients = append(recipients, "部門："+department)
 		}
 		if len(recipients) == 0 {
-			recipients = append(recipients, "未派发")
+			recipients = append(recipients, "未派發")
 		}
 		actor := detail["actor_name"]
 		if actor == "" {
@@ -285,7 +285,7 @@ func (s *Server) serveSkills(w http.ResponseWriter, r *http.Request, p skillsPag
 	}
 	devices, err := s.dbm.store.Devices().List(r.Context(), repo.DeviceFilter{})
 	if err != nil {
-		http.Error(w, "读取设备失败", 500)
+		http.Error(w, "讀取設備失敗", 500)
 		return
 	}
 	for _, device := range devices {
@@ -294,17 +294,17 @@ func (s *Server) serveSkills(w http.ResponseWriter, r *http.Request, p skillsPag
 			continue
 		}
 		if err != nil {
-			http.Error(w, "读取设备绑定失败", 500)
+			http.Error(w, "讀取設備綁定失敗", 500)
 			return
 		}
 		e, err := s.dbm.store.Employees().ByID(r.Context(), binding.EmployeeID)
 		if err != nil {
-			http.Error(w, "读取绑定员工失败", 500)
+			http.Error(w, "讀取綁定員工失敗", 500)
 			return
 		}
 		plan, err := catalog.Desired(e)
 		if err != nil {
-			http.Error(w, "计算派发清单失败", 500)
+			http.Error(w, "計算派發清單失敗", 500)
 			return
 		}
 		row := skillDeliveryRow{Hostname: device.Hostname, User: e.Name + " · " + e.WindowsUser, State: "等待 Agent 同步", Status: "待同步", Tone: "warn"}
@@ -315,7 +315,7 @@ func (s *Server) serveSkills(w http.ResponseWriter, r *http.Request, p skillsPag
 		row.Expected = strings.Join(expected, ", ")
 		report, err := s.dbm.store.Reports().Get(r.Context(), device.ID)
 		if err != nil && !errors.Is(err, repo.ErrNotFound) {
-			http.Error(w, "读取派发结果失败", 500)
+			http.Error(w, "讀取派發結果失敗", 500)
 			return
 		}
 		var actual model.Status
@@ -337,7 +337,7 @@ func (s *Server) serveSkills(w http.ResponseWriter, r *http.Request, p skillsPag
 				}
 				row.Actual = strings.Join(versions, ", ")
 				if actual.ManagedSkills.State != "applied" {
-					row.State = map[string]string{"failed": "同步失败，请联系 TEENet", "restart_pending": "旧版 Agent 等待刷新，请升级 Agent", "refresh_pending": "文件已同步，等待 Codex 刷新", "deferred": "等待员工登录云电脑"}[actual.ManagedSkills.State]
+					row.State = map[string]string{"failed": "同步失敗，請聯繫 TEENet", "restart_pending": "舊版 Agent 等待刷新，請升級 Agent", "refresh_pending": "文件已同步，等待 Codex 刷新", "deferred": "等待員工登錄雲電腦"}[actual.ManagedSkills.State]
 					if actual.ManagedSkills.State == "refresh_pending" && !matches {
 						row.State = "等待 Agent 同步最新版本"
 					}
@@ -345,18 +345,18 @@ func (s *Server) serveSkills(w http.ResponseWriter, r *http.Request, p skillsPag
 						row.State = "等待 Agent 同步"
 					}
 					if actual.ManagedSkills.State == "failed" {
-						row.Status, row.Tone = "同步失败", "bad"
+						row.Status, row.Tone = "同步失敗", "bad"
 					}
 					if actual.ManagedSkills.State == "refresh_pending" && matches {
 						row.Status = "等待刷新"
 					}
 				} else if matches {
-					row.State = "文件已同步，当前无需等待刷新（最近上报）"
+					row.State = "文件已同步，當前無需等待刷新（最近上報）"
 					row.Status, row.Tone = "已同步", "ok"
 				}
 			} else {
-				row.State = "Agent 尚未上报 Skill 能力"
-				row.Status = "待升级 Agent"
+				row.State = "Agent 尚未上報 Skill 能力"
+				row.Status = "待升級 Agent"
 			}
 		}
 		if p.View != "deliveries" || p.Query == "" || strings.Contains(strings.ToLower(row.User+" "+row.Hostname), strings.ToLower(p.Query)) {
@@ -371,14 +371,14 @@ func (s *Server) serveSkills(w http.ResponseWriter, r *http.Request, p skillsPag
 
 func parseSkillPost(w http.ResponseWriter, r *http.Request, csrf string) error {
 	if r.Method != http.MethodPost {
-		return errors.New("请使用表单提交")
+		return errors.New("請使用表單提交")
 	}
 	r.Body = http.MaxBytesReader(w, r.Body, 6<<20)
 	if err := parseUpload(r); err != nil {
-		return errors.New("表单或附件过大，最大 6 MiB")
+		return errors.New("表單或附件過大，最大 6 MiB")
 	}
 	if subtle.ConstantTimeCompare([]byte(r.PostFormValue("csrf")), []byte(csrf)) != 1 {
-		return errors.New("表单已过期，请刷新页面")
+		return errors.New("表單已過期，請刷新頁面")
 	}
 	return nil
 }
@@ -386,7 +386,7 @@ func parseSkillPost(w http.ResponseWriter, r *http.Request, csrf string) error {
 func skillChange(r *http.Request, catalog companyskills.Catalog, actorType, actor string) (companyskills.Change, error) {
 	version, err := strconv.Atoi(r.PostFormValue("version"))
 	if err != nil || version < 0 {
-		return companyskills.Change{}, errors.New("缺少页面版本，请刷新")
+		return companyskills.Change{}, errors.New("缺少頁面版本，請刷新")
 	}
 	c := companyskills.Change{Action: r.PostFormValue("action"), Name: strings.TrimSpace(r.PostFormValue("name")), Title: r.PostFormValue("title"), TrialEmployee: r.PostFormValue("trial"), Employees: r.PostForm["employees"], Departments: r.PostForm["departments"], ExpectedVersion: version, ActorType: actorType, ActorID: actor}
 	c.Revision, _ = strconv.Atoi(r.PostFormValue("revision"))
@@ -461,7 +461,7 @@ func skillChange(r *http.Request, catalog companyskills.Catalog, actorType, acto
 	}
 	for _, existing := range catalog.Skills {
 		if r.PostFormValue("intent") == "create" && existing.Name == c.Name {
-			return c, errors.New("这个 Skill 已存在，请进入该 Skill 的“上传新版”更新内容")
+			return c, errors.New("這個 Skill 已存在，請進入該 Skill 的“上傳新版”更新內容")
 		}
 	}
 	if r.PostFormValue("intent") == "update" {
@@ -470,7 +470,7 @@ func skillChange(r *http.Request, catalog companyskills.Catalog, actorType, acto
 			found = found || existing.Name == c.Name
 		}
 		if !found {
-			return c, errors.New("要更新的 Skill 已不存在，请刷新清单")
+			return c, errors.New("要更新的 Skill 已不存在，請刷新清單")
 		}
 	}
 	c.Bundle = bundle
@@ -501,11 +501,11 @@ func (s *Server) applySkillChange(w http.ResponseWriter, r *http.Request, base, 
 		return
 	}
 	s.dbm.hub.WakeAll()
-	messages := map[string]string{"save": "内容已保存为新版本，原有派发范围保持不变。", "assign": "派发范围已保存，在线电脑将自动同步。", "trial": "已派发给试用员工，在线电脑将自动同步。", "rollback": "已切换到所选历史版本，已派发的员工将同步到此版本。", "revoke": "已撤回全部派发，内容和历史版本已保留。"}
+	messages := map[string]string{"save": "內容已保存爲新版本，原有派發範圍保持不變。", "assign": "派發範圍已保存，在線電腦將自動同步。", "trial": "已派發給試用員工，在線電腦將自動同步。", "rollback": "已切換到所選歷史版本，已派發的員工將同步到此版本。", "revoke": "已撤回全部派發，內容和歷史版本已保留。"}
 	if c.Action == "save" && r.PostFormValue("intent") == "create" {
-		messages["save"] = "Skill 已创建，可在“派发范围”设置员工和部门。"
+		messages["save"] = "Skill 已創建，可在“派發範圍”設置員工和部門。"
 		if c.TrialEmployee != "" {
-			messages["save"] = "Skill 已创建并派发给试用员工，在线电脑将自动同步。"
+			messages["save"] = "Skill 已創建並派發給試用員工，在線電腦將自動同步。"
 		}
 	}
 	tab := map[string]string{"assign": "audience", "trial": "audience", "revoke": "audience", "rollback": "versions"}[c.Action]
@@ -525,7 +525,7 @@ func (s *Server) handleCustomerSkillChange(w http.ResponseWriter, r *http.Reques
 		return
 	}
 	if c.Role != "manager" {
-		http.Error(w, "公司 Skill 由客户经理管理", http.StatusForbidden)
+		http.Error(w, "公司 Skill 由客戶經理管理", http.StatusForbidden)
 		return
 	}
 	s.applySkillChange(w, r, "/customer/skills", csrf, "customer", c.ID, c.Name)

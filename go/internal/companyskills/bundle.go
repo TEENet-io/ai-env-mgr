@@ -74,69 +74,77 @@ func validPath(name string) bool {
 
 func Validate(s model.ManagedSkill) error {
 	if !ValidName(s.Name) || s.Version < 1 {
-		return errors.New("skill 名称须使用带前缀的英文标识，例如 teenet-renewal，只含小写字母、数字和短横线；版本须大于零")
+		return errors.New("skill 名稱須使用帶前綴的英文標識，例如 teenet-renewal，只含小寫字母、數字和短橫線；版本須大於零")
 	}
 	if len(s.Files) == 0 || len(s.Files) > MaxFiles {
-		return errors.New("每个 skill 须包含 1–64 个文件")
+		return errors.New("每個 skill 須包含 1–64 個文件")
 	}
 	total, seen := 0, map[string]bool{}
 	for name, data := range s.Files {
 		lower := strings.ToLower(name)
 		if !validPath(name) || seen[lower] {
-			return fmt.Errorf("不支持的文件路径或同名文件：%s", name)
+			return fmt.Errorf("不支持的文件路徑或同名文件：%s", name)
 		}
 		seen[lower] = true
 		total += len(data)
 		if len(data) > MaxFileBytes || total > MaxBundleBytes {
-			return errors.New("文件最大 1 MiB，每个 skill 最大 4 MiB")
+			return errors.New("文件最大 1 MiB，每個 skill 最大 4 MiB")
 		}
 	}
 	for name := range seen {
 		for parent := path.Dir(name); parent != "."; parent = path.Dir(parent) {
 			if seen[parent] {
-				return errors.New("文件与目录名称冲突")
+				return errors.New("文件與目錄名稱衝突")
 			}
 		}
 	}
 	content := bytes.ReplaceAll(s.Files["SKILL.md"], []byte("\r\n"), []byte("\n"))
 	if !utf8.Valid(content) || !bytes.HasPrefix(content, []byte("---\n")) {
-		return errors.New("须包含 UTF-8 SKILL.md 和 YAML 说明头")
+		return errors.New("須包含 UTF-8 SKILL.md 和 YAML 說明頭")
 	}
 	end := bytes.Index(content[4:], []byte("\n---\n"))
 	if end < 0 {
-		return errors.New("SKILL.md 说明头未结束")
+		return errors.New("SKILL.md 說明頭未結束")
 	}
 	var header struct {
 		Name        string `yaml:"name"`
 		Description string `yaml:"description"`
 	}
 	if err := yaml.Unmarshal(content[4:4+end], &header); err != nil {
-		return fmt.Errorf("SKILL.md 说明头：%w", err)
+		return fmt.Errorf("SKILL.md 說明頭：%w", err)
 	}
 	if header.Name != s.Name || strings.TrimSpace(header.Description) == "" || len(header.Description) > 1024 {
-		return errors.New("SKILL.md 名称须与下发名称相同，用途须为 1–1024 字节")
+		return errors.New("SKILL.md 名稱須與下發名稱相同，用途須爲 1–1024 字節")
 	}
 	if len(bytes.TrimSpace(content[4+end+5:])) == 0 {
-		return errors.New("SKILL.md 缺少操作步骤")
+		return errors.New("SKILL.md 缺少操作步驟")
 	}
 	if s.SHA256 != Digest(s.Files) {
-		return errors.New("skill SHA-256 校验不符")
+		return errors.New("skill SHA-256 校驗不符")
 	}
 	return nil
 }
 
+// WhenHeading and StepsHeading mark the two sections FromForm writes into
+// SKILL.md. They are skill content read by Codex, not console text, so they
+// keep their original spelling and existing skills still parse.
+const (
+	WhenHeading  = "## 何时使用"
+	StepsHeading = "## 操作步骤"
+)
+
 // FromForm generates frontmatter without accepting YAML or shell fragments.
 func FromForm(name, description, when, steps string, attachments map[string][]byte) (model.ManagedSkill, error) {
 	if strings.TrimSpace(steps) == "" {
-		return model.ManagedSkill{}, errors.New("请填写操作步骤")
+		return model.ManagedSkill{}, errors.New("請填寫操作步驟")
 	}
 	n, _ := json.Marshal(name)
 	d, _ := json.Marshal(strings.TrimSpace(description))
-	content := fmt.Sprintf("---\nname: %s\ndescription: %s\n---\n\n## 何时使用\n\n%s\n\n## 操作步骤\n\n%s\n", n, d, strings.TrimSpace(when), strings.TrimSpace(steps))
+	content := fmt.Sprintf("---\nname: %s\ndescription: %s\n---\n\n%s\n\n%s\n\n%s\n\n%s\n", n, d, WhenHeading, strings.TrimSpace(when), StepsHeading, strings.TrimSpace(steps))
 	s := model.ManagedSkill{Name: name, Version: 1, Files: map[string][]byte{"SKILL.md": []byte(content)}}
 	for file, data := range attachments {
 		if file == "SKILL.md" {
-			return s, errors.New("附件不能替换 SKILL.md")
+			return s, errors.New("附件不能替換 SKILL.md")
 		}
 		s.Files[file] = data
 	}
@@ -151,10 +159,10 @@ func FromZIP(name string, data []byte) (model.ManagedSkill, error) {
 	s := model.ManagedSkill{Name: name, Version: 1, Files: map[string][]byte{}}
 	r, err := zip.NewReader(bytes.NewReader(data), int64(len(data)))
 	if err != nil {
-		return s, fmt.Errorf("读取 skill ZIP：%w", err)
+		return s, fmt.Errorf("讀取 skill ZIP：%w", err)
 	}
 	if len(r.File) > MaxFiles*2 {
-		return s, errors.New("ZIP 文件数过多")
+		return s, errors.New("ZIP 文件數過多")
 	}
 	if name == "" {
 		name, err = zipSkillName(r.File)
@@ -169,14 +177,14 @@ func FromZIP(name string, data []byte) (model.ManagedSkill, error) {
 			continue
 		}
 		if !f.Mode().IsRegular() {
-			return s, errors.New("ZIP 不允许链接或特殊文件")
+			return s, errors.New("ZIP 不允許鏈接或特殊文件")
 		}
 		file := strings.TrimPrefix(f.Name, name+"/")
 		if !validPath(file) || f.UncompressedSize64 > MaxFileBytes {
-			return s, fmt.Errorf("ZIP 文件无效：%s", f.Name)
+			return s, fmt.Errorf("ZIP 文件無效：%s", f.Name)
 		}
 		if _, ok := s.Files[file]; ok {
-			return s, errors.New("ZIP 包含重复文件")
+			return s, errors.New("ZIP 包含重複文件")
 		}
 		reader, err := f.Open()
 		if err != nil {
@@ -192,7 +200,7 @@ func FromZIP(name string, data []byte) (model.ManagedSkill, error) {
 		}
 		total += len(body)
 		if len(body) > MaxFileBytes || total > MaxBundleBytes {
-			return s, errors.New("ZIP 解压内容过大")
+			return s, errors.New("ZIP 解壓內容過大")
 		}
 		s.Files[file] = body
 	}
@@ -207,7 +215,7 @@ func zipSkillName(files []*zip.File) (string, error) {
 			continue
 		}
 		if entry != nil || !validPath(file.Name) || strings.Count(file.Name, "/") > 1 || !file.Mode().IsRegular() || file.UncompressedSize64 > MaxFileBytes {
-			return "", errors.New("ZIP 须只包含一个 Skill，SKILL.md 放在根目录或同名文件夹内")
+			return "", errors.New("ZIP 須只包含一個 Skill，SKILL.md 放在根目錄或同名文件夾內")
 		}
 		entry = file
 	}
@@ -228,20 +236,20 @@ func zipSkillName(files []*zip.File) (string, error) {
 	}
 	content = bytes.ReplaceAll(content, []byte("\r\n"), []byte("\n"))
 	if len(content) > MaxFileBytes || !bytes.HasPrefix(content, []byte("---\n")) {
-		return "", errors.New("SKILL.md 缺少有效的 YAML 说明头")
+		return "", errors.New("SKILL.md 缺少有效的 YAML 說明頭")
 	}
 	end := bytes.Index(content[4:], []byte("\n---\n"))
 	if end < 0 {
-		return "", errors.New("SKILL.md 说明头未结束")
+		return "", errors.New("SKILL.md 說明頭未結束")
 	}
 	var header struct {
 		Name string `yaml:"name"`
 	}
 	if err := yaml.Unmarshal(content[4:4+end], &header); err != nil || !ValidName(header.Name) {
-		return "", errors.New("SKILL.md 的 name 须为带前缀的小写英文标识，例如 teenet-renewal")
+		return "", errors.New("SKILL.md 的 name 須爲帶前綴的小寫英文標識，例如 teenet-renewal")
 	}
 	if dir := path.Dir(entry.Name); dir != "." && dir != header.Name {
-		return "", errors.New("ZIP 外层文件夹名称须与 SKILL.md 的 name 一致")
+		return "", errors.New("ZIP 外層文件夾名稱須與 SKILL.md 的 name 一致")
 	}
 	return header.Name, nil
 }

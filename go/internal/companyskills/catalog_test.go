@@ -82,7 +82,7 @@ func TestCatalogLifecycleCASAndAtomicAudit(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	change := Change{Action: "save", Name: "bippo-renewal", Title: "续保清单", Bundle: testBundle("bippo-renewal", "first"), TrialEmployee: alice.ID, ActorType: "customer", ActorID: "customer-manager"}
+	change := Change{Action: "save", Name: "bippo-renewal", Title: "續保清單", Bundle: testBundle("bippo-renewal", "first"), TrialEmployee: alice.ID, ActorType: "customer", ActorID: "customer-manager"}
 	if err := Apply(ctx, failedStore{store}, change); err == nil {
 		t.Fatal("audit failure accepted")
 	}

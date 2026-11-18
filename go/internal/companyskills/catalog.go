@@ -39,7 +39,7 @@ func (s Skill) Bundle() (model.ManagedSkill, error) {
 			return rev.Bundle, Validate(rev.Bundle)
 		}
 	}
-	return model.ManagedSkill{}, errors.New("当前 skill 版本不存在")
+	return model.ManagedSkill{}, errors.New("當前 skill 版本不存在")
 }
 
 type Catalog struct {
@@ -56,15 +56,15 @@ func Load(ctx context.Context, settings repo.Settings) (Catalog, int, error) {
 	}
 	var c Catalog
 	if err := json.Unmarshal(row.Value, &c); err != nil {
-		return c, 0, fmt.Errorf("读取公司 skill 清单：%w", err)
+		return c, 0, fmt.Errorf("讀取公司 skill 清單：%w", err)
 	}
 	if c.Skills == nil || len(c.Skills) > MaxSkills {
-		return c, 0, errors.New("公司 skill 清单不完整")
+		return c, 0, errors.New("公司 skill 清單不完整")
 	}
 	seen := map[string]bool{}
 	for _, skill := range c.Skills {
 		if !ValidName(skill.Name) || seen[skill.Name] {
-			return c, 0, errors.New("公司 skill 清单名称无效或重复")
+			return c, 0, errors.New("公司 skill 清單名稱無效或重複")
 		}
 		seen[skill.Name] = true
 		bundle, err := skill.Bundle()
@@ -72,7 +72,7 @@ func Load(ctx context.Context, settings repo.Settings) (Catalog, int, error) {
 			return c, 0, err
 		}
 		if bundle.Name != skill.Name {
-			return c, 0, errors.New("公司 skill 版本名称不一致")
+			return c, 0, errors.New("公司 skill 版本名稱不一致")
 		}
 	}
 	return c, row.Version, nil
@@ -106,7 +106,7 @@ func (c Catalog) Desired(employee repo.Employee) (*model.ManagedSkills, error) {
 			total += len(data)
 		}
 		if total > MaxPlanBytes {
-			return nil, errors.New("员工 skill 总量超过 8 MiB，请减少附件")
+			return nil, errors.New("員工 skill 總量超過 8 MiB，請減少附件")
 		}
 		plan.Skills = append(plan.Skills, bundle)
 	}
@@ -159,18 +159,18 @@ func Apply(ctx context.Context, store repo.Store, change Change) error {
 		switch change.Action {
 		case "save":
 			if change.Bundle.Name != change.Name || strings.TrimSpace(change.Title) == "" || len(change.Title) > 200 {
-				return errors.New("请填写 skill 名称和业务名称")
+				return errors.New("請填寫 skill 名稱和業務名稱")
 			}
 			change.Bundle.Version = len(skill.Revisions) + 1
 			if err := Validate(change.Bundle); err != nil {
 				return err
 			}
 			if len(skill.Revisions) >= 64 {
-				return errors.New("每个 skill 最多保留 64 个版本，请另建 skill")
+				return errors.New("每個 skill 最多保留 64 個版本，請另建 skill")
 			}
 			if index < 0 {
 				if len(catalog.Skills) >= MaxSkills {
-					return errors.New("公司 skill 数量已达 64 个")
+					return errors.New("公司 skill 數量已達 64 個")
 				}
 				skill.Name = change.Name
 				skill.TrialEmployee = change.TrialEmployee
@@ -186,10 +186,10 @@ func Apply(ctx context.Context, store repo.Store, change Change) error {
 			skill.TrialEmployee = ""
 		case "trial":
 			if index < 0 || change.TrialEmployee == "" {
-				return errors.New("请选择试用员工")
+				return errors.New("請選擇試用員工")
 			}
 			if len(skill.Employees) > 0 || len(skill.Departments) > 0 {
-				return errors.New("已派发的 skill 请先撤回再试用")
+				return errors.New("已派發的 skill 請先撤回再試用")
 			}
 			skill.TrialEmployee = change.TrialEmployee
 		case "rollback":
@@ -226,12 +226,12 @@ func Apply(ctx context.Context, store repo.Store, change Change) error {
 		if change.Action == "assign" || change.Action == "trial" || change.Action == "save" && index < 0 {
 			for _, id := range append(append([]string{}, skill.Employees...), skill.TrialEmployee) {
 				if id != "" && !ids[id] {
-					return errors.New("派发对象须为在职员工")
+					return errors.New("派發對象須爲在職員工")
 				}
 			}
 			for _, department := range skill.Departments {
 				if !departments[department] {
-					return errors.New("派发部门不存在")
+					return errors.New("派發部門不存在")
 				}
 			}
 		}
@@ -250,7 +250,7 @@ func Apply(ctx context.Context, store repo.Store, change Change) error {
 			return err
 		}
 		if len(data) > MaxCatalogBytes {
-			return errors.New("公司 skill 清单和历史总量超过 32 MiB")
+			return errors.New("公司 skill 清單和歷史總量超過 32 MiB")
 		}
 		if _, err := tx.Settings().Set(ctx, SettingKey, data, version, change.ActorID); err != nil {
 			return err

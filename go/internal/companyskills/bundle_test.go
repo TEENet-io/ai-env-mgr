@@ -107,7 +107,7 @@ func TestBundleRejectsWindowsPathsAndExecutableContent(t *testing.T) {
 	}
 	s := testBundle("bippo-renewal", "Follow these steps")
 	s.Files["references/template.csv"] = []byte("customer,date\n")
-	s.Files["references/客户 清单.csv"] = []byte("客户,日期\n")
+	s.Files["references/客戶 清單.csv"] = []byte("客戶,日期\n")
 	s.SHA256 = Digest(s.Files)
 	if err := Validate(s); err != nil {
 		t.Fatal(err)

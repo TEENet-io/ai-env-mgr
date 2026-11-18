@@ -17,7 +17,7 @@
         if (!choice.hidden) visible++;
         if (choice.querySelector("input").checked) selected++;
       });
-      count.textContent = "已选 " + selected + " 项";
+      count.textContent = "已選 " + selected + " 項";
       empty.hidden = choices.length === 0 || visible > 0;
     }
     filter.addEventListener("input", update);
