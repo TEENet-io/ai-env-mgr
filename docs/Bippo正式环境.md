@@ -59,7 +59,35 @@ scp /tmp/ai-env-admin /tmp/ai-env-migrate ec2-user@175.41.186.104:/tmp/
 2. 用新的 `ai-env-migrate` 以属主身份迁移：`set -a; . /etc/ai-env-mgr/migrate.env; set +a; /tmp/ai-env-migrate up`
 3. 旧程序留作 `.prev`，装上新程序，`systemctl restart ai-env-mgr-console`，确认 `curl http://172.17.0.1:8090/healthz` 返回 `ok`。不通就换回 `.prev`。
 
+## 用老镜像的云电脑换成 Bippo Agent
+
+老镜像里的服务 `AIEnvMgrAgent` 启动的是 `C:\Tools\ai-env-mgr.exe`，不是 `setup` 安装的 `C:\Program Files\AIEnvMgr\agent.exe`。
+
+**已知 bug（还没修）**：`agent.exe setup` 看到服务「已注册」就跳过，不检查服务指向哪个文件，结果只换了一个没人用的文件。症状：
+- `C:\Program Files\AIEnvMgr\agent.exe status` 显示的是新控制台；
+- 但日志里一直在和老控制台同步，新控制台一个请求也收不到；
+- `sc.exe qc AIEnvMgrAgent` 的 `BINARY_PATH_NAME` 是 `C:\Tools\ai-env-mgr.exe run`。
+
+老控制台推的 Agent 升级也会替换 `C:\Tools` 下那个文件（2026-11-19 换包时正好撞上一次）。
+
+修好之前，在模板机上按这个顺序做（管理员 PowerShell）：
+
+```powershell
+# 先等几分钟，让老控制台的升级和 Codex 安装跑完
+cd C:\Users\<你>\Downloads            # agent-bippo.exe 放在这里
+.\agent-bippo.exe setup                  # 复制到 C:\Program Files\AIEnvMgr\agent.exe
+& 'C:\Program Files\AIEnvMgr\agent.exe' uninstall
+Rename-Item C:\Tools\ai-env-mgr.exe ai-env-mgr.exe.old-console
+& 'C:\Program Files\AIEnvMgr\agent.exe' setup
+sc.exe qc AIEnvMgrAgent                  # 应为 "C:\Program Files\AIEnvMgr\agent.exe" run
+```
+
+`setup` 第 5 步报 `the console does not accept this machine's token` 是正常的（带的是老控制台的令牌），服务会自己重新注册，约一分钟后在后台出现。老控制台里会留一条这台机器的记录，删掉即可。
+
+修复已写好，在分支 `fix/setup-repoint-service`（提交 `0d0eeb2`，未推送）：`setup` 读服务的实际路径，不是自己就把服务改指向 `C:\Program Files\AIEnvMgr\agent.exe`。合并发版后，上面的步骤就只剩 `setup` → `prepare-image` → 关机。
+
 ## 还没做的
 
 - 飞书告警 webhook：在设置页的通知渠道里配置。
 - `ai-collect-sg` 的 Bucket 授权策略：首次备份误传时发现，`bippo-workspace-console` 这对密钥能往那个 bucket 写，要收紧。
+- `setup` 不检查服务实际路径的 bug（见上一节），修复在 `fix/setup-repoint-service`，待合并发版。
