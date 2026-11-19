@@ -77,3 +77,12 @@ func builtIn() config.Config {
 		AccessKeySecret: ossAccessKeySecret,
 	}
 }
+
+// ossTarget is the bucket and endpoint this deployment uses: its own when
+// AIENVMGR_OSS_BUCKET / AIENVMGR_OSS_ENDPOINT name them, else the built-in
+// ones. Every command that talks to the bucket goes through here, so a
+// deployment's backup cannot land in another deployment's bucket.
+func ossTarget() (bucket, endpoint string) {
+	built := builtIn()
+	return envOr("AIENVMGR_OSS_BUCKET", built.Bucket), envOr("AIENVMGR_OSS_ENDPOINT", built.Endpoint)
+}

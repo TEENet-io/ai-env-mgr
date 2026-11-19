@@ -34,16 +34,15 @@ func cmdBackup(args []string) error {
 		// A dump that failed upstream of gzip is a valid, tiny archive.
 		return fmt.Errorf("backup: the dump is only %d bytes; refusing to upload it", info.Size())
 	}
-	built := builtIn()
 	keyID, secret := os.Getenv("AIENVMGR_OSS_ACCESS_KEY_ID"), os.Getenv("AIENVMGR_OSS_ACCESS_KEY_SECRET")
 	if keyID == "" || secret == "" {
 		return errors.New("backup: AIENVMGR_OSS_ACCESS_KEY_ID and _SECRET must be set (source the console's environment file)")
 	}
-	endpoint := built.Endpoint
+	bucket, endpoint := ossTarget()
 	if data := os.Getenv("AIENVMGR_OSS_DATA_ENDPOINT"); data != "" {
 		endpoint = data
 	}
-	store, err := ossclient.New(endpoint, built.Bucket, keyID, secret)
+	store, err := ossclient.New(endpoint, bucket, keyID, secret)
 	if err != nil {
 		return err
 	}
