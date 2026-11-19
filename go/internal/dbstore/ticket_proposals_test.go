@@ -6,7 +6,7 @@ import (
 	"testing"
 )
 
-func TestQuotaProposalRequiresManagerConfirmationBeforeCompletion(t *testing.T) {
+func TestAQuotaProposalIsConfirmedOnlyByAManager(t *testing.T) {
 	db := testDB(t)
 	ctx := context.Background()
 	if err := db.Migrate(ctx); err != nil {
@@ -38,9 +38,6 @@ func TestQuotaProposalRequiresManagerConfirmationBeforeCompletion(t *testing.T) 
 	}
 	if err := store.AddEvent(ctx, ticket.ID, "", "admin", adminID, "status", "public", "開始核對", "working", 1); err != nil {
 		t.Fatal(err)
-	}
-	if err := store.AddEvent(ctx, ticket.ID, "", "admin", adminID, "status", "public", "完成", "done", 2); err == nil {
-		t.Fatal("completed a quota request without a proposal")
 	}
 	payload := map[string]string{"amount": "100000", "unit": "tokens", "valid_until": "2026-11-30", "cost": "12.50", "currency": "USD"}
 	if err := store.SaveProposal(ctx, ticket.ID, adminID, 2, "quota", payload, true); err != nil {
@@ -87,5 +84,37 @@ func TestQuotaProposalRequiresManagerConfirmationBeforeCompletion(t *testing.T) 
 	counts, err = store.Counts(ctx, employee.ID)
 	if err != nil || counts.Pending != 0 || counts.Finished != 1 {
 		t.Fatalf("confirmed counts=%+v error=%v", counts, err)
+	}
+}
+
+// Customers raise offboarding and quota requests and the team carries them
+// out: nobody on the customer's side confirms a plan before it is done.
+func TestTheTeamCompletesOffboardingAndQuotaWithoutACustomerConfirmation(t *testing.T) {
+	db := testDB(t)
+	ctx := context.Background()
+	if err := db.Migrate(ctx); err != nil {
+		t.Fatal(err)
+	}
+	store := db.Tickets()
+	boss, err := store.CreateContactWithRole(ctx, "no-confirm-boss@example.com", "Boss", "hash", "viewer")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var adminID string
+	if err := db.Pool().QueryRow(ctx, `insert into admin_principals(username,password_hash,role)
+		values('no_confirm_operator','hash','admin') returning id`).Scan(&adminID); err != nil {
+		t.Fatal(err)
+	}
+	for _, kind := range []string{"quota", "account-delete"} {
+		ticket, err := store.Create(ctx, boss.ID, "no-confirm-"+kind, "general", kind, "申請", "normal", []byte(`{"schema_version":4,"request_kind":"`+kind+`"}`))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := store.AddEvent(ctx, ticket.ID, "", "admin", adminID, "status", "public", "開始處理", "working", 1); err != nil {
+			t.Fatal(err)
+		}
+		if err := store.AddEvent(ctx, ticket.ID, "", "admin", adminID, "status", "public", "已處理", "done", 2); err != nil {
+			t.Errorf("%s could not be completed: %v", kind, err)
+		}
 	}
 }

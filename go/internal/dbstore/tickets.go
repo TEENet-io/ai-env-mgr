@@ -498,18 +498,9 @@ func (s TicketStore) AddEvent(ctx context.Context, id, requesterID, actorType, a
 		if kind == "comment" && status == "closed" {
 			return fmt.Errorf("closed ticket cannot be replied to")
 		}
-		if nextStatus == "done" && (requestKind == "account-delete" || requestKind == "quota") {
-			var approved bool
-			if err := tx.QueryRow(ctx, `select exists(
-				select 1 from ticket_proposals p join ticket_proposal_decisions d on d.proposal_id=p.id
-				where p.ticket_id=$1 and d.decision='approved'
-				and p.id=(select max(id) from ticket_proposals where ticket_id=$1))`, id).Scan(&approved); err != nil {
-				return err
-			}
-			if !approved {
-				return errors.New("客戶尚未確認帳號刪除或額度追加方案")
-			}
-		}
+		// An offboarding or quota request is done when the team has done it:
+		// the customer asked by raising it, and nobody on their side
+		// confirms a plan first.
 		if _, err := tx.Exec(ctx, `update tickets set status=$2,version=version+1,updated_at=now(),
 			closed_at=case when $2 in ('done','closed') then coalesce(closed_at,now()) else null end where id=$1`, id, nextStatus); err != nil {
 			return err
