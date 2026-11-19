@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/TEENet-io/ai-env-mgr/internal/model"
 )
@@ -29,6 +30,36 @@ type CodexInstaller interface {
 	Install(setupPath, version string) error
 	// FreeBytes is the space available where Codex installs.
 	FreeBytes() (uint64, error)
+}
+
+// CodexProcessLister is optionally implemented by a CodexInstaller to name
+// the Codex processes still running (image, PID, owner), so a close that did
+// not take says what is left instead of only that something is.
+type CodexProcessLister interface {
+	CodexProcesses() ([]string, error)
+}
+
+// taskkill /F only asks Windows to end a process; Electron's dozen processes
+// leave the process list over the next few seconds, not by the time taskkill
+// returns. Checking once, straight after, failed most updates.
+var (
+	codexExitWait = 20 * time.Second
+	codexExitPoll = 500 * time.Millisecond
+)
+
+// waitCodexExit polls Running until Codex is gone or the wait runs out.
+func (s *Syncer) waitCodexExit() (bool, error) {
+	deadline := time.Now().Add(codexExitWait)
+	for {
+		running, err := s.Codex.Running()
+		if err != nil || !running {
+			return running, err
+		}
+		if time.Now().After(deadline) {
+			return true, nil
+		}
+		time.Sleep(codexExitPoll)
+	}
 }
 
 // Codex update states, reported in status so the administrator can see why a
@@ -146,11 +177,17 @@ func (s *Syncer) updateCodex(target model.ReleaseTarget, user string, errs *[]st
 			return codexOutcome{Version: installed, State: CodexFailed}
 		}
 		log.Printf("codex: closed %d running process(es) for immediate update", killed)
-		if stillRunning, checkErr := s.Codex.Running(); checkErr != nil {
+		if stillRunning, checkErr := s.waitCodexExit(); checkErr != nil {
 			*errs = append(*errs, fmt.Sprintf("codex: verify process closed: %v", checkErr))
 			return codexOutcome{Version: installed, State: CodexFailed}
 		} else if stillRunning {
-			*errs = append(*errs, "codex: process is still running after close request")
+			msg := fmt.Sprintf("codex: process is still running %s after close request", codexExitWait)
+			if lister, ok := s.Codex.(CodexProcessLister); ok {
+				if left, err := lister.CodexProcesses(); err == nil && len(left) > 0 {
+					msg += ": " + strings.Join(left, "; ")
+				}
+			}
+			*errs = append(*errs, msg)
 			return codexOutcome{Version: installed, State: CodexFailed}
 		}
 	}

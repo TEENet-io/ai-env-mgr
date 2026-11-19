@@ -174,3 +174,49 @@ func (c *codexInstaller) Install(setupPath, version string) error {
 	}
 	return os.WriteFile(filepath.Join(c.root, codexVersionFile), []byte(version), 0o644)
 }
+
+// CodexProcesses names every Codex process on the machine with its owner, for
+// the error an administrator reads when closing Codex before an update did not
+// take: another account's session, or one the bound user's taskkill filter
+// could not reach, shows up here by name.
+func (c *codexInstaller) CodexProcesses() ([]string, error) {
+	snap, err := windows.CreateToolhelp32Snapshot(windows.TH32CS_SNAPPROCESS, 0)
+	if err != nil {
+		return nil, err
+	}
+	defer windows.CloseHandle(snap)
+	var out []string
+	e := windows.ProcessEntry32{Size: uint32(unsafe.Sizeof(windows.ProcessEntry32{}))}
+	for err = windows.Process32First(snap, &e); err == nil; err = windows.Process32Next(snap, &e) {
+		name := windows.UTF16ToString(e.ExeFile[:])
+		for _, want := range codexProcesses {
+			if strings.EqualFold(name, want) {
+				out = append(out, fmt.Sprintf("%s pid=%d user=%s", name, e.ProcessID, processOwner(e.ProcessID)))
+				break
+			}
+		}
+	}
+	return out, nil
+}
+
+func processOwner(pid uint32) string {
+	h, err := windows.OpenProcess(windows.PROCESS_QUERY_LIMITED_INFORMATION, false, pid)
+	if err != nil {
+		return "?"
+	}
+	defer windows.CloseHandle(h)
+	var token windows.Token
+	if err := windows.OpenProcessToken(h, windows.TOKEN_QUERY, &token); err != nil {
+		return "?"
+	}
+	defer token.Close()
+	tu, err := token.GetTokenUser()
+	if err != nil {
+		return "?"
+	}
+	account, domain, _, err := tu.User.Sid.LookupAccount("")
+	if err != nil {
+		return tu.User.Sid.String()
+	}
+	return domain + `\` + account
+}
