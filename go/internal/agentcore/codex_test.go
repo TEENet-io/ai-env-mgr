@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/TEENet-io/ai-env-mgr/internal/model"
 )
@@ -247,5 +248,65 @@ func TestCodexIgnoresTheRolloutField(t *testing.T) {
 	}
 	if len(errs) != 0 {
 		t.Fatalf("unexpected errors: %v", errs)
+	}
+}
+
+// slowExitCodex is a Codex whose processes leave the list a few checks after
+// taskkill returns, as Electron's do.
+type slowExitCodex struct {
+	fakeCodex
+	checksLeft int
+	stopped    bool
+}
+
+func (f *slowExitCodex) Running() (bool, error) {
+	if !f.stopped {
+		return true, nil
+	}
+	if f.checksLeft > 0 {
+		f.checksLeft--
+		return true, nil
+	}
+	return false, nil
+}
+func (f *slowExitCodex) Stop(user string) (int, error) {
+	f.stopped = true
+	return f.fakeCodex.Stop(user)
+}
+func (f *slowExitCodex) CodexProcesses() ([]string, error) {
+	return []string{"ChatGPT.exe pid=42 user=PC\\other"}, nil
+}
+
+func TestCodexWaitsForClosedProcessesToExit(t *testing.T) {
+	defer func(w, p time.Duration) { codexExitWait, codexExitPoll = w, p }(codexExitWait, codexExitPoll)
+	codexExitWait, codexExitPoll = time.Second, time.Millisecond
+
+	store := newFakeStore()
+	codex := &slowExitCodex{fakeCodex: fakeCodex{free: 100 << 30}, checksLeft: 3}
+	s := newCodexSyncer(t, store, &codex.fakeCodex)
+	s.Codex = codex
+	pol := codexPolicy(store, "1.0.0", []byte("setup"))
+
+	var errs []string
+	out := s.updateCodex(fleetCodexTarget(pol), "work1", &errs)
+	if len(errs) > 0 || out.State != CodexIdle || codex.installs != 1 {
+		t.Fatalf("state=%q installs=%d errs=%v", out.State, codex.installs, errs)
+	}
+}
+
+func TestCodexNamesProcessesThatDoNotExit(t *testing.T) {
+	defer func(w, p time.Duration) { codexExitWait, codexExitPoll = w, p }(codexExitWait, codexExitPoll)
+	codexExitWait, codexExitPoll = 20*time.Millisecond, time.Millisecond
+
+	store := newFakeStore()
+	codex := &slowExitCodex{fakeCodex: fakeCodex{free: 100 << 30}, checksLeft: 1 << 30}
+	s := newCodexSyncer(t, store, &codex.fakeCodex)
+	s.Codex = codex
+	pol := codexPolicy(store, "1.0.0", []byte("setup"))
+
+	var errs []string
+	out := s.updateCodex(fleetCodexTarget(pol), "work1", &errs)
+	if out.State != CodexFailed || codex.installs != 0 || len(errs) != 1 || !strings.Contains(errs[0], `user=PC\other`) {
+		t.Fatalf("state=%q installs=%d errs=%v", out.State, codex.installs, errs)
 	}
 }
