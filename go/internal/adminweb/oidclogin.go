@@ -67,7 +67,20 @@ type oidcIdentity struct {
 type pendingSignIn struct {
 	flow  oidc.Flow
 	entry string
+	from  string // "tool" when the person came from the tool's contact link
 	at    time.Time
+}
+
+// fromTool is the only source a sign-in link may name: the custom tool's
+// 「聯絡 TEENet」 adds from=tool, so the sign-in is logged as coming from it
+// (AIC-204 #12). Anything else is dropped rather than written to the log.
+const fromTool = "tool"
+
+func signInSource(v string) string {
+	if v == fromTool {
+		return fromTool
+	}
+	return ""
 }
 
 func newOIDCIdentity(opts DatabaseOptions, consoleURL string) *oidcIdentity {
@@ -152,7 +165,7 @@ func (s *Server) handleOIDCStart(w http.ResponseWriter, r *http.Request) {
 		s.refuseSignIn(w, r, entry, "暫時無法連接"+id.toolName+"，請稍後再試")
 		return
 	}
-	id.put(pendingSignIn{flow: flow, entry: entry, at: time.Now()})
+	id.put(pendingSignIn{flow: flow, entry: entry, from: signInSource(r.URL.Query().Get("from")), at: time.Now()})
 	// Lax, not Strict: the callback is a navigation from the tool, which a
 	// Strict cookie would not come back with. It holds only the state, which
 	// the callback compares; the verifier and nonce stay on the server.
@@ -197,7 +210,7 @@ func (s *Server) handleOIDCCallback(w http.ResponseWriter, r *http.Request) {
 		s.oidcOpsSignIn(w, r, claims)
 		return
 	}
-	s.oidcCustomerSignIn(w, r, claims)
+	s.oidcCustomerSignIn(w, r, claims, pending.from)
 }
 
 func claimsAccount(c oidc.Claims) directory.Account {
@@ -211,7 +224,7 @@ func claimsAccount(c oidc.Claims) directory.Account {
 		TicketRole: ticketRole, Status: directory.StatusActive}
 }
 
-func (s *Server) oidcCustomerSignIn(w http.ResponseWriter, r *http.Request, c oidc.Claims) {
+func (s *Server) oidcCustomerSignIn(w http.ResponseWriter, r *http.Request, c oidc.Claims, from string) {
 	a := claimsAccount(c)
 	// Ops are not customers, but one who is signed in to the tool and clicks
 	// through to the tickets wants the tickets: those are in the ops console.
@@ -246,7 +259,11 @@ func (s *Server) oidcCustomerSignIn(w http.ResponseWriter, r *http.Request, c oi
 		return
 	}
 	http.SetCookie(w, &http.Cookie{Name: customerCookie, Value: token, Path: "/customer", HttpOnly: true, Secure: s.browserUsesTLS(), SameSite: http.SameSiteStrictMode})
-	s.recordAccountEvent(r, c.PreferredUsername, "contact.signin", "customer_contact", contactID, map[string]any{"via": "oidc"})
+	detail := map[string]any{"via": "oidc"}
+	if from != "" {
+		detail["from"] = from
+	}
+	s.recordAccountEvent(r, c.PreferredUsername, "contact.signin", "customer_contact", contactID, detail)
 	bounce(w, "/customer")
 }
 

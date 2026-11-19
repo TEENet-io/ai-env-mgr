@@ -40,11 +40,16 @@ var dailyRequests = map[string]dailyRequestSpec{
 	"other-problem":   {"other", "其他問題", false},
 }
 
+// raisesForCompany is a customer admin: a manager, or a viewer (what every
+// custom tool admin is). It raises every kind of request, for anybody in the
+// company (AIC-216). Confirming a proposal stays with managers.
+func raisesForCompany(role string) bool { return role == "manager" || role == "viewer" }
+
 // contactMayRequest reports whether a customer contact may raise this kind of
-// request. A manager may raise every kind; anyone else everything about using
-// the service, but nothing about accounts or quota.
+// request. A customer admin may raise every kind; anyone else everything about
+// using the service, but nothing about accounts or quota.
 func contactMayRequest(role, requestKind string) bool {
-	if role == "manager" {
+	if raisesForCompany(role) {
 		return true
 	}
 	return dailyRequests[requestKind].Category != "account" && requestKind != "quota"
@@ -149,7 +154,7 @@ func dailyVisibleEmployees(employees []repo.Employee) []repo.Employee {
 
 func dailyAuthorizedEmployees(employees []repo.Employee, contact dbstore.CustomerContact) []repo.Employee {
 	visible := dailyVisibleEmployees(employees)
-	if contact.Role == "manager" {
+	if raisesForCompany(contact.Role) {
 		return visible
 	}
 	self := make([]repo.Employee, 0, 1)

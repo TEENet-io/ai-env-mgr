@@ -47,6 +47,7 @@ type customerPage struct {
 	SSOTool                          string // the custom tool, when people sign in through it
 	SubmitKey                        string
 	AdminMode                        bool
+	RaisesAll                        bool // may raise account and quota requests
 	AdminPage                        pageData
 	Rows                             []dbstore.Ticket
 	Filter                           string
@@ -808,7 +809,7 @@ func (s *Server) handleCustomerHome(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "無法建立表單", 500)
 		return
 	}
-	p := customerPage{NoWorkspace: !s.contactMay(r, c, "ai-problem"), Name: c.Name, Email: c.Email, CSRF: csrf, SubmitKey: key, Rows: rows, Page: page, HasNext: hasNext, Filter: filter, Manager: c.Role == "manager", Viewer: c.Role == "viewer",
+	p := customerPage{NoWorkspace: !s.contactMay(r, c, "ai-problem"), Name: c.Name, Email: c.Email, CSRF: csrf, SubmitKey: key, Rows: rows, Page: page, HasNext: hasNext, Filter: filter, Manager: c.Role == "manager", RaisesAll: raisesForCompany(c.Role), Viewer: c.Role == "viewer",
 		NewView: r.URL.Query().Get("view") == "new" || r.URL.Query().Get("edit") != "", Pending: counts.Pending, Working: counts.Working,
 		Finished: counts.Finished, Notice: r.URL.Query().Get("msg")}
 	if dbstore.SeesCompany(c.Role) && !p.NewView {
@@ -825,7 +826,7 @@ func (s *Server) handleCustomerHome(w http.ResponseWriter, r *http.Request) {
 				http.Error(w, "這張工單不能修改，請返回工單詳情查看最新狀態", http.StatusConflict)
 				return
 			}
-			if requestKind, _ := editTicket.Details["request_kind"].(string); dailyRequests[requestKind].Category == "account" && c.Role != "manager" {
+			if requestKind, _ := editTicket.Details["request_kind"].(string); dailyRequests[requestKind].Category == "account" && !raisesForCompany(c.Role) {
 				http.Error(w, "只有客戶管理員可以修改 AI 工作間帳號申請", 403)
 				return
 			}
@@ -876,7 +877,7 @@ func (s *Server) handleAdminTicketNew(w http.ResponseWriter, r *http.Request, se
 	}
 	adminPage := newPage(sess, r, "tickets")
 	adminPage.GatewayTeamID = s.teamID()
-	s.tpl.ExecuteTemplate(w, "customer_portal.html", customerPage{AdminMode: true, AdminPage: adminPage, Manager: true, NewView: true, Name: sess.admin.Username, CSRF: sess.csrf, SubmitKey: key, Employees: dailyVisibleEmployees(employees), Unopened: s.ticketUnopened(r), PickPeople: s.usesDirectory(), Tools: tools})
+	s.tpl.ExecuteTemplate(w, "customer_portal.html", customerPage{AdminMode: true, AdminPage: adminPage, Manager: true, RaisesAll: true, NewView: true, Name: sess.admin.Username, CSRF: sess.csrf, SubmitKey: key, Employees: dailyVisibleEmployees(employees), Unopened: s.ticketUnopened(r), PickPeople: s.usesDirectory(), Tools: tools})
 }
 
 func (s *Server) handleAdminTicketCreate(w http.ResponseWriter, r *http.Request, sess *session) {
@@ -1025,7 +1026,7 @@ func (s *Server) handleCustomerEditTicket(w http.ResponseWriter, r *http.Request
 		return
 	}
 	requestKind := formValue(r, "request_kind")
-	if dailyRequests[requestKind].Category == "account" && c.Role != "manager" {
+	if dailyRequests[requestKind].Category == "account" && !raisesForCompany(c.Role) {
 		http.Error(w, "只有客戶管理員可以修改 AI 工作間帳號申請", 403)
 		return
 	}
@@ -1090,7 +1091,7 @@ func (s *Server) handleCustomerTicket(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "無法讀取工單", 500)
 		return
 	}
-	page := customerPage{Name: c.Name, CSRF: csrf, Ticket: &t, Events: events, Manager: c.Role == "manager", Viewer: c.Role == "viewer", Owner: t.RequesterID == c.ID, Notice: r.URL.Query().Get("msg")}
+	page := customerPage{Name: c.Name, CSRF: csrf, Ticket: &t, Events: events, Manager: c.Role == "manager", RaisesAll: raisesForCompany(c.Role), Viewer: c.Role == "viewer", Owner: t.RequesterID == c.ID, Notice: r.URL.Query().Get("msg")}
 	if t.Details["request_kind"] != nil {
 		page.Revisions, err = s.dbm.db.Tickets().RequestRevisions(r.Context(), t.ID, t.RequesterID)
 		if err != nil {
@@ -1275,7 +1276,7 @@ func (s *Server) ticketUnopened(r *http.Request) []directory.Account {
 }
 
 // contactMay is contactMayRequest plus the AI workspace rule: an employee
-// without an account does not raise desktop or AI requests. Managers ask
+// without an account does not raise desktop or AI requests. Customer admins ask
 // for others and are not limited by their own account.
 func (s *Server) contactMay(r *http.Request, c dbstore.CustomerContact, requestKind string) bool {
 	if !contactMayRequest(c.Role, requestKind) {
@@ -1284,7 +1285,7 @@ func (s *Server) contactMay(r *http.Request, c dbstore.CustomerContact, requestK
 	// Only where people come from the custom tool: there an account and its
 	// contact are tied by the tool's id. Elsewhere they meet only by email,
 	// which is too loose to take requests away on.
-	if c.Role == "manager" || !needsWorkspace(requestKind) || !s.usesDirectory() {
+	if raisesForCompany(c.Role) || !needsWorkspace(requestKind) || !s.usesDirectory() {
 		return true
 	}
 	has, err := s.dbm.db.Tickets().ContactHasWorkspace(r.Context(), c.ID)

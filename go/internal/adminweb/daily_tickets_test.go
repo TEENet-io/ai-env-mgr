@@ -26,7 +26,7 @@ func TestDailyPortalRoleAndEditTemplate(t *testing.T) {
 	}
 	out.Reset()
 	edit := dbstore.Ticket{ID: "11111111-1111-1111-1111-111111111111", Version: 2}
-	if err := s.tpl.ExecuteTemplate(&out, "customer_portal.html", customerPage{NewView: true, Manager: true, EditTicket: &edit, EditPayload: `{"kind":"quota","details":{"category":"ai"}}`, Page: 1}); err != nil {
+	if err := s.tpl.ExecuteTemplate(&out, "customer_portal.html", customerPage{NewView: true, RaisesAll: true, EditTicket: &edit, EditPayload: `{"kind":"quota","details":{"category":"ai"}}`, Page: 1}); err != nil {
 		t.Fatal(err)
 	}
 	for _, want := range []string{`data-tp-category="account"`, `action="/customer/ticket/edit"`, `name="version" value="2"`, `data-edit-json=`} {
@@ -164,8 +164,8 @@ func TestContactsRaiseOnlyTheKindsTheirRoleAllows(t *testing.T) {
 		if got := contactMayRequest("employee", kind); got != want {
 			t.Errorf("employee may raise %s = %v, want %v", kind, got, want)
 		}
-		if !contactMayRequest("manager", kind) {
-			t.Errorf("manager may not raise %s", kind)
+		if !contactMayRequest("manager", kind) || !contactMayRequest("viewer", kind) {
+			t.Errorf("a customer admin may not raise %s", kind)
 		}
 	}
 	for _, kind := range []string{"quota", "account-add", "account-delete"} {
@@ -364,7 +364,7 @@ func withWorkspace(t *testing.T, s *Server, email string) {
 	}
 }
 
-func TestAViewerReadsTheCompanyButRaisesOnlyWhatAnEmployeeMay(t *testing.T) {
+func TestAViewerReadsTheCompanyAndRaisesEveryKind(t *testing.T) {
 	s, _ := newDatabaseServer(t)
 	h := s.Handler()
 	viewer := customerCookieFor(t, s, "it@example.com", "viewer")
@@ -377,11 +377,18 @@ func TestAViewerReadsTheCompanyButRaisesOnlyWhatAnEmployeeMay(t *testing.T) {
 	if !strings.Contains(home, "/customer/usage") {
 		t.Error("a viewer is not offered the usage page")
 	}
-	if strings.Contains(home, "category=account") {
-		t.Error("a viewer is offered AI workspace account requests")
+	// Every custom tool admin is a viewer, and the one who asks for accounts
+	// and quota for the company (AIC-216).
+	if !strings.Contains(home, "category=account") {
+		t.Error("a viewer is not offered AI workspace account requests")
 	}
-	if !contactMayRequest("manager", "quota") || contactMayRequest("viewer", "quota") || contactMayRequest("viewer", "account-delete") {
-		t.Error("only a manager may ask for quota or accounts")
+	for kind := range dailyRequests {
+		if !contactMayRequest("viewer", kind) {
+			t.Errorf("a viewer may not raise %s", kind)
+		}
+	}
+	if strings.Contains(home, "/customer/skills") {
+		t.Error("a viewer is offered the company skills")
 	}
 }
 
@@ -389,8 +396,62 @@ func TestAnOperatorAtTheCustomerEntryIsSentToTheOpsEntry(t *testing.T) {
 	s, _ := newDatabaseServer(t)
 	rec := httptest.NewRecorder()
 	s.oidcCustomerSignIn(rec, httptest.NewRequest(http.MethodGet, "/oidc/callback", nil),
-		oidc.Claims{Subject: "00000000-0000-4000-8000-000000000009", PreferredUsername: "wei", Role: "ops"})
+		oidc.Claims{Subject: "00000000-0000-4000-8000-000000000009", PreferredUsername: "wei", Role: "ops"}, "")
 	if rec.Code != http.StatusSeeOther || rec.Header().Get("Location") != "/oidc/start?entry=ops" {
 		t.Fatalf("ops at the customer entry: %d %q", rec.Code, rec.Header().Get("Location"))
+	}
+}
+
+// AIC-204 #12: a sign-in that came through the tool's 「聯絡 TEENet」 link is
+// logged as coming from the tool; any other source a link names is dropped.
+func TestASignInFromTheToolsContactLinkIsLoggedAsSuch(t *testing.T) {
+	if signInSource("tool") != "tool" || signInSource("evil<script>") != "" || signInSource("") != "" {
+		t.Fatal("signInSource")
+	}
+	s, _ := newDatabaseServer(t)
+	for i, from := range []string{"tool", ""} {
+		rec := httptest.NewRecorder()
+		sub := []string{"00000000-0000-4000-8000-000000000021", "00000000-0000-4000-8000-000000000022"}[i]
+		s.oidcCustomerSignIn(rec, httptest.NewRequest(http.MethodGet, "/oidc/callback", nil),
+			oidc.Claims{Subject: sub, PreferredUsername: "amy" + from, Email: "amy" + from + "@example.com", Role: "employee"}, from)
+		if rec.Code != http.StatusOK && rec.Code != http.StatusSeeOther {
+			t.Fatalf("sign-in %q: %d %s", from, rec.Code, rec.Body)
+		}
+	}
+	events, _, err := s.dbm.store.Audit().Search(t.Context(), repo.AuditFilter{TargetType: "customer_contact", Action: "contact.signin", Limit: 10})
+	if err != nil || len(events) != 2 {
+		t.Fatalf("sign-in records: %d %v", len(events), err)
+	}
+	tool := 0
+	for _, e := range events {
+		if strings.Contains(string(e.Detail), `"from": "tool"`) || strings.Contains(string(e.Detail), `"from":"tool"`) {
+			tool++
+		}
+	}
+	if tool != 1 {
+		t.Errorf("%d of the sign-ins say they came from the tool, want 1", tool)
+	}
+}
+
+// AIC-204 #4: where contacts come from the tool, the console lists them but
+// offers nothing to change: no role choice, no disabling, no password reset.
+func TestContactsFromTheToolAreReadOnlyOnThePage(t *testing.T) {
+	s, _ := newDatabaseServer(t)
+	h := s.Handler()
+	customerCookieFor(t, s, "boss@example.com", "viewer")
+	root := signedIn(t, s)
+	local := dbGet(t, h, "/tickets", root).Body.String()
+	if !strings.Contains(local, `action="/tickets/contacts/reset"`) {
+		t.Fatal("with invited contacts the page offers no password reset")
+	}
+	s.dbm.identity = newOIDCIdentity(DatabaseOptions{ToolName: "樂山"}, "https://console.example")
+	page := dbGet(t, h, "/tickets", root).Body.String()
+	if !strings.Contains(page, "boss@example.com") || !strings.Contains(page, "在樂山後台修改") {
+		t.Fatal("the synced contact is not listed as kept in the tool")
+	}
+	for _, action := range []string{"/tickets/contacts/role", "/tickets/contacts/disable", "/tickets/contacts/reset"} {
+		if strings.Contains(page, `action="`+action+`"`) {
+			t.Errorf("a synced contact is offered %s", action)
+		}
 	}
 }
