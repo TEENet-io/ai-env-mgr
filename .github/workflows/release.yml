@@ -5,6 +5,11 @@ name: Release
 #
 #   agent.exe            windows -- credential-free; enrols with the console
 #                        and uses short-lived signed links for objects.
+#                        Built once per deployment (see DEPLOYMENTS below):
+#                        each copy has its console built in and goes to that
+#                        deployment's bucket. The release page carries the
+#                        test one as agent.exe and the others as
+#                        agent-<deployment>.exe.
 #   admin-<os>-<arch>    linux/windows/macos, NO key -- the admin enters OSS
 #                        credentials interactively at runtime (nothing saved to
 #                        disk). The full read-write key must never be baked into
@@ -33,23 +38,30 @@ jobs:
 
       - name: Build agent.exe (windows, console only)
         working-directory: go
-        env:
-          # The console every agent.exe enrols with and takes instructions
-          # from. Not a secret, but changing it hands the whole fleet to
-          # another server, so it lives here and changes only by commit.
-          AGENT_CONSOLE_URL: https://windows-control.teenet.app
         run: |
           set -euo pipefail
           VER="${GITHUB_REF_NAME#v}"
-          LD="-s -w -X main.version=${VER}"
-          # Bare https origin only: no http, no path, no trailing slash.
-          if ! [[ "${AGENT_CONSOLE_URL}" =~ ^https://[a-z0-9.-]+(:[0-9]+)?$ ]]; then
-            echo "::error::AGENT_CONSOLE_URL is not a bare https origin: '${AGENT_CONSOLE_URL}'"
-            exit 1
-          fi
-          LD="${LD} -X main.consoleURL=${AGENT_CONSOLE_URL}"
-          echo "agent.exe: console ${AGENT_CONSOLE_URL} built in"
-          GOOS=windows GOARCH=amd64 go build -trimpath -ldflags "${LD}" -o ../dist/agent.exe ./cmd/agent
+          # The console each agent.exe enrols with and takes instructions
+          # from. Not a secret, but changing one hands that whole fleet to
+          # another server, so they live here and change only by commit.
+          # Never repoint an existing deployment's line: its machines would
+          # follow the next upgrade to the new address.
+          #   name   console                                   output
+          DEPLOYMENTS=(
+            "test  https://windows-control.teenet.app    ../dist/agent.exe"
+            "bippo https://bippo-workspace.teenet.app    ../dist/agent-bippo.exe"
+          )
+          for line in "${DEPLOYMENTS[@]}"; do
+            read -r name url out <<<"$line"
+            # Bare https origin only: no http, no path, no trailing slash.
+            if ! [[ "${url}" =~ ^https://[a-z0-9.-]+(:[0-9]+)?$ ]]; then
+              echo "::error::${name}: console is not a bare https origin: '${url}'"
+              exit 1
+            fi
+            GOOS=windows GOARCH=amd64 go build -trimpath \
+              -ldflags "-s -w -X main.version=${VER} -X main.consoleURL=${url}" -o "${out}" ./cmd/agent
+            echo "agent.exe (${name}): console ${url} built in -> ${out}"
+          done
 
       # admin: no key, ever. The administrator enters credentials in the console
       # at sign-in and they stay in memory -- including for the cloud desktop
@@ -68,7 +80,7 @@ jobs:
 
       - name: Checksums
         working-directory: dist
-        run: sha256sum agent.exe admin-linux-amd64 admin-windows-amd64.exe admin-darwin-arm64 | tee SHA256SUMS.txt
+        run: sha256sum agent.exe agent-bippo.exe admin-linux-amd64 admin-windows-amd64.exe admin-darwin-arm64 | tee SHA256SUMS.txt
 
       # Put agent.exe where the console's version library expects it, so the
       # 10 MB binary never has to pass through the console host. A dedicated
@@ -77,32 +89,25 @@ jobs:
       # step only and are never linked into agent.exe.
       # An existing object is never overwritten -- a version names one set
       # of bytes -- so a re-cut of the same tag fails here on purpose.
-      - name: Upload agent.exe to the OSS version library
+      - name: Upload agent.exe to the OSS version library (test)
         env:
           OSS_CI_ACCESS_KEY_ID: ${{ secrets.OSS_CI_ACCESS_KEY_ID || secrets.AGENT_OSS_ACCESS_KEY_ID }}
           OSS_CI_ACCESS_KEY_SECRET: ${{ secrets.OSS_CI_ACCESS_KEY_SECRET || secrets.AGENT_OSS_ACCESS_KEY_SECRET }}
           OSS_CI_BUCKET: ${{ secrets.OSS_CI_BUCKET || secrets.AGENT_OSS_BUCKET }}
           OSS_CI_ENDPOINT: ${{ secrets.OSS_CI_ENDPOINT || secrets.AGENT_OSS_ENDPOINT }}
-        run: |
-          set -euo pipefail
-          # No silent success: a release the console cannot see is not a release.
-          for v in OSS_CI_ACCESS_KEY_ID OSS_CI_ACCESS_KEY_SECRET OSS_CI_BUCKET OSS_CI_ENDPOINT; do
-            [ -n "${!v}" ] || { echo "::error::$v is empty (set OSS_CI_* or legacy AGENT_OSS_*); agent.exe cannot be uploaded"; exit 1; }
-          done
-          # The CI key may carry the in-region endpoint (…-internal.aliyuncs.com),
-          # which a GitHub runner cannot reach: ossutil would retry for hours.
-          OSS_CI_ENDPOINT="${OSS_CI_ENDPOINT/-internal./.}"
-          VER="${GITHUB_REF_NAME#v}"
-          KEY="agent_workdir/_agent/${VER}/agent.exe"
-          curl -fsSL https://gosspublic.alicdn.com/ossutil/1.7.19/ossutil-v1.7.19-linux-amd64.zip -o /tmp/ossutil.zip
-          unzip -q -o /tmp/ossutil.zip -d /tmp/ossutil && OSSUTIL=$(find /tmp/ossutil -name 'ossutil64' -type f | head -1) && chmod +x "$OSSUTIL"
-          CFG=(-e "${OSS_CI_ENDPOINT}" -i "${OSS_CI_ACCESS_KEY_ID}" -k "${OSS_CI_ACCESS_KEY_SECRET}")
-          if timeout 120 "$OSSUTIL" "${CFG[@]}" stat "oss://${OSS_CI_BUCKET}/${KEY}" >/dev/null 2>&1; then
-            echo "::error::${KEY} already exists; a version names one set of bytes -- cut a new version"
-            exit 1
-          fi
-          timeout 900 "$OSSUTIL" "${CFG[@]}" cp dist/agent.exe "oss://${OSS_CI_BUCKET}/${KEY}"
-          echo "uploaded ${KEY} sha256 $(sha256sum dist/agent.exe | cut -d' ' -f1)"
+        # No silent success: a release the console cannot see is not a release.
+        run: .github/scripts/upload-agent.sh test dist/agent.exe required
+
+      # Bippo's production bucket, with its own upload key. Until all four
+      # OSS_CI_BIPPO_* secrets are set this is skipped with a warning, so a
+      # test release still goes out; half of them set is an error.
+      - name: Upload agent.exe to the OSS version library (bippo)
+        env:
+          OSS_CI_ACCESS_KEY_ID: ${{ secrets.OSS_CI_BIPPO_ACCESS_KEY_ID }}
+          OSS_CI_ACCESS_KEY_SECRET: ${{ secrets.OSS_CI_BIPPO_ACCESS_KEY_SECRET }}
+          OSS_CI_BUCKET: ${{ secrets.OSS_CI_BIPPO_BUCKET }}
+          OSS_CI_ENDPOINT: ${{ secrets.OSS_CI_BIPPO_ENDPOINT }}
+        run: .github/scripts/upload-agent.sh bippo dist/agent-bippo.exe optional
 
       - name: Create GitHub Release
         env:
@@ -115,7 +120,7 @@ jobs:
           # the tag and re-pushing it re-publishes cleanly.
           gh release delete "$GITHUB_REF_NAME" --yes || true
           gh release create "$GITHUB_REF_NAME" \
-            dist/agent.exe \
+            dist/agent.exe dist/agent-bippo.exe \
             dist/admin-linux-amd64 dist/admin-windows-amd64.exe dist/admin-darwin-arm64 \
             dist/SHA256SUMS.txt \
             --title "$GITHUB_REF_NAME" \
