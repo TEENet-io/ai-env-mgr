@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/TEENet-io/ai-env-mgr/internal/litellm"
 	"github.com/TEENet-io/ai-env-mgr/internal/repo"
 	"github.com/TEENet-io/ai-env-mgr/internal/slsclient"
 )
@@ -143,5 +144,44 @@ func TestSnapshotIsHeldUntilTheDayHasSettled(t *testing.T) {
 	open, _ := store.Tasks().ListOpen(ctx, 10)
 	if len(open) != 1 || !open[0].NextRunAt.Equal(now.Truncate(24*time.Hour).Add(30*time.Minute)) {
 		t.Fatalf("open = %+v", open)
+	}
+}
+
+type fakeDailyGateway struct {
+	day  time.Time
+	rows []litellm.DailyUsage
+}
+
+func (g *fakeDailyGateway) TeamDailyUsage(_ context.Context, day time.Time) ([]litellm.DailyUsage, error) {
+	g.day = day
+	return g.rows, nil
+}
+
+// The gateway's own daily table stands in for the log service: same rows,
+// with the cost as a decimal string and an alias-less key kept under "-".
+func TestGatewayUsageTurnsTheGatewaysDayIntoRows(t *testing.T) {
+	g := &fakeDailyGateway{rows: []litellm.DailyUsage{
+		{KeyAlias: "bippo-emp-ann-e1", ModelGroup: "gpt-6", Calls: 4, Failures: 1, SpendUSD: 0.1234567, PromptTokens: 15, CompletionTokens: 3},
+		{KeyAlias: "", ModelGroup: "claude", Calls: 1, SpendUSD: 0.5},
+	}}
+	day := time.Date(2026, 11, 17, 0, 0, 0, 0, time.UTC)
+	rows, err := GatewayUsage{Gateway: g}.DailyUsage(t.Context(), day)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !g.day.Equal(day) {
+		t.Fatalf("asked for %v", g.day)
+	}
+	want := []repo.UsageRow{
+		{KeyAlias: "bippo-emp-ann-e1", ModelGroup: "gpt-6", Calls: 4, Failures: 1, CostUSD: "0.123457", PromptTokens: 15, CompletionTokens: 3},
+		{KeyAlias: "-", ModelGroup: "claude", Calls: 1, CostUSD: "0.500000"},
+	}
+	if len(rows) != len(want) {
+		t.Fatalf("%+v", rows)
+	}
+	for i := range want {
+		if rows[i] != want[i] {
+			t.Errorf("row %d: %+v, want %+v", i, rows[i], want[i])
+		}
 	}
 }

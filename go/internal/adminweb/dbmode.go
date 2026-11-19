@@ -420,6 +420,14 @@ func (s *Server) buildWorker(st *dbState) *worker.Worker {
 	audit := worker.AuditPublish{Store: st.store, Sink: s.events, Logstore: logstoreAudit}
 	if st.sls != nil {
 		audit.Archive = worker.SLSArchive{Client: st.sls}
+	}
+	// Usage comes from the gateway's own daily table when the console talks
+	// to a gateway: it needs no log service and is already narrowed to this
+	// customer's team. Without a gateway, the log service is read as before.
+	switch {
+	case gw != nil:
+		w.Register(worker.TaskUsageSnapshot, worker.UsageSnapshot{Store: st.store, Source: worker.GatewayUsage{Gateway: gw}})
+	case st.sls != nil:
 		// The gateway's llm_call events live in the same logstore the log
 		// page reads them from.
 		w.Register(worker.TaskUsageSnapshot, worker.UsageSnapshot{

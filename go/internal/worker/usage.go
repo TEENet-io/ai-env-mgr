@@ -8,13 +8,14 @@ import (
 	"strings"
 	"time"
 
+	"github.com/TEENet-io/ai-env-mgr/internal/litellm"
 	"github.com/TEENet-io/ai-env-mgr/internal/repo"
 	"github.com/TEENet-io/ai-env-mgr/internal/slsclient"
 )
 
 // UsageSource answers "what did each token spend on each model on this day",
-// already summed. The log service is the only implementation; the interface
-// is what the tests stand in for.
+// already summed: the gateway's own daily table (GatewayUsage) or, where a
+// console still has one, the log service (SLSUsage).
 type UsageSource interface {
 	DailyUsage(ctx context.Context, day time.Time) ([]repo.UsageRow, error)
 }
@@ -144,6 +145,43 @@ func (h UsageSnapshot) employeeFor(ctx context.Context, alias string) (string, e
 		return "", nil
 	}
 	return "", err
+}
+
+// DailyUsageReader is the gateway's daily aggregation (litellm.Client).
+type DailyUsageReader interface {
+	TeamDailyUsage(ctx context.Context, day time.Time) ([]litellm.DailyUsage, error)
+}
+
+// GatewayUsage reads the day from the gateway itself, so the usage pages need
+// no log service. The gateway counts a call's cost when it prices it; there
+// is no separate "unpriced" count there, so Unpriced stays zero.
+type GatewayUsage struct {
+	Gateway DailyUsageReader
+}
+
+func (g GatewayUsage) DailyUsage(ctx context.Context, day time.Time) ([]repo.UsageRow, error) {
+	usage, err := g.Gateway.TeamDailyUsage(ctx, day)
+	if err != nil {
+		return nil, err
+	}
+	rows := make([]repo.UsageRow, 0, len(usage))
+	for _, u := range usage {
+		alias := u.KeyAlias
+		if alias == "" {
+			// A key with no alias still spent; kept so the totals add up.
+			alias = "-"
+		}
+		rows = append(rows, repo.UsageRow{
+			KeyAlias:         alias,
+			ModelGroup:       u.ModelGroup,
+			Calls:            u.Calls,
+			Failures:         u.Failures,
+			CostUSD:          strconv.FormatFloat(u.SpendUSD, 'f', 6, 64),
+			PromptTokens:     u.PromptTokens,
+			CompletionTokens: u.CompletionTokens,
+		})
+	}
+	return rows, nil
 }
 
 // SLSUsage reads the gateway's llm_call events from the log service.

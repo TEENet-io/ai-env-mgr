@@ -257,7 +257,7 @@ func (s *Server) actionUsageSnapshotNow(_ *session, r *http.Request) (string, er
 	if err := worker.EnqueueUsageSnapshot(r.Context(), s.dbm.store, time.Now()); err != nil {
 		return "", err
 	}
-	return "已排隊，Worker 幾秒內開始從日誌服務重算最近三天；完成後刷新本頁", nil
+	return "已排隊，Worker 幾秒內開始從網關重算最近三天；完成後刷新本頁", nil
 }
 
 // employeeUsage is the last 30 days for the detail page.

@@ -8,7 +8,9 @@ import (
 	"net/http"
 	"net/url"
 	"slices"
+	"strconv"
 	"strings"
+	"time"
 
 	"github.com/TEENet-io/ai-env-mgr/internal/litellm"
 )
@@ -242,6 +244,30 @@ func plan(ctx context.Context, up Upstream, team, method, path string, query url
 		c := get("/model/info", nil)
 		c.transform = redactModels
 		return c, nil
+	case "GET /team/daily/activity":
+		// The usage pages: what the team's keys spent per model group per
+		// day, from LiteLLM's own daily table.
+		if err := onlyParams(query, "team_ids", "start_date", "end_date", "page", "page_size"); err != nil {
+			return call{}, err
+		}
+		if t := query.Get("team_ids"); t != "" && t != team {
+			return call{}, deny("team_ids must be %s", team)
+		}
+		if err := usageRange(query.Get("start_date"), query.Get("end_date")); err != nil {
+			return call{}, err
+		}
+		for _, k := range []string{"page", "page_size"} {
+			if v := query.Get(k); v != "" {
+				if n, err := strconv.Atoi(v); err != nil || n < 1 || n > 1000 {
+					return call{}, deny("%s must be a number from 1 to 1000", k)
+				}
+			}
+		}
+		q := pick(query, "start_date", "end_date", "page", "page_size")
+		q.Set("team_ids", team)
+		c := get("/team/daily/activity", q)
+		c.transform = func(payload []byte) ([]byte, error) { return onlyTeamUsage(team, payload) }
+		return c, nil
 	}
 	return call{}, deny("%s %s is not available to tenants", method, path)
 }
@@ -332,6 +358,99 @@ func onlyOwnedUsers(team string, payload []byte) ([]byte, error) {
 	}
 	page["users"] = raw
 	return json.Marshal(page)
+}
+
+// usageMaxDays bounds one usage query. The console asks for one day at a
+// time; a month is room for a person paging back, not for a full export.
+const usageMaxDays = 31
+
+func usageRange(start, end string) error {
+	from, err := time.Parse("2006-01-02", start)
+	if err != nil {
+		return deny("start_date must be YYYY-MM-DD")
+	}
+	to, err := time.Parse("2006-01-02", end)
+	if err != nil {
+		return deny("end_date must be YYYY-MM-DD")
+	}
+	if to.Before(from) || to.Sub(from) > (usageMaxDays-1)*24*time.Hour {
+		return deny("the range must be 1 to %d days", usageMaxDays)
+	}
+	return nil
+}
+
+// onlyTeamUsage keeps, of LiteLLM's daily activity, the date, the model groups
+// and each group's per-key split, and of each key only its alias and metrics.
+// Everything else is dropped: the providers and endpoints a deployment runs
+// on, other breakdowns, the key hashes and whose email a key is. A key whose
+// metadata names another team is dropped too, so a gateway answer wider than
+// asked for never reaches a tenant.
+func onlyTeamUsage(team string, payload []byte) ([]byte, error) {
+	type keyMetric struct {
+		Metrics  json.RawMessage `json:"metrics"`
+		Metadata struct {
+			KeyAlias string `json:"key_alias"`
+			TeamID   string `json:"team_id"`
+		} `json:"metadata"`
+	}
+	var in struct {
+		Results []struct {
+			Date      string `json:"date"`
+			Breakdown struct {
+				ModelGroups map[string]struct {
+					Keys map[string]keyMetric `json:"api_key_breakdown"`
+				} `json:"model_groups"`
+			} `json:"breakdown"`
+		} `json:"results"`
+		Metadata struct {
+			Page       int  `json:"page"`
+			TotalPages int  `json:"total_pages"`
+			HasMore    bool `json:"has_more"`
+		} `json:"metadata"`
+	}
+	if err := json.Unmarshal(payload, &in); err != nil {
+		return nil, err
+	}
+	type outKey struct {
+		Metrics  json.RawMessage   `json:"metrics"`
+		Metadata map[string]string `json:"metadata"`
+	}
+	type outGroup struct {
+		Keys map[string]outKey `json:"api_key_breakdown"`
+	}
+	type outResult struct {
+		Date      string `json:"date"`
+		Breakdown struct {
+			ModelGroups map[string]outGroup `json:"model_groups"`
+		} `json:"breakdown"`
+	}
+	out := struct {
+		Results  []outResult `json:"results"`
+		Metadata any         `json:"metadata"`
+	}{Results: []outResult{}, Metadata: in.Metadata}
+	for _, r := range in.Results {
+		res := outResult{Date: r.Date}
+		res.Breakdown.ModelGroups = map[string]outGroup{}
+		for name, group := range r.Breakdown.ModelGroups {
+			g := outGroup{Keys: map[string]outKey{}}
+			n := 0
+			for _, k := range group.Keys {
+				// The query is already narrowed to team_ids; metadata comes
+				// from the key, and a deleted key has none, so only a key
+				// that names another team is taken as foreign.
+				if k.Metadata.TeamID != "" && k.Metadata.TeamID != team {
+					continue
+				}
+				n++
+				g.Keys["k"+strconv.Itoa(n)] = outKey{Metrics: k.Metrics, Metadata: map[string]string{"key_alias": k.Metadata.KeyAlias}}
+			}
+			if n > 0 {
+				res.Breakdown.ModelGroups[name] = g
+			}
+		}
+		out.Results = append(out.Results, res)
+	}
+	return json.Marshal(out)
 }
 
 // redactModels keeps what a console reads from /model/info (litellm.Model)

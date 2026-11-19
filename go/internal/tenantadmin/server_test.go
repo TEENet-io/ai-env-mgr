@@ -53,6 +53,15 @@ func (g *fakeGateway) Do(_ context.Context, method, path string, body []byte) (i
 		return 200, []byte(`{"users":[{"user_id":"bippo-emp-ann"},{"user_id":"windows-control","user_role":"proxy_admin"}],"total":2,"page":1,"total_pages":1}`), nil
 	case method == "GET" && u.Path == "/team/info":
 		return 200, []byte(`{"team_id":"bippo","team_info":{"members_with_roles":[{"user_id":"windows-control","role":"admin"}]}}`), nil
+	case method == "GET" && u.Path == "/team/daily/activity":
+		return 200, []byte(`{"results":[{"date":"2026-11-17","metrics":{"spend":9},
+			"breakdown":{"providers":{"azure":{"metrics":{"spend":9}}},"endpoints":{"/v1/responses":{}},
+			"api_keys":{"hash-ann":{"metrics":{"spend":3}}},
+			"model_groups":{"gpt-6":{"metrics":{"spend":5},"api_key_breakdown":{
+				"hash-ann":{"metrics":{"spend":3,"api_requests":4,"failed_requests":1,"prompt_tokens":100,"completion_tokens":20},"metadata":{"key_alias":"bippo-emp-ann-1","team_id":"bippo","user_email":"ann@bippo.com"}},
+				"hash-bob":{"metrics":{"spend":2,"api_requests":2},"metadata":{"key_alias":"wewe-emp-bob-1","team_id":"wewe"}},
+				"hash-gone":{"metrics":{"spend":0.5,"api_requests":1},"metadata":{"key_exists":false}}}}}}}],
+			"metadata":{"page":1,"total_pages":1,"has_more":false,"total_spend":9}}`), nil
 	case method == "GET" && u.Path == "/model/info":
 		return 200, []byte(`{"data":[
 			{"model_name":"gpt-6","litellm_params":{"model":"openai/gpt-6","api_base":"https://x.openai.azure.com/openai/v1","api_key":"secret"},"model_info":{"id":"m1","litellm_provider":"openai","catalog_visible":true,"display_name":"GPT 6"}},
@@ -213,6 +222,18 @@ func TestTheRules(t *testing.T) {
 		{"list keys by user", "GET", "/key/list?user_id=wewe-emp-bob", "", 403, ""},
 		// everything else
 		{"model info", "GET", "/model/info", "", 200, "GET /model/info"},
+		// usage
+		{"own daily usage", "GET", "/team/daily/activity?start_date=2026-11-17&end_date=2026-11-17&page=1&page_size=100", "", 200, "GET /team/daily/activity?end_date=2026-11-17&page=1&page_size=100&start_date=2026-11-17&team_ids=bippo"},
+		{"own daily usage by team", "GET", "/team/daily/activity?team_ids=bippo&start_date=2026-11-01&end_date=2026-11-17", "", 200, "GET /team/daily/activity?end_date=2026-11-17&start_date=2026-11-01&team_ids=bippo"},
+		{"other team's usage", "GET", "/team/daily/activity?team_ids=wewe&start_date=2026-11-17&end_date=2026-11-17", "", 403, ""},
+		{"two teams' usage", "GET", "/team/daily/activity?team_ids=bippo,wewe&start_date=2026-11-17&end_date=2026-11-17", "", 403, ""},
+		{"usage without dates", "GET", "/team/daily/activity", "", 403, ""},
+		{"usage over a year", "GET", "/team/daily/activity?start_date=2025-11-17&end_date=2026-11-17", "", 403, ""},
+		{"usage backwards", "GET", "/team/daily/activity?start_date=2026-11-17&end_date=2026-11-16", "", 403, ""},
+		{"usage of one key", "GET", "/team/daily/activity?start_date=2026-11-17&end_date=2026-11-17&api_key=hash-bob", "", 403, ""},
+		{"usage excluding teams", "GET", "/team/daily/activity?start_date=2026-11-17&end_date=2026-11-17&exclude_team_ids=wewe", "", 403, ""},
+		{"usage huge page", "GET", "/team/daily/activity?start_date=2026-11-17&end_date=2026-11-17&page_size=5000", "", 403, ""},
+		{"user daily usage", "GET", "/user/daily/activity?start_date=2026-11-17&end_date=2026-11-17", "", 403, ""},
 		{"chat", "POST", "/chat/completions", `{"model":"gpt-6"}`, 403, ""},
 		{"health", "GET", "/health?model_id=m1", "", 403, ""},
 		{"new model", "POST", "/model/new", `{}`, 403, ""},
@@ -256,6 +277,30 @@ func TestTheGatewaysOwnAccountStaysHidden(t *testing.T) {
 	}
 	if team := send(s, bippoToken, "GET", "/team/info?team_id=bippo", "").Body.String(); strings.Contains(team, "windows-control") || !strings.Contains(team, `"team_id":"bippo"`) {
 		t.Fatalf("team info: %s", team)
+	}
+}
+
+// The usage a tenant reads is its own keys' split by model group, and nothing
+// about where models are served, other teams' keys, key hashes or emails.
+func TestDailyUsageShowsOnlyTheTeamsKeys(t *testing.T) {
+	rec := send(newTestServer(t, &fakeGateway{}), bippoToken, "GET", "/team/daily/activity?start_date=2026-11-17&end_date=2026-11-17", "")
+	body := rec.Body.String()
+	if rec.Code != 200 {
+		t.Fatalf("%d %s", rec.Code, body)
+	}
+	for _, hidden := range []string{"wewe", "hash-", "azure", "providers", "endpoints", "api_keys", "ann@bippo.com", "total_spend"} {
+		if strings.Contains(body, hidden) {
+			t.Errorf("usage shows %q: %s", hidden, body)
+		}
+	}
+	for _, kept := range []string{`"bippo-emp-ann-1"`, `"api_requests":4`, `"failed_requests":1`, `"gpt-6"`, `"date":"2026-11-17"`, `"has_more":false`} {
+		if !strings.Contains(body, kept) {
+			t.Errorf("usage lacks %s: %s", kept, body)
+		}
+	}
+	// A deleted key has no metadata; its spend is still the team's.
+	if !strings.Contains(body, `"spend":0.5`) {
+		t.Errorf("a deleted key's spend was dropped: %s", body)
 	}
 }
 

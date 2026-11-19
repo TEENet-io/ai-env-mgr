@@ -5,7 +5,7 @@
 <main class="sheet">
   <header class="pagehead"><h1>用量</h1></header>
   {{template "tabs-usage" .}}
-  <p class="lede">網關每天的調用與費用，按員工、模型、日期。資料每晚從日誌服務彙總一次，日誌過期後這裡仍在。</p>
+  <p class="lede">網關每天的調用與費用，按員工、模型、日期。資料每晚從網關彙總一次，重算最近三天。</p>
   {{template "notices" .}}
   {{with .UsagePage}}
   <form method="get" action="/usage" class="form filter">

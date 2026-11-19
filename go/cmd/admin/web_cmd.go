@@ -11,13 +11,15 @@ import (
 
 func cmdWeb(args []string) error {
 	// Reuse the location baked into this binary, exactly as the CLI does, so
-	// the console asks only for the AccessKey.
+	// the console asks only for the AccessKey. A deployment with its own
+	// bucket names it in the environment (the same variables ai-env-migrate
+	// reads); unset, the built-in one is used as before.
 	built := builtIn()
 	opts := adminweb.Options{
 		Listen:    "127.0.0.1:8080",
 		Version:   version,
-		Bucket:    built.Bucket,
-		Endpoint:  built.Endpoint,
+		Bucket:    envOr("AIENVMGR_OSS_BUCKET", built.Bucket),
+		Endpoint:  envOr("AIENVMGR_OSS_ENDPOINT", built.Endpoint),
 		ECDRegion: envOr("AIENVMGR_ECD_REGION", ecdRegion),
 		// Only useful when this host sits in the bucket's own region; empty
 		// everywhere else, which keeps one endpoint for everything.
