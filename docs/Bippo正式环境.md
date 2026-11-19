@@ -7,7 +7,7 @@
 | 项 | 值 |
 |---|---|
 | 控制台地址 | https://bippo-workspace.teenet.app （Cloudflare 橙云） |
-| 机器 | AWS 新加坡 `ec2-user@175.41.186.104`，和樂山（bippo-demo.teenet.app）同机 |
+| 机器 | AWS 新加坡 `ec2-user@175.41.186.104`，和樂山（bippo.teenet.app，旧名 bippo-demo.teenet.app）同机 |
 | 身份 | 樂山单点登录（OIDC，client_id `bippo-workspace`），名单每 5 分钟从樂山同步 |
 | 网关 | `https://litellm.teenet.app`，经 tenant-admin，公司 `bippo_prod`，令牌 `bippo_prod-1` |
 | 存储 | 阿里云 OSS `bippo-workspace-sg`（新加坡，私有） |
@@ -28,11 +28,13 @@
 | `ai-env-backup.timer` | 每天 UTC 2:00 导出数据库，传到 `bippo-workspace-sg/agent_workdir/_backup/`，留 30 天 |
 | `/var/log/ai-env-mgr/` | 控制台的统一日志（admin.jsonl、audit.jsonl） |
 
+樂山的站点（`knowledge-databases.conf`，含 bippo.teenet.app、bippo-demo.teenet.app）是 nginx 的 `default_server`。**新加站点时不要依赖默认站点**：2026-11-19 加 bippo-workspace.conf 后它按文件名排到最前，成了默认站点，bippo.teenet.app 有约半小时进了控制台。
+
 旧的 `windows-control.conf`（指向早已不存在的 :9080）挪到了 `edge-nginx/disabled/`。
 
 ## 樂山一侧
 
-`/home/ec2-user/gateway/config.env` 末尾加了：`OIDC_ISSUER`、`OIDC_CLIENT_ID=bippo-workspace`、`OIDC_CLIENT_SECRET`、`OIDC_REDIRECT_URIS`、`OIDC_POST_LOGOUT_REDIRECT_URIS`、`CONSOLE_URL`、`DIRECTORY_TOKEN`。客户端密钥和名单令牌两边各存一份，换的时候两边一起换，再重启 `renewal-gateway` 和 `ai-env-mgr-console`。
+`/home/ec2-user/gateway/config.env` 末尾加了：`OIDC_ISSUER=https://bippo.teenet.app`、`OIDC_CLIENT_ID=bippo-workspace`、`OIDC_CLIENT_SECRET`、`OIDC_REDIRECT_URIS`、`OIDC_POST_LOGOUT_REDIRECT_URIS`、`CONSOLE_URL`、`DIRECTORY_TOKEN`。客户端密钥和名单令牌两边各存一份，换的时候两边一起换，再重启 `renewal-gateway` 和 `ai-env-mgr-console`。
 
 ## 登录
 
