@@ -88,6 +88,12 @@ type DatabaseOptions struct {
 	OIDCRedirectURL  string
 	ToolName         string
 	EmergencyAdmin   string
+
+	// CodexBucket, when set, is the shared bucket (same endpoint) the Codex
+	// installer is read from: scanned, checksummed and linked for agents.
+	// The server's key needs read on its _codex/ prefix. Empty: this
+	// deployment's own bucket, as before.
+	CodexBucket string
 }
 
 const (
@@ -126,8 +132,12 @@ type dbState struct {
 	auth    *authn.Service
 	ring    secrets.Keyring
 	objects admincore.Store
-	sls     *slsclient.Client
-	cloud   *cloudLookup
+	// packages is the version library: objects, except that Codex comes
+	// from the shared Codex bucket when one is named (codexbucket.go).
+	// Nil when the store cannot list and checksum.
+	packages packageStore
+	sls      *slsclient.Client
+	cloud    *cloudLookup
 	// csrfKey derives each session's form token from its cookie. Per process:
 	// a restart invalidates open forms once, which costs a reload and nothing
 	// else.
@@ -267,6 +277,15 @@ func (s *Server) openDatabaseMode(ctx context.Context, opts DatabaseOptions) err
 	st.devices = &deviceapi.Server{Store: store, Hub: st.hub, Events: s.events, BehindProxy: s.opts.BehindProxy, Bucket: objects}
 	if signer, ok := objects.(deviceapi.Presigner); ok {
 		st.devices.Objects = signer
+	}
+	if p, ok := objects.(packageStore); ok {
+		st.packages = p
+	}
+	if opts.CodexBucket != "" && opts.MockOSSDir == "" {
+		if err := s.useCodexBucket(st, opts); err != nil {
+			database.Close()
+			return err
+		}
 	}
 	if dc, _, err := repo.LoadDeviceChannelSettings(context.Background(), store.Settings()); err == nil {
 		if nets, err := dc.ParsedCIDRs(); err == nil {
@@ -414,8 +433,8 @@ func (s *Server) buildWorker(st *dbState) *worker.Worker {
 	w.Register(worker.TaskCredentialRotation, worker.CredentialRotation{Store: st.store, Ops: st.ops})
 	w.Register(worker.TaskDevicePrune, worker.DevicePrune{Store: st.store})
 	w.Register(worker.TaskDataCleanup, worker.DataCleanup{Store: st.store, Objects: st.objects})
-	if src, ok := st.objects.(worker.PackageSource); ok {
-		w.Register(worker.TaskReleaseScan, &worker.ReleaseScan{Store: st.store, Objects: src, Ops: st.ops})
+	if st.packages != nil {
+		w.Register(worker.TaskReleaseScan, &worker.ReleaseScan{Store: st.store, Objects: st.packages, Ops: st.ops})
 	}
 	audit := worker.AuditPublish{Store: st.store, Sink: s.events, Logstore: logstoreAudit}
 	if st.sls != nil {

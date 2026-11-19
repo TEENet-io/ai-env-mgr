@@ -71,6 +71,7 @@ func cmdWeb(args []string) error {
 			OIDCRedirectURL:       os.Getenv("AIENVMGR_OIDC_REDIRECT_URL"),
 			ToolName:              os.Getenv("AIENVMGR_TOOL_NAME"),
 			EmergencyAdmin:        os.Getenv("AIENVMGR_EMERGENCY_ADMIN"),
+			CodexBucket:           os.Getenv("AIENVMGR_CODEX_BUCKET"),
 		}
 	}
 	for i := 0; i < len(args); i++ {

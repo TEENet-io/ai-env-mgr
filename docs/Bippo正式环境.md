@@ -12,6 +12,7 @@
 | 网关 | `https://litellm.teenet.app`，经 tenant-admin，公司 `bippo_prod`，令牌 `bippo_prod-1` |
 | 存储 | 阿里云 OSS `bippo-workspace-sg`（新加坡，私有） |
 | 用量 | 从网关的每日统计取（`/team/daily/activity`），不用 SLS |
+| Codex | 和老环境共用 `ai-collect-sg/agent_workdir/_codex/`（`AIENVMGR_CODEX_BUCKET`），codex-kiosk 照旧只传一份；`bippo-workspace-console` 对那个前缀只读 |
 | Agent | CI 构建 `agent-bippo.exe`（控制台地址编译进去），传到 `bippo-workspace-sg/agent_workdir/_agent/<版本>/agent.exe` |
 
 ## 机器上的东西

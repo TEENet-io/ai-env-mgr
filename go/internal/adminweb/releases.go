@@ -49,8 +49,8 @@ func (s *Server) actionReleaseRegister(sess *session, r *http.Request) error {
 	} else if !errors.Is(err, repo.ErrNotFound) {
 		return err
 	}
-	hasher, ok := s.dbm.objects.(packageHasher)
-	if !ok {
+	hasher, ok := s.dbm.packages.(packageHasher)
+	if !ok || s.dbm.packages == nil {
 		return fmt.Errorf("the object store cannot checksum an object")
 	}
 	key := artifactKey(product, version)
@@ -111,7 +111,10 @@ func (s *Server) unregisteredPackages(ctx context.Context, known []repo.Artifact
 		if product == repo.ProductAgent {
 			prefix = ossclient.AgentPrefix
 		}
-		objects, err := s.dbm.objects.ListInfo(prefix)
+		if s.dbm.packages == nil {
+			return nil, errors.New("the object store cannot list the version library")
+		}
+		objects, err := s.dbm.packages.ListInfo(prefix)
 		if err != nil {
 			return nil, err
 		}
