@@ -1213,7 +1213,7 @@ func (s *Server) handleCustomerReply(w http.ResponseWriter, r *http.Request) {
 		if reason != "" {
 			body += "\n原因：" + reason
 		}
-		if err := s.dbm.db.Tickets().AddEvent(r.Context(), id, c.ID, "customer", c.ID, "comment", "public", body, "working", version); err != nil {
+		if err := s.dbm.db.Tickets().AddEventAction(r.Context(), id, c.ID, "customer", c.ID, "comment", "public", body, "working", "cancel_requested", version); err != nil {
 			http.Error(w, "工單已更新，請刷新後重試", 409)
 			return
 		}

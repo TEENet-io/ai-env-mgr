@@ -40,6 +40,7 @@ var taskKindOptions = []taskKindOption{
 	{Value: "usage_snapshot", Label: "用量彙總"},
 	{Value: "alert_eval", Label: "告警檢查"},
 	{Value: "alert_notify", Label: "告警通知"},
+	{Value: "ticket_notify", Label: "工單通知"},
 	{Value: "audit_publish", Label: "審計發布"},
 	{Value: "status_import", Label: "狀態導入"},
 	{Value: "credential_rotation", Label: "憑據輪換"},

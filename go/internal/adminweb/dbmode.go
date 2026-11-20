@@ -430,6 +430,8 @@ func (s *Server) buildWorker(st *dbState) *worker.Worker {
 	}
 	w.Register(worker.TaskAlertEval, worker.AlertEval{Store: st.store, Gateway: users})
 	w.Register(worker.TaskAlertNotify, worker.AlertNotify{Store: st.store, Channels: s.alertChannels, BaseURL: s.consoleURL()})
+	w.Register(worker.TaskTicketNotify, worker.TicketNotify{Notices: st.db.Tickets(), Team: s.ticketGroup,
+		Customer: s.customerMailer, BaseURL: s.consoleURL(), Company: s.opts.CompanyName})
 	w.Register(worker.TaskCredentialRotation, worker.CredentialRotation{Store: st.store, Ops: st.ops})
 	w.Register(worker.TaskDevicePrune, worker.DevicePrune{Store: st.store})
 	w.Register(worker.TaskDataCleanup, worker.DataCleanup{Store: st.store, Objects: st.objects})
@@ -477,7 +479,7 @@ func (s *Server) runWorker(ctx context.Context) func() {
 		done <- struct{}{}
 	}()
 	go func() {
-		var extra []worker.Periodic
+		extra := []worker.Periodic{{Kind: worker.TaskTicketNotify, Every: worker.EveryTicketNotify, MaxAttempts: 1}}
 		if s.dbm.directory != nil {
 			extra = append(extra, worker.Periodic{Kind: worker.TaskDirectorySync, Every: worker.EveryDirectorySync, MaxAttempts: 1})
 		}

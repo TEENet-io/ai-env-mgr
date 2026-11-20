@@ -80,8 +80,12 @@ func (s TicketStore) SaveChangeImplementation(ctx context.Context, ticketID, adm
 			return err
 		}
 		body := "實施方更新了變更處理記錄：" + payload["stage"]
-		if _, err := tx.Exec(ctx, `insert into ticket_events(ticket_id,actor_type,actor_id,kind,visibility,body)
-			values($1,'admin',$2,'comment','public',$3)`, ticketID, adminID, body); err != nil {
+		action := ""
+		if payload["stage"] == "waiting_customer_result" {
+			action = "change_result_ready"
+		}
+		if _, err := tx.Exec(ctx, `insert into ticket_events(ticket_id,actor_type,actor_id,kind,visibility,body,action)
+			values($1,'admin',$2,'comment','public',$3,$4)`, ticketID, adminID, body, action); err != nil {
 			return err
 		}
 		return ticketAudit(ctx, tx, "admin", adminID, "ticket_change_implementation", ticketID, map[string]string{"stage": payload["stage"]})
@@ -138,8 +142,8 @@ func (s TicketStore) ConfirmChangeResult(ctx context.Context, ticketID, contactI
 			return err
 		}
 		body := fmt.Sprintf("客戶已確認變更結果：%s", payload["result"])
-		if _, err := tx.Exec(ctx, `insert into ticket_events(ticket_id,actor_type,actor_id,kind,visibility,body,actor_name)
-			values($1,'customer',$2,'comment','public',$3,coalesce((select name from customer_contacts where id=$2),''))`, ticketID, contactID, body); err != nil {
+		if _, err := tx.Exec(ctx, `insert into ticket_events(ticket_id,actor_type,actor_id,kind,visibility,body,actor_name,action)
+			values($1,'customer',$2,'comment','public',$3,coalesce((select name from customer_contacts where id=$2),''),'change_confirmed')`, ticketID, contactID, body); err != nil {
 			return err
 		}
 		return ticketAudit(ctx, tx, "customer", contactID, "ticket_change_confirmation", ticketID, map[string]string{"result": payload["result"]})

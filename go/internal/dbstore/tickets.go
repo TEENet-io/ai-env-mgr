@@ -472,6 +472,12 @@ func (s TicketStore) Events(ctx context.Context, id, requesterID string) ([]Tick
 // the state change and its evidence atomically. A stale browser cannot silently
 // overwrite another operator's work.
 func (s TicketStore) AddEvent(ctx context.Context, id, requesterID, actorType, actorID, kind, visibility, body, nextStatus string, version int) error {
+	return s.AddEventAction(ctx, id, requesterID, actorType, actorID, kind, visibility, body, nextStatus, "", version)
+}
+
+// AddEventAction is AddEvent for an event the console writes on a button's
+// behalf; action names what the button did, for notices.
+func (s TicketStore) AddEventAction(ctx context.Context, id, requesterID, actorType, actorID, kind, visibility, body, nextStatus, action string, version int) error {
 	return s.db.Tx(ctx, func(tx pgx.Tx) error {
 		var owner, status, requestKind string
 		var current int
@@ -505,8 +511,8 @@ func (s TicketStore) AddEvent(ctx context.Context, id, requesterID, actorType, a
 			closed_at=case when $2 in ('done','closed') then coalesce(closed_at,now()) else null end where id=$1`, id, nextStatus); err != nil {
 			return err
 		}
-		_, err = tx.Exec(ctx, `insert into ticket_events(ticket_id,actor_type,actor_id,kind,visibility,body,from_status,to_status,actor_name)
-			values($1,$2,$3,$4,$5,$6,$7,$8,case when $2='customer' then coalesce((select name from customer_contacts where id=$3::uuid),'') else '' end)`, id, actorType, actorID, kind, visibility, body, status, nextStatus)
+		_, err = tx.Exec(ctx, `insert into ticket_events(ticket_id,actor_type,actor_id,kind,visibility,body,from_status,to_status,actor_name,action)
+			values($1,$2,$3,$4,$5,$6,$7,$8,case when $2='customer' then coalesce((select name from customer_contacts where id=$3::uuid),'') else '' end,$9)`, id, actorType, actorID, kind, visibility, body, status, nextStatus, action)
 		if err != nil {
 			return err
 		}

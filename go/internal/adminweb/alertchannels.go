@@ -71,6 +71,43 @@ func (s *Server) channelsFrom(ctx context.Context, cfg repo.ChannelSettings, onl
 	return out, nil
 }
 
+// ticketGroup is the chat robot customers' ticket actions go to: only the
+// webhook, never the alert mail list, so ticket details reach the group
+// the robot posts in and nobody else. Nil when no webhook is on.
+func (s *Server) ticketGroup(ctx context.Context) (notify.Channel, error) {
+	cfg, _, err := repo.LoadChannelSettings(ctx, s.dbm.store.Settings())
+	if err != nil {
+		return nil, err
+	}
+	if cfg.Webhook.URL == "" || !cfg.Webhook.Enabled {
+		return nil, nil
+	}
+	secret, err := s.openSecret(ctx, "webhook_secret", cfg.Webhook.Secret)
+	if err != nil {
+		return nil, err
+	}
+	return notify.Webhook{URL: cfg.Webhook.URL, Format: cfg.Webhook.Format, Secret: secret,
+		Client: &http.Client{Timeout: 15 * time.Second}}, nil
+}
+
+// customerMailer is the mail relay pointed at one customer, or nil when
+// mail is not configured or switched off: then customers are not mailed.
+func (s *Server) customerMailer(ctx context.Context, to string) (notify.Channel, error) {
+	cfg, _, err := repo.LoadChannelSettings(ctx, s.dbm.store.Settings())
+	if err != nil {
+		return nil, err
+	}
+	if cfg.SMTP.Host == "" || !cfg.SMTP.Enabled {
+		return nil, nil
+	}
+	password, err := s.openSecret(ctx, "smtp_password", cfg.SMTP.Password)
+	if err != nil {
+		return nil, err
+	}
+	return notify.SMTP{Host: cfg.SMTP.Host, Port: cfg.SMTP.Port, Username: cfg.SMTP.Username, Password: password,
+		From: cfg.SMTP.From, To: []string{to}, InsecureNoTLS: isLoopback(cfg.SMTP.Host)}, nil
+}
+
 func isLoopback(host string) bool {
 	return host == "localhost" || strings.HasPrefix(host, "127.")
 }

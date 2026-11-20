@@ -13,6 +13,7 @@ import (
 	"net/http"
 	"net/url"
 	"strconv"
+	"strings"
 	"time"
 )
 
@@ -63,7 +64,7 @@ func (w Webhook) Send(ctx context.Context, m Message) error {
 		return fmt.Errorf("webhook: %w", err)
 	}
 	defer res.Body.Close()
-	answer, _ := io.ReadAll(io.LimitReader(res.Body, 4096))
+	answer, readErr := io.ReadAll(io.LimitReader(res.Body, 4096))
 	if res.StatusCode < 200 || res.StatusCode >= 300 {
 		return fmt.Errorf("webhook: %s: %s", res.Status, string(answer))
 	}
@@ -74,7 +75,15 @@ func (w Webhook) Send(ctx context.Context, m Message) error {
 			Msg     string `json:"msg"`
 			ErrMsg  string `json:"errmsg"`
 		}
-		if json.Unmarshal(answer, &reply) == nil && (reply.Code != 0 || reply.ErrCode != 0) {
+		// The robots always answer JSON; an answer that cannot be read is
+		// not proof the message was taken.
+		if readErr != nil {
+			return fmt.Errorf("webhook: reading the robot's answer: %w", readErr)
+		}
+		if err := json.Unmarshal(answer, &reply); err != nil {
+			return fmt.Errorf("webhook: the robot's answer is not JSON: %.200s", answer)
+		}
+		if reply.Code != 0 || reply.ErrCode != 0 {
 			return fmt.Errorf("webhook: robot refused: %d %s%s", reply.Code+reply.ErrCode, reply.Msg, reply.ErrMsg)
 		}
 	}
@@ -108,6 +117,9 @@ func (w Webhook) request(m Message, now time.Time) (string, []byte, error) {
 		payload := map[string]any{
 			"msg_type": "text", "content": map[string]string{"text": m.Text()},
 		}
+		if len(m.Fields) > 0 {
+			payload = map[string]any{"msg_type": "interactive", "card": feishuCard(m)}
+		}
 		if w.Secret != "" {
 			// Feishu signs with the key "<s>\n<secret>" over an empty message.
 			ts := strconv.FormatInt(now.Unix(), 10)
@@ -126,6 +138,37 @@ func (w Webhook) request(m Message, now time.Time) (string, []byte, error) {
 		return w.URL, body, err
 	}
 	return "", nil, fmt.Errorf("webhook: unknown format %q", w.Format)
+}
+
+// feishuCard is a notice as a Feishu message card: coloured header, one
+// line per field, and a button to the page.
+func feishuCard(m Message) map[string]any {
+	color := m.Color
+	if color == "" {
+		color = "blue"
+	}
+	// Plain text, not Feishu's markdown: titles and names come from
+	// customers, and must not turn into links or formatting.
+	var lines []string
+	for _, f := range m.Fields {
+		lines = append(lines, f.Label+"："+f.Value)
+	}
+	elements := []any{map[string]any{"tag": "div", "text": map[string]string{"tag": "plain_text", "content": strings.Join(lines, "\n")}}}
+	if m.URL != "" {
+		label := m.Button
+		if label == "" {
+			label = "打開"
+		}
+		elements = append(elements, map[string]any{"tag": "action", "actions": []any{map[string]any{
+			"tag": "button", "type": "primary", "url": m.URL,
+			"text": map[string]string{"tag": "plain_text", "content": label},
+		}}})
+	}
+	return map[string]any{
+		"config":   map[string]bool{"wide_screen_mode": true},
+		"header":   map[string]any{"template": color, "title": map[string]string{"tag": "plain_text", "content": m.Title}},
+		"elements": elements,
+	}
 }
 
 func containsQuery(u string) bool {

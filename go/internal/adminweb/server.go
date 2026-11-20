@@ -130,6 +130,9 @@ type Options struct {
 	// the authenticator app shows, so somebody with three of these on their
 	// phone can tell them apart.
 	PublicHost string
+	// CompanyName is the customer's name as it appears in ticket notices
+	// ("新工单 #12 · Bippo"); empty leaves it out.
+	CompanyName string
 }
 
 // store is what the console needs from OSS: everything admincore.Manager uses,

@@ -102,19 +102,29 @@ func (s SMTP) Send(ctx context.Context, m Message) error {
 	if err := w.Close(); err != nil {
 		return fmt.Errorf("smtp: send: %w", err)
 	}
-	return c.Quit()
+	// The relay has accepted the mail once DATA is acknowledged; a QUIT
+	// that goes wrong after that must not make the caller send it again.
+	_ = c.Quit()
+	return nil
 }
 
 // mail renders the RFC 5322 message: UTF-8 body, subject encoded so a
 // Chinese title survives a relay that only speaks ASCII headers.
 func (s SMTP) mail(m Message) string {
 	subject := fmt.Sprintf("[windows-control] %s %s", strings.ToUpper(m.Severity), m.Title)
+	if m.MailSubject != "" {
+		subject = m.MailSubject
+	}
+	text := m.Text()
+	if m.MailBody != "" {
+		text = m.MailBody
+	}
 	var b strings.Builder
 	fmt.Fprintf(&b, "From: %s\r\n", s.From)
 	fmt.Fprintf(&b, "To: %s\r\n", strings.Join(s.To, ", "))
 	fmt.Fprintf(&b, "Subject: %s\r\n", mime.QEncoding.Encode("utf-8", subject))
 	fmt.Fprintf(&b, "Date: %s\r\n", time.Now().Format(time.RFC1123Z))
 	b.WriteString("MIME-Version: 1.0\r\nContent-Type: text/plain; charset=utf-8\r\nContent-Transfer-Encoding: 8bit\r\n\r\n")
-	b.WriteString(strings.ReplaceAll(m.Text(), "\n", "\r\n"))
+	b.WriteString(strings.ReplaceAll(text, "\n", "\r\n"))
 	return b.String()
 }

@@ -158,3 +158,35 @@ func TestSMTPSendsOneMailPerMessage(t *testing.T) {
 		t.Fatalf("plain-text credentials must be refused: %v", err)
 	}
 }
+
+func TestFeishuCardForNotices(t *testing.T) {
+	var body map[string]any
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		raw, _ := io.ReadAll(r.Body)
+		json.Unmarshal(raw, &body)
+		w.Write([]byte(`{"code":0}`))
+	}))
+	defer srv.Close()
+	m := Message{Title: "🆕 新工单 #7 · Bippo", Color: "blue", Button: "打开工单", URL: "https://c/tickets/detail?id=x",
+		Fields: []Field{{"标题", "Codex 打不開"}, {"提交人", "陳小姐"}}}
+	if err := (Webhook{URL: srv.URL, Format: FormatFeishu, Client: srv.Client()}).Send(context.Background(), m); err != nil {
+		t.Fatal(err)
+	}
+	if body["msg_type"] != "interactive" {
+		t.Fatalf("body = %v", body)
+	}
+	raw, _ := json.Marshal(body["card"])
+	card := string(raw)
+	for _, want := range []string{`"template":"blue"`, `"content":"🆕 新工单 #7 · Bippo"`, `"content":"标题：Codex 打不開\n提交人：陳小姐","tag":"plain_text"`, `"url":"https://c/tickets/detail?id=x"`, `"content":"打开工单"`} {
+		if !strings.Contains(card, want) {
+			t.Errorf("card lacks %s: %s", want, card)
+		}
+	}
+	if strings.Contains(card, "lark_md") {
+		t.Fatal("customer-written fields must not be rendered as markdown")
+	}
+	// A plain-text channel gets the same notice without the alert's [LEVEL].
+	if text := m.Text(); strings.Contains(text, "[") || !strings.Contains(text, "提交人：陳小姐") {
+		t.Fatalf("text = %q", text)
+	}
+}

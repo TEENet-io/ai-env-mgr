@@ -123,29 +123,63 @@
   {{if eq .Tab "channels"}}
   {{with .Channels}}
   <h2>通知渠道</h2>
-  <form method="post" action="/settings/alert-channels" class="form">
+  <p class="lede">告警和工單動態從這裡發出。改完先「保存」，再按卡片裡的「發送測試」確認收得到。</p>
+  <form id="channels-form" method="post" action="/settings/alert-channels" class="channels">
     <input type="hidden" name="csrf" value="{{$.CSRF}}">
     <input type="hidden" name="version" value="{{.Version}}">
-    <label>Webhook<select name="webhook_enabled"><option value="1"{{if .Webhook.Enabled}} selected{{end}}>啟用</option><option value="0"{{if not .Webhook.Enabled}} selected{{end}}>停用</option></select></label>
-    <label>地址<input name="webhook_url" value="{{.Webhook.URL}}" placeholder="https://oapi.dingtalk.com/robot/send?access_token=…"></label>
-    <label>格式<select name="webhook_format"><option value="generic"{{if eq .Webhook.Format "generic"}} selected{{end}}>通用 JSON</option><option value="dingtalk"{{if eq .Webhook.Format "dingtalk"}} selected{{end}}>釘釘機器人</option><option value="feishu"{{if eq .Webhook.Format "feishu"}} selected{{end}}>飛書機器人</option></select></label>
-    <label>簽名密鑰<input name="webhook_secret" type="password" autocomplete="new-password" placeholder="{{if .SecretSet}}已設定，留空不改{{else}}未設定{{end}}"></label>
-    {{if .SecretSet}}<label>清除簽名密鑰<select name="webhook_secret_clear"><option value="0">否</option><option value="1">是</option></select></label>{{end}}
-    <label>郵件<select name="smtp_enabled"><option value="1"{{if .SMTP.Enabled}} selected{{end}}>啟用</option><option value="0"{{if not .SMTP.Enabled}} selected{{end}}>停用</option></select></label>
-    <label>SMTP 伺服器<input name="smtp_host" value="{{.SMTP.Host}}" placeholder="smtp.example.com"></label>
-    <label>端口<input name="smtp_port" type="number" min="1" max="65535" value="{{.SMTP.Port}}"></label>
-    <label>用戶名<input name="smtp_username" value="{{.SMTP.Username}}"></label>
-    <label>密碼<input name="smtp_password" type="password" autocomplete="new-password" placeholder="{{if .PasswordSet}}已設定，留空不改{{else}}未設定{{end}}"></label>
-    {{if .PasswordSet}}<label>清除密碼<select name="smtp_password_clear"><option value="0">否</option><option value="1">是</option></select></label>{{end}}
-    <label>發件人<input name="smtp_from" value="{{.SMTP.From}}" placeholder="console@example.com"></label>
-    <label>收件人<input name="smtp_to" value="{{.ToText}}" placeholder="逗號分隔"></label>
-    <button type="submit">保存</button>
+
+    <section class="channel">
+      <header>
+        <div>
+          <h3>聊天機器人</h3>
+          <p>運維告警，以及客戶在工單上的操作（新工單、回覆、確認方案），推到這個群。</p>
+        </div>
+        {{if and .Webhook.Enabled .Webhook.URL}}<span class="tag tag-ok">已啟用</span>{{else}}<span class="tag tag-muted">未啟用</span>{{end}}
+      </header>
+      <div class="fields">
+        <label>狀態<select name="webhook_enabled"><option value="1"{{if .Webhook.Enabled}} selected{{end}}>啟用</option><option value="0"{{if not .Webhook.Enabled}} selected{{end}}>停用</option></select></label>
+        <label>類型<select name="webhook_format"><option value="feishu"{{if eq .Webhook.Format "feishu"}} selected{{end}}>飛書機器人</option><option value="dingtalk"{{if eq .Webhook.Format "dingtalk"}} selected{{end}}>釘釘機器人</option><option value="generic"{{if eq .Webhook.Format "generic"}} selected{{end}}>通用 JSON</option></select></label>
+        <label class="wide">Webhook 地址<input name="webhook_url" value="{{.Webhook.URL}}" placeholder="https://open.feishu.cn/open-apis/bot/v2/hook/…" spellcheck="false"></label>
+        <label class="wide">簽名密鑰<input name="webhook_secret" type="password" autocomplete="new-password" placeholder="{{if .SecretSet}}已設定，留空不改{{else}}未設定{{end}}">
+          <small>機器人「安全設置」裡開了簽名校驗才需要填，兩邊要一致。</small></label>
+        {{if .SecretSet}}<label class="check"><input type="checkbox" name="webhook_secret_clear" value="1">清除已保存的簽名密鑰</label>{{end}}
+      </div>
+      <footer>
+        <button type="submit" form="test-webhook" class="link">發送測試消息</button>
+      </footer>
+    </section>
+
+    <section class="channel">
+      <header>
+        <div>
+          <h3>郵件</h3>
+          <p>告警發給下面的收件人；工單有新回覆或需要客戶處理時，也用這台伺服器發信給提單人。</p>
+        </div>
+        {{if and .SMTP.Enabled .SMTP.Host}}<span class="tag tag-ok">已啟用</span>{{else}}<span class="tag tag-muted">未啟用</span>{{end}}
+      </header>
+      <div class="fields">
+        <label>狀態<select name="smtp_enabled"><option value="1"{{if .SMTP.Enabled}} selected{{end}}>啟用</option><option value="0"{{if not .SMTP.Enabled}} selected{{end}}>停用</option></select></label>
+        <label class="grow">SMTP 伺服器<input name="smtp_host" value="{{.SMTP.Host}}" placeholder="smtp.example.com" spellcheck="false"></label>
+        <label class="narrow">端口<input name="smtp_port" type="number" min="1" max="65535" value="{{.SMTP.Port}}" placeholder="465"></label>
+        <label>用戶名<input name="smtp_username" value="{{.SMTP.Username}}" autocomplete="off"></label>
+        <label>密碼<input name="smtp_password" type="password" autocomplete="new-password" placeholder="{{if .PasswordSet}}已設定，留空不改{{else}}未設定{{end}}"></label>
+        {{if .PasswordSet}}<label class="check"><input type="checkbox" name="smtp_password_clear" value="1">清除已保存的密碼</label>{{end}}
+        <label>發件人<input name="smtp_from" value="{{.SMTP.From}}" placeholder="console@example.com"></label>
+        <label class="wide">告警收件人<input name="smtp_to" value="{{.ToText}}" placeholder="ops@example.com, oncall@example.com">
+          <small>多個用逗號分隔。465 端口走 TLS 直連，其他端口用 STARTTLS；不支持 TLS 的伺服器不會收到密碼。</small></label>
+      </div>
+      <footer>
+        <button type="submit" form="test-smtp" class="link">發送測試郵件</button>
+      </footer>
+    </section>
+
+    <div class="channels-save">
+      <button type="submit">保存</button>
+      <span class="hint">密鑰和密碼用主密鑰加密後入庫，頁面不回顯。</span>
+    </div>
   </form>
-  <p class="hint">
-    密鑰和密碼用主密鑰加密後入庫，頁面不回顯。465 端口按 TLS 直連，其他端口用 STARTTLS；沒有 TLS 的伺服器不發密碼。
-    <form method="post" action="/alerts/test" class="inline"><input type="hidden" name="csrf" value="{{$.CSRF}}"><input type="hidden" name="channel" value="webhook"><button class="link">發送 webhook 測試</button></form>
-    · <form method="post" action="/alerts/test" class="inline"><input type="hidden" name="csrf" value="{{$.CSRF}}"><input type="hidden" name="channel" value="smtp"><button class="link">發送郵件測試</button></form>
-  </p>
+  <form id="test-webhook" method="post" action="/alerts/test" hidden><input type="hidden" name="csrf" value="{{$.CSRF}}"><input type="hidden" name="channel" value="webhook"></form>
+  <form id="test-smtp" method="post" action="/alerts/test" hidden><input type="hidden" name="csrf" value="{{$.CSRF}}"><input type="hidden" name="channel" value="smtp"></form>
   {{end}}
   {{end}}
 

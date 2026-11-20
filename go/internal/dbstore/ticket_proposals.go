@@ -119,8 +119,12 @@ func (s TicketStore) SaveProposal(ctx context.Context, ticketID, adminID string,
 		if requiresManager {
 			body = "服務團隊已提交具體方案，等待帳號管理聯絡人確認；申請本身尚未執行。"
 		}
-		if _, err := tx.Exec(ctx, `insert into ticket_events(ticket_id,actor_type,actor_id,kind,visibility,body)
-			values($1,'admin',$2,'comment','public',$3)`, ticketID, adminID, body); err != nil {
+		action := "plan_sent"
+		if requiresManager {
+			action = "plan_sent_manager"
+		}
+		if _, err := tx.Exec(ctx, `insert into ticket_events(ticket_id,actor_type,actor_id,kind,visibility,body,action)
+			values($1,'admin',$2,'comment','public',$3,$4)`, ticketID, adminID, body, action); err != nil {
 			return err
 		}
 		return ticketAudit(ctx, tx, "admin", adminID, "ticket_proposal_sent", ticketID, map[string]string{"kind": kind})
@@ -173,12 +177,12 @@ func (s TicketStore) DecideProposal(ctx context.Context, ticketID, contactID str
 		if _, err := tx.Exec(ctx, `update tickets set status='working',version=version+1,updated_at=now() where id=$1`, ticketID); err != nil {
 			return err
 		}
-		body := "客戶已確認具體方案；服務團隊可以繼續處理。"
+		body, action := "客戶已確認具體方案；服務團隊可以繼續處理。", "plan_accepted"
 		if decision == "rejected" {
-			body = "客戶未同意具體方案；服務團隊需重新評估，不能按此方案執行。"
+			body, action = "客戶未同意具體方案；服務團隊需重新評估，不能按此方案執行。", "plan_rejected"
 		}
-		if _, err := tx.Exec(ctx, `insert into ticket_events(ticket_id,actor_type,actor_id,kind,visibility,body,actor_name)
-			values($1,'customer',$2,'comment','public',$3,coalesce((select name from customer_contacts where id=$2),''))`, ticketID, contactID, body); err != nil {
+		if _, err := tx.Exec(ctx, `insert into ticket_events(ticket_id,actor_type,actor_id,kind,visibility,body,actor_name,action)
+			values($1,'customer',$2,'comment','public',$3,coalesce((select name from customer_contacts where id=$2),''),$4)`, ticketID, contactID, body, action); err != nil {
 			return err
 		}
 		return ticketAudit(ctx, tx, "customer", contactID, "ticket_proposal_decided", ticketID, map[string]string{"decision": decision, "proposal_id": fmt.Sprint(proposalID)})

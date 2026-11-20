@@ -21,12 +21,36 @@ type Message struct {
 	Detail   string
 	URL      string // where to look; may be empty
 	At       time.Time
+
+	// For a notice rather than an alert (Severity empty): labelled lines
+	// under the title, the colour of a Feishu card's header (blue, orange,
+	// green, red, grey) and the label of its link button.
+	Fields []Field
+	Color  string
+	Button string
+
+	// For mail to one person: the subject and the whole body. When set they
+	// replace the alert-style subject and Text().
+	MailSubject, MailBody string
 }
+
+// Field is one "label: value" line of a notice.
+type Field struct{ Label, Value string }
 
 // Text is the message as one block of plain text, for channels that carry
 // nothing structured.
 func (m Message) Text() string {
 	var b strings.Builder
+	if m.Severity == "" {
+		fmt.Fprintf(&b, "%s\n", m.Title)
+		for _, f := range m.Fields {
+			fmt.Fprintf(&b, "%s：%s\n", f.Label, f.Value)
+		}
+		if m.URL != "" {
+			fmt.Fprintf(&b, "%s\n", m.URL)
+		}
+		return b.String()
+	}
 	fmt.Fprintf(&b, "[%s] %s\n", strings.ToUpper(m.Severity), m.Title)
 	if m.Subject != "" {
 		fmt.Fprintf(&b, "對象：%s\n", m.Subject)
