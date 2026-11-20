@@ -79,8 +79,8 @@
     {{if .Directory}}
     <label>員工<select name="directoryID" required>
       <option value="">{{if .Unopened}}選擇員工{{else}}定製工具名單裡沒有待開戶的員工{{end}}</option>
-      {{range .Unopened}}<option value="{{.ID}}">{{.DisplayName}}{{if .Email}} · {{.Email}}{{else}}（沒有郵箱）{{end}}</option>{{end}}
-    </select><span class="field-hint">只列定製工具裡啟用中、還沒有 AI 工作間帳號的人。姓名和郵箱以定製工具為準，郵箱用來接收雲電腦的登入驗證碼；已關戶的員工請在上面的列表裡「重新開戶」</span></label>
+      {{range .Unopened}}<option value="{{.ID}}">{{.DisplayName}}{{if .Email}} · {{.Email}}{{else}}（沒有郵箱）{{end}}{{if eq .Role "ops"}}（運維）{{end}}</option>{{end}}
+    </select><span class="field-hint">只列定製工具裡啟用中、還沒有 AI 工作間帳號的人，運維帳號標「運維」（用量算在本公司名下，建議給小額預算）。姓名和郵箱以定製工具為準，郵箱用來接收雲電腦的登入驗證碼；已關戶的員工請在上面的列表裡「重新開戶」</span></label>
     {{else}}
     <label>郵箱<input name="email" type="email" required placeholder="zhangsan@example.com"><span class="field-hint">員工用它接收雲電腦的登入驗證碼</span></label>
     <label>姓名<input name="name" placeholder="張三"></label>

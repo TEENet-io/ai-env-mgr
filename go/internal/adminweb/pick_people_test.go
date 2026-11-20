@@ -46,12 +46,14 @@ func TestOnboardingPicksAPersonFromTheList(t *testing.T) {
 	session := signedIn(t, s)
 
 	page := dbGet(t, h, "/users", session).Body.String()
-	for _, want := range []string{`name="directoryID"`, "Amy Chan · amy@bippo.example", "bob · bob@bippo.example"} {
+	// The operators are offered here too, marked: they open accounts for
+	// themselves to see a machine as its employee does.
+	for _, want := range []string{`name="directoryID"`, "Amy Chan · amy@bippo.example", "bob · bob@bippo.example", "Wei · wei@teenet.example（運維）"} {
 		if !strings.Contains(page, want) {
 			t.Errorf("the form lacks %q", want)
 		}
 	}
-	for _, unwanted := range []string{`name="email"`, "wei@teenet.example", "cat@bippo.example"} {
+	for _, unwanted := range []string{`name="email"`, "cat@bippo.example", "bob@bippo.example（運維）"} {
 		if strings.Contains(page, unwanted) {
 			t.Errorf("the form offers %q", unwanted)
 		}
@@ -78,7 +80,6 @@ func TestOnboardingPicksAPersonFromTheList(t *testing.T) {
 	for name, fields := range map[string]url.Values{
 		"nobody picked":     {"windowsUser": {"work3"}, "name": {"Bob"}, "email": {"bob@bippo.example"}},
 		"picked twice":      {"windowsUser": {"work3"}, "directoryID": {amyID}},
-		"an ops account":    {"windowsUser": {"work3"}, "directoryID": {opsID}},
 		"a disabled person": {"windowsUser": {"work3"}, "directoryID": {goneID}},
 		// work2 is amy's: picking bob with it must not take her account over.
 		"somebody else's Windows user": {"windowsUser": {"work2"}, "directoryID": {bobID}},
@@ -92,6 +93,14 @@ func TestOnboardingPicksAPersonFromTheList(t *testing.T) {
 	}
 	if e, _ := s.dbm.store.Employees().ByWindowsUser(context.Background(), "work2"); e.DirectoryID != amyID || e.Name != "Amy Chan" {
 		t.Errorf("amy's account was taken over: %+v", e)
+	}
+
+	// An operator gets an account like anybody on the list.
+	if rec := onboard(url.Values{"windowsUser": {"work4"}, "directoryID": {opsID}}); !strings.Contains(rec.Header().Get("Location"), "ok=1") {
+		t.Fatalf("onboard the operator = %q", rec.Header().Get("Location"))
+	}
+	if e, err := s.dbm.store.Employees().ByWindowsUser(context.Background(), "work4"); err != nil || e.DirectoryID != opsID || e.Email != "wei@teenet.example" {
+		t.Fatalf("the operator's account = %+v %v", e, err)
 	}
 
 	page = dbGet(t, h, "/users", session).Body.String()

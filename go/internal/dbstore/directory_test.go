@@ -275,8 +275,9 @@ func TestAnOpsAccountWaitsUntilSomebodyOpensIt(t *testing.T) {
 	}
 }
 
-// An AI workspace account is opened for somebody the list has: active, not
-// ops, and without a live account here.
+// An AI workspace account is opened for somebody the list has: active and
+// without a live account here. The ops console offers the operators too; a
+// customer's request does not.
 func TestOnlyPeopleWithoutAnAccountCanGetOne(t *testing.T) {
 	s, ctx := newTestStore(t)
 	d := s.db.Directory()
@@ -284,9 +285,9 @@ func TestOnlyPeopleWithoutAnAccountCanGetOne(t *testing.T) {
 	ops, gone := dirAccount(4, directory.RoleOps, directory.StatusActive), dirAccount(5, directory.RoleEmployee, directory.StatusDisabled)
 	readDirectory(t, ctx, d, boss, amy, bob, ops, gone)
 
-	ids := func() []string {
+	ids := func(withOps bool) string {
 		t.Helper()
-		people, err := d.WithoutWorkspace(ctx)
+		people, err := d.WithoutWorkspace(ctx, withOps)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -294,28 +295,39 @@ func TestOnlyPeopleWithoutAnAccountCanGetOne(t *testing.T) {
 		for _, p := range people {
 			out = append(out, p.Username)
 		}
-		return out
+		return fmt.Sprint(out)
 	}
-	if got := fmt.Sprint(ids()); got != "[u1 u2 u3]" {
-		t.Fatalf("candidates = %s", got)
+	if got := ids(false); got != "[u1 u2 u3]" {
+		t.Fatalf("a customer's candidates = %s", got)
+	}
+	if got := ids(true); got != "[u1 u2 u3 u4]" {
+		t.Fatalf("the ops console's candidates = %s", got)
 	}
 
 	emp, err := s.Employees().Create(ctx, repo.NewEmployee{WindowsUser: "work2", Name: amy.Name, DirectoryID: amy.ID})
 	if err != nil || emp.DirectoryID != amy.ID {
 		t.Fatalf("create linked: %+v %v", emp, err)
 	}
-	if got := fmt.Sprint(ids()); got != "[u1 u3]" {
+	if got := ids(false); got != "[u1 u3]" {
 		t.Errorf("after amy got one: %s", got)
 	}
 	if _, err := s.Employees().Create(ctx, repo.NewEmployee{WindowsUser: "work9", DirectoryID: amy.ID}); !errors.Is(err, repo.ErrDuplicate) {
 		t.Errorf("a second live account for amy: %v", err)
 	}
 
+	// An operator with an account leaves the list like anybody else.
+	if _, err := s.Employees().Create(ctx, repo.NewEmployee{WindowsUser: "work4", Name: ops.Name, DirectoryID: ops.ID}); err != nil {
+		t.Fatalf("create for the operator: %v", err)
+	}
+	if got := ids(true); got != "[u1 u3]" {
+		t.Errorf("after the operator got one: %s", got)
+	}
+
 	// Somebody whose account was closed still has it.
 	if _, err := s.Employees().Offboard(ctx, emp.ID, emp.Version); err != nil {
 		t.Fatal(err)
 	}
-	if got := fmt.Sprint(ids()); got != "[u1 u3]" {
+	if got := ids(false); got != "[u1 u3]" {
 		t.Errorf("after amy left: %s", got)
 	}
 }

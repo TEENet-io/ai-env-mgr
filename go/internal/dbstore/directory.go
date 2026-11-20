@@ -629,15 +629,20 @@ func (s DirectoryStore) LinkAdmin(ctx context.Context, adminID, directoryID stri
 }
 
 // WithoutWorkspace lists the people an AI workspace account can be opened
-// for (AIC-209): active customer accounts of the tool -- ops accounts are
-// not employees -- that no live account here belongs to yet. Somebody whose
-// account was closed still has it, and gets it reopened instead.
-func (s DirectoryStore) WithoutWorkspace(ctx context.Context) ([]directory.Account, error) {
+// for (AIC-209): active accounts of the tool that no live account here
+// belongs to yet. Somebody whose account was closed still has it, and gets
+// it reopened instead.
+//
+// withOps adds the tool's ops accounts. The ops console opens accounts for
+// them too -- an operator checking a machine needs the employee's view of
+// it: credentials delivered, Codex working. A customer's request never
+// offers them: the customer neither sees the operators nor asks for them.
+func (s DirectoryStore) WithoutWorkspace(ctx context.Context, withOps bool) ([]directory.Account, error) {
 	rows, err := s.db.pool.Query(ctx, `select d.id::text, d.username, d.name, d.email, d.role, d.status
 		from directory_accounts d
-		where d.status = 'active' and d.role <> 'ops' and d.missing_since is null
+		where d.status = 'active' and ($1 or d.role <> 'ops') and d.missing_since is null
 		  and not exists (select 1 from employees e where e.directory_id = d.id and e.deleted_at is null)
-		order by lower(coalesce(nullif(d.name, ''), d.username))`)
+		order by lower(coalesce(nullif(d.name, ''), d.username))`, withOps)
 	if err != nil {
 		return nil, err
 	}

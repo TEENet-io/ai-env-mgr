@@ -1267,7 +1267,7 @@ func (s *Server) ticketUnopened(r *http.Request) []directory.Account {
 	if !s.usesDirectory() {
 		return nil
 	}
-	people, err := s.dbm.db.Directory().WithoutWorkspace(r.Context())
+	people, err := s.dbm.db.Directory().WithoutWorkspace(r.Context(), false)
 	if err != nil {
 		log.Printf("adminweb: tickets: directory: %v", err)
 		return []directory.Account{}

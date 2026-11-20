@@ -280,7 +280,7 @@ func (s *Server) handleUsers(w http.ResponseWriter, r *http.Request, sess *sessi
 	}
 	data.Accounts = filterAccounts(rows, data.Show)
 	if data.Directory = s.usesDirectory(); data.Directory {
-		if data.Unopened, err = s.dbm.db.Directory().WithoutWorkspace(r.Context()); err != nil {
+		if data.Unopened, err = s.dbm.db.Directory().WithoutWorkspace(r.Context(), true); err != nil {
 			data.Error = "讀取定製工具名單失敗，暫時不能開戶"
 			log.Printf("adminweb: accounts: directory: %v", err)
 		}
@@ -473,7 +473,7 @@ func (s *Server) workspaceCandidate(ctx context.Context, id string) (directory.A
 	if id == "" {
 		return directory.Account{}, errors.New("請從定製工具名單裡選擇員工")
 	}
-	people, err := s.dbm.db.Directory().WithoutWorkspace(ctx)
+	people, err := s.dbm.db.Directory().WithoutWorkspace(ctx, true)
 	if err != nil {
 		return directory.Account{}, err
 	}
