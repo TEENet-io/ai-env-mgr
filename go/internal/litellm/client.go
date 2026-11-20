@@ -83,15 +83,19 @@ type Key struct {
 // unknown model_info keys through verbatim, which is what lets the gateway
 // be the single source of truth for the picker.
 type ModelInfo struct {
-	ID               string   `json:"id"`
-	Mode             string   `json:"mode"`
-	DisplayName      string   `json:"display_name"`
-	ContextWindow    int      `json:"context_window"`
-	ReasoningLevels  []string `json:"reasoning_levels"`
-	DefaultReasoning string   `json:"default_reasoning"`
-	Modalities       []string `json:"modalities"`
-	CatalogVisible   bool     `json:"catalog_visible"`
-	Blocked          bool     `json:"blocked"`
+	ID            string `json:"id"`
+	Mode          string `json:"mode"`
+	DisplayName   string `json:"display_name"`
+	ContextWindow int    `json:"context_window"`
+	// AutoCompactTokenLimit is where Codex compacts a conversation. Set it
+	// below a model's long-context price threshold so a long session never
+	// crosses into the higher rate. Zero leaves Codex's own default.
+	AutoCompactTokenLimit int      `json:"auto_compact_token_limit"`
+	ReasoningLevels       []string `json:"reasoning_levels"`
+	DefaultReasoning      string   `json:"default_reasoning"`
+	Modalities            []string `json:"modalities"`
+	CatalogVisible        bool     `json:"catalog_visible"`
+	Blocked               bool     `json:"blocked"`
 
 	// LitellmProvider is LiteLLM's own name for how it calls the model
 	// ("bedrock", "vertex_ai", "openai", ...). It is not the supplier:

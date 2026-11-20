@@ -155,6 +155,12 @@ func entryFor(template map[string]any, m litellm.Model) map[string]any {
 		entry["context_window"] = m.Info.ContextWindow
 		entry["max_context_window"] = m.Info.ContextWindow
 	}
+	// Codex 0.153's catalog takes a per-model compaction threshold. A value
+	// at or past the context window would never fire before the window
+	// itself runs out, so it is not written.
+	if limit := m.Info.AutoCompactTokenLimit; limit > 0 && (m.Info.ContextWindow == 0 || limit < m.Info.ContextWindow) {
+		entry["auto_compact_token_limit"] = limit
+	}
 	if len(m.Info.Modalities) > 0 {
 		// LiteLLM may advertise PDF or video inputs, but Codex 0.153.4 only
 		// accepts text, image, and audio here. One unknown value invalidates

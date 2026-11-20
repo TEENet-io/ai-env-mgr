@@ -252,3 +252,28 @@ func TestApplyPatchToolTypeIsAlwaysFreeform(t *testing.T) {
 		}
 	}
 }
+
+func TestBuildCarriesAutoCompactTokenLimit(t *testing.T) {
+	models := []litellm.Model{
+		{Name: "gpt", Info: litellm.ModelInfo{ContextWindow: 1050000, AutoCompactTokenLimit: 250000}},
+		{Name: "unset", Info: litellm.ModelInfo{ContextWindow: 1050000}},
+		{Name: "toolarge", Info: litellm.ModelInfo{ContextWindow: 200000, AutoCompactTokenLimit: 300000}},
+	}
+	out, err := Build(models, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var doc struct {
+		Models []map[string]any `json:"models"`
+	}
+	if err := json.Unmarshal(out, &doc); err != nil {
+		t.Fatal(err)
+	}
+	got := map[string]any{}
+	for _, m := range doc.Models {
+		got[m["slug"].(string)] = m["auto_compact_token_limit"]
+	}
+	if got["gpt"] != float64(250000) || got["unset"] != nil || got["toolarge"] != nil {
+		t.Fatalf("auto_compact_token_limit by slug = %v", got)
+	}
+}
