@@ -3,6 +3,7 @@ package agentcore
 import (
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -307,6 +308,52 @@ func TestCodexNamesProcessesThatDoNotExit(t *testing.T) {
 	var errs []string
 	out := s.updateCodex(fleetCodexTarget(pol), "work1", &errs)
 	if out.State != CodexFailed || codex.installs != 0 || len(errs) != 1 || !strings.Contains(errs[0], `user=PC\other`) {
+		t.Fatalf("state=%q installs=%d errs=%v", out.State, codex.installs, errs)
+	}
+}
+
+// exitingCodex is a Codex whose taskkill fails because the process was
+// already on its way out, as codex.exe is after its ChatGPT.exe parent ends.
+type exitingCodex struct {
+	slowExitCodex
+}
+
+func (f *exitingCodex) Stop(user string) (int, error) {
+	f.stopped = true
+	return 0, errors.New(`taskkill: codex.exe: exit status 1 (ERROR: The process "codex.exe" with PID 4616 could not be terminated. Reason: The operation is not supported.)`)
+}
+
+func TestCodexTaskkillFailureOnExitingProcessStillUpdates(t *testing.T) {
+	defer func(w, p time.Duration) { codexExitWait, codexExitPoll = w, p }(codexExitWait, codexExitPoll)
+	codexExitWait, codexExitPoll = time.Second, time.Millisecond
+
+	store := newFakeStore()
+	codex := &exitingCodex{slowExitCodex{fakeCodex: fakeCodex{free: 100 << 30}, checksLeft: 2}}
+	s := newCodexSyncer(t, store, &codex.fakeCodex)
+	s.Codex = codex
+	pol := codexPolicy(store, "1.0.0", []byte("setup"))
+
+	var errs []string
+	out := s.updateCodex(fleetCodexTarget(pol), "work1", &errs)
+	if len(errs) > 0 || out.State != CodexIdle || codex.installs != 1 {
+		t.Fatalf("state=%q installs=%d errs=%v", out.State, codex.installs, errs)
+	}
+}
+
+func TestCodexTaskkillFailureReportedWhenProcessStays(t *testing.T) {
+	defer func(w, p time.Duration) { codexExitWait, codexExitPoll = w, p }(codexExitWait, codexExitPoll)
+	codexExitWait, codexExitPoll = 20*time.Millisecond, time.Millisecond
+
+	store := newFakeStore()
+	codex := &exitingCodex{slowExitCodex{fakeCodex: fakeCodex{free: 100 << 30}, checksLeft: 1 << 30}}
+	s := newCodexSyncer(t, store, &codex.fakeCodex)
+	s.Codex = codex
+	pol := codexPolicy(store, "1.0.0", []byte("setup"))
+
+	var errs []string
+	out := s.updateCodex(fleetCodexTarget(pol), "work1", &errs)
+	if out.State != CodexFailed || codex.installs != 0 || len(errs) != 1 ||
+		!strings.Contains(errs[0], "operation is not supported") || !strings.Contains(errs[0], `user=PC\other`) {
 		t.Fatalf("state=%q installs=%d errs=%v", out.State, codex.installs, errs)
 	}
 }

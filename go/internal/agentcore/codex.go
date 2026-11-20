@@ -172,16 +172,25 @@ func (s *Syncer) updateCodex(target model.ReleaseTarget, user string, errs *[]st
 		return codexOutcome{Version: installed, State: CodexFailed}
 	} else if running {
 		killed, stopErr := s.Codex.Stop(user)
+		// A failed taskkill is not yet a failed close. Ending ChatGPT.exe
+		// takes its codex.exe child down with it, and taskkill on a process
+		// that is already exiting fails with "The operation is not
+		// supported" -- seen on 2026-11-20. Whether Codex is gone is what
+		// the wait below decides; the taskkill error only explains a
+		// process that stays.
 		if stopErr != nil {
-			*errs = append(*errs, fmt.Sprintf("codex: close running process: %v", stopErr))
-			return codexOutcome{Version: installed, State: CodexFailed}
+			log.Printf("codex: taskkill reported %v; waiting to see whether Codex exits", stopErr)
+		} else {
+			log.Printf("codex: closed %d running process(es) for immediate update", killed)
 		}
-		log.Printf("codex: closed %d running process(es) for immediate update", killed)
 		if stillRunning, checkErr := s.waitCodexExit(); checkErr != nil {
 			*errs = append(*errs, fmt.Sprintf("codex: verify process closed: %v", checkErr))
 			return codexOutcome{Version: installed, State: CodexFailed}
 		} else if stillRunning {
 			msg := fmt.Sprintf("codex: process is still running %s after close request", codexExitWait)
+			if stopErr != nil {
+				msg = fmt.Sprintf("codex: close running process: %v; still running %s later", stopErr, codexExitWait)
+			}
 			if lister, ok := s.Codex.(CodexProcessLister); ok {
 				if left, err := lister.CodexProcesses(); err == nil && len(left) > 0 {
 					msg += ": " + strings.Join(left, "; ")
